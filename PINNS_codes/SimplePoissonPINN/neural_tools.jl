@@ -54,6 +54,19 @@ function generate_input(config)
     return input
 end
 
+function generate_input(config, N_points)
+    @unpack xmin, xmax, ymin, ymax = config
+
+    x = rand(Uniform(xmin, xmax), (1, N_points))
+    y = rand(Uniform(ymin, ymax), (1, N_points))
+
+    # Stack and move to GPU
+    
+    input = vcat(x, y) |> gpu_device() .|> Float64
+    #input = vcat(x, y) |> gpu_device() .|> Float32
+
+    return input
+end
 # -------------------------------------------------------------------
 # Muestreo (x,t)
 # -------------------------------------------------------------------
@@ -63,6 +76,13 @@ function generate_input_x_t(config)
     t = rand(Uniform(tmin, tmax), (1, N_points))
     return vcat(x, t) |> gpu_device() .|> Float64
 end
+function generate_input_x_t(N_points, config)
+    @unpack xmin, xmax, tmin, tmax = config
+    x = rand(Uniform(xmin, xmax), (1, N_points))
+    t = rand(Uniform(tmin, tmax), (1, N_points))
+    return vcat(x, t) |> gpu_device() .|> Float64
+end
+
 
 function generate_inputboun(config)
     @unpack N_pointsb, xmin, xmax, ymin, ymax = config
@@ -121,8 +141,8 @@ u(x,t) = u0(x) + t^2 * (L-x)*x* Nθ(x, t )
 """
 function calculate_Dirichlet_f(x, t, NN, Θ, st)
     @unpack N_points, xmin, xmax, tmin, tmax, A = config
-    u0 = -A*(x .- xmin).^4 .* (x .- xmax).^4  # Initial condition
-    #u0 = bump.(x, config[:x0], config[:x1], config[:p], config[:A])
+    u0 = -A*(x .- xmin).^4 .* (x .- xmax).^4 ./ ((xmax - xmin)/2)^8 # Initial condition
+    #u0 = bump.(x, config[:x0], config[:x1], config[:p], config[:A]) # Initial condition
     nn_in = vcat(x, t)
     #@show size(nn_in) size(u0)                              # (3,N)
     nn_out = NN(nn_in, Θ, st)[1]                      # (1,N)
@@ -176,4 +196,21 @@ function bump_x(x,x0,x1,p,A) #x derivative of b
     else
         return 0.0
     end
+end
+
+"""
+adaptive_rad:
+  - Ntest: nº de candidatos uniformes que se generan
+  - Nint: nº de puntos que quieres seleccionar para entrenar
+  - k1, k2: hiperparámetros RAD (ponderación por |residuo|^k1, desplazamiento k2)
+Devuelve un 'input' de tamaño (2, Nint) ponderado por el residuo.
+"""
+function adaptive_rad(NN, Θ, st, config; Ntest=50_000, Nint=config[:N_points], k1=1.0, k2=1e-6)
+    Xtest = generate_input_x_t(Ntest, config)
+    Y = residual_at_points_Dirichlet(Xtest, NN, Θ, st)        # |residuo| en cada punto
+    w = (Y .^ k1)
+    w = w ./ mean(w) .+ k2                                  # normalización + desplazamiento
+    p = w ./ sum(w)                                         # distribución de probabilidad
+    ids = sample(1:length(p), Weights(p), Nint; replace=false)
+    return Xtest[:, ids]                                     # (2, Nint)
 end
