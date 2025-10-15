@@ -131,8 +131,9 @@ function generate_input0_xy(config)
 
     x = rand(Uniform(xmin, xmax), (1, N_points0))
     y = rand(Uniform(ymin, ymax), (1, N_points0))
-    t = rand(Uniform(tmin, tmax), (1, N_points0))
-    t = t*0.0 .+ tmin
+    t = fill(tmin, (1, N_points0))
+    #t = rand(Uniform(tmin, tmax), (1, N_points0))
+    #t = t*0.0 .+ tmin
     # Stack and move to GPU
     
     input = vcat(t, x, y) |> gpu_device() .|> Float64
@@ -223,7 +224,8 @@ end
 
 
 function calculate_fields_and_derivatives_Toy_MHD(t, x, y, NN, Θ, st)
-    ϵ = ∜(eps())  # paso óptimo para 1ª derivada aprox.
+    #ϵ = ∜(eps())  # paso óptimo para 2ª derivada aprox.
+    ϵ = eps()^(1/2)
 
     B1      = NN(vcat(t, x, y), Θ, st)[1][1,:]
     B2      = NN(vcat(t, x, y), Θ, st)[1][2,:]
@@ -295,9 +297,11 @@ adaptive_rad_toy_MHD:
   - k1, k2: hiperparámetros RAD (ponderación por |residuo|^k1, desplazamiento k2)
 Devuelve un 'input' de tamaño (2, Nint) ponderado por el residuo.
 """
-function adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=50_000, Nint=config[:N_points], k1=1.0, k2=1e-6)
+function adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=50_000, Nint=config[:N_points], k1=1.0, k2=1.0)
     Xtest = generate_input_t_x_y(Ntest, config)
-    Y, _ = residual_at_points_Toy_MHD(Xtest, NN, Θ, st)        # |residuo| en cada punto
+    Xtest0 = generate_input0_xy(config)
+    Xtest_total = [Xtest, Xtest0]
+    Y, _ = residual_at_points_Toy_MHD(Xtest_total, NN, Θ, st)        # |residuo| en cada punto
     YR = reshape(Y, Ntest, 3)
     w = ((abs.(YR[:,1]) + abs.(YR[:,2]) + abs.(YR[:,3])) .^ k1)
     w = w ./ mean(w) .+ k2                                  # normalización + desplazamiento
