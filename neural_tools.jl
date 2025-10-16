@@ -280,8 +280,9 @@ adaptive_rad:
   - k1, k2: hiperparámetros RAD (ponderación por |residuo|^k1, desplazamiento k2)
 Devuelve un 'input' de tamaño (2, Nint) ponderado por el residuo.
 """
-function adaptive_rad(NN, Θ, st, config; Ntest=50_000, Nint=config[:N_points], k1=1.0, k2=1e-6)
+function adaptive_rad(NN, Θ, st, config; Ntest=50_000, Nint=25_000, k1=1.0, k2=1e-6)
     Xtest = generate_input_x_t(Ntest, config)
+    @unpack N_points, k1, k2 = config
     Y = residual_at_points_Dirichlet(Xtest, NN, Θ, st)        # |residuo| en cada punto
     w = (Y .^ k1)
     w = w ./ mean(w) .+ k2                                  # normalización + desplazamiento
