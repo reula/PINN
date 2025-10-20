@@ -135,7 +135,6 @@ function generate_input0_xy(config)
     #t = rand(Uniform(tmin, tmax), (1, N_points0))
     #t = t*0.0 .+ tmin
     # Stack and move to GPU
-    
     input = vcat(t, x, y) |> gpu_device() .|> Float64
 
     return input
@@ -224,8 +223,8 @@ end
 
 
 function calculate_fields_and_derivatives_Toy_MHD(t, x, y, NN, Θ, st)
-    #ϵ = ∜(eps())  # paso óptimo para 2ª derivada aprox.
-    ϵ = eps()^(1/2)
+    ϵ = ∜(eps())  # paso óptimo para 2ª derivada aprox.
+    #ϵ = eps()^(1/2) # paso óptimo para la 1ª derivada aprox.
 
     B1      = NN(vcat(t, x, y), Θ, st)[1][1,:]
     B2      = NN(vcat(t, x, y), Θ, st)[1][2,:]
