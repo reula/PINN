@@ -251,7 +251,9 @@ function calculate_V_and_DVs(t,x,y)
     DxV2 = (y.-0.5).*2 .*(x.-0.5).*(2 .*r2.(x,y) .- r0)
     DyV1 = (x.-0.5).*2 .*(y.-0.5).*(2 .*r2.(x,y) .- r0)
     DyV2 = r2.(x,y).*(r2.(x,y) .- r0) .+ 2 .*(y.-0.5).^2 .*(2 .*r2.(x,y) .- r0)
-    return V1, V2, DxV1, DxV2, DyV1, DyV2
+    V00 =  0.25 * (0.5 - 0.16) 
+    V00 = V00 * 2.0 # so that the maximum is at 0.5.
+    return V1./V00, V2./V00, DxV1./V00, DxV2./V00, DyV1./V00, DyV2./V00
 end
 
 function bump(x,x0,x1,p,A)
