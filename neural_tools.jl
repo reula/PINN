@@ -34,6 +34,11 @@ function create_chain(config)
         Lux.Dense(N_neurons, N_output)
     )
 
+    parameters_total = (N_input * N_neurons + N_layers * N_neurons^2  + N_neurons * N_output    
+                        + (1+N_layers) * N_neurons + N_output)
+
+    println("Total params: ", parameters_total)  
+
     return NN
 end
 
@@ -252,7 +257,7 @@ function calculate_V_and_DVs(t,x,y)
     DyV1 = (x.-0.5).*2 .*(y.-0.5).*(2 .*r2.(x,y) .- r0)
     DyV2 = r2.(x,y).*(r2.(x,y) .- r0) .+ 2 .*(y.-0.5).^2 .*(2 .*r2.(x,y) .- r0)
     V00 =  0.25 * (0.5 - 0.16) 
-    V00 = V00 * 2.0 # so that the maximum is at 0.5.
+    V00 = -V00 * 0.5 # so that the maximum is at 0.5.
     return V1./V00, V2./V00, DxV1./V00, DxV2./V00, DyV1./V00, DyV2./V00
 end
 
