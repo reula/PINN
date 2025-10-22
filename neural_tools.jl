@@ -376,9 +376,9 @@ Do the iterations of the training, either adaptive or normal.
 Returns the optimized parameters Θ, state st, and the losses array.
 2d version (1+2 dimensions).
 """
-function compute_solution_2d(config, input_total, NN, Θ, st)
+function compute_solution_2d(config, input_total, NN, Θ, st, losses)
 @unpack N_rounds, iters_per_round, N_test, N_points, method = config
-losses = Float64[N_rounds * iters_per_round]
+
 #optf   = OptimizationFunction((Θ, input_total) -> loss_function_Toy_MHD(input_total, NN, Θ, st), AutoZygote())
 
 if method === :adaptive 
@@ -433,10 +433,11 @@ end
 Do the iterations of the training, either adaptive or normal. 
 Returns the optimized parameters Θ, state st, and the losses array.
 1d version (1+1 dimensions).
+For now for wave_dir only
 """
-function compute_solution_1d(config, input_total, NN, Θ, st)
+function compute_solution_1d(config, input_total, NN, Θ, st, losses)
 @unpack N_rounds, iters_per_round, N_test, N_points, method = config
-losses = Float64[N_rounds * iters_per_round]
+
 #optf   = OptimizationFunction((Θ, input_total) -> loss_function_Toy_MHD(input_total, NN, Θ, st), AutoZygote())
 
 if method === :adaptive 
@@ -455,9 +456,9 @@ if method === :adaptive
         global Θ = optresult.u  # continúa desde el óptimo de la ronda
 
         # Re-muestrea puntos de colisión ponderando por residuo
-        global input_total[1] = adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
+        global input_total[1] = adaptive_rad(NN, Θ, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
         global input_total[2] = generate_input0_x(config) # reset input0
-        global input_total[3] = generate_inputboun_x(config) # reset input_boundary
+        global input_total[3] = generate_input_boundary_x(config) # reset input_boundary
     end
 
 else
@@ -478,9 +479,9 @@ else
 
         # Nueva muestra de puntos de colisión.
 
-        global input_total[1] = generate_input_t_x(config) # reset input
+        global input_total[1] = generate_input_x_t(config) # reset input
         global input_total[2] = generate_input0_x(config) # reset input0
-        global input_total[3] = generate_inputboun_x(config) # reset input_boundary
+        global input_total[3] = generate_input_boundary_x(config) # reset input_boundary
         
     end
 end
