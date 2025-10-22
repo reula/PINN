@@ -169,7 +169,7 @@ end
 
 function generate_input0_xy(config)
     @unpack N_points_0, N_points, xmin, xmax, ymin, ymax, tmin, tmax = config
-    if N_poitns0 == nothing || N_points_0 == 0
+    if N_points_0 == nothing || N_points_0 == 0
         return [0.0, 0.0, 0.0] |> gpu_device() .|> Float64
     end 
 
