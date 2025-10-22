@@ -252,7 +252,7 @@ function calculate_V_and_DVs(t,x,y)
     DyV1 = (x.-0.5).*2 .*(y.-0.5).*(2 .*r2.(x,y) .- r0)
     DyV2 = r2.(x,y).*(r2.(x,y) .- r0) .+ 2 .*(y.-0.5).^2 .*(2 .*r2.(x,y) .- r0)
     V00 =  0.25 * (0.5 - 0.16) 
-    V00 = V00 * 2.0 # so that the maximum is at 0.5.
+    V00 = -V00 * 0.5 # so that the maximum is at 0.5.
     return V1./V00, V2./V00, DxV1./V00, DxV2./V00, DyV1./V00, DyV2./V00
 end
 
@@ -311,3 +311,60 @@ function adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=50_000, Nint=config[:N_p
     ids = sample(1:length(p), Weights(p), Nint; replace=false)
     return Xtest[:, ids]                                     # (2, Nint)
 end
+
+"""
+Do the iterations of the training, either adaptive or normal.
+"""
+function compute_solution(config, input_total, NN, Θ, st)
+@unpack N_rounds, iters_per_round, N_test, N_points, method = config
+losses = Float64[N_rounds * iters_per_round]
+#optf   = OptimizationFunction((Θ, input_total) -> loss_function_Toy_MHD(input_total, NN, Θ, st), AutoZygote())
+
+if method === :adaptive 
+ 
+    for r in 1:N_rounds
+        @info "RAD round $r / $N_rounds  |  iters=$iters_per_round"
+        # Optimiza sobre el conjunto actual de colisión
+        global optf   = OptimizationFunction((Θ, input) -> loss_function_Toy_MHD(input, NN, Θ, st), AutoZygote())
+        global optprob = OptimizationProblem(optf, Θ, input_total)
+        global optresult  = solve(
+            optprob,
+            config[:optimizer];
+            callback = (p, l) -> callback(p, l, losses),
+            maxiters = iters_per_round,
+        )
+        global Θ = optresult.u  # continúa desde el óptimo de la ronda
+
+        # Re-muestrea puntos de colisión ponderando por residuo
+        global input_total[1] = adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
+        global input_total[2] = generate_input0_xy(config) # reset input0
+        global input_total[3] = generate_inputboun(config) # reset input_boundary
+    end
+
+else
+    for r in 1:N_rounds
+        
+        @info "Normal training round $r / $N_rounds  |  iters=$iters_per_round"
+
+        global optf = OptimizationFunction((Θ, input) -> loss_function_Toy_MHD(input, NN, Θ, st), AutoZygote())
+        global optprob = OptimizationProblem(optf, Θ, input_total)
+
+        global optresult = solve(
+            optprob,
+            callback = (p, l) -> callback(p, l, losses),
+            config[:optimizer],
+            maxiters = iters_per_round,
+        )
+        global Θ = optresult.u  # continúa desde el óptimo de la ronda
+
+        # Nueva muestra de puntos de colisión.
+
+        global input_total[1] = generate_input_t_x_y(config) # reset input
+        global input_total[2] = generate_input0_xy(config) # reset input0
+        global input_total[3] = generate_inputboun(config) # reset input_boundary
+        
+    end
+end
+return Θ, st, losses
+end
+
