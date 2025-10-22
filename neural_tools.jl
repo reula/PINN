@@ -34,6 +34,11 @@ function create_chain(config)
         Lux.Dense(N_neurons, N_output)
     )
 
+    parameters_total = (N_input * N_neurons + N_layers * N_neurons^2  + N_neurons * N_output    
+                        + (1+N_layers) * N_neurons + N_output)
+
+    println("Total params: ", parameters_total)  
+
     return NN
 end
 
