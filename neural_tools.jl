@@ -7,6 +7,11 @@ Returns the network, its parameters, and its state.
 function create_neural_network(config)
     @unpack N_input, N_neurons, N_layers, N_output = config
 
+    parameters_total = (N_input * N_neurons + N_layers * N_neurons^2  + N_neurons * N_output    
+                        + (1+N_layers) * N_neurons + N_output)
+
+    println("Total params: ", parameters_total) 
+
     # Initialize random number generator for reproducibility
     rng = Random.default_rng()
     Random.TaskLocalRNG()
@@ -33,12 +38,6 @@ function create_chain(config)
         [Lux.Dense(N_neurons, N_neurons, tanh) for _ in 1:N_layers]...,
         Lux.Dense(N_neurons, N_output)
     )
-
-    parameters_total = (N_input * N_neurons + N_layers * N_neurons^2  + N_neurons * N_output    
-                        + (1+N_layers) * N_neurons + N_output)
-
-    println("Total params: ", parameters_total)  
-
     return NN
 end
 
