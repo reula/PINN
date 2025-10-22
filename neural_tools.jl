@@ -54,7 +54,9 @@ Generates random (x, y) points in the domain as input for the PINN.
 """
 function generate_input(config)
     @unpack N_points, xmin, xmax, ymin, ymax = config
-
+    if N_points === nothing || N_points === 0
+        return [0.0, 0.0] |> gpu_device() .|> Float64
+    end 
     x = rand(Uniform(xmin, xmax), (1, N_points))
     y = rand(Uniform(ymin, ymax), (1, N_points))
 
@@ -68,6 +70,9 @@ end
 
 function generate_input(config, N_points)
     @unpack xmin, xmax, ymin, ymax = config
+    if N_points === nothing || N_points === 0
+        return [0.0, 0.0] |> gpu_device() .|> Float64
+    end 
 
     x = rand(Uniform(xmin, xmax), (1, N_points))
     y = rand(Uniform(ymin, ymax), (1, N_points))
@@ -84,6 +89,9 @@ end
 # -------------------------------------------------------------------
 function generate_input_x_t(config)
     @unpack N_points, xmin, xmax, tmin, tmax = config
+    if N_points === nothing || N_points === 0
+        return [0.0, 0.0] |> gpu_device() .|> Float64
+    end 
     x = rand(Uniform(xmin, xmax), (1, N_points))
     t = rand(Uniform(tmin, tmax), (1, N_points))
     return vcat(x, t) |> gpu_device() .|> Float64
@@ -94,6 +102,9 @@ the order is t,x,y
 """
 function generate_input_t_x_y(config) 
     @unpack N_points, ymin, ymax, xmin, xmax, tmin, tmax = config
+    if N_points === nothing || N_points === 0
+        return [0.0, 0.0] |> gpu_device() .|> Float64
+    end 
     y = rand(Uniform(ymin, ymax), (1, N_points))
     x = rand(Uniform(xmin, xmax), (1, N_points))
     t = rand(Uniform(tmin, tmax), (1, N_points))
@@ -101,6 +112,9 @@ function generate_input_t_x_y(config)
 end
 function generate_input_t_x_y(N_test,config) 
     @unpack N_points, ymin, ymax, xmin, xmax, tmin, tmax = config
+    if N_points === nothing || N_points === 0
+        return [0.0, 0.0] |> gpu_device() .|> Float64
+    end 
     y = rand(Uniform(ymin, ymax), (1, N_test))
     x = rand(Uniform(xmin, xmax), (1, N_test))
     t = rand(Uniform(tmin, tmax), (1, N_test))
@@ -108,6 +122,9 @@ function generate_input_t_x_y(N_test,config)
 end
 
 function generate_input_x_t(N_points, config)
+    if N_points === nothing || N_points === 0
+        return [0.0, 0.0] |> gpu_device() .|> Float64
+    end 
     @unpack xmin, xmax, tmin, tmax = config
     x = rand(Uniform(xmin, xmax), (1, N_points))
     t = rand(Uniform(tmin, tmax), (1, N_points))
@@ -115,14 +132,18 @@ function generate_input_x_t(N_points, config)
 end
 
 
-function generate_inputboun(config)
-    @unpack N_pointsb, xmin, xmax, ymin, ymax = config
+function generate_input_boundary_x_y(config)
+    @unpack N_points_bound, xmin, xmax, ymin, ymax = config
+
+    if N_points_bound == nothing || N_points_bound == 0
+        return [0.0, 0.0] |> gpu_device() .|> Float64
+    end 
 
     # Generar valores de x solo en los extremos xmin y xmax
-    x = reshape(rand([xmin, xmax], N_pointsb), 1, N_pointsb)
+    x = reshape(rand([xmin, xmax], N_points_bound), 1, N_points_bound)
 
     # Generar valores de y aleatorios en el intervalo
-    y = reshape(rand(Uniform(ymin, ymax), N_pointsb), 1, N_pointsb)
+    y = reshape(rand(Uniform(ymin, ymax), N_points_bound), 1, N_point_bound)
 
     # Apilar y mover a GPU
     input = vcat(x, y) |> gpu_device() .|> Float64
@@ -130,14 +151,33 @@ function generate_inputboun(config)
     return input
 end
 
+function generate_input_boundary_x(config)
+    @unpack N_points_bound, xmin, xmax = config
+
+    if N_points_bound === nothing || N_points_bound === 0
+        return [0.0] |> gpu_device() .|> Float64
+    end 
+
+    # Generar valores de x solo en los extremos xmin y xmax
+    x = reshape(rand([xmin, xmax]), 1, N_points_bound)
+
+    # Apilar y mover a GPU
+    input = vcat(x) |> gpu_device() .|> Float64
+
+    return input
+end
+
 
 function generate_input0_xy(config)
-    @unpack N_points0, N_points, xmin, xmax, ymin, ymax, tmin, tmax = config
+    @unpack N_points_0, N_points, xmin, xmax, ymin, ymax, tmin, tmax = config
+    if N_poitns0 == nothing || N_points_0 == 0
+        return [0.0, 0.0, 0.0] |> gpu_device() .|> Float64
+    end 
 
-    x = rand(Uniform(xmin, xmax), (1, N_points0))
-    y = rand(Uniform(ymin, ymax), (1, N_points0))
-    t = fill(tmin, (1, N_points0))
-    #t = rand(Uniform(tmin, tmax), (1, N_points0))
+    x = rand(Uniform(xmin, xmax), (1, N_points_0))
+    y = rand(Uniform(ymin, ymax), (1, N_points_0))
+    t = fill(tmin, (1, N_points_0))
+    #t = rand(Uniform(tmin, tmax), (1, N_points_0))
     #t = t*0.0 .+ tmin
     # Stack and move to GPU
     input = vcat(t, x, y) |> gpu_device() .|> Float64
@@ -145,6 +185,21 @@ function generate_input0_xy(config)
     return input
 end
 
+function generate_input0_x(config)
+    @unpack N_points_0, N_points, xmin, xmax, tmin, tmax = config
+    if N_points_0 == nothing || N_points_0 == 0
+        return [0.0, 0.0, 0.0] |> gpu_device() .|> Float64
+    end 
+
+    x = rand(Uniform(xmin, xmax), (1, N_points_0))
+    t = fill(tmin, (1, N_points_0))
+    #t = rand(Uniform(tmin, tmax), (1, N_points_0))
+    #t = t*0.0 .+ tmin
+    # Stack and move to GPU
+    input = vcat(t, x) |> gpu_device() .|> Float64
+
+    return input
+end
 # -------------------------------------------------------------------
 # Features periódicas y representación con hard enforcement
 # -------------------------------------------------------------------
@@ -316,3 +371,120 @@ function adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=50_000, Nint=config[:N_p
     ids = sample(1:length(p), Weights(p), Nint; replace=false)
     return Xtest[:, ids]                                     # (2, Nint)
 end
+
+"""
+Do the iterations of the training, either adaptive or normal. 
+Returns the optimized parameters Θ, state st, and the losses array.
+2d version (1+2 dimensions).
+"""
+function compute_solution_2d(config, input_total, NN, Θ, st)
+@unpack N_rounds, iters_per_round, N_test, N_points, method = config
+losses = Float64[N_rounds * iters_per_round]
+#optf   = OptimizationFunction((Θ, input_total) -> loss_function_Toy_MHD(input_total, NN, Θ, st), AutoZygote())
+
+if method === :adaptive 
+ 
+    for r in 1:N_rounds
+        @info "RAD round $r / $N_rounds  |  iters=$iters_per_round"
+        # Optimiza sobre el conjunto actual de colisión
+        global optf   = OptimizationFunction((Θ, input) -> loss_function_Toy_MHD(input, NN, Θ, st), AutoZygote())
+        global optprob = OptimizationProblem(optf, Θ, input_total)
+        global optresult  = solve(
+            optprob,
+            config[:optimizer];
+            callback = (p, l) -> callback(p, l, losses),
+            maxiters = iters_per_round,
+        )
+        global Θ = optresult.u  # continúa desde el óptimo de la ronda
+
+        # Re-muestrea puntos de colisión ponderando por residuo
+        global input_total[1] = adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
+        global input_total[2] = generate_input0_xy(config) # reset input0
+        global input_total[3] = generate_inputboun_xy(config) # reset input_boundary
+    end
+
+else
+    for r in 1:N_rounds
+        
+        @info "Normal training round $r / $N_rounds  |  iters=$iters_per_round"
+
+        global optf = OptimizationFunction((Θ, input) -> loss_function_Toy_MHD(input, NN, Θ, st), AutoZygote())
+        global optprob = OptimizationProblem(optf, Θ, input_total)
+
+        global optresult = solve(
+            optprob,
+            callback = (p, l) -> callback(p, l, losses),
+            config[:optimizer],
+            maxiters = iters_per_round,
+        )
+        global Θ = optresult.u  # continúa desde el óptimo de la ronda
+
+        # Nueva muestra de puntos de colisión.
+
+        global input_total[1] = generate_input_t_x_y(config) # reset input
+        global input_total[2] = generate_input0_xy(config) # reset input0
+        global input_total[3] = generate_inputboun_xy(config) # reset input_boundary
+        
+    end
+end
+return Θ, st, losses
+end
+
+"""
+Do the iterations of the training, either adaptive or normal. 
+Returns the optimized parameters Θ, state st, and the losses array.
+1d version (1+1 dimensions).
+"""
+function compute_solution_1d(config, input_total, NN, Θ, st)
+@unpack N_rounds, iters_per_round, N_test, N_points, method = config
+losses = Float64[N_rounds * iters_per_round]
+#optf   = OptimizationFunction((Θ, input_total) -> loss_function_Toy_MHD(input_total, NN, Θ, st), AutoZygote())
+
+if method === :adaptive 
+ 
+    for r in 1:N_rounds
+        @info "RAD round $r / $N_rounds  |  iters=$iters_per_round"
+        # Optimiza sobre el conjunto actual de colisión
+        global optf   = OptimizationFunction((Θ, input) -> loss_function(input, NN, Θ, st), AutoZygote())
+        global optprob = OptimizationProblem(optf, Θ, input_total)
+        global optresult  = solve(
+            optprob,
+            config[:optimizer];
+            callback = (p, l) -> callback(p, l, losses),
+            maxiters = iters_per_round,
+        )
+        global Θ = optresult.u  # continúa desde el óptimo de la ronda
+
+        # Re-muestrea puntos de colisión ponderando por residuo
+        global input_total[1] = adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
+        global input_total[2] = generate_input0_x(config) # reset input0
+        global input_total[3] = generate_inputboun_x(config) # reset input_boundary
+    end
+
+else
+    for r in 1:N_rounds
+        
+        @info "Normal training round $r / $N_rounds  |  iters=$iters_per_round"
+
+        global optf = OptimizationFunction((Θ, input) -> loss_function(input, NN, Θ, st), AutoZygote())
+        global optprob = OptimizationProblem(optf, Θ, input_total)
+
+        global optresult = solve(
+            optprob,
+            callback = (p, l) -> callback(p, l, losses),
+            config[:optimizer],
+            maxiters = iters_per_round,
+        )
+        global Θ = optresult.u  # continúa desde el óptimo de la ronda
+
+        # Nueva muestra de puntos de colisión.
+
+        global input_total[1] = generate_input_t_x(config) # reset input
+        global input_total[2] = generate_input0_x(config) # reset input0
+        global input_total[3] = generate_inputboun_x(config) # reset input_boundary
+        
+    end
+end
+return Θ, st, losses
+end
+
