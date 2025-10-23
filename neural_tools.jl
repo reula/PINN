@@ -7,11 +7,6 @@ Returns the network, its parameters, and its state.
 function create_neural_network(config)
     @unpack N_input, N_neurons, N_layers, N_output = config
 
-    parameters_total = (N_input * N_neurons + N_layers * N_neurons^2  + N_neurons * N_output    
-                        + (1+N_layers) * N_neurons + N_output)
-
-    println("Total params: ", parameters_total) 
-
     # Initialize random number generator for reproducibility
     rng = Random.default_rng()
     Random.TaskLocalRNG()
@@ -41,7 +36,11 @@ function create_chain(config)
     return NN
 end
 
-
+function get_parameter_count(config)
+    @unpack N_input, N_neurons, N_layers, N_output = config
+    return (N_input * N_neurons + N_layers * N_neurons^2  + N_neurons * N_output    
+                        + (1+N_layers) * N_neurons + N_output)
+end
 
 # -------------------------------------------------------------------
 # Input Data Generation
@@ -239,8 +238,8 @@ end
 
 function calculate_Dirichlet_f_wf(x, t, NN, Θ, st)
     @unpack N_points, xmin, xmax, tmin, tmax, A, B = config
-    U0 = A* u0(x) #A*(x .- xmin).^4 .* (x .- xmax).^4 ./ ((xmax - xmin)/2)^8 # Initial condition
-    U1 = B* u1(x) #(x .- xmin).^3 .* (x .- xmax).^3 ./ ((xmax - xmin)/2)^8 .* (2x .- (xmax - xmin)) # Initial condition for the time derivative
+    U0 = u0(x) #A*(x .- xmin).^4 .* (x .- xmax).^4 ./ ((xmax - xmin)/2)^8 # Initial condition
+    U1 = u1(x) #(x .- xmin).^3 .* (x .- xmax).^3 ./ ((xmax - xmin)/2)^8 .* (2x .- (xmax - xmin)) # Initial condition for the time derivative
     #u0 = bump.(x, config[:x0], config[:x1], config[:p], config[:A]) # Initial condition
     nn_in = vcat(x, t)
     #@show size(nn_in) size(u0)                              # (3,N)
@@ -266,6 +265,21 @@ end
 # Derivadas por diferencias finitas (segundas en x y t)
 # -------------------------------------------------------------------
 function calculate_derivatives_Dirichlet(x, t, NN, Θ, st)
+    #@unpack N_points_x. N_points_t, xmin, xmax, tmin, tmax = config
+    ϵ = ∜(eps())  # paso óptimo para 2ª derivada aprox.
+
+    f      = calculate_Dirichlet_f_wf(x, t, NN, Θ, st)
+    fxp    = calculate_Dirichlet_f_wf(x .+ ϵ, t, NN, Θ, st)
+    fxm    = calculate_Dirichlet_f_wf(x .- ϵ, t, NN, Θ, st)
+    ftp    = calculate_Dirichlet_f_wf(x, t .+ ϵ, NN, Θ, st)
+    ftm    = calculate_Dirichlet_f_wf(x, t .- ϵ, NN, Θ, st)
+
+    ∂2f_∂x2 = (fxp .- 2 .* f .+ fxm) / ϵ^2
+    ∂2f_∂t2 = (ftp .- 2 .* f .+ ftm) / ϵ^2
+    return f, ∂2f_∂x2, ∂2f_∂t2
+end
+
+function calculate_derivatives_Dirichlet_RK4(x, t, NN, Θ, st)
     #@unpack N_points_x. N_points_t, xmin, xmax, tmin, tmax = config
     ϵ = ∜(eps())  # paso óptimo para 2ª derivada aprox.
 
