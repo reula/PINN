@@ -20,7 +20,6 @@ function create_neural_network(config)
 
     # Move parameters to GPU and wrap for optimization
     Θ = Θ |> ComponentArray |> gpu_device() .|> Float64
-
     return NN, Θ, st
 end
 
@@ -240,12 +239,8 @@ function calculate_Dirichlet_f_wf(x, t, NN, Θ, st)
     @unpack N_points, xmin, xmax, tmin, tmax, A, B = config
     U0 = u0(x) #A*(x .- xmin).^4 .* (x .- xmax).^4 ./ ((xmax - xmin)/2)^8 # Initial condition
     U1 = u1(x) #(x .- xmin).^3 .* (x .- xmax).^3 ./ ((xmax - xmin)/2)^8 .* (2x .- (xmax - xmin)) # Initial condition for the time derivative
-    #u0 = bump.(x, config[:x0], config[:x1], config[:p], config[:A]) # Initial condition
     nn_in = vcat(x, t)
-    #@show size(nn_in) size(u0)                              # (3,N)
-    nn_out = NN(nn_in, Θ, st)[1]                      # (1,N)
-    #f .= ((t - tmin)^2) * (x - xmax) * (x - xmin) #* nn_out
-    #@show size(f) size(u0) size(nn_out) 
+    nn_out = NN(nn_in, Θ, st)[1]                   
     return U0 + (t .- tmin) .* U1 + ((t .- tmin).^2) ./ (1.0 .+ (t .- tmin).^2) .* (x .- xmax) .* (x .- xmin) .* nn_out 
 end
 
@@ -355,9 +350,13 @@ adaptive_rad:
 Devuelve un 'input' de tamaño (2, Nint) ponderado por el residuo.
 """
 function adaptive_rad(NN, Θ, st, config; Ntest=50_000, Nint=25_000, k1=1.0, k2=1e-6)
-    Xtest = generate_input_x_t(Ntest, config)
+    Xtest = generate_input_x_t(Ntest, config) 
     @unpack N_points, k1, k2 = config
-    Y = residual_at_points_Dirichlet(Xtest, NN, Θ, st)        # |residuo| en cada punto
+    res = residual_at_points_Dirichlet(Xtest, NN, Θ, st)
+    #typeof(res)  
+    #return nothing    # |residuo| en cada punto
+    Y = vec(abs.(res |> cpu_device()))
+    #Y = vec(abs.(res))
     w = (Y .^ k1)
     w = w ./ mean(w) .+ k2                                  # normalización + desplazamiento
     p = w ./ sum(w)                                         # distribución de probabilidad
@@ -470,7 +469,8 @@ if method === :adaptive
         global Θ = optresult.u  # continúa desde el óptimo de la ronda
 
         # Re-muestrea puntos de colisión ponderando por residuo
-        global input_total[1] = adaptive_rad(NN, Θ, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
+        Θ_CPU = Θ #|> cpu_device()
+        global input_total[1] = adaptive_rad(NN, Θ_CPU, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
         global input_total[2] = generate_input0_x(config) # reset input0
         global input_total[3] = generate_input_boundary_x(config) # reset input_boundary
     end
