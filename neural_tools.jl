@@ -44,6 +44,36 @@ end
 # -------------------------------------------------------------------
 # Input Data Generation
 # -------------------------------------------------------------------
+
+function generate_input_x(config)
+    @unpack N_points, xmin, xmax = config
+    if N_points === nothing || N_points === 0
+        return [0.0] |> gpu_device() .|> Float64
+    end 
+    x = rand(Uniform(xmin, xmax), (1, N_points))
+
+    # Stack and move to GPU
+    
+    input = vcat(x) |> gpu_device() .|> Float64
+    #input = vcat(x) |> gpu_device() .|> Float32
+
+    return input
+end
+
+function generate_input_x(config, N_test)
+    @unpack xmin, xmax = config
+    if N_test === nothing || N_test === 0
+        return [0.0, 0.0] |> gpu_device() .|> Float64
+    end 
+
+    x = rand(Uniform(xmin, xmax), (1, N_test))
+    # Stack and move to GPU
+    
+    input = vcat(x) |> gpu_device() .|> Float64
+    #input = vcat(x) |> gpu_device() .|> Float32
+
+    return input
+end
 """
     generate_input(config)
 
@@ -365,6 +395,27 @@ function adaptive_rad(NN, Θ, st, config; Ntest=50_000, Nint=25_000, k1=1.0, k2=
 end
 
 """
+adaptive_rad:
+  - Ntest: nº de candidatos uniformes que se generan
+  - Nint: nº de puntos que quieres seleccionar para entrenar
+  - k1, k2: hiperparámetros RAD (ponderación por |residuo|^k1, desplazamiento k2)
+Devuelve un 'input' de tamaño (2, Nint) ponderado por el residuo.
+"""
+function adaptive_rad_x(NN, Θ, st, config; Ntest=50_000, Nint=25_000, k1=1.0, k2=1e-6)
+    Xtest = generate_input_x(config, Ntest) 
+    @unpack N_points, k1, k2 = config
+    res = residual_at_points(Xtest, NN, Θ, st)
+    #typeof(res)  
+    #return nothing    # |residuo| en cada punto
+    Y = vec(abs.(res |> cpu_device()))
+    #Y = vec(abs.(res))
+    w = (Y .^ k1)
+    w = w ./ mean(w) .+ k2                                  # normalización + desplazamiento
+    p = w ./ sum(w)                                         # distribución de probabilidad
+    ids = sample(1:length(p), Weights(p), Nint; replace=false)
+    return Xtest[:, ids]                                     # (2, Nint)
+end
+"""
 adaptive_rad_toy_MHD:
   - Ntest: nº de candidatos uniformes que se generan
   - Nint: nº de puntos que quieres seleccionar para entrenar
@@ -399,20 +450,20 @@ if method === :adaptive
     for r in 1:N_rounds
         @info "RAD round $r / $N_rounds  |  iters=$iters_per_round"
         # Optimiza sobre el conjunto actual de colisión
-        global optf   = OptimizationFunction((Θ, input) -> loss_function_Toy_MHD(input, NN, Θ, st), AutoZygote())
-        global optprob = OptimizationProblem(optf, Θ, input_total)
-        global optresult  = solve(
+        optf   = OptimizationFunction((Θ, input) -> loss_function_Toy_MHD(input, NN, Θ, st), AutoZygote())
+        optprob = OptimizationProblem(optf, Θ, input_total)
+        optresult  = solve(
             optprob,
             config[:optimizer];
             callback = (p, l) -> callback(p, l, losses),
             maxiters = iters_per_round,
         )
-        global Θ = optresult.u  # continúa desde el óptimo de la ronda
+        Θ = optresult.u  # continúa desde el óptimo de la ronda
 
         # Re-muestrea puntos de colisión ponderando por residuo
-        global input_total[1] = adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
-        global input_total[2] = generate_input0_xy(config) # reset input0
-        global input_total[3] = generate_inputboun_xy(config) # reset input_boundary
+        input_total[1] = adaptive_rad_toy_MHD(NN, Θ, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
+        input_total[2] = generate_input0_xy(config) # reset input0
+        input_total[3] = generate_inputboun_xy(config) # reset input_boundary
     end
 
 else
@@ -458,21 +509,21 @@ if method === :adaptive
     for r in 1:N_rounds
         @info "RAD round $r / $N_rounds  |  iters=$iters_per_round"
         # Optimiza sobre el conjunto actual de colisión
-        global optf   = OptimizationFunction((Θ, input) -> loss_function(input, NN, Θ, st), AutoZygote())
-        global optprob = OptimizationProblem(optf, Θ, input_total)
-        global optresult  = solve(
+        optf   = OptimizationFunction((Θ, input) -> loss_function(input, NN, Θ, st), AutoZygote())
+        optprob = OptimizationProblem(optf, Θ, input_total)
+        optresult  = solve(
             optprob,
             config[:optimizer];
             callback = (p, l) -> callback(p, l, losses),
             maxiters = iters_per_round,
         )
-        global Θ = optresult.u  # continúa desde el óptimo de la ronda
+        Θ = optresult.u  # continúa desde el óptimo de la ronda
 
         # Re-muestrea puntos de colisión ponderando por residuo
         Θ_CPU = Θ #|> cpu_device()
-        global input_total[1] = adaptive_rad(NN, Θ_CPU, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
-        global input_total[2] = generate_input0_x(config) # reset input0
-        global input_total[3] = generate_input_boundary_x(config) # reset input_boundary
+        input_total[1] = adaptive_rad(NN, Θ_CPU, st, config; Ntest=N_test, Nint=N_points)#, k1=k1, k2=k2)
+        input_total[2] = generate_input0_x(config) # reset input0
+        input_total[3] = generate_input_boundary_x(config) # reset input_boundary
     end
 
 else
@@ -496,6 +547,57 @@ else
         global input_total[1] = generate_input_x_t(config) # reset input
         global input_total[2] = generate_input0_x(config) # reset input0
         global input_total[3] = generate_input_boundary_x(config) # reset input_boundary
+        
+    end
+end
+return Θ, st, losses
+end
+
+function compute_regression(config, input, NN, Θ, st, losses)
+@unpack N_rounds, iters_per_round, N_test, N_points, method = config
+
+#optf   = OptimizationFunction((Θ, input_total) -> loss_function_Toy_MHD(input_total, NN, Θ, st), AutoZygote())
+
+if method === :adaptive 
+ 
+    for r in 1:N_rounds
+        @info "RAD round $r / $N_rounds  |  iters=$iters_per_round"
+        # Optimiza sobre el conjunto actual de colisión
+        optf   = OptimizationFunction((Θ, input) -> loss_function(input, NN, Θ, st), AutoZygote())
+        optprob = OptimizationProblem(optf, Θ, input)
+        optresult  = solve(
+            optprob,
+            config[:optimizer];
+            callback = (p, l) -> callback(p, l, losses),
+            maxiters = iters_per_round,
+        )
+        Θ = optresult.u  # continúa desde el óptimo de la ronda
+
+        # Re-muestrea puntos de colisión ponderando por residuo
+        Θ_CPU = Θ #|> cpu_device()
+        input = adaptive_rad_x(NN, Θ_CPU, st, config; Ntest=N_test, Nint=N_points) |> gpu_device() #, k1=k1, k2=k2)
+    end
+
+else
+    for r in 1:N_rounds
+        
+        @info "Normal training round $r / $N_rounds  |  iters=$iters_per_round"
+
+        optf = OptimizationFunction((Θ, input) -> loss_function(input, NN, Θ, st), AutoZygote())
+        optprob = OptimizationProblem(optf, Θ, input)
+
+        optresult = solve(
+            optprob,
+            callback = (p, l) -> callback(p, l, losses),
+            config[:optimizer],
+            maxiters = iters_per_round,
+        )
+        Θ = optresult.u  # continúa desde el óptimo de la ronda
+
+        # Nueva muestra de puntos de colisión.
+
+        input = generate_input_x(config) # reset input
+    
         
     end
 end
