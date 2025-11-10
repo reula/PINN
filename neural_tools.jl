@@ -35,6 +35,100 @@ function create_chain(config)
     return NN
 end
 
+# MODIFIED ARCHITECTURES USING FLUX
+
+#=
+struct ModifiedMLP
+    enc_u::Flux.Dense
+    enc_v::Flux.Dense
+    proj_h1::Flux.Dense
+    z_layers::Vector{Flux.Dense}
+    out::Flux.Dense
+    act::Function
+    L::Int
+end
+
+function ModifiedMLP(n_in::Int, n_hidden::Int, n_layers::Int, n_out::Int; activation = tanh)
+    initW = Flux.glorot_uniform
+    initb = zeros
+
+    enc_u   = Flux.Dense(n_in,  n_hidden, identity; initW=initW, initb=initb)
+    enc_v   = Flux.Dense(n_in,  n_hidden, identity; initW=initW, initb=initb)
+    proj_h1 = Flux.Dense(n_in,  n_hidden, identity; initW=initW, initb=initb)
+
+    z_layers = [ Flux.Dense(n_hidden, n_hidden, identity; initW=initW, initb=initb) for _ in 1:n_layers ]
+
+    out = Flux.Dense(n_hidden, n_out, identity; initW=initW, initb=initb)
+
+    ModifiedMLP(enc_u, enc_v, proj_h1, z_layers, out, activation, n_layers)
+end
+
+# forward / call
+function (m::ModifiedMLP)(x)
+    U = m.act.(m.enc_u(x))
+    V = m.act.(m.enc_v(x))
+    H = m.act.(m.proj_h1(x))
+
+    for k in 1:m.L
+        Zk = m.act.(m.z_layers[k](H))
+        H = (1 .- Zk) .* U .+ Zk .* V
+    end
+
+    return m.out(H)
+end
+
+=#
+
+struct ModifiedMLP
+    enc_u::Flux.Chain
+    enc_v::Flux.Chain
+    proj_h1::Flux.Chain 
+    z_layers::Vector{Flux.Chain}
+    out::Flux.Chain
+    act::Function
+    L::Int
+end
+
+function ModifiedMLP(n_in::Int, n_hidden::Int, n_layers::Int, n_out::Int; activation=tanh)
+    # Initialize weights with Glorot uniform
+    initW = Flux.glorot_uniform
+    
+    # Create layers with correct syntax
+    enc_u = Flux.Chain(Flux.Dense(n_in => n_hidden, activation; init=initW))
+    enc_v = Flux.Chain(Flux.Dense(n_in => n_hidden, activation; init=initW))
+    proj_h1 = Flux.Chain(Flux.Dense(n_in => n_hidden, activation; init=initW))
+    
+    # Z layers
+    z_layers = [Flux.Chain(Flux.Dense(n_hidden => n_hidden, activation; init=initW)) for _ in 1:n_layers]
+    
+    # Output layer
+    out = Flux.Chain(Flux.Dense(n_hidden => n_out; init=initW))
+    
+    # Make ModifiedMLP a Flux functor so params can be tracked
+Flux.@functor ModifiedMLP
+end
+
+function _layer_list(m::ModifiedMLP)
+    v = Any[m.enc_u, m.enc_v, m.proj_h1]
+    append!(v, m.z_layers)
+    push!(v, m.out)
+    return v
+end
+
+
+# helper to create network from config (Lux/Flux compatible)
+function create_neural_network(cfg; to_device=:cpu)
+    model = ModifiedMLP(cfg[:N_input], cfg[:N_neurons], cfg[:N_layers], cfg[:N_output])
+    if to_device == :gpu
+        return Flux.gpu(model)
+    else
+        return model
+    end
+end
+
+# optional: length for convenience
+Base.length(m::ModifiedMLP) = length(_layer_list(m))
+
 function get_parameter_count(config)
     @unpack N_input, N_neurons, N_layers, N_output = config
     return (N_input * N_neurons + N_layers * N_neurons^2  + N_neurons * N_output    
