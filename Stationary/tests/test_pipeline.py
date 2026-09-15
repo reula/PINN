@@ -1,0 +1,217 @@
+"""End-to-end tests of the residual/loss code path.
+
+The key idea: the loss machinery is fed the EXACT solution (packed exactly as the
+network packs its outputs), so every residual and every boundary term must vanish
+to machine precision.  This validates the whole pipeline independently of whether
+the optimiser can converge.
+"""
+from __future__ import annotations
+
+import jax
+
+jax.config.update("jax_enable_x64", True)
+
+import flax.linen as nn
+import jax.numpy as jnp
+import pytest
+
+from stationary import exact
+from stationary.geometry import (Fields, christoffel, gamma3, laplacian,
+                                 pack_gamma, pack_sym, residuals_batch, sym3)
+from stationary.losses import inner_bc_terms, outer_bc_terms, pde_terms, total_loss
+from stationary.model import HybridNet
+from stationary.problem import Config, sample_shell, sample_sphere
+
+R0, LAM0 = 1.0, 1.0
+K = exact.k_from_lambda0(R0, LAM0)
+
+
+# --------------------------------------------------------------------- fixtures
+class ExactModel(nn.Module):
+    """Network-shaped module whose output IS the exact solution (no real params)."""
+    R0: float = R0
+    k: float = K
+
+    @nn.compact
+    def __call__(self, x):
+        x = jnp.atleast_2d(x)
+        dummy = self.param("dummy", nn.initializers.zeros, (1,))
+        ef = exact.exact_fields(self.R0, self.k)
+        f = jax.vmap(ef)(x)
+        d = dummy.sum() * 0.0
+        return Fields(f.h + d, f.G + d, f.lam + d)
+
+
+def exact_point_fields():
+    return exact.exact_fields(R0, K)
+
+
+def cfg_m1() -> Config:
+    c = Config(R0=R0, lam0=LAM0)
+    return c
+
+
+# ------------------------------------------------------------------------ tests
+def test_conventions_flat_polar():
+    """Gamma^theta of the flat metric in polar coordinates = -cos(theta)/(r^2 sin)."""
+    def h_pol(y):
+        r, th, _ = y
+        return jnp.diag(jnp.stack([jnp.ones_like(r), r**2, r**2 * jnp.sin(th) ** 2]))
+
+    y = jnp.array([3.0, 0.7, 0.2])
+    G = christoffel(h_pol, y)
+    gam = jnp.einsum("ijk,jk->i", G, jnp.linalg.inv(h_pol(y)))
+    want = -jnp.cos(0.7) / (9.0 * jnp.sin(0.7))
+    assert jnp.allclose(gam[1], want, atol=1e-12)
+
+
+def test_conventions_round_s3():
+    """Ricci of the round S^3 of radius a is (2/a^2) h."""
+    from stationary.geometry import ricci_from_gamma
+    a = 1.7
+
+    def h_s3(x):
+        r2 = jnp.dot(x, x)
+        om = 2 * a**2 / (a**2 + r2)
+        return om**2 * jnp.eye(3)
+
+    x = jnp.array([0.4, -1.1, 0.9])
+    G = christoffel(h_s3, x)
+    dG = jax.jacfwd(lambda y: christoffel(h_s3, y))(x)
+    R = ricci_from_gamma(G, dG)
+    assert jnp.max(jnp.abs(R - (2.0 / a**2) * h_s3(x))) < 1e-12
+
+
+def test_gamma_equals_minus_laplacian():
+    """Two independent routes to Gamma^i = -Delta_h x^i must agree."""
+    h = exact.exact_metric(R0)
+    x = jnp.array([1.3, 0.6, -0.9])
+    G = christoffel(h, x)
+    gam = jnp.einsum("ijk,jk->i", G, jnp.linalg.inv(h(x)))
+    lap = jnp.array([laplacian(h, lambda z: z[i], x) for i in range(3)])
+    assert jnp.max(jnp.abs(gam + lap)) < 1e-12
+
+
+@pytest.mark.parametrize("R0v,kv", [(0.0, 1.0), (1.0, K), (0.7, 2.0), (2.5, -1.3)])
+def test_exact_residuals(R0v, kv):
+    """Exact solution: all four residual groups vanish."""
+    pf = exact.exact_fields(R0v, kv)
+    xs = jnp.array([[2.0, 0.0, 0.0], [1.0, 2.0, 3.0], [-7.0, 2.5, -11.0], [0.0, 0.0, 19.0]])
+    if R0v > 0:
+        xs = xs * jnp.maximum(1.0, 1.05 * R0v / jnp.linalg.norm(xs, axis=-1, keepdims=True))
+    r = residuals_batch(pf, xs)
+    for k, v in r.items():
+        assert jnp.max(jnp.abs(v)) < 1e-11, (k, float(jnp.max(jnp.abs(v))))
+
+
+def test_packing_roundtrip():
+    pf = exact.exact_fields(R0, K)
+    x = jnp.array([1.0, 2.0, 3.0])
+    f = pf(x)
+    assert jnp.allclose(sym3(pack_sym(f.h)), f.h)
+    assert jnp.allclose(gamma3(pack_gamma(f.G)), f.G)
+
+
+def test_exact_satisfies_inner_bc():
+    """Areal radius 2, h_rr = 1 and lambda = lambda_0 hold for the exact solution."""
+    cfg = cfg_m1()
+    pf = exact_point_fields()
+    xs = sample_sphere(jax.random.PRNGKey(0), 128, cfg.rho_in)
+    terms = inner_bc_terms(pf, xs, cfg)
+    for k, v in terms.items():
+        assert float(v) < 1e-20, (k, float(v))
+
+
+def test_exact_satisfies_outer_dirichlet_bc():
+    cfg = cfg_m1()
+    pf = exact_point_fields()
+    xs = sample_sphere(jax.random.PRNGKey(1), 128, cfg.rho_out)
+    terms = outer_bc_terms(pf, xs, cfg, exact_fields=pf)
+    for k, v in terms.items():
+        assert float(v) < 1e-24, (k, float(v))
+
+
+def test_loss_is_zero_on_exact_solution():
+    """Full loss (PDE + both BCs) evaluated on the exact solution."""
+    cfg = cfg_m1()
+    model = ExactModel()
+    key = jax.random.PRNGKey(2)
+    params = model.init(key, jnp.ones((1, 3)))
+    state = {"net": params}
+    batch = {"coll": sample_shell(key, 512, cfg),
+             "inner": sample_sphere(key, 64, cfg.rho_in),
+             "outer": sample_sphere(key, 64, cfg.rho_out)}
+    loss, parts = total_loss(state, batch, cfg, model, exact_fields=exact_point_fields())
+    assert float(loss) < 1e-16, (float(loss), {k: float(v) for k, v in parts.items()})
+
+
+def test_robin_terms_are_finite_and_shaped():
+    """The Robin outer BC runs and gives the expected number of residual entries."""
+    cfg = cfg_m1()
+    cfg.outer_bc = "robin"
+    cfg.lam_inf = K
+    pf = exact_point_fields()
+    xs = sample_sphere(jax.random.PRNGKey(3), 32, cfg.rho_out)
+    terms = outer_bc_terms(pf, xs, cfg, lam_inf=K)
+    assert set(terms) == {"h", "G", "lam"}
+    for v in terms.values():
+        assert jnp.isfinite(v)
+
+
+@pytest.mark.parametrize("c2", [-0.5, -0.2, 0.2])
+def test_harmonic_chart_freedom(c2):
+    """The same solution in a different harmonic chart still solves every equation.
+
+    This checks both the residual gauge freedom and the chart utility: the metric
+    is non-trivially rewritten, yet residuals and gauge stay zero.
+    """
+    rho_in_geom = exact.rho_in(R0)          # geometric sphere of areal radius 2
+    # choose c1 so that F(rho_in_geom) = 2  (inner sphere at coordinate radius 2)
+    F2v = float(exact.F2(R0, rho_in_geom))
+    c1 = (2.0 - c2 * F2v) / rho_in_geom
+    pf = exact.exact_fields_in_harmonic_chart(R0, K, c1=c1, c2=c2)
+    xs = jnp.array([[2.0, 0.0, 0.0], [1.0, 2.0, 3.0], [-7.0, 2.5, -11.0], [3.0, -2.0, 18.0]])
+    r = residuals_batch(pf, xs)
+    for k, v in r.items():
+        scale = jnp.maximum(1.0, jnp.max(jnp.abs(v)))
+        assert jnp.max(jnp.abs(v)) < 1e-8 * scale, k
+
+    # and the inner sphere really is at coordinate radius 2 carrying areal radius 2
+    cfg = Config(R0=R0, lam0=LAM0, rho_in=2.0)
+    terms = inner_bc_terms(pf, sample_sphere(jax.random.PRNGKey(4), 64, 2.0), cfg)
+    assert float(terms["h_tan"]) < 1e-8
+
+
+class ExactHybridModel(HybridNet):
+    """Exact solution through the hybrid (metric-only) code path."""
+    R0: float = R0
+    k: float = K
+
+    @nn.compact
+    def __call__(self, x):
+        x = jnp.atleast_2d(x)
+        dummy = self.param("dummy", nn.initializers.zeros, (1,))
+        ef = exact.exact_fields(self.R0, self.k)
+        f = jax.vmap(ef)(x)
+        d = dummy.sum() * 0.0
+        return Fields(f.h + d, jnp.zeros(x.shape[:-1] + (3, 3, 3)), f.lam + d)
+
+
+def test_hybrid_path_gives_zero_loss_on_exact_solution():
+    """Gamma is derived from h: compatibility is automatic and the loss must vanish."""
+    from stationary.model import HybridNet, point_fields as make_pf
+    cfg = cfg_m1()
+    model = ExactHybridModel()
+    key = jax.random.PRNGKey(11)
+    params = model.init(key, jnp.ones((1, 3)))
+    state = {"net": params}
+    batch = {"coll": sample_shell(key, 512, cfg),
+             "inner": sample_sphere(key, 64, cfg.rho_in),
+             "outer": sample_sphere(key, 64, cfg.rho_out)}
+    loss, parts = total_loss(state, batch, cfg, model, exact_fields=exact_point_fields())
+    assert float(loss) < 1e-16, (float(loss), {k: float(v) for k, v in parts.items()})
+    # and the residuals themselves, on a random point set
+    pf = make_pf(model, params)
+    r = residuals_batch(pf, sample_shell(key, 256, cfg))
+    for k, v in r.items():
+        assert float(jnp.max(jnp.abs(v))) < 1e-11, k

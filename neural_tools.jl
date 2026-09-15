@@ -117,6 +117,7 @@ end
 
 
 # helper to create network from config (Lux/Flux compatible)
+#=
 function create_neural_network(cfg; to_device=:cpu)
     model = ModifiedMLP(cfg[:N_input], cfg[:N_neurons], cfg[:N_layers], cfg[:N_output])
     if to_device == :gpu
@@ -128,7 +129,7 @@ end
 
 # optional: length for convenience
 Base.length(m::ModifiedMLP) = length(_layer_list(m))
-
+=#
 function get_parameter_count(config)
     @unpack N_input, N_neurons, N_layers, N_output = config
     return (N_input * N_neurons + N_layers * N_neurons^2  + N_neurons * N_output    
@@ -368,6 +369,15 @@ function calculate_Dirichlet_f_wf(x, t, NN, Θ, st)
     return U0 + (t .- tmin) .* U1 + ((t .- tmin).^2) ./ (1.0 .+ (t .- tmin).^2) .* (x .- xmax) .* (x .- xmin) .* nn_out 
 end
 
+function calculate_Dirichlet_f_wf_geo(x, t, NN, Θ, st)
+    @unpack N_points, xmin, xmax, tmin, tmax, A, B = config
+    U0 = u0(x) #A*(x .- xmin).^4 .* (x .- xmax).^4 ./ ((xmax - xmin)/2)^8 # Initial condition
+    U1 = u1(x) #(x .- xmin).^3 .* (x .- xmax).^3 ./ ((xmax - xmin)/2)^8 .* (2x .- (xmax - xmin)) # Initial condition for the time derivative
+    nn_in = vcat(x, t)
+    A_amp, B_amp, phase = NN(nn_in, Θ, st)[1]                   
+    return U0 + (t .- tmin) .* U1 + ((t .- tmin).^2) ./ (1.0 .+ (t .- tmin).^2) .* (x .- xmax) .* (x .- xmin) .* (A_amp .* cos.(phase) + B_amp .* sin.(phase))  
+end
+
 
 
 """
@@ -392,6 +402,21 @@ function calculate_derivatives_Dirichlet(x, t, NN, Θ, st)
     fxm    = calculate_Dirichlet_f_wf(x .- ϵ, t, NN, Θ, st)
     ftp    = calculate_Dirichlet_f_wf(x, t .+ ϵ, NN, Θ, st)
     ftm    = calculate_Dirichlet_f_wf(x, t .- ϵ, NN, Θ, st)
+
+    ∂2f_∂x2 = (fxp .- 2 .* f .+ fxm) / ϵ^2
+    ∂2f_∂t2 = (ftp .- 2 .* f .+ ftm) / ϵ^2
+    return f, ∂2f_∂x2, ∂2f_∂t2
+end
+
+function calculate_derivatives_Dirichlet_geo(x, t, NN, Θ, st)
+    #@unpack N_points_x. N_points_t, xmin, xmax, tmin, tmax = config
+    ϵ = ∜(eps())  # paso óptimo para 2ª derivada aprox.
+
+    f      = calculate_Dirichlet_f_wf_geo(x, t, NN, Θ, st)
+    fxp    = calculate_Dirichlet_f_wf_geo(x .+ ϵ, t, NN, Θ, st)
+    fxm    = calculate_Dirichlet_f_wf_geo(x .- ϵ, t, NN, Θ, st)
+    ftp    = calculate_Dirichlet_f_wf_geo(x, t .+ ϵ, NN, Θ, st)
+    ftm    = calculate_Dirichlet_f_wf_geo(x, t .- ϵ, NN, Θ, st)
 
     ∂2f_∂x2 = (fxp .- 2 .* f .+ fxm) / ϵ^2
     ∂2f_∂t2 = (ftp .- 2 .* f .+ ftm) / ϵ^2
@@ -594,7 +619,7 @@ Returns the optimized parameters Θ, state st, and the losses array.
 For now for wave_dir only
 """
 function compute_solution_1d(config, input_total, NN, Θ, st, losses)
-@unpack N_rounds, iters_per_round, N_test, N_points, method = config
+@unpack N_rounds, iters_per_round, N_test, N_points, method, tolerance = config
 
 #optf   = OptimizationFunction((Θ, input_total) -> loss_function_Toy_MHD(input_total, NN, Θ, st), AutoZygote())
 
@@ -635,7 +660,10 @@ else
             maxiters = iters_per_round,
         )
         global Θ = optresult.u  # continúa desde el óptimo de la ronda
-
+        if losses[r] < tolerance
+            @info "Early stopping at round $r with loss $(losses[r]) < tolerance (tolerance=$tolerance)"
+        return Θ, st, losses
+        end
         # Nueva muestra de puntos de colisión.
 
         global input_total[1] = generate_input_x_t(config) # reset input

@@ -1,0 +1,178 @@
+\documentclass[11pt]{amsart}
+\usepackage{geometry}                % See geometry.pdf to learn the layout options. There are lots.
+\geometry{a4paper}                   % ... or a4paper or a5paper or ... 
+%\geometry{landscape}                % Activate for for rotated page geometry
+%\usepackage[parfill]{parskip}    % Activate to begin paragraphs with an empty line rather than an indent
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{epstopdf}
+\DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
+\usepackage{physics}
+
+%%%%
+%%%% The next few commands set up the theorem type environments.
+%%%% Here they are set up to be numbered section.number, but this can
+%%%% be changed.
+%%%%
+
+\newtheorem{thm}{Theorem}[section]
+\newtheorem{prop}[thm]{Proposition}
+\newtheorem{lem}[thm]{Lemma}
+\newtheorem{cor}[thm]{Corollary}
+\theoremstyle{proof}
+%\newtheorem{proof}[thm]{Proof}
+
+
+\theoremstyle{definition}
+\newtheorem{definition}[thm]{Definition}
+\theoremstyle{example}
+\newtheorem{example}[thm]{Example}
+
+%%
+%% Again more of these can be added by uncommenting and editing the
+%% following. 
+%%
+
+%\newtheorem{note}[thm]{Note}
+
+
+%%% 
+%%% The following gives remark type environments (which only differ
+%%% from theorem type invironmants in the choices of fonts).  The
+%%% numbering is still tied to the theorem counter.
+%%% 
+
+
+\theoremstyle{remark}
+
+\newtheorem{remark}[thm]{Remark}
+
+
+%%%
+%%% The following, if uncommented, numbers equations within sections.
+%%% 
+
+\numberwithin{equation}{section}
+
+
+%%%
+%%% The following show how to make definition (also called macros or
+%%% abbreviations).  For example to use get a bold face R for use to
+%%% name the real numbers the command is \mathbf{R}.  To save typing we
+%%% can abbreviate as
+
+\newcommand{\R}{\mathbf{R}}  % The real numbers.
+
+%%
+%% The comment after the defintion is not required, but if you are
+%% working with someone they will likely thank you for explaining your
+%% definition.  
+%%
+%% Now add you own definitions:
+%%
+
+%%%
+%%% Mathematical operators (things like sin and cos which are used as
+%%% functions and have slightly different spacing when typeset than
+%%% variables are defined as follows:
+%%%
+
+\DeclareMathOperator{\dist}{dist} % The distance.
+
+
+
+%%
+%% This is the end of the preamble.
+%% 
+
+\title{Error estimate for hyperbolic equations }
+\author{Oscar Reula}
+%\date{}                                           % Activate to display a given date or no date
+
+\begin{document}
+
+\begin{abstract}
+We display different estimates tending to guide the precision of PINN approximations. 
+\end{abstract}
+
+\maketitle
+
+
+\section{The energy estimate.}
+
+The PINN scheme tries to minimize the residual of some hyperbolic equation weighed by some function depending on time. This is different than for elliptic equations where, because of boundary conditions everywhere, the solution is has a global character. 
+
+So we start with a linear symmetric hyperbolic system:
+
+$$
+\partial_t u = A^i \partial_i u + J \text{on } [0,T] \times S
+$$
+Here $u$ is a vector of unknowns and $A^i$ and $J$ depends on points of the space-time. $S$ is a compact space region with smooth boundary $\partial S$,
+initial conditions have been given at $t=0$ in $S$ and boundary conditions have been given on the boundary $[0,T]\times \partial S$. For simplicity we shall assume homogeneous Dirichlet boundary conditions, namely $u|_{\partial S} = 0$. The generalization to other boundary well posed boundary conditions is strait forward. 
+It has the energy estimated obtained by integrating the divergence of $u^{\dagger} A^i u := u HA^i u$ where the dagger operation is defined as ricing the index of $u$ with some scalar product $H$ for which the matrices $HA^i$ are symmetric.
+
+Defining the Energy function as, 
+$$
+\mathcal{E}(u,t) := \int_S u Hu dS
+$$ 
+differentiating, using the equation, and integrating by parts,  we get, 
+
+$$
+\frac{d\mathcal{E}}{dt} = \int [uH(\partial_i A^i )u + 2 uHJ] dS
+$$ 
+
+From which it follows the standard Energy inequality:
+
+$$
+\frac{d\mathcal{E}}{dt} \leq \tilde{C}\mathcal{E} +  \frac{1}{\epsilon} \mathcal{E} + \epsilon \int_{S} JHJ dS = C  \mathcal{E} + \epsilon \int_{S} JHJ dS  
+$$
+%
+Where $\tilde{C} = \max{\partial_i A^i}$.
+
+Or alternatively, 
+
+$$
+\frac{d\mathcal{E}}{dt} \leq \tilde{C}\mathcal{E} +  2 \sqrt{\mathcal{E} } \sqrt{\int_{S} JHJ dS}  
+$$
+
+From this second differential inequality we get the usual energy estimate:
+
+Calling $||u|| = \sqrt{\mathcal{E}}$, 
+$$
+||u(t)|| \leq ||u(0)||  + e^{Ct} \int_0^T e^{-Cs} F(s) ds,
+$$
+%
+Where $F(s) =  ||J|| $.
+
+Assume now that you have an approximation to the equations $\hat{u}$ that satisfies the equation up to a residual $f$.
+Thus, $e = u - \hat{u}$, satisfies the equation with zero initial data and $f$ instead of $J$. Thus, the error can be estimated as:
+
+
+$$
+||e(t)|| \leq ||e(0)||  + e^{Ct} \int_0^T e^{-Cs} F(s) ds,
+$$
+
+
+With  $F(s) =  ||f|| $.
+
+If $f$ where uniformly bounded then we can estimate:
+
+$$
+||u(t)|| = e^{Ct} \int_0^T e^{-Cs} F(s) ds \leq \max{||F(s)||} e^{Ct} \int_0^T e^{-Cs} ds = \max{||F(s)||} e^{Ct} \frac{1}{C}(1 - e^{-Ct} )
+$$
+
+And while $CT << 1$, 
+
+$$
+||u(t)|| \leq \max{||F(s)||} t
+$$
+So we initially have a linear growth.  
+For some initial data the relative error might still grow linearly for the solution might grow exponentially with $C$. 
+
+Notice that for systems where the energy is conserved ($C=0$) we have linear growth for all times.
+
+What happens now if we impose a growth for $f$ which depends on time? 
+
+
+\end{document}
+
