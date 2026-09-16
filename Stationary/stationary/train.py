@@ -18,14 +18,18 @@ import optax
 
 from . import diagnostics, exact
 from .losses import GROUP_KEYS, default_weights, group_terms, total_loss
-from .model import FieldNet, HybridNet, SymFieldNet, point_fields
+from .model import FieldNet, HybridNet, SymFieldNet, SymHybridNet, point_fields
 from .problem import Config, sample_shell, sample_sphere
 
 
 def make_model(cfg: Config):
-    cls = {"sym": SymFieldNet, "hybrid": HybridNet}.get(cfg.arch, FieldNet)
-    return cls(width=cfg.width, depth=cfg.depth, fourier=cfg.fourier,
-               rho_in=cfg.rho_in, rho_out=cfg.rho_out)
+    cls = {"sym": SymFieldNet, "sym_hybrid": SymHybridNet,
+           "hybrid": HybridNet}.get(cfg.arch, FieldNet)
+    kw = dict(width=cfg.width, depth=cfg.depth, fourier=cfg.fourier,
+              rho_in=cfg.rho_in, rho_out=cfg.rho_out)
+    if cfg.arch in ("sym", "sym_hybrid"):
+        kw["decay"] = cfg.decay_feature
+    return cls(**kw)
 
 
 def build(cfg: Config, init_from: str | None = None):
@@ -46,13 +50,18 @@ def build(cfg: Config, init_from: str | None = None):
     if cfg.outer_bc == "dirichlet_exact":
         k = exact.k_from_lambda0(cfg.R0, cfg.lam0)
         exact_fields = exact.exact_fields(cfg.R0, k)
+    elif cfg.ref_solution or cfg.robin_source:
+        if getattr(cfg, "ref_asymptotic", None) is not None:
+            exact_fields, _ = exact.reference_fields_asymptotic(
+                cfg.R0, cfg.ref_asymptotic, cfg.rho_in)
+        else:
+            exact_fields, _ = exact.reference_fields(cfg.R0, cfg.lam0, cfg.rho_in,
+                                                     cfg.inner_h_rr or 1.0)
 
     state = {"net": params}
-    if cfg.outer_bc == "robin":
-        if init_from is not None and "lam_inf" in saved:
-            state["lam_inf"] = jnp.asarray(saved["lam_inf"])
-        else:
-            state["lam_inf"] = jnp.array(0.0 if cfg.lam_inf is None else cfg.lam_inf)
+    if cfg.outer_bc == "robin" and cfg.lam_inf is None:
+        # learnable asymptotic value (initialised away from lambda_0 on purpose)
+        state["lam_inf"] = jnp.array(cfg.lam_inf_init)
     return model, state, exact_fields
 
 
@@ -76,8 +85,9 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None):
     opt_state = opt.init(state)
 
     weights = default_weights(cfg)
+    lam_inf_fixed = None if cfg.lam_inf is None else jnp.asarray(cfg.lam_inf)
     loss_fn = lambda st, b, sc, w: total_loss(st, b, cfg, model, exact_fields,
-                                              pde_scale=sc, weights=w)
+                                              pde_scale=sc, weights=w, lam_inf=lam_inf_fixed)
 
     @jax.jit
     def step(state, opt_state, batch, sc, w):
@@ -103,9 +113,16 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None):
                 and it % cfg.reweight_every == 0):
             g = group_gradnorms(state, batch)
             target = jnp.mean(g)
-            new = {k: jnp.clip(target / (g[i] + 1e-300), 1e-8, 1e8)
-                   for i, k in enumerate(GROUP_KEYS)}
-            weights = {k: 0.5 * weights[k] + 0.5 * new[k] for k in GROUP_KEYS}
+            # equalise gradient norms, but limit how fast any weight may move
+            # (an uncapped update can jump by orders of magnitude and destabilise
+            #  an otherwise converging run)
+            new = {}
+            for i, k in enumerate(GROUP_KEYS):
+                ideal = target / (g[i] + 1e-300)
+                ratio = jnp.clip(ideal / weights[k], cfg.reweight_max_ratio_inv,
+                                 1.0 / cfg.reweight_max_ratio_inv)
+                new[k] = weights[k] * jnp.sqrt(ratio)
+            weights = new
             if verbose:
                 print(f"[reweight {it}] " + " ".join(
                     f"{k}={float(weights[k]):.3g}" for k in GROUP_KEYS), flush=True)
@@ -120,7 +137,7 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None):
                       f"ricci={float(parts['pde_ricci']):.2e} "
                       f"gauge={float(parts['pde_gauge']):.2e} "
                       f"lam={float(parts['pde_lam_eq']):.2e})  "
-                      f"bc_in={float(parts['inner_lam'] + parts['inner_h_rr'] + parts['inner_h_tan']):.2e} "
+                      f"bc_in={float(sum(v for k, v in parts.items() if k.startswith('inner_'))):.2e} "
                       f"bc_out={float(sum(parts[k] for k in parts if k.startswith('outer_'))):.2e}",
                       flush=True)
 
@@ -200,7 +217,18 @@ def parse_args(argv=None):
     p.add_argument("--lam-inference", type=float, default=None, dest="lam_inf")
     p.add_argument("--width", type=int, default=None)
     p.add_argument("--depth", type=int, default=None)
+    p.add_argument("--fourier", type=int, default=None)
     p.add_argument("--outer-bc", type=str, default=None)
+    p.add_argument("--rho-in", type=float, default=None)
+    p.add_argument("--lam-inf", type=float, default=None)
+    p.add_argument("--lam-inf-init", type=float, default=None)
+    p.add_argument("--robin-exps", type=str, default=None)
+    p.add_argument("--no-inner-h-rr", action="store_true")
+    p.add_argument("--ref-solution", action="store_true")
+    p.add_argument("--decay-feature", action="store_true")
+    p.add_argument("--robin-source", action="store_true")
+    p.add_argument("--ref-asymptotic", type=float, default=None,
+                   help="build the diagnostic reference with this asymptotic lambda")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--init-from", type=str, default=None)
     p.add_argument("--pde-ramp-steps", type=int, default=None)
@@ -232,8 +260,19 @@ def parse_args(argv=None):
         cfg.width = a.width
     if a.depth is not None:
         cfg.depth = a.depth
+    if a.fourier is not None:
+        cfg.fourier = a.fourier
     if a.outer_bc is not None:
         cfg.outer_bc = a.outer_bc
+    if a.rho_in is not None:
+        cfg.rho_in = float(a.rho_in)
+    if a.lam_inf is not None:
+        cfg.lam_inf = float(a.lam_inf)
+    if a.lam_inf_init is not None:
+        cfg.lam_inf_init = float(a.lam_inf_init)
+    if a.robin_exps is not None:
+        vals = [float(v) for v in a.robin_exps.split(",")]
+        cfg.robin_exps = dict(zip(["h", "G", "lam"], vals))
     if a.seed is not None:
         cfg.seed = a.seed
     if getattr(a, "init_from", None) is not None:
@@ -255,6 +294,16 @@ def parse_args(argv=None):
         cfg.w_outer = a.w_outer
     if a.w_inner is not None:
         cfg.w_inner = a.w_inner
+    if a.no_inner_h_rr:
+        cfg.inner_h_rr = None
+    if a.ref_solution:
+        cfg.ref_solution = True
+    if a.decay_feature:
+        cfg.decay_feature = True
+    if a.robin_source:
+        cfg.robin_source = True
+    if a.ref_asymptotic is not None:
+        cfg.ref_asymptotic = a.ref_asymptotic
     cfg.__post_init__()
     if a.scale_ref_rho_in:
         cfg.scale_ref = cfg.rho_in

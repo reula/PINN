@@ -16,17 +16,28 @@ class Config:
     R0: float = 1.0                 # exact-solution parameter used for milestone 1
     rho_out: float = 20.0
     lam0: float = 1.0               # lambda on the inner sphere
+    inner_h_rr: float | None = 1.0  # None -> do NOT constrain h_rr on the inner sphere
     rho_in: float | None = None     # None -> sqrt(4 + R0^2): the areal-radius-2 sphere
 
     # ------------------------------------------------------- outer boundary
     outer_bc: str = "dirichlet_exact"   # "dirichlet_exact" (milestone 1) | "robin"
+    ref_solution: bool = False          # build the exact reference for diagnostics only
+    robin_source: bool = False           # inhomogeneous Robin source (manufactured test)
+    ref_asymptotic: float | None = None  # if set, reference has lambda -> this value
     lam_inf: float | None = None        # asymptotic lambda; None -> learnable (robin)
+    lam_inf_init: float = 1.0           # initial value when lam_inf is learnable
+    # decay exponents of the Robin condition  n^i d_i f = -p (f - f_inf)/rho.
+    # The system forces h ~ 1/rho^2, Gamma ~ 1/rho^3, lambda ~ 1/rho (measured for
+    # the exact solution), so a single exponent p = 1 for every field would impose
+    # the wrong asymptotics and create a boundary layer at rho_out.
+    robin_exps: dict = field(default_factory=lambda: dict(h=2.0, G=3.0, lam=1.0))
 
     # ---------------------------------------------------------------- model
     arch: str = "sym"               # "sym" (spherically symmetric ansatz) | "3d"
     width: int = 64
     depth: int = 4
     fourier: int = 8
+    decay_feature: bool = False      # add rho_in/rho to the network features
 
     # ------------------------------------------------------------- sampling
     n_coll: int = 4096
@@ -44,6 +55,7 @@ class Config:
     w_outer: float = 10.0
     pde_ramp_steps: int = 0     # ramp the PDE weights in over this many steps (0 = off)
     reweight_every: int = 2000  # gradient-norm adaptive reweighting period (0 = off)
+    reweight_max_ratio_inv: float = 0.5   # per-update cap: weights move by at most 2x
 
     # ---------------------------------------------------------- optimisation
     steps: int = 20000

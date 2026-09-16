@@ -19,7 +19,7 @@ from stationary import exact
 from stationary.geometry import (Fields, christoffel, gamma3, laplacian,
                                  pack_gamma, pack_sym, residuals_batch, sym3)
 from stationary.losses import inner_bc_terms, outer_bc_terms, pde_terms, total_loss
-from stationary.model import HybridNet
+from stationary.model import HybridNet, SymHybridNet
 from stationary.problem import Config, sample_shell, sample_sphere
 
 R0, LAM0 = 1.0, 1.0
@@ -199,7 +199,7 @@ class ExactHybridModel(HybridNet):
 
 def test_hybrid_path_gives_zero_loss_on_exact_solution():
     """Gamma is derived from h: compatibility is automatic and the loss must vanish."""
-    from stationary.model import HybridNet, point_fields as make_pf
+    from stationary.model import HybridNet, SymHybridNet, point_fields as make_pf
     cfg = cfg_m1()
     model = ExactHybridModel()
     key = jax.random.PRNGKey(11)
@@ -215,3 +215,67 @@ def test_hybrid_path_gives_zero_loss_on_exact_solution():
     r = residuals_batch(pf, sample_shell(key, 256, cfg))
     for k, v in r.items():
         assert float(jnp.max(jnp.abs(v))) < 1e-11, k
+
+
+class ExactSymHybridModel(SymHybridNet):
+    """Exact solution through the symmetric metric-only (Gamma derived) path."""
+    R0: float = R0
+    k: float = K
+
+    @nn.compact
+    def __call__(self, x):
+        x = jnp.atleast_2d(x)
+        dummy = self.param("dummy", nn.initializers.zeros, (1,))
+        ef = exact.exact_fields(self.R0, self.k)
+        f = jax.vmap(ef)(x)
+        d = dummy.sum() * 0.0
+        return Fields(f.h + d, jnp.zeros(x.shape[:-1] + (3, 3, 3)), f.lam + d)
+
+
+def test_sym_hybrid_zero_loss_on_exact_solution():
+    """Symmetric metric-only path: compat is automatic, whole loss must vanish."""
+    from stationary.model import SymHybridNet, point_fields as make_pf
+    cfg = cfg_m1()
+    model = ExactSymHybridModel()
+    key = jax.random.PRNGKey(21)
+    params = model.init(key, jnp.ones((1, 3)))
+    batch = {"coll": sample_shell(key, 512, cfg),
+             "inner": sample_sphere(key, 64, cfg.rho_in),
+             "outer": sample_sphere(key, 64, cfg.rho_out)}
+    loss, parts = total_loss({"net": params}, batch, cfg, model,
+                             exact_fields=exact_point_fields())
+    assert float(loss) < 1e-18, (float(loss), {k: float(v) for k, v in parts.items()})
+    pf = make_pf(model, params)
+    r = residuals_batch(pf, sample_shell(key, 256, cfg))
+    for k, v in r.items():
+        assert float(jnp.max(jnp.abs(v))) < 1e-11, (k, float(jnp.max(jnp.abs(v))))
+
+
+def test_sym_hybrid_manufactured_robin_is_exact():
+    """Milestone-2 setup with the manufactured source: exact solution hits loss 0."""
+    ref, info = exact.reference_fields_asymptotic(1.0, 1.0, 2.0)
+    lam_inner = float(ref(jnp.array([2.0, 0.0, 0.0])).lam)   # = 0.381966 for k = 1
+    cfg = Config(R0=1.0, lam0=lam_inner, rho_in=2.0, rho_out=100.0, outer_bc="robin",
+                 inner_h_rr=None, robin_source=True, ref_asymptotic=1.0)
+    cfg.__post_init__()
+    cfg.lam_inf = 1.0
+    model = ExactSymHybridModel()
+    key = jax.random.PRNGKey(22)
+    params = model.init(key, jnp.ones((1, 3)))
+
+    class RefModel(SymHybridNet):
+        @nn.compact
+        def __call__(self, x):
+            x = jnp.atleast_2d(x)
+            d = self.param("dummy", nn.initializers.zeros, (1,)) * 0.0
+            f = jax.vmap(ref)(x)
+            return Fields(f.h + d, jnp.zeros(x.shape[:-1] + (3, 3, 3)), f.lam + d)
+
+    rm = RefModel()
+    rp = rm.init(key, jnp.ones((1, 3)))
+    batch = {"coll": sample_shell(key, 512, cfg),
+             "inner": sample_sphere(key, 64, cfg.rho_in),
+             "outer": sample_sphere(key, 64, cfg.rho_out)}
+    for model_i, state in ((rm, {"net": rp}), (RefModel(), {"net": rp})):
+        loss, parts = total_loss(state, batch, cfg, model_i, exact_fields=ref, lam_inf=1.0)
+        assert float(loss) < 1e-16, (float(loss), {k: float(v) for k, v in parts.items()})

@@ -52,7 +52,7 @@ class FieldNet(nn.Module):
 
 def point_fields(model, params):
     """Adapt the batched network to the single-point `fields` signature."""
-    if isinstance(model, HybridNet):
+    if isinstance(model, (HybridNet, SymHybridNet)):
         def h_of(y):
             return model.apply(params, y[None, :]).h[0]
 
@@ -93,6 +93,7 @@ class SymFieldNet(nn.Module):
     rho_in: float = 2.0
     rho_out: float = 20.0
     out_std: float = 1e-2
+    decay: bool = False      # add rho_in/rho: the natural decay variable of the solution
 
     @nn.compact
     def __call__(self, x):
@@ -101,6 +102,8 @@ class SymFieldNet(nn.Module):
         n = x / rho
         t = jnp.log(rho / self.rho_in) / jnp.log(self.rho_out / self.rho_in)
         feats = [t]
+        if self.decay:
+            feats.append(self.rho_in / rho)
         for i in range(1, self.fourier + 1):
             feats.append(jnp.sin(jnp.pi * i * t))
             feats.append(jnp.cos(jnp.pi * i * t))
@@ -164,3 +167,47 @@ class HybridNet(nn.Module):
         lam = jnp.exp(out[..., 6])
         G = jnp.zeros(x.shape[:-1] + (3, 3, 3))
         return Fields(h, G, lam)
+
+
+class SymHybridNet(nn.Module):
+    """Symmetric metric-only ansatz: alpha, beta, u only.
+
+        h_ij   = alpha(rho) delta_ij + beta(rho) n_i n_j
+        lambda = exp(u(rho))
+
+    Gamma is the Christoffel symbol of h (autodiff), so metric compatibility holds
+    identically: the compat residual (which dominates the loss for the
+    independent-Gamma ansatz on this problem) is removed, together with three of the
+    six scalar outputs.  The pair (alpha, beta) is exactly the gauge-independent
+    content of the harmonic-gauge spherically symmetric metric.
+    """
+    width: int = 64
+    depth: int = 4
+    fourier: int = 8
+    rho_in: float = 2.0
+    rho_out: float = 20.0
+    out_std: float = 1e-2
+    decay: bool = False
+
+    @nn.compact
+    def __call__(self, x):
+        x = jnp.atleast_2d(x)
+        rho = jnp.linalg.norm(x, axis=-1, keepdims=True)
+        n = x / rho
+        t = jnp.log(rho / self.rho_in) / jnp.log(self.rho_out / self.rho_in)
+        feats = [t]
+        if self.decay:
+            feats.append(self.rho_in / rho)
+        for i in range(1, self.fourier + 1):
+            feats.append(jnp.sin(jnp.pi * i * t))
+            feats.append(jnp.cos(jnp.pi * i * t))
+        z = jnp.concatenate(feats, axis=-1)
+        for _ in range(self.depth):
+            z = jnp.tanh(nn.Dense(self.width)(z))
+        out = nn.Dense(3, kernel_init=nn.initializers.normal(self.out_std),
+                       bias_init=nn.initializers.zeros)(z)
+        d = jnp.eye(3)
+        nn_ = jnp.einsum("ni,nj->nij", n, n)
+        h = (1.0 + out[..., 0])[:, None, None] * d + out[..., 1][:, None, None] * nn_
+        G = jnp.zeros(x.shape[:-1] + (3, 3, 3))
+        return Fields(h, G, jnp.exp(out[..., 2]))

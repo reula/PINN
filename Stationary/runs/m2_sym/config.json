@@ -2,9 +2,15 @@
   "R0": 1.0,
   "rho_out": 20.0,
   "lam0": 1.0,
-  "rho_in": 2.2360680103302,
-  "outer_bc": "dirichlet_exact",
-  "lam_inf": null,
+  "rho_in": 2.0,
+  "outer_bc": "robin",
+  "lam_inf": 2.618033988749895,
+  "lam_inf_init": 1.0,
+  "robin_exps": {
+    "h": 2.0,
+    "G": 3.0,
+    "lam": 1.0
+  },
   "arch": "sym",
   "width": 64,
   "depth": 4,
@@ -32,9 +38,9 @@
   "reweight_every": 2000,
   "steps": 20000,
   "lr": 0.001,
-  "lbfgs_steps": 1500,
+  "lbfgs_steps": 1000,
   "log_every": 200,
   "seed": 0,
-  "outdir": "runs/m1_sym",
+  "outdir": "runs/m2_sym",
   "init_from": null
 }

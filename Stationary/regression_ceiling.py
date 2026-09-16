@@ -17,7 +17,7 @@ import optax
 
 from stationary import exact
 from stationary.geometry import pack_gamma, pack_sym
-from stationary.model import FieldNet, batch_fields
+from stationary.train import make_model
 from stationary.problem import Config, sample_shell
 
 
@@ -38,13 +38,15 @@ def main():
     p.add_argument("--outdir", default="runs/regression")
     p.add_argument("--lbfgs-steps", type=int, default=0)
     p.add_argument("--radial", default="uniform")
+    p.add_argument("--arch", default="3d")
     a = p.parse_args()
 
-    cfg = Config(R0=1.0, lam0=1.0, radial=a.radial)
+    cfg = Config(R0=1.0, lam0=1.0, radial=a.radial, arch=a.arch)
     cfg.__post_init__()
     k = exact.k_from_lambda0(cfg.R0, cfg.lam0)
-    model = FieldNet(width=a.width, depth=a.depth, fourier=a.fourier,
-                     rho_in=cfg.rho_in, rho_out=cfg.rho_out)
+    cfg.arch = a.arch
+    cfg.width, cfg.depth, cfg.fourier = a.width, a.depth, a.fourier
+    model = make_model(cfg)
     key = jax.random.PRNGKey(0)
     k1, k2, k3 = jax.random.split(key, 3)
     params = model.init(k1, sample_shell(k2, 8, cfg))
@@ -96,7 +98,7 @@ def main():
     f = model.apply(params, xv)
     hv, Gv, lamv = target(xv, cfg.R0, k)
     out = {
-        "steps": a.steps, "lbfgs_steps": a.lbfgs_steps, "width": a.width, "depth": a.depth, "fourier": a.fourier,
+        "arch": a.arch, "steps": a.steps, "lbfgs_steps": a.lbfgs_steps, "width": a.width, "depth": a.depth, "fourier": a.fourier,
         "max_dh": float(jnp.max(jnp.abs(f.h - hv))),
         "max_dG": float(jnp.max(jnp.abs(f.G - Gv))),
         "max_dlam_rel": float(jnp.max(jnp.abs(f.lam / lamv - 1.0))),

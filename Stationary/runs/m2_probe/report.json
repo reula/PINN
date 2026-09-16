@@ -1,0 +1,19 @@
+{
+  "wall_seconds": 361.16190791130066,
+  "final_loss": 1.6492284657942946e-06,
+  "steps": 3000,
+  "lbfgs_steps": 0,
+  "res_compat_rms": 9.880690777208656e-05,
+  "res_compat_max": 0.002359484089538455,
+  "res_gauge_rms": 5.993438753648661e-05,
+  "res_gauge_max": 0.0005336895119398832,
+  "res_lam_eq_rms": 2.492214844096452e-05,
+  "res_lam_eq_max": 0.0003430866345297545,
+  "res_ricci_rms": 6.750979810021818e-05,
+  "res_ricci_max": 0.0010928856208920479,
+  "lam_mean": 1.0,
+  "lam_std": 0.0,
+  "areal_radius2_mean": 4.0,
+  "areal_radius2_std": 4.845742296311073e-07,
+  "lam_inf": 0.9994432330131531
+}

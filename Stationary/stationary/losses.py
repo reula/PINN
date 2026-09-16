@@ -39,17 +39,17 @@ def inner_bc_terms(point_fields, xs, cfg) -> dict:
         h_rr = n @ f.h @ n
         c = 4.0 / rho**2
         M = f.h - h_rr * nn - c * (I3 - nn)
+        hrr_ref = 1.0 if cfg.inner_h_rr is None else cfg.inner_h_rr
         return jnp.concatenate([
-            jnp.array([f.lam - cfg.lam0, h_rr - 1.0]),
+            jnp.array([f.lam - cfg.lam0, h_rr - hrr_ref]),
             pack_sym(M) * OFFW,
         ])
 
     R = jax.vmap(one)(xs)
-    return {
-        "lam": jnp.mean(R[:, 0] ** 2),
-        "h_rr": jnp.mean(R[:, 1] ** 2),
-        "h_tan": jnp.mean(R[:, 2:] ** 2),
-    }
+    out = {"lam": jnp.mean(R[:, 0] ** 2), "h_tan": jnp.mean(R[:, 2:] ** 2)}
+    if cfg.inner_h_rr is not None:
+        out["h_rr"] = jnp.mean(R[:, 1] ** 2)
+    return out
 
 
 # -------------------------------------------------------------- outer boundary
@@ -71,6 +71,22 @@ def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> di
 
     if cfg.outer_bc == "robin":
         r_out = cfg.rho_out
+        ph, pG, pl = cfg.robin_exps["h"], cfg.robin_exps["G"], cfg.robin_exps["lam"]
+        if lam_inf is None:
+            lam_inf = cfg.lam_inf_init
+        if cfg.robin_source and exact_fields is None:
+            raise ValueError("robin_source needs exact_fields (set --ref-solution)")
+
+        def robin_exact(x):
+            """The Robin residual OF the exact solution, used as a source so that the
+            exact solution satisfies the (inhomogeneous) boundary condition exactly."""
+            e = exact_fields(x)
+            dh, dG, dlam = jax.jacfwd(exact_fields)(x)
+            rho = jnp.linalg.norm(x)
+            n = x / rho
+            return (jnp.einsum("a,ija->ij", n, dh) + ph * (e.h - I3) / r_out,
+                    jnp.einsum("a,ijka->ijk", n, dG) + pG * e.G / r_out,
+                    jnp.einsum("a,a->", n, dlam) + pl * (e.lam - lam_inf) / r_out)
 
         def one(x):
             f = point_fields(x)
@@ -80,10 +96,13 @@ def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> di
             dr_h = jnp.einsum("a,ija->ij", n, dh)       # n^a d_a h_ij
             dr_G = jnp.einsum("a,ijka->ijk", n, dG)
             dr_l = jnp.einsum("a,a->", n, dlam)
+            sh, sG, sl = (0.0, 0.0, 0.0)
+            if cfg.robin_source:
+                sh, sG, sl = robin_exact(x)
             return jnp.concatenate([
-                pack_sym(dr_h + (f.h - I3) / r_out) * OFFW,
-                pack_gamma(dr_G + f.G / r_out),
-                jnp.array([dr_l + (f.lam - lam_inf) / r_out]),
+                pack_sym(dr_h + ph * (f.h - I3) / r_out - sh) * OFFW,
+                pack_gamma(dr_G + pG * f.G / r_out - sG),
+                jnp.array([dr_l + pl * (f.lam - lam_inf) / r_out - sl]),
             ])
 
         R = jax.vmap(one)(xs)
@@ -119,12 +138,19 @@ def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> di
 
 
 def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
-               weights=None, parts_out=None):
-    """state = {'net': params[, 'lam_inf': scalar]};  batch = dict of point arrays."""
+               weights=None, lam_inf=None):
+    """state = {'net': params[, 'lam_inf': scalar]};  batch = dict of point arrays.
+
+    `lam_inf` overrides the state leaf, which is how a FROZEN asymptotic value is
+    imposed: leaving it optimisable lets the trivial (flat, lambda = const) branch
+    re-select itself, since that branch satisfies every Robin condition whenever
+    lambda_inf is allowed to equal lambda.
+    """
     from .model import point_fields as make_point_fields
 
     pf = make_point_fields(model, state["net"])
-    lam_inf = state.get("lam_inf", None)
+    if lam_inf is None:
+        lam_inf = state.get("lam_inf", None)
     if weights is None:
         weights = default_weights(cfg)
 
