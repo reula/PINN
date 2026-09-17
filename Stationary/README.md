@@ -378,3 +378,57 @@ numerical solution IS the exact family member with R0 = 1, lambda_infinity = 1. 
 Ricci scalar matches 2 R0^2/r_a^4 at r_a = 2 (0.1258 vs 0.125) but is noise-dominated
 further out, so lambda(r_a) is the usable invariant. Against the exact reference:
 max|dh| = 8.5e-5, max|dGamma| = 1.9e-4, max|dlambda| = 1.9e-4.
+
+## 9. Running on a JupyterHub / GPU machine
+
+The hub workflow has its own document: **`HUB.md`** (setup, `run_hub.sh`,
+checkpointing/resume, monitoring, gotchas). `run_hub.sh` is the single entry point
+there -- use it rather than launching `python -m stationary.train` by hand, because it
+detaches the job (`setsid`+`nohup`), keeps outputs on `$HOME`, checkpoints every 500
+steps and writes a `resume.sh`. A run started from a notebook cell or a plain terminal
+dies with the server; `./run_hub.sh ...` does not.
+
+Two things about *this* project that matter on the hub:
+
+* **Training is float32.** `stationary/train.py` does not enable x64, so every number
+  under `runs/` was produced in float32 and the smallest residual it can represent is
+  ~1e-7 rms. Setting `JAX_ENABLE_X64=1` changes the optimisation trajectory and makes
+  the existing results irreproducible (and costs ~2x throughput on GPU); `run_hub.sh`
+  warns about it. The verification suite (`tests/`, `verify_exact_solution.py`) and the
+  post-processing modules (`evaluate.py`, `invariants.py`, `multipoles.py`) *do* enable
+  x64 -- that is deliberate: train in float32, verify and analyse in float64.
+* **Boundary-condition and residual numbers quoted in this README are mean squares**,
+  as they come out of the loss. Divide by the number of components and take a square
+  root for the rms: a mean square of 1e-14 is an rms of 1e-7, i.e. the float32 floor,
+  *not* a statement that the boundary data are satisfied to 1e-14.
+
+### 9.1 The two production runs, with their flags
+
+```bash
+# validation run: S1 = S2 = 0, lambda = 1/3 on the inner sphere, lambda -> 1 at rho = 100.
+# The exact family member (R0 = 1/sqrt(3), k = 1) solves it, so lambda(100) must be 0.9885.
+./run_hub.sh --steps 20000 --arch sym_hybrid --R0 0.5773502691896258 \
+    --ref-solution --ref-asymptotic 1.0 \
+    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
+    --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
+    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
+    --w-inner 100 --w-outer 100 --reweight-every 1500 --n-coll 4096 --n-bnd 256
+
+# the requested dipole (S1 = 0.1): axisymmetric, fourth-order Robin on h and lambda
+./run_hub.sh --steps 20000 --arch axisym_hybrid \
+    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
+    --lam-bc-S1 0.1 --lam-bc-S2 0.0 \
+    --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
+    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
+    --w-inner 100 --w-outer 100 --reweight-every 1500 --n-coll 4096 --n-bnd 256
+```
+
+`--robin-orders h=4,lam=4` is the fourth-order condition ($\{r^{-1}..r^{-4}\}$ for λ and
+$\{r^{-2}..r^{-5}\}$ for h), which is what lets the quadrupole pass through the outer
+boundary unpenalised. `--no-robin-G` drops the redundant Γ condition in the metric-only
+scheme (Γ is derived from h, so its condition only buys fifth derivatives of the network).
+
+**Sizing for a bigger machine**: the network is small (13 828 parameters at width 64 ×
+depth 4) and the L-BFGS line search is sequential, so a GPU gives a modest speed-up, not
+a dramatic one. The levers that actually matter are `--n-coll` (4096 → 16384+) and
+`--width/--depth` (64×4 → 256×6, with `--fourier 16`). Nothing else has to change.

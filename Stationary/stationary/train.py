@@ -314,6 +314,7 @@ def parse_args(argv=None):
     p.add_argument("--lam0", type=float, default=None)
     p.add_argument("--rho-out", type=float, default=None)
     p.add_argument("--n-coll", type=int, default=None)
+    p.add_argument("--n-bnd", type=int, default=None)
     p.add_argument("--resample-every", type=int, default=None)
     p.add_argument("--lam-inference", type=float, default=None, dest="lam_inf")
     p.add_argument("--width", type=int, default=None)
@@ -369,6 +370,8 @@ def parse_args(argv=None):
         cfg.rho_out = a.rho_out
     if a.n_coll is not None:
         cfg.n_coll = a.n_coll
+    if a.n_bnd is not None:
+        cfg.n_bnd = a.n_bnd
     if a.width is not None:
         cfg.width = a.width
     if a.depth is not None:
