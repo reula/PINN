@@ -15,7 +15,11 @@ class Config:
     # ---------------------------------------------------------------- physics
     R0: float = 1.0                 # exact-solution parameter used for milestone 1
     rho_out: float = 20.0
-    lam0: float = 1.0               # lambda on the inner sphere
+    lam0: float = 1.0               # constant part of lambda on the inner sphere
+    inner_radius: float | None = None   # areal radius required on the inner sphere
+                                        # None -> rho_in (round sphere of radius rho_in)
+    lam_bc_S1: float = 0.0          # dipole amplitude    S1 * z / rho_in
+    lam_bc_S2: float = 0.0          # quadrupole amplitude S2 * (z^2-(x^2+y^2)/2)/rho_in^2
     inner_h_rr: float | None = 1.0  # None -> do NOT constrain h_rr on the inner sphere
     rho_in: float | None = None     # None -> sqrt(4 + R0^2): the areal-radius-2 sphere
 
@@ -31,6 +35,18 @@ class Config:
     # the exact solution), so a single exponent p = 1 for every field would impose
     # the wrong asymptotics and create a boundary layer at rho_out.
     robin_exps: dict = field(default_factory=lambda: dict(h=2.0, G=3.0, lam=1.0))
+    # Higher-multipole Robin: instead of forcing each field onto its single leading
+    # decay power, annihilate the first `robin_order` powers with the Euler operators
+    #     prod_{i=0}^{n-1} (rho d_rho + (base+i)) (field - field_inf) = 0 .
+    # These operators commute and annihilate exactly rho^-(base+i), so n=1 reproduces
+    # the first-order condition above, n=2 allows the next multipole through, etc.
+    # Example (lambda, base 1, n=2):  rho^2 lam'' + 4 rho lam' + 2 (lam-1) = 0.
+    robin_order: int = 2
+    robin_orders: dict | None = None     # per-field override, e.g. dict(h=4, G=1, lam=4)
+    robin_include_G: bool = True         # impose the Robin condition on Gamma too.
+                                         # In the metric-only (hybrid) schemes Gamma is
+                                         # derived from h, so its condition is redundant
+                                         # and is what forces fifth derivatives of h.
 
     # ---------------------------------------------------------------- model
     arch: str = "sym"               # "sym" (spherically symmetric ansatz) | "3d"
@@ -65,11 +81,30 @@ class Config:
     seed: int = 0
     outdir: str = "runs/m1"
     init_from: str | None = None
+    ckpt_every: int = 0             # write a resumable checkpoint every N Adam steps (0 = off)
+    resume: str | None = None       # checkpoint path, or "auto" for <outdir>/ckpt.pkl
+    make_figures: bool = True       # lambda at the inner sphere + outer multipoles
 
     def __post_init__(self):
         if self.rho_in is None:
             self.rho_in = rho_in_of_R0(self.R0)
         self.rho_in = float(self.rho_in)
+        if self.inner_radius is None:
+            self.inner_radius = self.rho_in
+
+
+def lam_inner_bc(x, cfg):
+    """lambda prescribed on the inner sphere:
+
+        lambda = lam0 + S1 z/rho_in + S2 (z^2 - (x^2+y^2)/2)/rho_in^2
+
+    written in the harmonic coordinates (x, y, z); on |x| = rho_in it reduces to
+    lam0 + S1 n_z + S2 (3 n_z^2 - 1)/2.
+    """
+    z = x[..., 2]
+    r2 = jnp.sum(x * x, axis=-1)
+    return (cfg.lam0 + cfg.lam_bc_S1 * z / cfg.rho_in
+            + cfg.lam_bc_S2 * (z * z - 0.5 * (r2 - z * z)) / cfg.rho_in**2)
 
 
 def sphere_directions(key, n: int) -> jnp.ndarray:

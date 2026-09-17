@@ -47,7 +47,8 @@ def exact_point_fields():
 
 
 def cfg_m1() -> Config:
-    c = Config(R0=R0, lam0=LAM0)
+    # round metric of areal radius 2 on the inner sphere (which sits at rho = sqrt5)
+    c = Config(R0=R0, lam0=LAM0, inner_radius=2.0, robin_order=1)
     return c
 
 
@@ -279,3 +280,67 @@ def test_sym_hybrid_manufactured_robin_is_exact():
     for model_i, state in ((rm, {"net": rp}), (RefModel(), {"net": rp})):
         loss, parts = total_loss(state, batch, cfg, model_i, exact_fields=ref, lam_inf=1.0)
         assert float(loss) < 1e-16, (float(loss), {k: float(v) for k, v in parts.items()})
+
+
+# ------------------------------------------------------- new-problem tests
+def test_robin_operator_annihilates_powers():
+    """(rho d_rho + a) kills rho^-a; the product kills the first `order` powers only."""
+    from stationary.losses import robin_operator
+    for base in (1, 2, 3):
+        for kk in (base, base + 1, base + 2, base + 3):
+            for order in (1, 2, 3):
+                f = lambda y, kk=kk: jnp.linalg.norm(y) ** (-kk)
+                x = jnp.array([3.0, -4.0, 12.0])          # |x| = 13
+                val = robin_operator(f, x, base, order)
+                killed = base <= kk <= base + order - 1
+                if killed:
+                    assert abs(float(val)) < 1e-10 * 13.0 ** (-kk), (base, kk, order, float(val))
+                else:
+                    assert abs(float(val)) > 1e-12, (base, kk, order, float(val))
+
+
+def test_robin_second_order_lambda_form():
+    """For lambda with base 1 and order 2 the condition is rho^2 lam'' + 4 rho lam' + 2(lam-1)."""
+    from stationary.losses import robin_operator
+    lam = lambda y: 1.0 + 2.0 / jnp.linalg.norm(y)
+    x = jnp.array([0.0, 0.0, 7.0])
+    assert abs(float(robin_operator(lam, x, 1, 2, 1.0))) < 1e-12     # 1/rho is killed
+    lam2 = lambda y: 1.0 + 2.0 / jnp.linalg.norm(y) ** 3
+    # rho^-3 must survive (it is the next multipole, l = 2)
+    assert abs(float(robin_operator(lam2, x, 1, 2, 1.0))) > 1e-6
+
+
+def test_inner_lambda_bc_formula():
+    """lam0 + S1 n_z + S2 (3 n_z^2 - 1)/2 on the inner sphere."""
+    from stationary.problem import lam_inner_bc
+    c = Config(R0=1.0, rho_in=1.0, lam0=1.0 / 3, lam_bc_S1=0.1, lam_bc_S2=0.25,
+               inner_radius=1.0, robin_order=2)
+    c.__post_init__()
+    for th in (0.0, 0.7, 1.57, 2.6, 3.14159):
+        x = jnp.array([jnp.sin(th), 0.0, jnp.cos(th)])
+        want = 1.0 / 3 + 0.1 * jnp.cos(th) + 0.25 * (3 * jnp.cos(th) ** 2 - 1) / 2
+        assert abs(float(lam_inner_bc(x, c)) - float(want)) < 1e-14
+
+
+def test_multipole_roundtrip():
+    from stationary.multipoles import decompose, real_sph_harm, sphere_grid
+    mu, phi, w = sphere_grid(40, 32)
+    truth = {(0, 0): 1.3, (1, 0): -0.25, (2, 0): 0.07, (2, 1): 0.03, (3, 0): -0.011}
+    f = sum(v * real_sph_harm(l, m, mu, phi) for (l, m), v in truth.items())
+    coef = decompose(f, mu, phi, w, 3)
+    for k, v in coef.items():
+        assert abs(v - truth.get(k, 0.0)) < 1e-12, (k, v, truth.get(k, 0.0))
+
+
+def test_robin_fourth_order_kills_only_first_four_powers():
+    """Order 4 must annihilate rho^-(base..base+3) and nothing beyond."""
+    from stationary.losses import robin_operator
+    x = jnp.array([6.0, 8.0, 24.0])                      # |x| = 26
+    for base in (1, 2):
+        for kk in range(base, base + 7):
+            f = lambda y, kk=kk: jnp.linalg.norm(y) ** (-kk)
+            val = float(robin_operator(f, x, base, 4))
+            if kk < base + 4:
+                assert abs(val) < 1e-12, (base, kk, val)
+            else:
+                assert abs(val) > 1e-14, (base, kk, val)

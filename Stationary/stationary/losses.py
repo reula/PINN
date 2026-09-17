@@ -1,15 +1,21 @@
 """Residuals, boundary conditions and the total loss.
 
-Inner boundary (rho = rho_in), as specified:
-    * lambda = lambda_0
-    * the induced metric on the sphere is the round metric of areal radius 2
-    * h_rr = 1        (normal-normal component; fixes the remaining metric freedom)
+Inner boundary (rho = rho_in):
+    * lambda = lam0 + S1 z/rho_in + S2 (z^2-(x^2+y^2)/2)/rho_in^2   (see problem.py)
+    * the induced metric on the sphere is the round metric of areal radius
+      `inner_radius` (default rho_in)
+    * optionally h_rr = const (off by default: it over-determines the radial gauge)
 
 Outer boundary (rho = rho_out):
-    * "dirichlet_exact": h and lambda from the exact solution (milestone 1 -- a
-       manufactured-solution test whose exact answer is known)
-    * "robin":  n^i d_i field = -(field - field_inf)/rho_out  for h, Gamma, lambda
-       with field_inf = delta_ij, 0, lambda_inf  (the decay condition)
+    * "dirichlet_exact": h and lambda from the exact solution (manufactured test)
+    * "robin": higher-multipole decay condition.  With n = cfg.robin_order and the
+      leading decay exponent k_f of each field,
+
+          prod_{i=0}^{n-1} (rho d_rho + k_f + i) (field - field_inf) = 0 .
+
+      The Euler operators (rho d_rho + a) commute and annihilate exactly rho^-a, so
+      n = 1 is the familiar (field-field_inf)/rho + d_rho field = 0 and n = 2 lets the
+      next multipole through, e.g. for lambda: rho^2 lam'' + 4 rho lam' + 2 (lam-1) = 0.
 """
 from __future__ import annotations
 
@@ -17,9 +23,31 @@ import jax
 import jax.numpy as jnp
 
 from .geometry import pack_gamma, pack_sym, residuals_batch, scaled_residuals_batch
+from .problem import lam_inner_bc
 
 I3 = jnp.eye(3)
 OFFW = jnp.array([1.0, jnp.sqrt(2.0), jnp.sqrt(2.0), 1.0, jnp.sqrt(2.0), 1.0])
+
+
+def robin_operator(field_fun, x, base, order, inf_val=0.0):
+    """prod_{i<order} (rho d_rho + base+i) applied to (field - inf_val) at x.
+
+    (rho d_rho + a) annihilates exactly rho^-a, and these Euler operators commute, so
+    the product annihilates the powers rho^-base ... rho^-(base+order-1) and lets the
+    next multipoles through.  `order=1` is the familiar first-order decay condition.
+    """
+    cur = lambda y: field_fun(y) - inf_val
+    for i in range(order):
+        k = base + i
+        prev = cur
+
+        def cur(y, prev=prev, k=k):
+            r = jnp.linalg.norm(y)
+            n = y / r
+            d = jnp.einsum("a,...a->...", n, jax.jacfwd(prev)(y))       # d_rho prev
+            return r * d + k * prev(y)
+
+    return cur(x)
 
 
 # ------------------------------------------------------------------ PDE terms
@@ -37,11 +65,11 @@ def inner_bc_terms(point_fields, xs, cfg) -> dict:
         n = x / rho
         nn = jnp.outer(n, n)
         h_rr = n @ f.h @ n
-        c = 4.0 / rho**2
+        c = cfg.inner_radius**2 / rho**2          # round metric of areal radius inner_radius
         M = f.h - h_rr * nn - c * (I3 - nn)
         hrr_ref = 1.0 if cfg.inner_h_rr is None else cfg.inner_h_rr
         return jnp.concatenate([
-            jnp.array([f.lam - cfg.lam0, h_rr - hrr_ref]),
+            jnp.array([f.lam - lam_inner_bc(x, cfg), h_rr - hrr_ref]),
             pack_sym(M) * OFFW,
         ])
 
@@ -70,44 +98,41 @@ def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> di
         return {"h": jnp.mean(R[:, :6] ** 2), "lam": jnp.mean(R[:, 6] ** 2)}
 
     if cfg.outer_bc == "robin":
-        r_out = cfg.rho_out
         ph, pG, pl = cfg.robin_exps["h"], cfg.robin_exps["G"], cfg.robin_exps["lam"]
+        orders = cfg.robin_orders or {k: cfg.robin_order for k in ("h", "G", "lam")}
         if lam_inf is None:
             lam_inf = cfg.lam_inf_init
         if cfg.robin_source and exact_fields is None:
             raise ValueError("robin_source needs exact_fields (set --ref-solution)")
 
-        def robin_exact(x):
-            """The Robin residual OF the exact solution, used as a source so that the
-            exact solution satisfies the (inhomogeneous) boundary condition exactly."""
-            e = exact_fields(x)
-            dh, dG, dlam = jax.jacfwd(exact_fields)(x)
-            rho = jnp.linalg.norm(x)
-            n = x / rho
-            return (jnp.einsum("a,ija->ij", n, dh) + ph * (e.h - I3) / r_out,
-                    jnp.einsum("a,ijka->ijk", n, dG) + pG * e.G / r_out,
-                    jnp.einsum("a,a->", n, dlam) + pl * (e.lam - lam_inf) / r_out)
+        def robin(field_fun, x, base, inf_val, order):
+            return robin_operator(field_fun, x, base, order, inf_val)
 
         def one(x):
             f = point_fields(x)
-            dh, dG, dlam = jax.jacfwd(point_fields)(x)
-            rho = jnp.linalg.norm(x)
-            n = x / rho
-            dr_h = jnp.einsum("a,ija->ij", n, dh)       # n^a d_a h_ij
-            dr_G = jnp.einsum("a,ijka->ijk", n, dG)
-            dr_l = jnp.einsum("a,a->", n, dlam)
-            sh, sG, sl = (0.0, 0.0, 0.0)
+            rh = robin(lambda y: point_fields(y).h, x, ph, I3, orders["h"])
+            rl = robin(lambda y: point_fields(y).lam, x, pl, lam_inf, orders["lam"])
+            sh = sl = 0.0
             if cfg.robin_source:
-                sh, sG, sl = robin_exact(x)
-            return jnp.concatenate([
-                pack_sym(dr_h + ph * (f.h - I3) / r_out - sh) * OFFW,
-                pack_gamma(dr_G + pG * f.G / r_out - sG),
-                jnp.array([dr_l + pl * (f.lam - lam_inf) / r_out - sl]),
-            ])
+                sh = robin(lambda y: exact_fields(y).h, x, ph, I3, orders["h"])
+                sl = robin(lambda y: exact_fields(y).lam, x, pl, lam_inf, orders["lam"])
+            if cfg.robin_include_G:
+                rG = robin(lambda y: point_fields(y).G, x, pG, jnp.zeros((3, 3, 3)),
+                           orders["G"])
+                sG = 0.0
+                if cfg.robin_source:
+                    sG = robin(lambda y: exact_fields(y).G, x, pG, jnp.zeros((3, 3, 3)),
+                               orders["G"])
+                return jnp.concatenate([pack_sym(rh - sh) * OFFW,
+                                        pack_gamma(rG - sG),
+                                        jnp.array([rl - sl])])
+            return jnp.concatenate([pack_sym(rh - sh) * OFFW, jnp.array([rl - sl])])
 
         R = jax.vmap(one)(xs)
-        return {"h": jnp.mean(R[:, :6] ** 2), "G": jnp.mean(R[:, 6:24] ** 2),
-                "lam": jnp.mean(R[:, 24] ** 2)}
+        out = {"h": jnp.mean(R[:, :6] ** 2), "lam": jnp.mean(R[:, -1] ** 2)}
+        if cfg.robin_include_G:
+            out["G"] = jnp.mean(R[:, 6:24] ** 2)
+        return out
 
     raise ValueError(f"unknown outer_bc {cfg.outer_bc!r}")
 

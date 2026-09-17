@@ -1,0 +1,21 @@
+# Machine-local / ephemeral files.
+#
+# NOTE: runs/ is intentionally NOT ignored -- the run outputs (config.json,
+# report.json, params.pkl, figures) are committed as reference results. Only the
+# big regenerable checkpoint state inside them is skipped.
+
+__pycache__/
+*.py[cod]
+
+.pytest_cache/
+.mplcache/
+.pip-cache/
+
+# Resumable checkpoint state from --ckpt-every: overwritten every N steps, fully
+# regenerable, so not worth committing as a result.
+ckpt.pkl
+ckpt.pkl.tmp
+run.pid
+
+# Detached-run logs (see HUB.md)
+logs/

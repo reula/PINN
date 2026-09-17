@@ -76,9 +76,9 @@ def rho_in(R0: float) -> float:
     return float(jnp.sqrt(4.0 + R0**2))
 
 
-def k_from_lambda0(R0: float, lam0: float) -> float:
-    """k such that lambda = lam0 on the areal-radius-2 sphere."""
-    r = rho_in(R0)
+def k_from_lambda0(R0: float, lam0: float, r_areal: float = 2.0) -> float:
+    """k such that lambda = lam0 on the sphere of areal radius r_areal."""
+    r = float(jnp.sqrt(r_areal**2 + R0**2))
     return lam0 * (r + R0) / (r - R0)
 
 
@@ -189,15 +189,16 @@ def exact_fields_in_harmonic_chart(R0: float, k: float, c1: float = 1.0,
     return fields
 
 
-def chart_with_inner_at(R0: float, rho_coord: float, h_rr: float = 1.0):
-    """Harmonic chart (c1, c2) in which the areal-radius-2 sphere sits at rho = rho_coord
-    and the normal-normal component there is h_rr.
+def chart_with_inner_at(R0: float, rho_coord: float, h_rr: float = 1.0,
+                        r_areal: float = 2.0):
+    """Harmonic chart (c1, c2) in which the sphere of areal radius r_areal sits at
+    rho = rho_coord and the normal-normal component there is h_rr.
 
     F = c1 rho + c2 F2 satisfies F(rho_geom) = rho_coord and F'(rho_geom) = 1/sqrt(h_rr),
-    with rho_geom = sqrt(4+R0^2) the canonical coordinate of the areal-radius-2 sphere
-    and h_{rho~rho~} = 1/F'^2.
+    with rho_geom = sqrt(r_areal^2+R0^2) the canonical coordinate of that sphere and
+    h_{rho~rho~} = 1/F'^2.
     """
-    rg = rho_in(R0)
+    rg = jnp.sqrt(r_areal**2 + R0**2)
     A = jnp.array([[rg, float(F2(R0, rg))], [1.0, float(F2_prime(R0, rg))]])
     b = jnp.array([rho_coord, 1.0 / jnp.sqrt(h_rr)])
     c1, c2 = jnp.linalg.solve(A, b)
@@ -205,7 +206,7 @@ def chart_with_inner_at(R0: float, rho_coord: float, h_rr: float = 1.0):
 
 
 def reference_fields(R0: float = 1.0, lam0: float = 1.0, rho_coord: float = 2.0,
-                     h_rr: float = 1.0):
+                     h_rr: float = 1.0, r_areal: float = 2.0):
     """Exact solution placed so that it satisfies the inner boundary conditions of the
     Milestone-2 shell (areal radius 2, h_rr = h_rr, lambda = lam0 at rho = rho_coord).
 
@@ -213,19 +214,19 @@ def reference_fields(R0: float = 1.0, lam0: float = 1.0, rho_coord: float = 2.0,
     outer Robin condition on lambda should use; the Robin conditions themselves are then
     satisfied to leading order in 1/rho, i.e. to a few percent at rho = 20.
     """
-    c1, c2 = chart_with_inner_at(R0, rho_coord, h_rr)
-    k = k_from_lambda0(R0, lam0)
+    c1, c2 = chart_with_inner_at(R0, rho_coord, h_rr, r_areal)
+    k = k_from_lambda0(R0, lam0, r_areal)
     return exact_fields_in_harmonic_chart(R0, k, c1=c1, c2=c2), dict(c1=c1, c2=c2, k=k)
 
 
 def reference_fields_asymptotic(R0: float = 1.0, k: float = 1.0, rho_coord: float = 2.0,
-                                c1: float = 1.0):
+                                c1: float = 1.0, r_areal: float = 2.0):
     """Exact solution with prescribed asymptotic value lambda -> k, placed in the
     harmonic chart where the areal-radius-2 sphere sits at rho = rho_coord.
 
     c1 = 1 keeps h -> delta_ij at infinity; c2 is then fixed by the inner condition.
     lambda on the inner sphere is k (rho_geom-R0)/(rho_geom+R0), rho_geom = sqrt(4+R0^2).
     """
-    rg = rho_in(R0)
+    rg = float(jnp.sqrt(r_areal**2 + R0**2))
     c2 = (rho_coord - c1 * rg) / float(F2(R0, rg))
     return exact_fields_in_harmonic_chart(R0, k, c1=c1, c2=c2), dict(c1=c1, c2=c2, k=k)

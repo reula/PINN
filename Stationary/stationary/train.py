@@ -2,6 +2,17 @@
 
 Usage:
     .venv/bin/python -m stationary.train --steps 2000 --outdir runs/m1_smoke
+
+Long runs (a 20k-step Adam phase takes ~2 h) should write resumable checkpoints,
+so that an interrupted session costs minutes rather than the whole run:
+
+    python -m stationary.train --steps 20000 --ckpt-every 500 --outdir runs/m2
+    python -m stationary.train --steps 20000 --ckpt-every 500 --outdir runs/m2 --resume auto
+
+`--resume auto` looks for <outdir>/ckpt.pkl and continues the Adam phase from the
+step recorded there. Pass the same `--steps` as the original run: the LR schedule
+and the resampling cadence are functions of the step index, so changing them would
+alter the trajectory instead of continuing it (a mismatch is reported).
 """
 from __future__ import annotations
 
@@ -18,16 +29,17 @@ import optax
 
 from . import diagnostics, exact
 from .losses import GROUP_KEYS, default_weights, group_terms, total_loss
-from .model import FieldNet, HybridNet, SymFieldNet, SymHybridNet, point_fields
+from .model import (AxisymHybridNet, FieldNet, HybridNet, SymFieldNet, SymHybridNet,
+                    point_fields)
 from .problem import Config, sample_shell, sample_sphere
 
 
 def make_model(cfg: Config):
-    cls = {"sym": SymFieldNet, "sym_hybrid": SymHybridNet,
-           "hybrid": HybridNet}.get(cfg.arch, FieldNet)
+    cls = {"sym": SymFieldNet, "sym_hybrid": SymHybridNet, "hybrid": HybridNet,
+           "axisym_hybrid": AxisymHybridNet}.get(cfg.arch, FieldNet)
     kw = dict(width=cfg.width, depth=cfg.depth, fourier=cfg.fourier,
               rho_in=cfg.rho_in, rho_out=cfg.rho_out)
-    if cfg.arch in ("sym", "sym_hybrid"):
+    if cfg.arch in ("sym", "sym_hybrid", "axisym_hybrid"):
         kw["decay"] = cfg.decay_feature
     return cls(**kw)
 
@@ -53,10 +65,11 @@ def build(cfg: Config, init_from: str | None = None):
     elif cfg.ref_solution or cfg.robin_source:
         if getattr(cfg, "ref_asymptotic", None) is not None:
             exact_fields, _ = exact.reference_fields_asymptotic(
-                cfg.R0, cfg.ref_asymptotic, cfg.rho_in)
+                cfg.R0, cfg.ref_asymptotic, cfg.rho_in, r_areal=cfg.inner_radius)
         else:
             exact_fields, _ = exact.reference_fields(cfg.R0, cfg.lam0, cfg.rho_in,
-                                                     cfg.inner_h_rr or 1.0)
+                                                     cfg.inner_h_rr or 1.0,
+                                                     r_areal=cfg.inner_radius)
 
     state = {"net": params}
     if cfg.outer_bc == "robin" and cfg.lam_inf is None:
@@ -74,7 +87,45 @@ def make_batch(key, cfg: Config):
     }
 
 
-def train(cfg: Config, verbose: bool = True, init_from: str | None = None):
+CKPT_NAME = "ckpt.pkl"
+
+
+def batch_for_step(cfg: Config, step: int):
+    """The collocation batch in effect at 1-based Adam step `step`.
+
+    Rebuilt from the seed instead of being stored, so that a resumed run sees
+    exactly the same sampling sequence as an uninterrupted one.
+    """
+    last = 1
+    if cfg.resample_every and step > 1:
+        last = 1 + ((step - 1) // cfg.resample_every) * cfg.resample_every
+    return make_batch(jax.random.PRNGKey(cfg.seed + last), cfg)
+
+
+def save_checkpoint(path, state, opt_state, weights, history, step, cfg):
+    """Dump everything needed to continue an interrupted Adam phase.
+
+    `weights` is included because the gradient-norm reweighting is path
+    dependent: it multiplies the previous weights, so it cannot be recomputed
+    from the step index alone.
+    """
+    payload = {
+        "state": jax.tree.map(jax.device_get, state),
+        "opt_state": jax.tree.map(jax.device_get, opt_state),
+        "weights": jax.tree.map(jax.device_get, weights),
+        "history": history,
+        "step": step,
+        "config": asdict(cfg),
+    }
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as fh:
+        pickle.dump(payload, fh)
+    os.replace(tmp, path)   # atomic: a kill mid-write cannot corrupt the previous checkpoint
+    return path
+
+
+def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
+          resume: str | None = None):
     os.makedirs(cfg.outdir, exist_ok=True)
     model, state, exact_fields = build(cfg, init_from)
     loss_fn = lambda st, batch, sc: total_loss(st, batch, cfg, model, exact_fields, pde_scale=sc)
@@ -104,8 +155,41 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None):
         return jnp.stack([one(k) for k in GROUP_KEYS])
 
     history = []
+    resume_step = 0
+    if resume is None:
+        resume = cfg.resume
+    if resume is not None:
+        rpath = os.path.join(cfg.outdir, CKPT_NAME) if resume == "auto" else resume
+        if not os.path.exists(rpath):
+            raise FileNotFoundError(
+                f"--resume {resume!r}: no checkpoint found at {rpath}. If the run was "
+                f"interrupted before step --ckpt-every, or --ckpt-every was larger than "
+                f"--steps, there is nothing to resume from.")
+        with open(rpath, "rb") as fh:
+            ck = pickle.load(fh)
+        state = ck["state"]
+        opt_state = ck["opt_state"]
+        weights = ck["weights"]
+        history = list(ck.get("history", []))
+        resume_step = int(ck["step"])
+        # Warn rather than silently change the trajectory: the Adam LR schedule and
+        # the resampling/reweighting cadences are all functions of the step index.
+        prev = ck.get("config", {})
+        for key in ("steps", "lr", "resample_every", "reweight_every", "pde_ramp_steps"):
+            if key in prev and prev[key] != getattr(cfg, key):
+                print(f"[resume] WARNING: {key}={getattr(cfg, key)!r} differs from the "
+                      f"checkpoint's {prev[key]!r}; this will not reproduce the original "
+                      f"run", flush=True)
+        if resume_step >= cfg.steps:
+            print(f"[resume] {rpath} is already at step {resume_step} "
+                  f"(steps={cfg.steps}); Adam phase complete", flush=True)
+        else:
+            print(f"[resume] continuing from {rpath} at step {resume_step}", flush=True)
+        batch = batch_for_step(cfg, max(resume_step + 1, 1))
+
+    loss = None
     t0 = time.time()
-    for it in range(1, cfg.steps + 1):
+    for it in range(resume_step + 1, cfg.steps + 1):
         sc = 1.0 if cfg.pde_ramp_steps <= 0 else min(1.0, it / cfg.pde_ramp_steps)
         if cfg.resample_every and it % cfg.resample_every == 1 and it > 1:
             batch = make_batch(jax.random.PRNGKey(cfg.seed + it), cfg)
@@ -140,6 +224,17 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None):
                       f"bc_in={float(sum(v for k, v in parts.items() if k.startswith('inner_'))):.2e} "
                       f"bc_out={float(sum(parts[k] for k in parts if k.startswith('outer_'))):.2e}",
                       flush=True)
+        if cfg.ckpt_every and it % cfg.ckpt_every == 0:
+            save_checkpoint(os.path.join(cfg.outdir, CKPT_NAME), state, opt_state,
+                            weights, history, it, cfg)
+            if verbose:
+                print(f"[ckpt  {it:6d}] wrote {os.path.join(cfg.outdir, CKPT_NAME)}",
+                      flush=True)
+
+    if loss is None:
+        # The Adam phase ran zero iterations (--steps 0, or a resume already at the
+        # end of the schedule): evaluate once so the report still carries a loss.
+        _, _, loss, parts = step(state, opt_state, batch, jnp.asarray(1.0), weights)
 
     # ------------------------------------------------------------------ L-BFGS
     with open(os.path.join(cfg.outdir, "params_adam.pkl"), "wb") as fh:
@@ -185,6 +280,12 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None):
         report.update(diagnostics.exact_comparison(pf, exact_fields, cfg))
     if "lam_inf" in state:
         report["lam_inf"] = float(state["lam_inf"])
+    if cfg.make_figures:
+        try:
+            from .multipoles import make_figures
+            report["figures"] = make_figures(pf, cfg, cfg.outdir)
+        except Exception as exc:                      # plotting must never kill a run
+            print(f"[figures] failed: {exc}", flush=True)
 
     with open(os.path.join(cfg.outdir, "config.json"), "w") as fh:
         json.dump(asdict(cfg), fh, indent=2)
@@ -223,6 +324,14 @@ def parse_args(argv=None):
     p.add_argument("--lam-inf", type=float, default=None)
     p.add_argument("--lam-inf-init", type=float, default=None)
     p.add_argument("--robin-exps", type=str, default=None)
+    p.add_argument("--robin-order", type=int, default=None)
+    p.add_argument("--robin-orders", type=str, default=None,
+                   help="per-field orders, e.g. h=4,G=1,lam=4")
+    p.add_argument("--no-robin-G", action="store_true")
+    p.add_argument("--inner-radius", type=float, default=None)
+    p.add_argument("--lam-bc-S1", type=float, default=None, dest="lam_bc_S1")
+    p.add_argument("--lam-bc-S2", type=float, default=None, dest="lam_bc_S2")
+    p.add_argument("--no-figures", action="store_true")
     p.add_argument("--no-inner-h-rr", action="store_true")
     p.add_argument("--ref-solution", action="store_true")
     p.add_argument("--decay-feature", action="store_true")
@@ -231,6 +340,10 @@ def parse_args(argv=None):
                    help="build the diagnostic reference with this asymptotic lambda")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--init-from", type=str, default=None)
+    p.add_argument("--ckpt-every", type=int, default=None, dest="ckpt_every",
+                   help="write a resumable checkpoint every N Adam steps (0 = off)")
+    p.add_argument("--resume", type=str, default=None,
+                   help="checkpoint to continue from, or 'auto' for <outdir>/ckpt.pkl")
     p.add_argument("--pde-ramp-steps", type=int, default=None)
     p.add_argument("--arch", type=str, default=None)
     p.add_argument("--radial", type=str, default=None)
@@ -270,6 +383,21 @@ def parse_args(argv=None):
         cfg.lam_inf = float(a.lam_inf)
     if a.lam_inf_init is not None:
         cfg.lam_inf_init = float(a.lam_inf_init)
+    if a.robin_order is not None:
+        cfg.robin_order = a.robin_order
+    if a.robin_orders is not None:
+        cfg.robin_orders = {k: int(v) for k, v in
+                            (kv.split("=") for kv in a.robin_orders.split(","))}
+    if a.no_robin_G:
+        cfg.robin_include_G = False
+    if a.inner_radius is not None:
+        cfg.inner_radius = a.inner_radius
+    if a.lam_bc_S1 is not None:
+        cfg.lam_bc_S1 = a.lam_bc_S1
+    if a.lam_bc_S2 is not None:
+        cfg.lam_bc_S2 = a.lam_bc_S2
+    if a.no_figures:
+        cfg.make_figures = False
     if a.robin_exps is not None:
         vals = [float(v) for v in a.robin_exps.split(",")]
         cfg.robin_exps = dict(zip(["h", "G", "lam"], vals))
@@ -277,6 +405,10 @@ def parse_args(argv=None):
         cfg.seed = a.seed
     if getattr(a, "init_from", None) is not None:
         cfg.init_from = a.init_from
+    if getattr(a, "ckpt_every", None) is not None:
+        cfg.ckpt_every = a.ckpt_every
+    if getattr(a, "resume", None) is not None:
+        cfg.resume = a.resume
     if a.pde_ramp_steps is not None:
         cfg.pde_ramp_steps = a.pde_ramp_steps
     if a.arch is not None:
@@ -312,4 +444,4 @@ def parse_args(argv=None):
 
 if __name__ == "__main__":
     a = parse_args()
-    train(a, init_from=a.init_from)
+    train(a, init_from=a.init_from, resume=a.resume)

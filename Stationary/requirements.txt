@@ -1,0 +1,30 @@
+# Reference environment for the stationary-Einstein PINN.
+#
+# Pinned to the versions every result under runs/ was produced with
+# (macOS ARM / CPU, Python 3.14, 2026-09-17).
+#
+# jaxlib is deliberately NOT listed here. The reference build is the macOS ARM
+# wheel; on a Linux machine you must install the wheel matching the hardware, and
+# for GPU the matching CUDA variant. Install jax FIRST, then this file, so that
+# pip sees jax==0.11.1 already satisfied and leaves the device build alone:
+#
+#   CPU only:
+#     pip install "jax[cpu]==0.11.1" && pip install -r requirements.txt
+#
+#   NVIDIA GPU, using NVIDIA's PyPI wheels (self-contained, needs only a driver;
+#   'cuda12'/'cuda13' must match what the driver supports, check `nvidia-smi`):
+#     pip install "jax[cuda12]==0.11.1" && pip install -r requirements.txt
+#
+#   NVIDIA GPU, using CUDA already present in the container image (use this when
+#   the image ships a CUDA toolkit / module, and skip the ~3 GB of pip wheels):
+#     pip install "jax[cuda12-local]==0.11.1" && pip install -r requirements.txt
+#
+# Verify whichever you chose before launching a 2-hour run:
+#     python -c "import jax; print(jax.__version__, jax.devices())"
+#
+jax==0.11.1
+flax==0.12.9
+optax==0.2.8
+numpy==2.5.3
+matplotlib==3.11.2
+pytest==9.1.1

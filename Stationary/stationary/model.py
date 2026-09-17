@@ -52,7 +52,7 @@ class FieldNet(nn.Module):
 
 def point_fields(model, params):
     """Adapt the batched network to the single-point `fields` signature."""
-    if isinstance(model, (HybridNet, SymHybridNet)):
+    if isinstance(model, (HybridNet, SymHybridNet, AxisymHybridNet)):
         def h_of(y):
             return model.apply(params, y[None, :]).h[0]
 
@@ -211,3 +211,61 @@ class SymHybridNet(nn.Module):
         h = (1.0 + out[..., 0])[:, None, None] * d + out[..., 1][:, None, None] * nn_
         G = jnp.zeros(x.shape[:-1] + (3, 3, 3))
         return Fields(h, G, jnp.exp(out[..., 2]))
+
+
+class AxisymHybridNet(nn.Module):
+    """Axisymmetric metric-only ansatz, Gamma derived from h.
+
+    The data of interest (a z-dependent lambda on the inner sphere, S2 = 0) is
+    invariant under rotations about the z axis, so by uniqueness the solution is
+    axisymmetric and the general rotationally-covariant metric built from the unit
+    radial vector n and the axis z is
+
+        h_ij = (1 + a) delta_ij + b n_i n_j + c (n_i z_j + z_i n_j) + d z_i z_j
+
+    with a, b, c, d functions of (rho, mu = n_z), and lambda = exp(u(rho, mu)).
+    Five scalar functions of two variables instead of twenty-five of three: far more
+    accurate than the generic 3-D ansatz for this class of data, and still able to
+    represent every axisymmetric field content.  Gamma is the Christoffel symbol of h,
+    so compatibility holds identically.
+    """
+    width: int = 64
+    depth: int = 4
+    fourier: int = 8
+    rho_in: float = 1.0
+    rho_out: float = 100.0
+    out_std: float = 1e-2
+    decay: bool = False
+
+    @nn.compact
+    def __call__(self, x):
+        x = jnp.atleast_2d(x)
+        rho = jnp.linalg.norm(x, axis=-1, keepdims=True)
+        n = x / rho
+        t = jnp.log(rho / self.rho_in) / jnp.log(self.rho_out / self.rho_in)
+        mu = n[..., 2:3]
+        feats = [t, mu]
+        if self.decay:
+            feats.append(self.rho_in / rho)
+        for i in range(1, self.fourier + 1):
+            feats.append(jnp.sin(jnp.pi * i * t))
+            feats.append(jnp.cos(jnp.pi * i * t))
+        for i in range(1, self.fourier + 1):
+            feats.append(jnp.cos(jnp.pi * i * mu))
+        z = jnp.concatenate(feats, axis=-1)
+        for _ in range(self.depth):
+            z = jnp.tanh(nn.Dense(self.width)(z))
+        out = nn.Dense(5, kernel_init=nn.initializers.normal(self.out_std),
+                       bias_init=nn.initializers.zeros)(z)
+
+        d3 = jnp.eye(3)
+        ez = jnp.array([0.0, 0.0, 1.0])
+        nn_ = jnp.einsum("ni,nj->nij", n, n)
+        nz = 0.5 * (jnp.einsum("ni,j->nij", n, ez) + jnp.einsum("i,nj->nij", ez, n))
+        zz = jnp.einsum("i,j->ij", ez, ez)
+        h = ((1.0 + out[..., 0])[:, None, None] * d3
+             + out[..., 1][:, None, None] * nn_
+             + out[..., 2][:, None, None] * nz
+             + out[..., 3][:, None, None] * zz)
+        G = jnp.zeros(x.shape[:-1] + (3, 3, 3))
+        return Fields(h, G, jnp.exp(out[..., 4]))
