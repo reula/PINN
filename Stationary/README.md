@@ -402,33 +402,5 @@ Two things about *this* project that matter on the hub:
   root for the rms: a mean square of 1e-14 is an rms of 1e-7, i.e. the float32 floor,
   *not* a statement that the boundary data are satisfied to 1e-14.
 
-### 9.1 The two production runs, with their flags
-
-```bash
-# validation run: S1 = S2 = 0, lambda = 1/3 on the inner sphere, lambda -> 1 at rho = 100.
-# The exact family member (R0 = 1/sqrt(3), k = 1) solves it, so lambda(100) must be 0.9885.
-./run_hub.sh --steps 20000 --arch sym_hybrid --R0 0.5773502691896258 \
-    --ref-solution --ref-asymptotic 1.0 \
-    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
-    --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
-    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
-    --w-inner 100 --w-outer 100 --reweight-every 1500 --n-coll 4096 --n-bnd 256
-
-# the requested dipole (S1 = 0.1): axisymmetric, fourth-order Robin on h and lambda
-./run_hub.sh --steps 20000 --arch axisym_hybrid \
-    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
-    --lam-bc-S1 0.1 --lam-bc-S2 0.0 \
-    --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
-    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
-    --w-inner 100 --w-outer 100 --reweight-every 1500 --n-coll 4096 --n-bnd 256
-```
-
-`--robin-orders h=4,lam=4` is the fourth-order condition ($\{r^{-1}..r^{-4}\}$ for λ and
-$\{r^{-2}..r^{-5}\}$ for h), which is what lets the quadrupole pass through the outer
-boundary unpenalised. `--no-robin-G` drops the redundant Γ condition in the metric-only
-scheme (Γ is derived from h, so its condition only buys fifth derivatives of the network).
-
-**Sizing for a bigger machine**: the network is small (13 828 parameters at width 64 ×
-depth 4) and the L-BFGS line search is sequential, so a GPU gives a modest speed-up, not
-a dramatic one. The levers that actually matter are `--n-coll` (4096 → 16384+) and
-`--width/--depth` (64×4 → 256×6, with `--fourier 16`). Nothing else has to change.
+The two production runs of this project (the spherical validation control and the
+S1 = 0.1 dipole) are written out with their full flag lists in `HUB.md` §7.

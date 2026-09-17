@@ -137,10 +137,11 @@ Two limits worth knowing:
   dramatic one: the L-BFGS line search is inherently sequential. Raising
   `--n-coll` is the lever that actually feeds a GPU. One GPU is plenty — do not
   request several.
-* **Commit and push before you clone.** The current working tree has uncommitted
-  work (including `stationary/multipoles.py`, which `train.py` imports for
-  figures, as a brand-new untracked file). A clean clone at the current `HEAD`
-  gets **stale code** and will fail on figures. Push first, or `rsync` the tree.
+* **Push before you clone.** A clean clone contains only what is committed. Run
+  `git status` and `git push` before starting work on the hub, or the hub gets stale
+  code (a missing import for the figures is the failure mode). If you must move an
+  uncommitted tree instead: `rsync -av --exclude .venv --exclude .pip-cache \
+  --exclude .mplcache --exclude __pycache__ Stationary/ hub:~/PINN/Stationary/`.
 * **`runs/` is tracked on purpose** — the run outputs are committed as reference
   results, so `.gitignore` deliberately does not exclude them. Large `ckpt.pkl`
   files inside them *are* ignored.
@@ -157,3 +158,50 @@ Measured on the 8-core macOS CPU machine, `n_coll=4096`, width 64, depth 4:
 
 with **13 828 parameters** (55 KB of weights, ~165 KB per checkpoint). This is a
 small job: request modest CPU/RAM rather than many cores or several GPUs.
+
+## 7. The two production runs of this project
+
+Both use the second-order (metric-only) scheme with `Gamma` derived from `h`, the inner
+sphere at `rho = 1` carrying the round metric of areal radius 1 with
+`lambda = 1/3 + S1 z/rho_in`, fourth-order Robin conditions on `h` and `lambda`
+(`{r^-1..r^-4}` for lambda, `{r^-2..r^-5}` for h -- what lets the quadrupole pass the
+outer boundary unpenalised), and `lambda -> 1` at `rho = 100`. `--no-robin-G` drops the
+redundant Gamma condition, which in this scheme only buys fifth derivatives of the
+network. Run them through `run_hub.sh` so they survive a disconnect:
+
+```bash
+# (a) control: S1 = S2 = 0.  The exact family member (R0 = 1/sqrt(3), k = 1) solves it,
+#     so lambda(100) must come out 0.9885 -- the sharp acceptance test for the whole
+#     inner-data + fourth-order-Robin chain.
+./run_hub.sh --steps 20000 --outdir "$HOME/runs/control" \
+    --arch sym_hybrid --R0 0.5773502691896258 --ref-solution --ref-asymptotic 1.0 \
+    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
+    --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
+    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
+    --w-inner 100 --w-outer 100 --reweight-every 1500 --n-coll 4096 --n-bnd 256
+
+# (b) the requested dipole case, axisymmetric
+./run_hub.sh --steps 20000 --outdir "$HOME/runs/dipole" \
+    --arch axisym_hybrid --lam-bc-S1 0.1 --lam-bc-S2 0.0 \
+    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
+    --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
+    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
+    --w-inner 100 --w-outer 100 --reweight-every 1500 --n-coll 4096 --n-bnd 256
+```
+
+On the CPU machine here these take ~1.5-2.5 h each. **Sizing for a bigger machine:** the
+network is small (13 828 parameters at width 64 x depth 4) and the L-BFGS line search is
+sequential, so a GPU buys a modest speed-up rather than a dramatic one. The levers that
+matter are `--n-coll` (4096 -> 16384+), `--n-bnd` (256 -> 1024) and `--width/--depth`
+(64x4 -> 256x6, with `--fourier 16`); nothing else has to change, and `HUB.md` §5 explains
+why `JAX_ENABLE_X64` must stay off.
+
+Afterwards, the analysis you asked for is already produced by the run itself:
+
+* `runs/<name>/lambda_inner.png` -- `lambda` on the inner sphere: imposed data vs network;
+* `runs/<name>/lambda_multipoles_outer.png` -- the `l = 0, 1, 2` angular dependences of
+  `lambda` at `rho_final = 100`, with amplitudes;
+* `runs/<name>/lambda_multipole_decay.png` -- amplitudes vs `rho` with fitted powers
+  against the expected `-(l+1)`;
+* `runs/<name>/report.json` -- residuals per group, boundary values, multipole content.
+
