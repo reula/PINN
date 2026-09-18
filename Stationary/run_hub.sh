@@ -73,6 +73,8 @@ if [ "${1:-}" = "--check" ]; then
     MPLBACKEND=Agg MPLCONFIGDIR="$MPLCONFIGDIR" "$PY" -m pytest tests/ -q
     echo "== smoke run (200 steps, must finish in seconds) =="
     SMOKE="${SMOKE:-$HOME/runs/_smoke}"
+    # the shell creates the redirect target before python can create the outdir
+    mkdir -p "$(dirname "$SMOKE")"
     MPLBACKEND=Agg MPLCONFIGDIR="$MPLCONFIGDIR" "$PY" -m stationary.train \
         --steps 200 --n-coll 512 --lbfgs-steps 0 \
         --no-figures --outdir "$SMOKE" > "$SMOKE.log" 2>&1 \
