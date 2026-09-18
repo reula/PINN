@@ -39,6 +39,17 @@ OUTDIR="${OUTDIR:-}"
 MPLCONFIGDIR="${MPLCONFIGDIR:-$HOME/.mplcache}"
 mkdir -p "$MPLCONFIGDIR" 2>/dev/null || true
 
+# JAX preallocates 75% of the visible GPU memory by default. On a shared hub that is
+# antisocial and, when another user already holds the device, it fails outright with
+# "cuBlas allocation failure" from gpublasCreate even for trivial ops (jit_add). This
+# workload is tiny (13.8k parameters), so allocate on demand. Set
+# XLA_PYTHON_CLIENT_MEM_FRACTION=<fraction> to cap it instead, and
+# CUDA_VISIBLE_DEVICES=<n> to pick a free device when several are exposed.
+export XLA_PYTHON_CLIENT_PREALLOCATE="${XLA_PYTHON_CLIENT_PREALLOCATE:-false}"
+if [ -n "${XLA_PYTHON_CLIENT_MEM_FRACTION:-}" ]; then
+    export XLA_PYTHON_CLIENT_MEM_FRACTION
+fi
+
 if ! command -v "$PY" >/dev/null 2>&1; then
     echo "error: interpreter '$PY' not found. Activate your environment or set PY=..." >&2
     exit 1

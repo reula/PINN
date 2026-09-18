@@ -132,6 +132,15 @@ Two limits worth knowing:
   `MPLBACKEND=Agg` and a writable `MPLCONFIGDIR` — otherwise matplotlib tries to
   build its font cache in an unwritable directory on every import. `run_hub.sh`
   sets both.
+* **Shared-GPU allocation failures.** `INTERNAL: ... gpublasCreate(&handle) failed:
+  cuBlas allocation failure` from something as trivial as `jit_add` means JAX could not
+  get GPU memory at all -- almost always because it asked for 75% of the device up
+  front while another user held it. `run_hub.sh` now exports
+  `XLA_PYTHON_CLIENT_PREALLOCATE=false` for you. If it still fails, check `nvidia-smi`
+  (free memory, other processes), pick a free card with `CUDA_VISIBLE_DEVICES=1`, cap
+  the share with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.2`, or fall back to
+  `JAX_PLATFORMS=cpu ./run_hub.sh ...`: this workload is 13.8k parameters and runs
+  perfectly well on CPU (that is how every number under `runs/` was produced).
 * **GPU sizing.** The network is small — 13 828 parameters (width 64 × depth 4),
   `n_coll` 4096, a 165 KB checkpoint — so a GPU gives a modest speedup, not a
   dramatic one: the L-BFGS line search is inherently sequential. Raising
