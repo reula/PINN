@@ -53,6 +53,7 @@ def load(run_dir, params_file="params.pkl"):
     params_file="ckpt.pkl" reads the live checkpoint of a run that is still going.
     """
     cfg, model, state = load_run(run_dir, params_file)
+    cfg.run_dir = run_dir                      # so plots can name the run they came from
     return point_fields(model, state["net"]), cfg
 
 
@@ -66,18 +67,69 @@ def lambda_vs_rho(pf, cfg, n_rho=240, thetas=(0.0, 0.7, 1.5707963)):
     return rhos, curves
 
 
-def plot_lambda_vs_rho(pf, cfg, thetas=(0.0, 0.7, 1.5707963), logx=True, save=None):
+def plot_lambda_vs_rho(pf, cfg, thetas=(0.0, 0.7, 1.5707963), logx=True, save=None,
+                       tol=1e-6, table=True):
+    """lambda against rho, with a legend that says exactly what is drawn.
+
+    Two things this does that a naive plot does not:
+
+    * if the solution is spherically (or axisymmetrically) independent of the polar
+      angle, the curves for different theta coincide -- drawing three identical curves
+      and a five-entry legend is what makes such a plot unreadable, so it collapses to a
+      single curve and says the angles agree;
+    * otherwise it draws one curve per angle and adds the *envelope* (min/max over the
+      angles) so the angular spread is visible rather than implied.
+
+    The two horizontal guides are the asymptotic value lambda_inf and the imposed inner
+    value lam0, labelled as such rather than by symbol alone.
+    """
     import matplotlib.pyplot as plt
+
     rhos, curves = lambda_vs_rho(pf, cfg, thetas=thetas)
-    for th, lam in curves.items():
-        plt.plot(rhos, lam, label=fr"$\theta={th:.2f}$")
+    keys = list(curves)
+    first = curves[keys[0]]
+    scale = max(float(jnp.max(jnp.abs(first))), 1e-30)
+    spread = max((float(jnp.max(jnp.abs(curves[k] - first))) for k in keys[1:]), default=0.0)
+    degenerate = spread < tol * scale
+
     lam_inf = cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init
-    plt.axhline(lam_inf, ls=":", c="grey", label=fr"$\lambda_\infty={lam_inf:g}$")
-    plt.axhline(cfg.lam0, ls="-.", c="grey", alpha=0.6, label=fr"$\lambda_0={cfg.lam0:g}$")
+    name = getattr(cfg, "run_dir", "?")
+    fig, ax = plt.subplots(figsize=(9.5, 6))
+
+    if degenerate:
+        ax.plot(rhos, first, "C0-", lw=2,
+                label=fr"$\lambda(\rho)$, same for every $\theta$ (spread < {spread:.1e})")
+    else:
+        for k in keys:
+            ax.plot(rhos, curves[k], lw=1.4, label=fr"$\theta = {k:.2f}$ rad")
+        lo = jnp.min(jnp.stack([curves[k] for k in keys]), axis=0)
+        hi = jnp.max(jnp.stack([curves[k] for k in keys]), axis=0)
+        ax.fill_between(rhos, lo, hi, color="C0", alpha=0.12,
+                        label=fr"spread over $\theta$ (max {spread:.1e})")
+    ax.axhline(lam_inf, color="grey", ls=":", lw=1.5,
+               label=fr"asymptotic value $\lambda_\infty = {lam_inf:g}$")
+    ax.axhline(cfg.lam0, color="grey", ls="-.", lw=1.5, alpha=0.8,
+               label=fr"imposed inner value $\lambda_0 = {cfg.lam0:g}$")
     if logx:
-        plt.xscale("log")
-    plt.xlabel(r"$\rho$"); plt.ylabel(r"$\lambda$"); plt.legend(); plt.grid(alpha=0.3)
+        ax.set_xscale("log")
+    ax.set_xlabel(r"$\rho$   (harmonic radial coordinate)")
+    ax.set_ylabel(r"$\lambda$")
+    ax.set_title(f"$\\lambda$ vs $\\rho$  --  {name}\n"
+                 f"arch={cfg.arch}, Robin order {cfg.robin_orders or cfg.robin_order}",
+                 fontsize=10)
+    ax.legend(fontsize=9, loc="lower right")
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
     if save:
-        plt.savefig(save, dpi=120)
+        fig.savefig(save, dpi=120)
         print(f"wrote {save}")
+
+    if table:
+        show = jnp.geomspace(cfg.rho_in, cfg.rho_out, 9)
+        cols = [float(r) for r in show]
+        print(f"{'rho':>10} " + " ".join(f"{'theta=%.2f' % k:>12}" for k in keys) +
+              ("   (identical to 1e-6)" if degenerate else ""))
+        for r in cols:
+            vals = [float(jnp.interp(jnp.log(r), jnp.log(rhos), curves[k])) for k in keys]
+            print(f"{r:10.4f} " + " ".join(f"{v:12.7f}" for v in vals))
     return rhos, curves

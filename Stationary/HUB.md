@@ -190,51 +190,81 @@ Measured on the 8-core macOS CPU machine, `n_coll=4096`, width 64, depth 4:
 with **13 828 parameters** (55 KB of weights, ~165 KB per checkpoint). This is a
 small job: request modest CPU/RAM rather than many cores or several GPUs.
 
-## 7. The two production runs of this project
+## 7. The two production runs (separate, run in sequence)
 
-Both use the second-order (metric-only) scheme with `Gamma` derived from `h`, the inner
-sphere at `rho = 1` carrying the round metric of areal radius 1 with
-`lambda = 1/3 + S1 z/rho_in`, fourth-order Robin conditions on `h` and `lambda`
-(`{r^-1..r^-4}` for lambda, `{r^-2..r^-5}` for h -- what lets the quadrupole pass the
-outer boundary unpenalised), and `lambda -> 1` at `rho = 100`. `--no-robin-G` drops the
-redundant Gamma condition, which in this scheme only buys fifth derivatives of the
-network. Run them through `run_hub.sh` so they survive a disconnect:
+**They are two independent runs, not one run combining both cases.** A single run has one
+set of inner boundary data, so the spherically symmetric case (`S1 = 0`) and the dipole
+(`S1 = 0.1`) are necessarily separate jobs, each with its own output directory, log and
+checkpoints. Launch them one after the other — one GPU, two jobs at a time will just fight
+for memory.
+
+**Why run the `S1 = 0` case at all:** the dipole has no known solution, so it cannot
+validate itself. The `S1 = 0` run does — the exact family member (`R0 = 1/sqrt(3)`,
+`k = 1`) solves it, so `lambda(rho = 100)` must come out **0.9885** — and it uses the *same*
+model, the same inner-data machinery and the same fourth-order Robin conditions, differing
+only in `S1`. Passing it therefore validates exactly the code path the dipole uses; if it
+fails, the dipole number means nothing.
+
+Shared physics of both: second-order (metric-only) scheme with `Gamma` derived from `h`;
+inner sphere at `rho = 1` carrying the round metric of areal radius 1 with
+`lambda = 1/3 + S1 z/rho_in`; fourth-order Robin conditions on `h` and `lambda`
+(`{r^-1..r^-4}` for lambda, `{r^-2..r^-5}` for h — what lets the quadrupole pass the outer
+boundary unpenalised); `lambda -> 1` at `rho = 100`. `--no-robin-G` drops the redundant
+Gamma condition, which in this scheme only buys fifth derivatives of the network.
+
+Set the size once. The first line is the CPU reference; override it on the GPU:
 
 ```bash
-# (a) control: S1 = S2 = 0.  The exact family member (R0 = 1/sqrt(3), k = 1) solves it,
-#     so lambda(100) must come out 0.9885 -- the sharp acceptance test for the whole
-#     inner-data + fourth-order-Robin chain.
-./run_hub.sh --steps 20000 --outdir "$HOME/runs/control" \
-    --arch sym_hybrid --R0 0.5773502691896258 --ref-solution --ref-asymptotic 1.0 \
-    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
-    --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
-    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
-    --w-inner 100 --w-outer 100 --reweight-every 1500 --n-coll 4096 --n-bnd 256
-
-# (b) the requested dipole case, axisymmetric
-./run_hub.sh --steps 20000 --outdir "$HOME/runs/dipole" \
-    --arch axisym_hybrid --lam-bc-S1 0.1 --lam-bc-S2 0.0 \
-    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
-    --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
-    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
-    --w-inner 100 --w-outer 100 --reweight-every 1500 --n-coll 4096 --n-bnd 256
+SIZE=(--n-coll 4096 --n-bnd 256 --width 64 --depth 4 --fourier 8)
+# GPU:      SIZE=(--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16)
+COMMON=(--steps 20000 --lbfgs-steps 1000 --ref-solution --ref-asymptotic 1.0 \
+        --R0 0.5773502691896258 \
+        --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
+        --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
+        --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
+        --w-inner 100 --w-outer 100 --reweight-every 1500)
 ```
 
-On the CPU machine here these take ~1.5-2.5 h each. **Sizing for a bigger machine:** the
-network is small (13 828 parameters at width 64 x depth 4) and the L-BFGS line search is
-sequential, so a GPU buys a modest speed-up rather than a dramatic one. The levers that
-matter are `--n-coll` (4096 -> 16384+), `--n-bnd` (256 -> 1024) and `--width/--depth`
-(64x4 -> 256x6, with `--fourier 16`); nothing else has to change, and `HUB.md` §5 explains
-why `JAX_ENABLE_X64` must stay off.
+**(1) Control first — `S1 = S2 = 0`.** Output goes to `runs/<timestamp>` inside the
+checkout (override with `OUTDIR=`; `run_hub.sh` never writes outside the project):
 
-Afterwards, the analysis you asked for is already produced by the run itself:
+```bash
+./run_hub.sh "${COMMON[@]}" "${SIZE[@]}" \
+    --arch axisym_hybrid --outdir runs/control
+```
 
-* `runs/<name>/lambda_inner.png` -- `lambda` on the inner sphere: imposed data vs network;
-* `runs/<name>/lambda_multipoles_outer.png` -- the `l = 0, 1, 2` angular dependences of
-  `lambda` at `rho_final = 100`, with amplitudes;
-* `runs/<name>/lambda_multipole_decay.png` -- amplitudes vs `rho` with fitted powers
-  against the expected `-(l+1)`;
-* `runs/<name>/report.json` -- residuals per group, boundary values, multipole content.
+Check it before going further — any of:
+
+```bash
+python -m stationary.evaluate --outdir runs/control     # prints max_dh vs the exact solution
+python -m stationary.profile  --outdir runs/control     # lambda vs rho, exact overlay + table
+```
+
+`lambda` must reach **0.9885** at `rho = 100` and `max_dh` should be ~1e-4 or smaller.
+
+**(2) Then the dipole — `S1 = 0.1`:**
+
+```bash
+./run_hub.sh "${COMMON[@]}" "${SIZE[@]}" \
+    --arch axisym_hybrid --lam-bc-S1 0.1 --lam-bc-S2 0.0 --outdir runs/dipole
+```
+
+`--ref-solution --ref-asymptotic 1.0 --R0 1/sqrt(3)` is in the shared block so that the
+dipole run also carries the *spherical* reference for comparison: its diagnostics then show
+how far the dipole solution departs from the spherical one, and `stationary.profile` can
+overlay it without warning. It does not enter the loss unless `--robin-source` is also
+given.
+
+**Cost:** each is one full run, so budget 2x a single run (on the CPU here ~1.5-2.5 h
+each; measure ms/step on the GPU with the `--check` smoke run before launching 20000
+steps). If GPU time is tight, run the control at the smaller size — it is a correctness
+check, not a resolution study — and spend the big configuration on the dipole.
+
+The analysis is produced by the run itself: `lambda_inner.png` (imposed `lambda` on the
+inner sphere vs the network), `lambda_multipoles_outer.png` (the `l = 0, 1, 2` angular
+dependences at `rho_final = 100`, with amplitudes), `lambda_multipole_decay.png`
+(amplitudes vs `rho` against the expected `-(l+1)`), and `report.json` with the residuals,
+boundary values and multipole content.
 
 ## 8. Notebooks
 
@@ -279,6 +309,15 @@ pf, cfg = load("runs/m2R4_realrobin")               # or params_file="ckpt.pkl" 
 rhos, curves = lambda_vs_rho(pf, cfg, thetas=(0.0, 0.7))
 plot_lambda_vs_rho(pf, cfg, save="lambda_vs_rho.png")
 ```
+
+`plot_lambda_vs_rho` is written so the figure explains itself: the two horizontal guides
+are labelled as the asymptotic and the imposed inner value (not as bare symbols), the
+caption names the run and its architecture, and if the solution does not depend on the
+polar angle (every spherical run) the per-angle curves are collapsed to one line that
+says so, instead of drawing three coincident curves and a five-entry legend. When the
+angle *does* matter it draws one curve per angle plus the min/max envelope. It also prints
+a small table (pass `table=False` to silence it), which is a quick check that the inner
+boundary data were imposed: on `runs/n2_dipole` it reproduces `1/3 + 0.1 cos(theta)`.
 
 For anything else, the fields are `pf(x)` -> `(h, Gamma, lambda)` at a point `x` (a length-3
 array in the harmonic coordinates), and `cfg` carries `rho_in`, `rho_out`, `lam0`,
