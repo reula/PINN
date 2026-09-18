@@ -85,6 +85,7 @@ def plot_lambda_vs_rho(pf, cfg, thetas=(0.0, 0.7, 1.5707963), logx=True, save=No
     """
     import matplotlib.pyplot as plt
 
+    plt.close("all")      # a notebook keeps every figure from earlier cells otherwise
     rhos, curves = lambda_vs_rho(pf, cfg, thetas=thetas)
     keys = list(curves)
     first = curves[keys[0]]
@@ -115,6 +116,8 @@ def plot_lambda_vs_rho(pf, cfg, thetas=(0.0, 0.7, 1.5707963), logx=True, save=No
     ax.set_xlabel(r"$\rho$   (harmonic radial coordinate)")
     ax.set_ylabel(r"$\lambda$")
     ax.set_title(f"$\\lambda$ vs $\\rho$  --  {name}\n"
+                 f"inner data: $\\lambda_0={cfg.lam0:g}$, "
+                 f"$\\bf S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$   |   "
                  f"arch={cfg.arch}, Robin order {cfg.robin_orders or cfg.robin_order}",
                  fontsize=10)
     ax.legend(fontsize=9, loc="lower right")
@@ -133,3 +136,82 @@ def plot_lambda_vs_rho(pf, cfg, thetas=(0.0, 0.7, 1.5707963), logx=True, save=No
             vals = [float(jnp.interp(jnp.log(r), jnp.log(rhos), curves[k])) for k in keys]
             print(f"{r:10.4f} " + " ".join(f"{v:12.7f}" for v in vals))
     return rhos, curves
+
+
+def show_run(run_dir, params_file="params.pkl", thetas=(0.0, 0.7), lmax=3, save=None):
+    """ONE figure for a run: lambda(rho) and the multipole content of lambda at rho_out.
+
+    Use this in a notebook instead of calling evaluate()/make_figures() there: those draw
+    four separate multi-panel figures (15 axes in total) and a notebook displays every one
+    of them.  Everything figure-producing in this module closes previous figures first, so
+    a re-run replaces the plot rather than adding another one.
+
+    The caption carries the run directory, arch and the inner boundary data
+    (lambda_0, S1, S2) so a saved PNG identifies itself.
+    """
+    import matplotlib.pyplot as plt
+
+    from stationary.multipoles import angular_profiles, lambda_multipoles  # absolute:
+    # `%run notebook_setup.py` in a notebook has no package context
+
+    plt.close("all")
+    pf, cfg = load(run_dir, params_file)
+    lam_inf = cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init
+
+    fig, ax = plt.subplots(1, 3, figsize=(17, 5))
+
+    # --- 1. lambda against rho
+    rhos, curves = lambda_vs_rho(pf, cfg, thetas=thetas)
+    keys = list(curves)
+    first = curves[keys[0]]
+    spread = max((float(jnp.max(jnp.abs(curves[k] - first))) for k in keys[1:]), default=0.0)
+    degenerate = spread < 1e-6 * max(float(jnp.max(jnp.abs(first))), 1e-30)
+    if degenerate:
+        ax[0].plot(rhos, first, "C0-", lw=2,
+                   label=fr"every $\theta$ agrees (spread {spread:.1e})")
+    else:
+        for k in keys:
+            ax[0].plot(rhos, curves[k], lw=1.4, label=fr"$\theta = {k:.2f}$ rad")
+        lo = jnp.min(jnp.stack([curves[k] for k in keys]), axis=0)
+        hi = jnp.max(jnp.stack([curves[k] for k in keys]), axis=0)
+        ax[0].fill_between(rhos, lo, hi, color="C0", alpha=0.12,
+                           label=fr"angular spread (max {spread:.1e})")
+    ax[0].axhline(lam_inf, color="grey", ls=":", lw=1.5,
+                  label=fr"asymptotic $\lambda_\infty={lam_inf:g}$")
+    ax[0].axhline(cfg.lam0, color="grey", ls="-.", lw=1.5, alpha=0.8,
+                  label=fr"inner $\lambda_0={cfg.lam0:g}$")
+    ax[0].set_xscale("log")
+    ax[0].set_xlabel(r"$\rho$"); ax[0].set_ylabel(r"$\lambda$")
+    ax[0].set_title(r"$\lambda$ vs $\rho$")
+    ax[0].legend(fontsize=8)
+
+    # --- 2 and 3. multipoles of lambda at the outer sphere
+    coef, power, (mu_o, phi_o, vals_o) = lambda_multipoles(pf, cfg.rho_out, lmax)
+    th_o, prof = angular_profiles(coef, lmax)
+    ls = list(range(min(3, lmax + 1)))
+    amps = [float(jnp.sqrt(power[l])) for l in ls]
+    ax[1].bar([f"$l={l}$" for l in ls], amps)
+    nz = [a for a in amps if a > 0]
+    if nz and max(nz) / min(nz) > 1e3:
+        ax[1].set_yscale("log")
+        ax[1].set_ylim(min(nz) / 10, max(nz) * 10)
+    ax[1].set_xlabel("multipole order")
+    ax[1].set_ylabel("amplitude")
+    ax[1].set_title(fr"multipoles of $\lambda$ at $\rho={cfg.rho_out:g}$")
+    for l in ls:
+        ax[2].plot(th_o, prof[l], label=fr"$l={l}$  (amp {amps[l]:.2e})")
+    ax[2].set_xlabel(r"$\theta$"); ax[2].set_ylabel(r"$\lambda_l(\theta)$")
+    ax[2].set_title("angular dependence of each multipole")
+    ax[2].legend(fontsize=8)
+
+    for a in ax:
+        a.grid(alpha=0.3)
+    fig.suptitle(f"{run_dir}   |   inner data: $\\lambda_0={cfg.lam0:g}$,  "
+                 f"$\\bf S_1={cfg.lam_bc_S1:g}$,  $S_2={cfg.lam_bc_S2:g}$   |   "
+                 f"arch={cfg.arch}, Robin order {cfg.robin_orders or cfg.robin_order}",
+                 fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    if save:
+        fig.savefig(save, dpi=120)
+        print(f"wrote {save}")
+    return fig

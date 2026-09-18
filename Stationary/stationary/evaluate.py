@@ -175,6 +175,7 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
     fig.suptitle(f"{name}   (arch={cfg.arch}, "
                  fr"$\rho\in[{cfg.rho_in:g},{cfg.rho_out:g}]$, "
                  fr"$\lambda_0={cfg.lam0:g}$, $\lambda_\infty={lam_inf:g}$, "
+                 fr"$\bf S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
                  f"Robin order {cfg.robin_orders or cfg.robin_order})", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     out = os.path.join(run_dir, "diagnostics.png")

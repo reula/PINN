@@ -324,3 +324,25 @@ array in the harmonic coordinates), and `cfg` carries `rho_in`, `rho_out`, `lam0
 `lam_inf`, `inner_radius` and the Robin orders, so the same pattern extends to `Gamma`,
 `h_rr` or the multipoles (`from stationary.multipoles import lambda_multipoles`).
 
+**8.4 Which call draws what.** A notebook displays *every* figure a cell creates, and the
+figure-producing calls differ a lot in how many they make:
+
+| call | figures | axes in total |
+|---|---|---|
+| `%run notebook_setup.py` | 0 | - (defines helpers, prints one summary line) |
+| `show_run("runs/<name>")` | **1** | 3 |
+| `plot_lambda_vs_rho(pf, cfg)` | 1 | 1 |
+| `python -m stationary.profile --outdir RUN` | 1 | 2 |
+| `python -m stationary.evaluate --outdir RUN` | 4 | 15 |
+| a training run (`run_hub.sh ...`) | 0 | writes the same 4 files, displays nothing |
+
+So calling `evaluate()` in a notebook explains a screenful of plots: `diagnostics.png`
+(6 axes) plus `lambda_inner.png` (4), `lambda_multipoles_outer.png` (3) and
+`lambda_multipole_decay.png` (2) are each drawn and displayed as they are created. Use
+`show_run` for a single three-axis summary, or pass `--no-plots` to `evaluate`.
+
+Every figure carries its provenance in the caption: the run directory, the architecture,
+and the inner boundary data `lambda_0`, `S1`, `S2` -- so a PNG or a notebook cell can be
+told apart from the next one. The plotting helpers here call `plt.close("all")` first, so
+re-running a cell replaces its plot instead of stacking another one.
+

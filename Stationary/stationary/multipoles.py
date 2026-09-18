@@ -146,10 +146,12 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3):
     ax[1, 1].set_ylabel(r"$\theta$"); ax[1, 1].set_xlabel(r"$\varphi$")
     for a in ax.ravel():
         a.grid(alpha=0.3)
-    fig.suptitle(f"$\\lambda$ on the inner sphere, $\\rho={cfg.rho_in:g}$   "
-                 f"(arch={cfg.arch}, $S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
-                 f"$\\lambda_0={cfg.lam0:g}$)   max error {report['inner_bc_max_err']:.2e}",
-                 fontsize=11)
+    fig.suptitle(f"$\\lambda$ on the inner sphere $\\rho={cfg.rho_in:g}$  =  "
+                 f"$\\lambda_0 + S_1 z/\\rho_{{in}} + S_2 (z^2-(x^2+y^2)/2)/\\rho_{{in}}^2$"
+                 f"   with  $\\lambda_0={cfg.lam0:g}$,  "
+                 f"$\\bf S_1={cfg.lam_bc_S1:g}$,  S_2={cfg.lam_bc_S2:g}$"
+                 f"\narch={cfg.arch}   |   max |network - imposed| = {report['inner_bc_max_err']:.2e}",
+                 fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(os.path.join(outdir, "lambda_inner.png"), dpi=120)
     plt.close(fig)
@@ -177,8 +179,10 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3):
     for a in ax:
         a.grid(alpha=0.3)
     fig.suptitle(f"multipoles of $\\lambda$ at the outer sphere $\\rho={cfg.rho_out:g}$   "
-                 f"(arch={cfg.arch}, mean $\\lambda$ there {float(jnp.mean(vals_o)):.4f})",
-                 fontsize=11)
+                 f"|   inner data: $S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
+                 f"$\\lambda_0={cfg.lam0:g}$   |   arch={cfg.arch}"
+                 f"\nmean $\\lambda$ there = {float(jnp.mean(vals_o)):.4f}",
+                 fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(os.path.join(outdir, "lambda_multipoles_outer.png"), dpi=120)
     plt.close(fig)
@@ -206,8 +210,9 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3):
     ax[1].set_xlabel(r"$\rho$"); ax[1].set_ylabel(r"$a_l\,\rho^{l+1}$"); ax[1].legend()
     for a in ax:
         a.grid(alpha=0.3)
-    fig.suptitle(f"decay of each multipole of $\\lambda$   (arch={cfg.arch}, "
-                 f"$\\rho\\in[{cfg.rho_in:g},{cfg.rho_out:g}]$)", fontsize=11)
+    fig.suptitle(f"decay of each multipole of $\\lambda$   |   $S_1={cfg.lam_bc_S1:g}$, "
+                 f"$S_2={cfg.lam_bc_S2:g}$, $\\lambda_0={cfg.lam0:g}$   |   arch={cfg.arch}, "
+                 f"$\\rho\\in[{cfg.rho_in:g},{cfg.rho_out:g}]$", fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(os.path.join(outdir, "lambda_multipole_decay.png"), dpi=120)
     plt.close(fig)

@@ -95,7 +95,9 @@ def main():
     ax[0].set_xscale("log")
     ax[0].set_xlabel(r"$\rho$")
     ax[0].set_ylabel(r"$\lambda(\rho)$")
-    ax[0].set_title(f"$\\lambda$ vs $\\rho$   ({os.path.basename(os.path.normpath(run_dir))})")
+    ax[0].set_title(f"$\\lambda$ vs $\\rho$   ({os.path.basename(os.path.normpath(run_dir))})   "
+                    f"$\\lambda_0={cfg.lam0:g}$, $S_1={cfg.lam_bc_S1:g}$, "
+                    f"$S_2={cfg.lam_bc_S2:g}$")
     ax[0].legend(fontsize=8)
     ax[0].grid(alpha=0.3)
 
