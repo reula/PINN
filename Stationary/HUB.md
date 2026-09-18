@@ -100,6 +100,7 @@ kill -0 $(cat runs/<name>/run.pid) && echo running || echo stopped
 nohup runs/<name>/resume.sh > logs/<name>.resume.log 2>&1 &   # continue, DETACHED
 python -m stationary.evaluate --outdir runs/<name>         # figures/diagnostics afterwards
 python -m stationary.profile  --outdir runs/<name>         # lambda vs rho (+ exact overlay)
+python -m stationary.report   --outdir runs/<name>         # one-screen text report (paste-able)
 ```
 
 `resume.sh` ends in `exec python ...`, so if you run it bare in a terminal it dies with
@@ -324,7 +325,17 @@ array in the harmonic coordinates), and `cfg` carries `rho_in`, `rho_out`, `lam0
 `lam_inf`, `inner_radius` and the Robin orders, so the same pattern extends to `Gamma`,
 `h_rr` or the multipoles (`from stationary.multipoles import lambda_multipoles`).
 
-**8.4 Which call draws what.** A notebook displays *every* figure a cell creates, and the
+**8.4 A text report to paste into a discussion.** `python -m stationary.report --outdir
+runs/<name>` prints one screen with: the code provenance (git HEAD, and whether the
+boundary-weight fix is present in `train.py`), the full configuration (including `S1`,
+`S2`, `lambda_0`, Robin orders), the loss trajectory with its groups, the inner boundary
+imposed versus achieved at three angles, `lambda` at the outer sphere with its distance
+from `lambda_inf`, the multipole amplitudes and their fitted decay powers, the PDE
+residuals, the comparison with the exact reference when there is one, and the
+`[reweight]` history from the log -- the last of which is where a silently de-weighted
+boundary condition shows up. It plots nothing, so it is safe headless.
+
+**8.5 Which call draws what.** A notebook displays *every* figure a cell creates, and the
 figure-producing calls differ a lot in how many they make:
 
 | call | figures | axes in total |
