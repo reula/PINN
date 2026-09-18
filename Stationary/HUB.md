@@ -236,3 +236,52 @@ Afterwards, the analysis you asked for is already produced by the run itself:
   against the expected `-(l+1)`;
 * `runs/<name>/report.json` -- residuals per group, boundary values, multipole content.
 
+## 8. Notebooks
+
+A Jupyter kernel inherits **none** of what `run_hub.sh` sets up, so a notebook needs its
+own preamble. Two prerequisites and one cell:
+
+**8.1 The kernel must be the environment that has JAX.** Register it once:
+
+```bash
+source ~/venvs/pinn/bin/activate          # or Stationary/.venv
+pip install ipykernel
+python -m ipykernel install --user --name pinn --display-name "PINN (jax)"
+```
+
+then pick "PINN (jax)" in the notebook's kernel menu. A kernel from the base conda env
+will not have `jax`, or will have the CPU-only build.
+
+**8.2 The preamble cell must come first.** Three settings only take effect if they are
+made *before* the first `import jax` / `import matplotlib` in that kernel:
+
+* `XLA_PYTHON_CLIENT_PREALLOCATE=false` -- otherwise the kernel grabs 75% of the GPU and
+  either fails with `cuBlas allocation failure` or blocks your own training run;
+* `MPLCONFIGDIR` -- a writable font-cache directory, else matplotlib rebuilds its cache on
+  every import (and fails if the home directory is read-only);
+* `jax_enable_x64` -- post-processing and the tests are float64 by convention, while
+  training stays float32.
+
+**If you have already imported jax in this kernel, restart it** -- environment variables
+read at import time cannot be changed afterwards.
+
+**8.3 The cell.** From inside `Stationary/`:
+
+```python
+%run notebook_setup.py
+```
+
+It sets the three things above, puts the project on `sys.path`, prints the device summary,
+and defines three helpers:
+
+```python
+pf, cfg = load("runs/m2R4_realrobin")               # or params_file="ckpt.pkl" for a live run
+rhos, curves = lambda_vs_rho(pf, cfg, thetas=(0.0, 0.7))
+plot_lambda_vs_rho(pf, cfg, save="lambda_vs_rho.png")
+```
+
+For anything else, the fields are `pf(x)` -> `(h, Gamma, lambda)` at a point `x` (a length-3
+array in the harmonic coordinates), and `cfg` carries `rho_in`, `rho_out`, `lam0`,
+`lam_inf`, `inner_radius` and the Robin orders, so the same pattern extends to `Gamma`,
+`h_rr` or the multipoles (`from stationary.multipoles import lambda_multipoles`).
+
