@@ -1,6 +1,6 @@
 """Evaluate a trained checkpoint: residual diagnostics, exact-solution comparison, figures.
 
-    .venv/bin/python -m stationary.evaluate runs/m1_a
+    .venv/bin/python -m stationary.evaluate --outdir runs/m1_sym
 """
 from __future__ import annotations
 

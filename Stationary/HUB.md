@@ -14,8 +14,8 @@ terminal process dies with that terminal's session. So:
 | terminal, plain `&` | only if `nohup`ed | no |
 | `./run_hub.sh ...` (this repo) | yes | yes, from the last checkpoint |
 
-A 20 000-step Adam phase takes **~1.5–2 h** here (`runs/m2R4_realrobin` = 7 435 s,
-`runs/n1_control` = 5 419 s), so this matters: never launch one from a notebook.
+A 20 000-step Adam phase takes **~1–2 h** here (`runs/m2R4_realrobin` = 7 435 s,
+`runs/m2R3_symhybrid` = 7 866 s), so this matters: never launch one from a notebook.
 
 ---
 
@@ -99,6 +99,7 @@ tail -f logs/<name>.log                                    # progress (Ctrl-C is
 kill -0 $(cat runs/<name>/run.pid) && echo running || echo stopped
 nohup runs/<name>/resume.sh > logs/<name>.resume.log 2>&1 &   # continue, DETACHED
 python -m stationary.evaluate --outdir runs/<name>         # figures/diagnostics afterwards
+python -m stationary.profile  --outdir runs/<name>         # lambda vs rho (+ exact overlay)
 ```
 
 `resume.sh` ends in `exec python ...`, so if you run it bare in a terminal it dies with
@@ -183,8 +184,8 @@ Measured on the 8-core macOS CPU machine, `n_coll=4096`, width 64, depth 4:
 | run | steps (Adam + LBFGS) | wall time |
 |---|---|---|
 | `n2_dipole` | 10 000 + 1 000 | 4 905 s |
-| `n1_control` | 12 000 + 1 000 | 5 419 s |
 | `m2R4_realrobin` | 20 000 + 2 000 | 7 435 s |
+| `m2R3_symhybrid` | 20 000 + 2 000 | 7 866 s |
 
 with **13 828 parameters** (55 KB of weights, ~165 KB per checkpoint). This is a
 small job: request modest CPU/RAM rather than many cores or several GPUs.

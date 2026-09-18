@@ -61,6 +61,8 @@ and `tests/test_pipeline.py::test_harmonic_chart_freedom`.
     stationary/losses.py       PDE residuals + inner/outer boundary conditions
     stationary/train.py        Adam -> L-BFGS driver, checkpoints, reports
     stationary/evaluate.py     diagnostics and figures for a checkpoint
+    stationary/profile.py      lambda (and other fields) as a function of rho
+    stationary/multipoles.py   spherical-harmonic decomposition and figures
     stationary/diagnostics.py  residual/error/boundary-geometry reports
     tests/test_pipeline.py     end-to-end tests (see below)
     verify_exact_solution.py   standalone regression test of the exact solution
@@ -405,24 +407,35 @@ Two things about *this* project that matter on the hub:
 The two production runs of this project (the spherical validation control and the
 S1 = 0.1 dipole) are written out with their full flag lists in `HUB.md` §7.
 
-## 10. Invalidated results (do not use)
+## 10. Invalidated results (removed)
 
-Two completed runs, `runs/n1_control` and `runs/n3_order4`, are **void**. They were
-produced with the gradient-norm reweighting applied to *all* loss groups, including the
-boundary terms. Since that rule sets `w ~ 1/||d term/d theta||`, the **most violated
-constraint receives the smallest weight**: in `runs/n1_control` the outer Robin weight
-decayed 17.7 -> 12.5 -> 8.84 -> 6.25 over the last rewrites while the inner weight grew
-81 -> 229. The only term enforcing `lambda -> 1` was therefore silenced, `lambda` stayed
-at its inner value 1/3 all the way out (mean lambda at rho = 100: 0.3365 instead of
-0.9885) and the solution drifted onto the trivial branch (lambda ~ const, nearly flat
-metric, max|dh| = 0.42).
+Two completed runs, `n1_control` and `n3_order4`, were **void and have been deleted** from
+`runs/`. They were produced with the gradient-norm reweighting applied to *all* loss
+groups, including the boundary terms. Since that rule sets `w ~ 1/||d term/d theta||`, the
+**most violated constraint receives the smallest weight**: in that control run the outer
+Robin weight decayed 17.7 -> 12.5 -> 8.84 -> 6.25 over the last rewrites while the inner
+weight grew 81 -> 229. The only term enforcing `lambda -> 1` was therefore silenced,
+`lambda` stayed at its inner value 1/3 all the way out (mean lambda at rho = 100: 0.3365
+instead of the required 0.9885) and the solution drifted onto the trivial branch
+(lambda ~ const, nearly flat metric, max|dh| = 0.42).
 
 The reweighting now touches the four interior groups only; the boundary weights stay at
-`w_inner`/`w_outer`. Verified on a 400-step control run: the outer Robin mean square
-falls 1.56e+03 -> 4.57e-02 -> 2.36e-04 with its weight held at 100.
+`w_inner`/`w_outer`. Verified on a 400-step control run: the outer Robin mean square falls
+1.56e+03 -> 4.57e-02 -> 2.36e-04 while its weight is held at 100, and the 23 tests pass.
 
 Runs affected: anything started before this fix **with `--reweight-every > 0`**.
-`runs/m1_sym`, `runs/m1_3d`, `runs/m2R3_symhybrid` and `runs/m2R4_realrobin` were also
-produced with the old rule, but in those the boundary data were satisfied *first* (the
-BC-first ramp), so their BC weights grew instead of decaying and their results stand.
-Only n1_control and n3_order4 are void.
+`m1_sym`, `m1_3d`, `m2R3_symhybrid` and `m2R4_realrobin` used the same old rule, but there
+the BC-first ramp satisfied the boundary data *before* the first rewrite, so their BC
+weights grew rather than decayed and their results stand. Everything else that was
+exploratory (scaler sweeps, schedule comparisons, regression probes, smoke tests) has also
+been deleted; `runs/` now holds only the seven runs the documentation refers to.
+
+### 10.1 Status of the dipole run
+
+`runs/n2_dipole` (S1 = 0.1, independent-Gamma ansatz, order-2 Robin) is kept because the
+chart-independent analysis in §8.6 uses it, but it is **not converged**: the interior
+residuals sit at ~1e-2 and lambda reaches only 0.66 at rho = 100 instead of ~1. It has to
+be re-run with the corrected reweighting (and, for the quadrupole, with `--robin-orders
+h=4,lam=4`), which is what the hub runs in `HUB.md` §7 are for. Its residual diagnostics
+are quoted in §8.6 and its timing in `HUB.md` §6; its figures should not be read as
+physics.
