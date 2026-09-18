@@ -100,8 +100,11 @@ if [ "${1:-}" = "--check" ]; then
     SMOKE="${SMOKE:-$HERE/runs/_smoke}"
     # the shell creates the redirect target before python can create the outdir
     mkdir -p "$(dirname "$SMOKE")"
+    # Smoke-test the PRODUCTION architecture, not the generic 3-D one: the 3-D model
+    # emits 25 fields and its residual graph is by far the heaviest thing in the repo,
+    # so a 3-D smoke run can exhaust a small GPU while the real (axisymmetric) runs fit.
     MPLBACKEND=Agg MPLCONFIGDIR="$MPLCONFIGDIR" "$PY" -m stationary.train \
-        --steps 200 --n-coll 512 --lbfgs-steps 0 \
+        --steps 200 --n-coll 256 --n-bnd 64 --lbfgs-steps 0 --arch sym_hybrid \
         --no-figures --outdir "$SMOKE" > "$SMOKE.log" 2>&1 \
         && echo "smoke ok -> $SMOKE/report.json" \
         || { echo "smoke FAILED, last lines of $SMOKE.log:"; tail -20 "$SMOKE.log"; exit 1; }

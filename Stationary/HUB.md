@@ -136,6 +136,15 @@ Two limits worth knowing:
   `MPLBACKEND=Agg` and a writable `MPLCONFIGDIR` — otherwise matplotlib tries to
   build its font cache in an unwritable directory on every import. `run_hub.sh`
   sets both.
+* **"Out of memory while trying to allocate 9.32GiB" on a 12 GB card is JAX's
+  preallocation, not the model.** JAX reserves 75% of the visible device at startup; the
+  smoke run's actual tensors are tens of MB. `run_hub.sh` exports
+  `XLA_PYTHON_CLIENT_PREALLOCATE=false` -- confirm it with
+  `grep -n PREALLOC run_hub.sh` on the machine you are actually running, and if in doubt
+  export it in the launching shell as well (`XLA_PYTHON_CLIENT_MEM_FRACTION=0.4` caps the
+  share instead, `XLA_PYTHON_CLIENT_ALLOCATOR=platform` is the fully on-demand allocator).
+  The `--check` smoke run now uses the light production architecture (`sym_hybrid`,
+  `n_coll=256`) rather than the 25-field 3-D model.
 * **Check how much GPU you were given, not just that you got one.** `nvidia-smi` on
   this hub reports `0MiB / 750MiB` for an A30 -- i.e. a small vGPU slice, not the card.
   The `--check` smoke run alone needs ~750 MiB, so it dies with
