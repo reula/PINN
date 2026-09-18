@@ -21,8 +21,17 @@ A 20 000-step Adam phase takes **~1–2 h** here (`runs/m2R4_realrobin` = 7 435 
 
 ## 1. One-time setup
 
-Python, JAX and friends. **Do not copy the local `.venv`** — it is a macOS ARM
-build. Recreate it on the hub:
+> **On this hub the CUDA environment is the checkout's own `.venv`**, not a separate
+> one: `<checkout>/.venv/bin/python -c "import jax; print(jax.devices())"` reports
+> `[cuda:0]`, while `~/venvs/pinn` was created without the CUDA jax and is CPU-only.
+> Either use the checkout's venv -- `PY=$PWD/.venv/bin/python ./run_hub.sh ...`, see
+> section 1b -- or install `jax[cuda12]` into `~/venvs/pinn` as below. Do not create yet
+> another environment expecting it to have a GPU: a venv is CPU-only unless the CUDA
+> jax is installed into it *first*, with `requirements.txt` afterwards (it pins `jax`
+> but deliberately not `jaxlib`, so installing it first would install the CPU wheel).
+
+Python, JAX and friends. **Do not copy the local `.venv`** from the Mac — it is a macOS
+ARM build. Recreate it on the hub:
 
 ```bash
 cd ~/PINN/Stationary                      # clone of github.com/reula/PINN
@@ -50,6 +59,62 @@ JAX falls back to CPU *silently* when no accelerator is visible, so a
 misconfigured container turns a 20-minute run into a 2-hour one with no warning.
 The usual cause is not something you can fix from inside: the JupyterHub spawner
 was configured without a GPU resource request. Ask your admin.
+
+## 1b. Which environment am I in? (and where is the checkout?)
+
+It is easy to end up with two virtualenvs (say `<checkout>/.venv` and `~/venvs/pinn`)
+and two paths to the same directory (`~/serafin/...` versus `/serafin/<user>/...`). XLA
+picks up whichever interpreter you launch, silently falling back to CPU if that one has
+the CPU build, so check rather than assume.
+
+**On this hub: the checkout's `.venv` is the CUDA one; `~/venvs/pinn` is CPU-only.**
+Quickest confirmation and the recommended way to launch either of them:
+
+```bash
+pwd -P                              # the physical path of the checkout you are in
+readlink -f ~/serafin/Julia/PINN/Stationary
+
+for py in "$PWD/.venv/bin/python" ~/venvs/pinn/bin/python; do
+  [ -x "$py" ] || continue
+  printf '%-40s ' "$py"
+  "$py" -c "import jax; print(jax.__version__, jax.devices())" 2>&1 | tail -1
+done
+```
+
+Whichever line prints `[cuda:0]` is the environment to use. Switching between them:
+
+```bash
+deactivate 2>/dev/null; source ~/venvs/pinn/bin/activate     # or any other env
+which python && python -c "import jax; print(jax.devices())"
+```
+
+To give a CPU-only env the GPU build, install **jax first**, because `requirements.txt`
+pins `jax` but deliberately not `jaxlib`:
+
+```bash
+source ~/venvs/pinn/bin/activate
+pip install "jax[cuda12]==0.11.1"     # cuda13 if nvidia-smi reports CUDA 13
+pip install -r requirements.txt
+```
+
+The most robust habit, and the one that avoids all activating confusion, is to name the
+interpreter explicitly -- `run_hub.sh` honours `PY`, and the detached job inherits it:
+
+```bash
+PY=$PWD/.venv/bin/python ./run_hub.sh --check
+PY=$PWD/.venv/bin/python ./run_hub.sh --steps 20000 ... 
+```
+
+For notebooks the kernel matters instead: register one **from the environment that has the
+GPU** (the command runs the kernel spec against *that* interpreter, not against whichever
+name you give it):
+
+```bash
+$PWD/.venv/bin/python -m ipykernel install --user --name stationary --display-name "Stationary (cuda)"
+```
+
+and pick it in the kernel menu. If a previous registration points at the wrong env, simply
+re-register with the same name.
 
 ## 2. Always run the check first
 
