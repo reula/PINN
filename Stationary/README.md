@@ -404,3 +404,25 @@ Two things about *this* project that matter on the hub:
 
 The two production runs of this project (the spherical validation control and the
 S1 = 0.1 dipole) are written out with their full flag lists in `HUB.md` §7.
+
+## 10. Invalidated results (do not use)
+
+Two completed runs, `runs/n1_control` and `runs/n3_order4`, are **void**. They were
+produced with the gradient-norm reweighting applied to *all* loss groups, including the
+boundary terms. Since that rule sets `w ~ 1/||d term/d theta||`, the **most violated
+constraint receives the smallest weight**: in `runs/n1_control` the outer Robin weight
+decayed 17.7 -> 12.5 -> 8.84 -> 6.25 over the last rewrites while the inner weight grew
+81 -> 229. The only term enforcing `lambda -> 1` was therefore silenced, `lambda` stayed
+at its inner value 1/3 all the way out (mean lambda at rho = 100: 0.3365 instead of
+0.9885) and the solution drifted onto the trivial branch (lambda ~ const, nearly flat
+metric, max|dh| = 0.42).
+
+The reweighting now touches the four interior groups only; the boundary weights stay at
+`w_inner`/`w_outer`. Verified on a 400-step control run: the outer Robin mean square
+falls 1.56e+03 -> 4.57e-02 -> 2.36e-04 with its weight held at 100.
+
+Runs affected: anything started before this fix **with `--reweight-every > 0`**.
+`runs/m1_sym`, `runs/m1_3d`, `runs/m2R3_symhybrid` and `runs/m2R4_realrobin` were also
+produced with the old rule, but in those the boundary data were satisfied *first* (the
+BC-first ramp), so their BC weights grew instead of decaying and their results stand.
+Only n1_control and n3_order4 are void.

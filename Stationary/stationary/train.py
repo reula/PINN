@@ -196,17 +196,25 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         if (cfg.reweight_every and cfg.reweight_every > 0 and it > 1
                 and it % cfg.reweight_every == 0):
             g = group_gradnorms(state, batch)
-            target = jnp.mean(g)
-            # equalise gradient norms, but limit how fast any weight may move
-            # (an uncapped update can jump by orders of magnitude and destabilise
-            #  an otherwise converging run)
-            new = {}
+            # Reweight ONLY the interior equation groups.  The boundary terms are data,
+            # and w ~ 1/||grad term|| is backwards for them: the condition that is most
+            # violated has the largest gradient and so receives the SMALLEST weight --
+            # which is how an earlier run silenced its outer Robin condition (w_outer
+            # fell to 6.25 while w_inner rose to 229), let lambda stay at its inner
+            # value and drift onto the trivial flat branch.
+            pde_keys = ("compat", "ricci", "gauge", "lam_eq")
+            target = jnp.mean(jnp.stack([g[i] for i, k in enumerate(GROUP_KEYS)
+                                         if k in pde_keys]))
+            w_new = {}
             for i, k in enumerate(GROUP_KEYS):
+                if k not in pde_keys:
+                    w_new[k] = weights[k]           # fixed: cfg.w_inner / cfg.w_outer
+                    continue
                 ideal = target / (g[i] + 1e-300)
                 ratio = jnp.clip(ideal / weights[k], cfg.reweight_max_ratio_inv,
                                  1.0 / cfg.reweight_max_ratio_inv)
-                new[k] = weights[k] * jnp.sqrt(ratio)
-            weights = new
+                w_new[k] = weights[k] * jnp.sqrt(ratio)
+            weights = w_new
             if verbose:
                 print(f"[reweight {it}] " + " ".join(
                     f"{k}={float(weights[k]):.3g}" for k in GROUP_KEYS), flush=True)
