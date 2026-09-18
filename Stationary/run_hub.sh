@@ -16,13 +16,13 @@
 # Never launch a multi-hour run from a notebook cell.
 #
 # Environment overrides
-#   OUTDIR         where results go (default $HOME/runs/<timestamp>); must be on
-#                  persistent storage, NOT /tmp and NOT the container filesystem
-#   LOGDIR         where the log goes            (default $HOME/logs)
+#   OUTDIR         where results go (default <repo>/runs/<timestamp>, i.e. inside the
+#                  checkout so that everything stays with the project)
+#   LOGDIR         where the log goes            (default <repo>/logs)
 #   CKPT_EVERY     checkpoint period, Adam steps (default 500; 0 disables)
 #   TRAIN_THREADS  cap on CPU threads            (default 4)
 #   PY             interpreter to use            (default python)
-#   SMOKE          --check smoke-run output dir   (default $HOME/runs/_smoke)
+#   SMOKE          --check smoke-run output dir   (default <repo>/runs/_smoke)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -32,11 +32,11 @@ cd "$HERE"
 PY="${PY:-python}"
 CKPT_EVERY="${CKPT_EVERY:-500}"
 TRAIN_THREADS="${TRAIN_THREADS:-4}"
-LOGDIR="${LOGDIR:-$HOME/logs}"
+LOGDIR="${LOGDIR:-$HERE/logs}"
 OUTDIR="${OUTDIR:-}"
 # Matplotlib must not try to build its font cache in an unwritable home/cache dir
 # on every run; point it somewhere persistent and writable.
-MPLCONFIGDIR="${MPLCONFIGDIR:-$HOME/.mplcache}"
+MPLCONFIGDIR="${MPLCONFIGDIR:-$HERE/.mplcache}"
 mkdir -p "$MPLCONFIGDIR" 2>/dev/null || true
 
 # JAX preallocates 75% of the visible GPU memory by default. On a shared hub that is
@@ -97,7 +97,7 @@ if [ "${1:-}" = "--check" ]; then
     echo "== test suite (takes ~4-5 min) =="
     MPLBACKEND=Agg MPLCONFIGDIR="$MPLCONFIGDIR" "$PY" -m pytest tests/ -q
     echo "== smoke run (200 steps, must finish in seconds) =="
-    SMOKE="${SMOKE:-$HOME/runs/_smoke}"
+    SMOKE="${SMOKE:-$HERE/runs/_smoke}"
     # the shell creates the redirect target before python can create the outdir
     mkdir -p "$(dirname "$SMOKE")"
     MPLBACKEND=Agg MPLCONFIGDIR="$MPLCONFIGDIR" "$PY" -m stationary.train \
@@ -126,7 +126,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$OUTDIR" ]; then
-    OUTDIR="$HOME/runs/$(date +%Y%m%d-%H%M%S)"
+    OUTDIR="$HERE/runs/$(date +%Y%m%d-%H%M%S)"
 fi
 
 case "$OUTDIR" in

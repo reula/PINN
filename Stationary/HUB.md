@@ -73,8 +73,9 @@ Everything after the script name is forwarded verbatim to
 
 * detaches the job into its own session (`setsid` + `nohup`) so it does not die
   with your terminal,
-* writes results to `$HOME/runs/<timestamp>` (persistent storage) and the log to
-  `$HOME/logs/`,
+* writes results to `<repo>/runs/<timestamp>` and the log to `<repo>/logs/` (both
+  inside the checkout: everything stays with the project; `logs/` is gitignored while
+  `runs/` is tracked on purpose),
 * checkpoints every **500** Adam steps (`ckpt.pkl`, ~165 KB, overwritten), and
 * writes **`<outdir>/resume.sh`** — the exact command to continue that run.
 
@@ -82,10 +83,10 @@ Useful overrides (environment variables):
 
 | variable | default | meaning |
 |---|---|---|
-| `OUTDIR` | `$HOME/runs/<timestamp>` | output directory; keep it on `$HOME` |
+| `OUTDIR` | `<repo>/runs/<timestamp>` | output directory (inside the checkout) |
 | `CKPT_EVERY` | `500` | checkpoint period in Adam steps (`0` disables) |
 | `TRAIN_THREADS` | `4` | caps CPU threads — be a good neighbour on a shared node |
-| `LOGDIR` | `$HOME/logs` | where the log goes |
+| `LOGDIR` | `<repo>/logs` | where the log goes |
 | `PY` | `python` | interpreter if your venv is not activated |
 
 The script warns if `OUTDIR` is under `/tmp` (usually wiped with the container) or
@@ -94,12 +95,15 @@ if `JAX_ENABLE_X64` is set (see gotchas).
 ## 4. Monitor, resume, analyse
 
 ```bash
-tail -f ~/logs/<name>.log                                  # progress
-kill -0 $(cat ~/runs/<name>/run.pid) && echo running       # is it alive?
-~/runs/<name>/resume.sh                                    # continue from the last checkpoint
-python -m stationary.evaluate --outdir ~/runs/<name>       # figures/diagnostics afterwards
-python -m stationary.train --outdir ~/runs/<name> --resume auto --steps 20000 ...   # what resume.sh runs
+tail -f logs/<name>.log                                    # progress (Ctrl-C is safe)
+kill -0 $(cat runs/<name>/run.pid) && echo running || echo stopped
+nohup runs/<name>/resume.sh > logs/<name>.resume.log 2>&1 &   # continue, DETACHED
+python -m stationary.evaluate --outdir runs/<name>         # figures/diagnostics afterwards
 ```
+
+`resume.sh` ends in `exec python ...`, so if you run it bare in a terminal it dies with
+that terminal (and Ctrl-C stops it): wrap it in `nohup ... &` as above. It checkpoints
+every `CKPT_EVERY` steps, so stopping and resuming costs at most that many steps.
 
 Resuming is **exact**, not approximate: I verified that a run SIGKILLed mid-flight
 and resumed from its checkpoint reproduces an uninterrupted run *bit-for-bit*
