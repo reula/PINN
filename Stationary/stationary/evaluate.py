@@ -61,74 +61,125 @@ def evaluate(run_dir: str, params_file: str = "params.pkl", make_plots: bool = T
 
     if make_plots:
         _plots(run_dir, cfg, pf, exact_fields, report)
+        try:                       # multipole figures: same set a training run writes
+            from .multipoles import make_figures
+            report["figures"] = make_figures(pf, cfg, run_dir)
+        except Exception as exc:
+            print(f"[evaluate] multipole figures skipped: {exc}")
     with open(os.path.join(run_dir, "report_eval.json"), "w") as fh:
         json.dump(report, fh, indent=2, default=float)
     return report
 
 
 def _plots(run_dir, cfg, pf, exact_fields, report):
-    fig, axes = plt.subplots(2, 3, figsize=(16, 8))
+    """Six self-describing panels; every axis is labelled and every curve is in a legend."""
+    import matplotlib.pyplot as plt
 
-    # 1. loss history
+    from .geometry import residuals_batch
+
+    name = os.path.basename(os.path.normpath(run_dir))
+    fig, ax = plt.subplots(2, 3, figsize=(17, 9))
+
+    # ---------------------------------------------------------------- 1. loss history
     hist_path = os.path.join(run_dir, "history.json")
+    labels = {"loss": "total", "pde_compat": "compatibility $\\partial h=\\Gamma h$",
+              "pde_ricci": "Ricci", "pde_gauge": "harmonic gauge",
+              "pde_lam_eq": "$\\lambda$ equation"}
     if os.path.exists(hist_path):
         with open(hist_path) as fh:
             hist = json.load(fh)
         steps = [h["step"] for h in hist]
-        axes[0, 0].semilogy(steps, [h["loss"] for h in hist], label="total")
-        for k in ("pde_compat", "pde_ricci", "pde_gauge", "pde_lam_eq"):
-            if k in hist[0]:
-                axes[0, 0].semilogy(steps, [h[k] for h in hist], "--", label=k)
-        axes[0, 0].set_title("loss history")
-        axes[0, 0].set_xlabel("step")
-        axes[0, 0].legend(fontsize=7)
+        for key in ("loss", "pde_compat", "pde_ricci", "pde_gauge", "pde_lam_eq"):
+            if key in hist[0]:
+                ax[0, 0].semilogy(steps, [h[key] for h in hist], label=labels[key],
+                                  lw=2 if key == "loss" else 1)
+        ax[0, 0].legend(fontsize=8)
+    else:
+        ax[0, 0].text(0.5, 0.5, "no history.json", ha="center", va="center",
+                      transform=ax[0, 0].transAxes)
+    ax[0, 0].set_title("loss history (weighted)")
+    ax[0, 0].set_xlabel("step")
+    ax[0, 0].set_ylabel("loss group (mean square)")
 
-    # radial profiles
-    nrho = 60
-    rhos = jnp.linspace(cfg.rho_in, cfg.rho_out, nrho)
+    # ------------------------------------------------------------- radial profiles
+    rhos = jnp.geomspace(cfg.rho_in, cfg.rho_out, 80)
     xs = jnp.stack([rhos, jnp.zeros_like(rhos), jnp.zeros_like(rhos)], axis=-1)
     nn = xs / jnp.linalg.norm(xs, axis=-1, keepdims=True)
+    f = jax.vmap(pf)(xs)
+    h_rr = jnp.einsum("nij,ni,nj->n", f.h, nn, nn)
+    tang = (jnp.einsum("nii->n", f.h) - h_rr) / 2.0 / rhos**2      # areal radius^2 / rho^2
 
-    def fields_at(x):
-        f = pf(x)
-        return f.h, f.G, f.lam
+    has_ref = exact_fields is not None
+    ref = jax.vmap(exact_fields)(xs) if has_ref else None
+    r_hrr = jnp.einsum("nij,ni,nj->n", ref.h, nn, nn) if has_ref else None
+    r_tang = ((jnp.einsum("nii->n", ref.h) - r_hrr) / 2.0 / rhos**2) if has_ref else None
 
-    h, G, lam = jax.vmap(fields_at)(xs)
-    h_rr = jnp.einsum("ni,nij,nj->n", nn, h, nn)
-    # tangential coefficient: h_theta_theta / rho^2  (round-sphere piece)
-    tang = (jnp.einsum("nii->n", h) - h_rr) / 2.0 / rhos**2
+    lam_inf = cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init
+    ref_name = "exact/reference solution" if has_ref else "reference (none for this run)"
 
-    axes[0, 1].plot(rhos, lam, label="PINN")
-    axes[0, 2].plot(rhos, h_rr, label="PINN $h_{rr}$")
-    axes[1, 0].plot(rhos, tang, label="PINN tang. coeff")
+    ax[0, 1].plot(rhos, f.lam, "C0-", lw=2, label="PINN")
+    if has_ref:
+        ax[0, 1].plot(rhos, ref.lam, "k--", label=ref_name)
+    ax[0, 1].axhline(lam_inf, color="grey", ls=":", label=fr"$\lambda_\infty={lam_inf:g}$")
+    ax[0, 1].axhline(cfg.lam0, color="grey", ls="-.", alpha=0.6, label=fr"$\lambda_0={cfg.lam0:g}$")
+    ax[0, 1].set_title(r"$\lambda$ along $\theta=0$")
+    ax[0, 1].set_xlabel(r"$\rho$")
+    ax[0, 1].set_ylabel(r"$\lambda$")
+    ax[0, 1].legend(fontsize=8)
 
-    if exact_fields is not None:
-        eh, eG, elam = jax.vmap(lambda x: exact_fields(x))(xs)
-        e_hrr = jnp.einsum("ni,nij,nj->n", nn, eh, nn)
-        e_tang = (jnp.einsum("nii->n", eh) - e_hrr) / 2.0 / rhos**2
-        axes[0, 1].plot(rhos, elam, "--", label="exact")
-        axes[0, 2].plot(rhos, e_hrr, "--", label="exact")
-        axes[1, 0].plot(rhos, e_tang, "--", label="exact")
-        axes[1, 1].semilogy(rhos, jnp.abs(lam - elam) + 1e-16, label="$|\\Delta\\lambda|$")
-        axes[1, 1].semilogy(rhos, jnp.abs(h_rr - e_hrr) + 1e-16, label="$|\\Delta h_{rr}|$")
-        axes[1, 1].set_title("errors vs exact")
-        axes[1, 1].legend(fontsize=8)
+    ax[0, 2].plot(rhos, h_rr, "C0-", lw=2, label="PINN")
+    if has_ref:
+        ax[0, 2].plot(rhos, r_hrr, "k--", label=ref_name)
+    ax[0, 2].set_title(r"$h_{\rho\rho}=\lambda$-independent normal component")
+    ax[0, 2].set_xlabel(r"$\rho$")
+    ax[0, 2].set_ylabel(r"$h_{rr}$")
+    ax[0, 2].legend(fontsize=8)
 
-    for ax, title in zip(axes.ravel()[:5],
-                         ["loss history", "$\\lambda(\\rho)$", "$h_{rr}(\\rho)$",
-                          "tangential coefficient", "errors vs exact"]):
-        ax.set_title(title)
-        ax.grid(alpha=0.3)
-    for ax in axes.ravel()[1:5]:
-        ax.set_xlabel("$\\rho$")
-        if not ax.get_legend_handles_labels()[0]:
-            pass
-        else:
-            ax.legend(fontsize=8)
+    ax[1, 0].plot(rhos, tang, "C0-", lw=2, label="PINN")
+    if has_ref:
+        ax[1, 0].plot(rhos, r_tang, "k--", label=ref_name)
+    ax[1, 0].axvline(cfg.rho_in, color="grey", alpha=0.4)
+    ax[1, 0].set_title(r"tangential metric: (areal radius)$^2/\rho^2$")
+    ax[1, 0].set_xlabel(r"$\rho$")
+    ax[1, 0].set_ylabel(r"$\alpha$  (1 = flat, $\rho_{in}^2$ at the inner sphere)")
+    ax[1, 0].legend(fontsize=8)
 
-    fig.tight_layout()
+    # ------------------------------------------------------------ 5. error vs rho
+    if has_ref:
+        ax[1, 1].loglog(rhos, jnp.abs(f.lam - ref.lam) + 1e-18, label=r"$|\Delta\lambda|$")
+        ax[1, 1].loglog(rhos, jnp.abs(h_rr - r_hrr) + 1e-18, label=r"$|\Delta h_{rr}|$")
+        ax[1, 1].loglog(rhos, jnp.abs(tang - r_tang) + 1e-18, label=r"$|\Delta\alpha|$")
+        ax[1, 1].set_title("pointwise difference from the reference")
+    else:
+        ax[1, 1].loglog(rhos, jnp.abs(f.lam - lam_inf) + 1e-18,
+                        label=fr"$|\lambda-\lambda_\infty|$")
+        ax[1, 1].set_title(r"distance from $\lambda_\infty$ (no reference for this run)")
+    ax[1, 1].set_xlabel(r"$\rho$")
+    ax[1, 1].set_ylabel("absolute difference")
+    ax[1, 1].legend(fontsize=8)
+
+    # -------------------------------------------------------- 6. residuals vs rho
+    res = jax.vmap(lambda x: residuals_batch(pf, x[None, :]))(xs)
+    res = jax.tree.map(lambda a: a[:, 0], res)
+    for key, lab in (("compat", "compatibility"), ("ricci", "Ricci"),
+                     ("gauge", "harmonic gauge"), ("lam_eq", r"$\lambda$ equation")):
+        ax[1, 2].loglog(rhos, jnp.max(jnp.abs(res[key]), axis=tuple(range(1, res[key].ndim)))
+                        + 1e-18, label=lab)
+    ax[1, 2].set_title("PDE residuals (max over components), raw units")
+    ax[1, 2].set_xlabel(r"$\rho$")
+    ax[1, 2].set_ylabel("residual")
+    ax[1, 2].legend(fontsize=8)
+
+    for a in ax.ravel():
+        a.grid(alpha=0.3)
+    fig.suptitle(f"{name}   (arch={cfg.arch}, "
+                 fr"$\rho\in[{cfg.rho_in:g},{cfg.rho_out:g}]$, "
+                 fr"$\lambda_0={cfg.lam0:g}$, $\lambda_\infty={lam_inf:g}$, "
+                 f"Robin order {cfg.robin_orders or cfg.robin_order})", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     out = os.path.join(run_dir, "diagnostics.png")
     fig.savefig(out, dpi=120)
+    plt.close(fig)
     print(f"[evaluate] wrote {out}")
 
 

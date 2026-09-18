@@ -140,9 +140,17 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3):
     im = ax[1, 1].pcolormesh(np.asarray(phi)[0], th, d, shading="auto")
     ax[1, 1].set_title("$\\lambda_{net}-\\lambda_{BC}$"); ax[1, 1].set_xlabel("$\\varphi$"); ax[1, 1].set_ylabel("$\\theta$")
     plt.colorbar(im, ax=ax[1, 1])
+    ax[0, 0].set_ylabel(r"$\lambda$")
+    ax[0, 1].set_ylabel(r"$|\lambda_{net}-\lambda_{BC}|$")
+    ax[1, 0].set_ylabel(r"$\theta$"); ax[1, 0].set_xlabel(r"$\varphi$")
+    ax[1, 1].set_ylabel(r"$\theta$"); ax[1, 1].set_xlabel(r"$\varphi$")
     for a in ax.ravel():
         a.grid(alpha=0.3)
-    fig.tight_layout()
+    fig.suptitle(f"$\\lambda$ on the inner sphere, $\\rho={cfg.rho_in:g}$   "
+                 f"(arch={cfg.arch}, $S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
+                 f"$\\lambda_0={cfg.lam0:g}$)   max error {report['inner_bc_max_err']:.2e}",
+                 fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(os.path.join(outdir, "lambda_inner.png"), dpi=120)
     plt.close(fig)
 
@@ -168,7 +176,10 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3):
     ax[2].set_xlabel("$\\theta$"); ax[2].legend()
     for a in ax:
         a.grid(alpha=0.3)
-    fig.tight_layout()
+    fig.suptitle(f"multipoles of $\\lambda$ at the outer sphere $\\rho={cfg.rho_out:g}$   "
+                 f"(arch={cfg.arch}, mean $\\lambda$ there {float(jnp.mean(vals_o)):.4f})",
+                 fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(os.path.join(outdir, "lambda_multipoles_outer.png"), dpi=120)
     plt.close(fig)
 
@@ -185,17 +196,19 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3):
         m = a > 1e-15
         ax[0].loglog(np.asarray(rhos)[m], a[m], "o-",
                      label=f"$l={l}$: power {prof_r[l]['fitted_power']:.2f} (expect {prof_r[l]['expected_power']})")
-    ax[0].set_title("multipole amplitudes of $\\lambda$ vs $\\rho$")
-    ax[0].set_xlabel("$\\rho$"); ax[0].set_ylabel("$\\sqrt{\\sum_m a_{lm}^2}$"); ax[0].legend()
+    ax[0].set_title("multipole amplitudes vs $\\rho$ (slope = decay power)")
+    ax[0].set_xlabel(r"$\rho$"); ax[0].set_ylabel(r"amplitude"); ax[0].legend()
     for l in range(min(3, lmax + 1)):
         a = np.asarray(prof_r[l]["amplitudes"])
         m = a > 1e-15
         ax[1].plot(np.asarray(rhos)[m], a[m] * np.asarray(rhos)[m] ** (l + 1), "o-", label=f"$l={l}$")
-    ax[1].set_title("$a_l(\\rho)\\,\\rho^{l+1}$ (flat = correct decay)")
-    ax[1].set_xlabel("$\\rho$"); ax[1].legend()
+    ax[1].set_title(r"$a_l(\rho)\,\rho^{l+1}$: flat means the expected $\rho^{-(l+1)}$")
+    ax[1].set_xlabel(r"$\rho$"); ax[1].set_ylabel(r"$a_l\,\rho^{l+1}$"); ax[1].legend()
     for a in ax:
         a.grid(alpha=0.3)
-    fig.tight_layout()
+    fig.suptitle(f"decay of each multipole of $\\lambda$   (arch={cfg.arch}, "
+                 f"$\\rho\\in[{cfg.rho_in:g},{cfg.rho_out:g}]$)", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(os.path.join(outdir, "lambda_multipole_decay.png"), dpi=120)
     plt.close(fig)
 
