@@ -127,7 +127,15 @@ def main():
     for th, b, n in zip(THETAS, lam_bc, lam_net):
         print(f"{th:>9.2f} {float(b):>13.7f} {float(n):>14.7f} {float(n - b):>11.2e}")
     inn = inner_bc_terms(pf, sample_sphere(key, 512, cfg.rho_in), cfg)
-    f_in = pf(cfg.rho_in * jnp.array([1.0, 0.0, 0.0]))
+    # areal radius of the inner sphere: sqrt(tangential metric coefficient) * rho_in
+    xs_in = sample_sphere(key, 512, cfg.rho_in)
+    n_in = xs_in / jnp.linalg.norm(xs_in, axis=-1, keepdims=True)
+    h_in = jax.vmap(lambda x: pf(x).h)(xs_in)
+    h_rr_in = jnp.einsum("ni,nij,nj->n", h_in, n_in, n_in)
+    alpha_in = (jnp.einsum("nii->n", h_in) - h_rr_in) / 2.0
+    areal = cfg.rho_in * jnp.sqrt(jnp.mean(alpha_in))
+    print(f"inner sphere areal radius: {float(areal):.8f}"
+          f"   (imposed {cfg.inner_radius:g})   h_rr there {float(jnp.mean(h_rr_in)):.6f}")
     print("inner BC residuals (rms): " + "  ".join(f"{k}={jnp.sqrt(v):.2e}" for k, v in inn.items()))
 
     # ------------------------------------------------------------ outer boundary
@@ -174,7 +182,7 @@ def main():
         _section("VS EXACT REFERENCE")
         print(f"    reference lambda(rho_in) = {float(ref(cfg.rho_in * jnp.array([1.0, 0, 0])).lam):.7f}"
               f"   (run imposed {cfg.lam0:g})")
-        xr = sample_sphere(jax.random.PRNGKey(1), 2048, cfg)
+        xr = sample_sphere(jax.random.PRNGKey(1), 2048, cfg.rho_out)
 
         def diff(x):
             f, e = pf(x), ref(x)
