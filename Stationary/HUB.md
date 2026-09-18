@@ -132,6 +132,14 @@ Two limits worth knowing:
   `MPLBACKEND=Agg` and a writable `MPLCONFIGDIR` — otherwise matplotlib tries to
   build its font cache in an unwritable directory on every import. `run_hub.sh`
   sets both.
+* **Check how much GPU you were given, not just that you got one.** `nvidia-smi` on
+  this hub reports `0MiB / 750MiB` for an A30 -- i.e. a small vGPU slice, not the card.
+  The `--check` smoke run alone needs ~750 MiB, so it dies with
+  `cuBlas allocation failure` / `HAMI OOM` while the (much smaller) test suite passes.
+  `run_hub.sh --check` now prints the GPU name and memory and warns when it is under
+  4 GiB. There is no configuration of this project that fits in 750 MiB usefully: ask
+  the admin for a larger GPU profile (GBs), or run on CPU with
+  `JAX_PLATFORMS=cpu ./run_hub.sh ...`.
 * **Shared-GPU allocation failures.** `INTERNAL: ... gpublasCreate(&handle) failed:
   cuBlas allocation failure` from something as trivial as `jit_add` means JAX could not
   get GPU memory at all -- almost always because it asked for 75% of the device up

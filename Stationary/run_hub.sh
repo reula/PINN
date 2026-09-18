@@ -59,6 +59,20 @@ fi
 # JAX falls back to CPU silently when no accelerator is visible, which turns a
 # 20-minute GPU run into a 2-hour CPU run without saying anything. So say it.
 check_devices() {
+    # How much GPU memory did we actually get? A JupyterHub can hand out a small
+    # vGPU slice (e.g. 750 MiB of a 24 GB A30); the smoke run alone needs ~750 MiB,
+    # so this is worth knowing before anything else.
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        nvidia-smi --query-gpu=index,name,memory.total,memory.used \
+                   --format=csv,noheader 2>/dev/null | sed 's/^/  gpu: /' || true
+        TOT=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo 0)
+        if [ "${TOT:-0}" -gt 0 ] && [ "${TOT:-0}" -lt 4096 ]; then
+            echo "WARNING: the visible GPU has only ${TOT} MiB. The --check smoke run alone" >&2
+            echo "  needs ~750 MiB and a production run scales with --n-coll, so expect" >&2
+            echo "  'cuBlas allocation failure' / HAMI OOM. Ask your admin for a larger GPU" >&2
+            echo "  profile (GBs, ideally the whole card), or run with JAX_PLATFORMS=cpu." >&2
+        fi
+    fi
     "$PY" - <<'PYEOF'
 import sys
 import jax
