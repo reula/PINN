@@ -76,10 +76,14 @@ def family_params_from_solution(pf, cfg, nrho=40, lo=None, hi=None):
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("run_dir")
+    p = argparse.ArgumentParser(description="Chart-independent content of a run.")
+    p.add_argument("run_dir", nargs="?", default=None, help="run directory (or --outdir)")
+    p.add_argument("--outdir", default=None)
     p.add_argument("--params-file", default="params.pkl")
     a = p.parse_args()
+    a.run_dir = a.outdir or a.run_dir
+    if a.run_dir is None:
+        p.error("give the run directory, as `--outdir RUN` or as the first argument")
     with open(f"{a.run_dir}/config.json") as fh:
         cfg = Config(**json.load(fh))
     model = make_model(cfg)

@@ -133,12 +133,19 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("run_dir")
-    p.add_argument("--params-file", default="params.pkl")
+    p = argparse.ArgumentParser(description="Diagnostics and figures for a finished run.")
+    p.add_argument("run_dir", nargs="?", default=None,
+                   help="run directory (same as --outdir)")
+    p.add_argument("--outdir", default=None,
+                   help="run directory, same spelling as train.py uses")
+    p.add_argument("--params-file", default="params.pkl",
+                   help="checkpoint inside the run dir (default params.pkl)")
     p.add_argument("--no-plots", action="store_true")
     a = p.parse_args()
-    evaluate(a.run_dir, a.params_file, make_plots=not a.no_plots)
+    run_dir = a.outdir or a.run_dir
+    if run_dir is None:
+        p.error("give the run directory, as `--outdir RUN` or as the first argument")
+    evaluate(run_dir, a.params_file, make_plots=not a.no_plots)
 
 
 if __name__ == "__main__":
