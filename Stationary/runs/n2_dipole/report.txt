@@ -1,0 +1,92 @@
+
+------------------------------------------------------------------------------
+RUN / CODE
+------------------------------------------------------------------------------
+run dir        : runs/n2_dipole
+params file    : params.pkl
+git HEAD       : 53ab430  (+14 uncommitted files)
+BC-weight fix  : PRESENT (reweighting touches interior groups only)
+steps          : 10000 Adam + 1000 L-BFGS   wall 81.7 min
+final loss     : 7.0121e-04
+
+------------------------------------------------------------------------------
+CONFIG
+------------------------------------------------------------------------------
+arch           : axisym_hybrid   width 64 x depth 4, fourier 8
+domain         : rho in [1, 100]   inner sphere areal radius 1   radial sampling log
+inner data     : lambda_0 = 0.333333   S1 = 0.1   S2 = 0   (h_rr constrained: None)
+outer BC       : robin, lambda_inf = 1, Robin orders {'h': 2, 'G': 2, 'lam': 2}, Gamma condition included: True
+loss weights   : w_inner = 100, w_outer = 100, reweight_every = 2000
+sampling       : n_coll 4096, n_bnd 256, scale_ref None
+
+------------------------------------------------------------------------------
+LOSS TRAJECTORY (first, middle, last logged)
+------------------------------------------------------------------------------
+    step           loss   pde_compat    pde_ricci    pde_gauge   pde_lam_eq    inner_lam  inner_h_tan      outer_h    outer_lam
+       1      6.792e+01    7.317e-17    3.057e+00    1.223e-02    2.986e+01    4.126e-01    3.112e-04    5.814e-02    2.076e-01
+    7200      2.854e-03    1.866e-20    2.277e-04    6.999e-06    4.333e-03    1.268e-07    8.248e-08    1.291e-07    1.489e-05
+   11000      7.012e-04    3.403e-20    2.609e-04    6.454e-06    1.557e-03    3.484e-08    3.300e-08    1.088e-07    4.154e-07
+
+------------------------------------------------------------------------------
+INNER BOUNDARY  (imposed vs network)
+------------------------------------------------------------------------------
+    theta     imposed        network        diff
+     0.00     0.4333333      0.4321579   -1.18e-03
+     0.70     0.4098176      0.4096083   -2.09e-04
+     1.57     0.3333333      0.3333326   -7.40e-07
+inner sphere areal radius: 0.99998759   (r^2 = 0.999975, imposed 1)   h_rr there 0.987286
+inner BC residuals (rms): lam=2.34e-04  h_tan=2.08e-04
+
+------------------------------------------------------------------------------
+OUTER BOUNDARY
+------------------------------------------------------------------------------
+    theta      lambda(rho_out)     distance from lambda_inf = 1
+     0.00          0.6503708           -3.496e-01
+     0.70          0.6520480           -3.480e-01
+     1.57          0.6504343           -3.496e-01
+outer BC residuals (robin, rms): h=3.53e-04  lam=7.38e-04  G=1.71e-04
+
+------------------------------------------------------------------------------
+LAMBDA vs RHO
+------------------------------------------------------------------------------
+       rho      lam(th=0)   lam(th=90)
+    1.0000      0.4321579    0.3333326
+    1.7783      0.4631523    0.4197847
+    3.1623      0.5074328    0.4872194
+    5.6234      0.5455983    0.5374371
+   10.0000      0.5778561    0.5737720
+   17.7828      0.6028258    0.6013386
+   31.6228      0.6227841    0.6227613
+   56.2341      0.6393044    0.6396058
+  100.0000      0.6503708    0.6504343
+
+------------------------------------------------------------------------------
+MULTIPOLES OF lambda AT rho = 100
+------------------------------------------------------------------------------
+    l=0:  mean lambda 0.6563679   = lambda_inf 1 -3.436e-01
+    l=1:  amplitude 1.9860e-02
+    l=2:  amplitude 1.2503e-02
+    l=3:  amplitude 3.6136e-03
+    decay with rho (fitted power vs expected -(l+1)), fitted over rho = 2.15 .. 100:
+      l=0: fitted -0.123   expected -1
+      l=1: fitted -0.475   expected -2
+      l=2: fitted  0.289   expected -3
+      l=3: fitted  0.309   expected -4
+
+------------------------------------------------------------------------------
+PDE RESIDUALS (raw units)
+------------------------------------------------------------------------------
+    compat     rms 9.519e-22   max 1.016e-20
+    gauge      rms 9.483e-06   max 3.381e-05
+    lam_eq     rms 6.568e-05   max 1.514e-04
+    ricci      rms 4.971e-07   max 2.648e-06
+
+------------------------------------------------------------------------------
+VS EXACT REFERENCE
+------------------------------------------------------------------------------
+    none configured for this run (no --ref-solution / --dirichlet-exact)
+
+------------------------------------------------------------------------------
+REWEIGHTING HISTORY (from the log, if found)
+------------------------------------------------------------------------------
+    log not found at /Users/reula/Julia/PINN/Stationary/logs/n2_dipole.log (pass --log PATH)

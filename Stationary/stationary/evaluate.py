@@ -32,6 +32,10 @@ def load_run(run_dir: str, params_file: str = "params.pkl"):
     model = make_model(cfg)
     with open(os.path.join(run_dir, params_file), "rb") as fh:
         state = pickle.load(fh)
+    # params.pkl holds the parameter state itself; ckpt.pkl holds a training payload with
+    # the state under "state" (and is what a crashed run has to offer). Accept both.
+    if isinstance(state, dict) and "state" in state and "net" not in state:
+        state = state["state"]
     return cfg, model, state
 
 

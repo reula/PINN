@@ -2,21 +2,26 @@
 
     python -m stationary.report --outdir runs/<name>
     python -m stationary.report --outdir runs/<name> --params-file ckpt.pkl
+    python -m stationary.report --outdir runs/<name> --out runs/<name>/report.txt
 
-Prints, in order: how the run was configured, which code produced it, the loss and its
-groups, the inner and outer boundary data (imposed vs achieved), the multipole content at
-the outer sphere, the PDE residuals, the comparison with the exact reference when the run
-has one, and -- if the run's log is found -- the reweighting history, which is where a
-silently de-weighted boundary condition shows up.
+Prints, in order: which code produced the run, how it was configured, the loss and its
+groups, the inner and outer boundary data (imposed vs achieved), lambda against rho, the
+multipole content at the outer sphere, the PDE residuals, the comparison with the exact
+reference when the run has one, and -- if the run's log is found -- the reweighting
+history, which is where a silently de-weighted boundary condition shows up.
 
-No plotting, so it works headless: import matplotlib is deliberately avoided.
+Written into the run directory as report.txt by postprocess.sh (which run_hub.sh calls at
+the end of every run), so a finished run always has one. No plotting, so it works
+headless: importing matplotlib is deliberately avoided.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
+import sys
 
 import jax
 
@@ -25,6 +30,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from . import exact
+from .diagnostics import inner_boundary_report
 from .evaluate import load_run
 from .geometry import residuals_batch
 from .losses import inner_bc_terms, outer_bc_terms
@@ -48,6 +54,23 @@ def _line(c="-"):
     print(c * 78)
 
 
+class _Tee:
+    """Print to the terminal and to a file at the same time (for --out)."""
+
+    def __init__(self, path):
+        self.fh = open(path, "w")
+        self.stdout = sys.stdout
+
+    def write(self, s):
+        self.stdout.write(s)
+        self.fh.write(s)
+        return len(s)
+
+    def flush(self):
+        self.stdout.flush()
+        self.fh.flush()
+
+
 def _section(title):
     print()
     _line()
@@ -61,10 +84,14 @@ def main():
     p.add_argument("--outdir", default=None)
     p.add_argument("--params-file", default="params.pkl")
     p.add_argument("--log", default=None, help="run log (default <repo>/logs/<name>.log)")
+    p.add_argument("--out", default=None,
+                   help="also write the report to this file (default: none)")
     a = p.parse_args()
     run_dir = a.outdir or a.run_dir
     if run_dir is None:
         p.error("give the run directory, as `--outdir RUN` or as the first argument")
+    if a.out:
+        sys.stdout = _Tee(a.out)
 
     cfg, model, state = load_run(run_dir, a.params_file)
     pf = point_fields(model, state["net"])
@@ -103,6 +130,24 @@ def main():
           f"reweight_every = {cfg.reweight_every}")
     print(f"sampling       : n_coll {cfg.n_coll}, n_bnd {cfg.n_bnd}, scale_ref {cfg.scale_ref}")
 
+    # ------------------------------------------- the exact asset the BCs themselves use
+    # Two objects that are easy to confuse: the reference that enters the outer boundary
+    # condition (milestone-1 Dirichlet data, or the manufactured Robin source) and the
+    # reference used only for comparison. This mirrors train.build() so the boundary
+    # residuals below are the ones the loss actually saw. outer_bc_terms requires it.
+    bc_exact = None
+    if cfg.outer_bc == "dirichlet_exact":
+        bc_exact = exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
+    elif cfg.ref_solution or cfg.robin_source:
+        if getattr(cfg, "ref_asymptotic", None) is not None:
+            bc_exact, _ = exact.reference_fields_asymptotic(cfg.R0, cfg.ref_asymptotic,
+                                                            cfg.rho_in,
+                                                            r_areal=cfg.inner_radius)
+        else:
+            bc_exact, _ = exact.reference_fields(cfg.R0, cfg.lam0, cfg.rho_in,
+                                                 cfg.inner_h_rr or 1.0,
+                                                 r_areal=cfg.inner_radius)
+
     # -------------------------------------------------------------------- loss
     hist_path = os.path.join(run_dir, "history.json")
     if os.path.exists(hist_path):
@@ -127,15 +172,21 @@ def main():
     for th, b, n in zip(THETAS, lam_bc, lam_net):
         print(f"{th:>9.2f} {float(b):>13.7f} {float(n):>14.7f} {float(n - b):>11.2e}")
     inn = inner_bc_terms(pf, sample_sphere(key, 512, cfg.rho_in), cfg)
-    # areal radius of the inner sphere: sqrt(tangential metric coefficient) * rho_in
+    # areal radius of the inner sphere, from the same tested route as evaluate.py, plus the
+    # radial-radial component of h there, which is the one piece of the metric the BCs do
+    # not fix (--inner-h-rr aside).
     xs_in = sample_sphere(key, 512, cfg.rho_in)
     n_in = xs_in / jnp.linalg.norm(xs_in, axis=-1, keepdims=True)
     h_in = jax.vmap(lambda x: pf(x).h)(xs_in)
-    h_rr_in = jnp.einsum("ni,nij,nj->n", h_in, n_in, n_in)
-    alpha_in = (jnp.einsum("nii->n", h_in) - h_rr_in) / 2.0
-    areal = cfg.rho_in * jnp.sqrt(jnp.mean(alpha_in))
-    print(f"inner sphere areal radius: {float(areal):.8f}"
-          f"   (imposed {cfg.inner_radius:g})   h_rr there {float(jnp.mean(h_rr_in)):.6f}")
+    # NOTE the operand order: jnp.einsum in jax 0.11 rejects "ni,nij,nj->n" (opt_einsum
+    # reorders the operands and then miscounts the indices) while the same contraction
+    # written in the order the operands are passed works.  Keep h first.
+    h_rr_in = jnp.einsum("nij,ni,nj->n", h_in, n_in, n_in)
+    geom = inner_boundary_report(pf, cfg)          # reports the areal radius SQUARED
+    r2 = geom["areal_radius2_mean"]
+    print(f"inner sphere areal radius: {math.sqrt(r2):.8f}"
+          f"   (r^2 = {r2:.6f}, imposed {cfg.inner_radius:g})"
+          f"   h_rr there {float(jnp.mean(h_rr_in)):.6f}")
     print("inner BC residuals (rms): " + "  ".join(f"{k}={jnp.sqrt(v):.2e}" for k, v in inn.items()))
 
     # ------------------------------------------------------------ outer boundary
@@ -147,20 +198,46 @@ def main():
     print(f"    theta      lambda(rho_out)     distance from lambda_inf = {lam_inf:g}")
     for th, v in zip(THETAS, lam_out):
         print(f"{th:>9.2f} {float(v):>18.7f} {float(v - lam_inf):>20.3e}")
-    out = outer_bc_terms(pf, sample_sphere(key, 512, cfg.rho_out), cfg, lam_inf=lam_inf)
-    print("outer Robin residuals (rms): " + "  ".join(f"{k}={jnp.sqrt(v):.2e}" for k, v in out.items()))
+    out = outer_bc_terms(pf, sample_sphere(key, 512, cfg.rho_out), cfg, bc_exact, lam_inf=lam_inf)
+    print(f"outer BC residuals ({cfg.outer_bc}, rms): "
+          + "  ".join(f"{k}={jnp.sqrt(v):.2e}" for k, v in out.items()))
+
+    # ------------------------------------------------------------ lambda vs rho
+    # The shape of lambda(rho), which is what says whether the run sits on the
+    # non-trivial branch: it must leave lambda_0 at the inner sphere and flatten onto
+    # lambda_inf. Eight intervals, geometric in rho.
+    _section("LAMBDA vs RHO")
+    print("       rho      lam(th=0)   lam(th=90)")
+    for i in range(9):
+        rho = cfg.rho_in * (cfg.rho_out / cfg.rho_in) ** (i / 8.0)
+        vals = [float(pf(rho * jnp.array([math.sin(math.radians(t)), 0.0,
+                                          math.cos(math.radians(t))])).lam)
+                for t in (0.0, 90.0)]
+        print(f"{rho:>10.4f} {vals[0]:>14.7f} {vals[1]:>12.7f}")
 
     # ---------------------------------------------------------------- multipoles
     _section(f"MULTIPOLES OF lambda AT rho = {cfg.rho_out:g}")
     coef, power, _ = lambda_multipoles(pf, cfg.rho_out, lmax=3)
-    for l in range(4):
-        print(f"    l={l}:  amplitude {float(jnp.sqrt(power[l])):.4e}   a_l0 = {coef[(l, 0)]: .4e}")
+    # coefficients are in the real-SH basis with Y_00 = 1/sqrt(4 pi), so a_00 is the mean
+    # of lambda only up to that factor; print the mean itself, it is the readable number.
+    mean_out = float(coef[(0, 0)]) / math.sqrt(4.0 * math.pi)
+    print(f"    l=0:  mean lambda {mean_out:.7f}   = lambda_inf {lam_inf:g} "
+          f"{mean_out - lam_inf:+.3e}")
+    for l in range(1, 4):
+        print(f"    l={l}:  amplitude {float(jnp.sqrt(power[l])):.4e}")
+    # sample the decay inside the domain (not beyond rho_out, where the net extrapolates)
     try:
-        prof = multipole_radial_profile(pf, [3.0, 6.0, 12.0, 25.0, 50.0, 100.0], lmax=3,
-                                        lam_inf=lam_inf)
-        print("    decay with rho (fitted power vs expected -(l+1)):")
+        rhos = [float(cfg.rho_in * (cfg.rho_out / cfg.rho_in) ** (i / 6.0)) for i in range(1, 7)]
+        prof = multipole_radial_profile(pf, rhos, lmax=3, lam_inf=lam_inf)
+        print(f"    decay with rho (fitted power vs expected -(l+1)), fitted over "
+              f"rho = {rhos[0]:.3g} .. {rhos[-1]:.3g}:")
         for l in range(4):
-            print(f"      l={l}: fitted {prof[l]['fitted_power']: .3f}   expected {prof[l]['expected_power']}")
+            f = prof[l]["fitted_power"]
+            if f != f:
+                print(f"      l={l}: no amplitude above the noise floor at any of these radii"
+                      f"   (expected {prof[l]['expected_power']})")
+            else:
+                print(f"      l={l}: fitted {f: .3f}   expected {prof[l]['expected_power']}")
     except Exception as exc:
         print(f"    decay fit skipped: {exc}")
 
@@ -176,8 +253,8 @@ def main():
     if getattr(cfg, "ref_asymptotic", None) is not None:
         ref, _ = exact.reference_fields_asymptotic(cfg.R0, cfg.ref_asymptotic, cfg.rho_in,
                                                    r_areal=cfg.inner_radius)
-    elif cfg.outer_bc == "dirichlet_exact":
-        ref = exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
+    else:
+        ref = bc_exact          # dirichlet_exact, or the --ref-solution asset
     if ref is not None:
         _section("VS EXACT REFERENCE")
         print(f"    reference lambda(rho_in) = {float(ref(cfg.rho_in * jnp.array([1.0, 0, 0])).lam):.7f}"

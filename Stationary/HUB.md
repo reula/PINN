@@ -141,8 +141,16 @@ Everything after the script name is forwarded verbatim to
 * writes results to `<repo>/runs/<timestamp>` and the log to `<repo>/logs/` (both
   inside the checkout: everything stays with the project; `logs/` is gitignored while
   `runs/` is tracked on purpose),
-* checkpoints every **500** Adam steps (`ckpt.pkl`, ~165 KB, overwritten), and
-* writes **`<outdir>/resume.sh`** — the exact command to continue that run.
+* checkpoints every **500** Adam steps (`ckpt.pkl`, ~165 KB, overwritten),
+* writes **`<outdir>/resume.sh`** — the exact command to continue that run, and
+* when the training process ends — **even if it crashed** — runs `postprocess.sh` on the
+  run directory, so a finished run already contains all five `.png` figures and
+  `<outdir>/report.txt` (the paste-able text report). The whole chain is recorded in
+  **`<outdir>/job.sh`**, which you may re-run by hand.
+
+> Do not run `python -m stationary.train` directly if you want figures and a report:
+> that only *trains*. `run_hub.sh` (or `postprocess.sh`, see §4) is what produces the
+> figures, the λ vs ρ profile and `report.txt`.
 
 Useful overrides (environment variables):
 
@@ -163,10 +171,39 @@ if `JAX_ENABLE_X64` is set (see gotchas).
 tail -f logs/<name>.log                                    # progress (Ctrl-C is safe)
 kill -0 $(cat runs/<name>/run.pid) && echo running || echo stopped
 nohup runs/<name>/resume.sh > logs/<name>.resume.log 2>&1 &   # continue, DETACHED
-python -m stationary.evaluate --outdir runs/<name>         # figures/diagnostics afterwards
-python -m stationary.profile  --outdir runs/<name>         # lambda vs rho (+ exact overlay)
-python -m stationary.report   --outdir runs/<name>         # one-screen text report (paste-able)
+
+./run_hub.sh --post --outdir runs/<name>    # re-make ALL figures + report.txt (no training)
+cat runs/<name>/report.txt                  # the text report, ready to paste
 ```
+
+**After a run finishes, everything is already there** — you do not have to run anything
+else. The end of `run_hub.sh`'s job automatically executes `postprocess.sh`, so the run
+directory holds:
+
+| file | what it is |
+|---|---|
+| `diagnostics.png` | loss history, λ(ρ), h_rr(ρ), tangential metric, errors, PDE residuals |
+| `lambda_vs_rho.png` | **λ against ρ** along several polar angles, exact solution overlaid |
+| `lambda_inner.png`, `lambda_multipoles_outer.png`, `lambda_multipole_decay.png` | inner-sphere λ map, outer-sphere multipoles, per-multipole decay |
+| `report.txt` | **the one-screen text report** (same text as `python -m stationary.report`) |
+| `config.json`, `history.json`, `report.json`, `report_eval.json` | the numbers behind the figures |
+| `params.pkl`, `params_adam.pkl`, `ckpt.pkl` | final parameters and the resumable checkpoint |
+| `job.sh`, `resume.sh`, `run.pid` | what was run, how to continue it, is it alive |
+
+`./run_hub.sh --post` (no `--outdir` = the most recent run) redoes the figures and the
+report at any time without touching the parameters; it works on a **crashed** run too, in
+which case it falls back to the last checkpoint `ckpt.pkl`. The three steps individually,
+if you want one of them alone:
+
+```bash
+python -m stationary.evaluate --outdir runs/<name>     # figures/diagnostics
+python -m stationary.profile  --outdir runs/<name>     # lambda vs rho (+ exact overlay + table)
+python -m stationary.report   --outdir runs/<name>     # text report;  --out FILE also saves it
+```
+
+A run that consumed itself in the middle of the night therefore still leaves a complete
+directory: the figures and `report.txt` are written from the last checkpoint, and the
+report says how far it got.
 
 `resume.sh` ends in `exec python ...`, so if you run it bare in a terminal it dies with
 that terminal (and Ctrl-C stops it): wrap it in `nohup ... &` as above. It checkpoints
@@ -299,9 +336,12 @@ checkout (override with `OUTDIR=`; `run_hub.sh` never writes outside the project
     --arch axisym_hybrid --outdir runs/control
 ```
 
-Check it before going further — any of:
+Check it before going further — **the run does this for you when it ends** (§4): read
+`runs/control/report.txt` and look at `runs/control/lambda_vs_rho.png`. To redo them by
+hand, or to process a run that stopped early:
 
 ```bash
+./run_hub.sh --post --outdir runs/control     # figures + lambda_vs_rho.png + report.txt
 python -m stationary.evaluate --outdir runs/control     # prints max_dh vs the exact solution
 python -m stationary.profile  --outdir runs/control     # lambda vs rho, exact overlay + table
 ```
@@ -326,11 +366,13 @@ each; measure ms/step on the GPU with the `--check` smoke run before launching 2
 steps). If GPU time is tight, run the control at the smaller size — it is a correctness
 check, not a resolution study — and spend the big configuration on the dipole.
 
-The analysis is produced by the run itself: `lambda_inner.png` (imposed `lambda` on the
-inner sphere vs the network), `lambda_multipoles_outer.png` (the `l = 0, 1, 2` angular
-dependences at `rho_final = 100`, with amplitudes), `lambda_multipole_decay.png`
-(amplitudes vs `rho` against the expected `-(l+1)`), and `report.json` with the residuals,
-boundary values and multipole content.
+The analysis is produced by the run itself (figures + `report.txt`, see §4):
+`lambda_vs_rho.png` (λ against ρ at several angles, exact solution overlaid),
+`lambda_inner.png` (imposed `lambda` on the inner sphere vs the network),
+`lambda_multipoles_outer.png` (the `l = 0, 1, 2` angular dependences at `rho_final = 100`,
+with amplitudes), `lambda_multipole_decay.png` (amplitudes vs `rho` against the expected
+`-(l+1)`), and `report.txt`/`report.json` with the residuals, boundary values and
+multipole content.
 
 ## 8. Notebooks
 
@@ -390,9 +432,11 @@ array in the harmonic coordinates), and `cfg` carries `rho_in`, `rho_out`, `lam0
 `lam_inf`, `inner_radius` and the Robin orders, so the same pattern extends to `Gamma`,
 `h_rr` or the multipoles (`from stationary.multipoles import lambda_multipoles`).
 
-**8.4 A text report to paste into a discussion.** `python -m stationary.report --outdir
-runs/<name>` prints one screen with: the code provenance (git HEAD, and whether the
-boundary-weight fix is present in `train.py`), the full configuration (including `S1`,
+**8.4 A text report to paste into a discussion.** Every run writes one to
+`runs/<name>/report.txt` when it ends (add `--out FILE` to the command below to save it
+yourself), and `python -m stationary.report --outdir runs/<name>` prints one screen with:
+the code provenance (git HEAD, and whether the boundary-weight fix is present in
+`train.py`), the full configuration (including `S1`,
 `S2`, `lambda_0`, Robin orders), the loss trajectory with its groups, the inner boundary
 imposed versus achieved at three angles, `lambda` at the outer sphere with its distance
 from `lambda_inf`, the multipole amplitudes and their fitted decay powers, the PDE
@@ -410,7 +454,7 @@ figure-producing calls differ a lot in how many they make:
 | `plot_lambda_vs_rho(pf, cfg)` | 1 | 1 |
 | `python -m stationary.profile --outdir RUN` | 1 | 2 |
 | `python -m stationary.evaluate --outdir RUN` | 4 | 15 |
-| a training run (`run_hub.sh ...`) | 0 | writes the same 4 files, displays nothing |
+| `run_hub.sh ...` / `postprocess.sh RUN` | 0 | writes the 5 files (profile included), displays nothing |
 
 So calling `evaluate()` in a notebook explains a screenful of plots: `diagnostics.png`
 (6 axes) plus `lambda_inner.png` (4), `lambda_multipoles_outer.png` (3) and

@@ -62,8 +62,10 @@ and `tests/test_pipeline.py::test_harmonic_chart_freedom`.
     stationary/train.py        Adam -> L-BFGS driver, checkpoints, reports
     stationary/evaluate.py     diagnostics and figures for a checkpoint
     stationary/profile.py      lambda (and other fields) as a function of rho
+    stationary/report.py       one-screen text report of a run (paste-able)
     stationary/multipoles.py   spherical-harmonic decomposition and figures
     stationary/diagnostics.py  residual/error/boundary-geometry reports
+    postprocess.sh             figures + lambda_vs_rho.png + report.txt of a run
     tests/test_pipeline.py     end-to-end tests (see below)
     verify_exact_solution.py   standalone regression test of the exact solution
 
@@ -111,7 +113,14 @@ Outer sphere (`rho = rho_out`), two modes:
     .venv/bin/python verify_exact_solution.py                  # standalone check
     .venv/bin/python -m stationary.train --steps 20000 --lbfgs-steps 2000 \
         --outdir runs/m1
-    .venv/bin/python -m stationary.evaluate runs/m1            # diagnostics + figure
+    .venv/bin/python -m stationary.evaluate runs/m1            # diagnostics + figures
+    .venv/bin/python -m stationary.profile  runs/m1            # lambda vs rho (+ table)
+    .venv/bin/python -m stationary.report   runs/m1            # text report
+    ./postprocess.sh runs/m1                                   # all three of the above
+
+`postprocess.sh` writes every figure plus `report.txt` into the run directory; it is what
+`run_hub.sh` runs automatically when a training process ends (see `HUB.md` §4), so a
+finished — or crashed — run is complete without any further command.
 
 Useful flags: `--R0`, `--lam0`, `--rho-out`, `--n-coll`, `--width`, `--depth`,
 `--outer-bc {dirichlet_exact,robin}`, `--pde-ramp-steps`, `--w-inner`,
