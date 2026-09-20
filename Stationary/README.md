@@ -94,12 +94,23 @@ obeys `compat, gauge, lam_eq ~ rho^-3` and `ricci ~ rho^-4`.
 
 Inner sphere (`rho = rho_in`), as specified by the user:
 
-* `lambda = lambda_0` (plus the optional `S1`, `S2` angular terms)
-* the induced metric is the round metric of **areal radius `inner_radius`**
-  (implemented as `h - h_rr n n - (inner_radius^2/rho^2)(I - n n) = 0`)
-* `h_rr = inner_h_rr` — **1 by default**, i.e. it *is* constrained unless you pass
-  `--no-inner-h-rr`.  It fixes the remaining metric freedom but over-determines the
-  radial gauge, which is why the production runs turn it off.
+* `lambda = lambda_0` (plus the optional `S1`, `S2` angular terms).  **`lambda_0` is
+  derived so that the solution is the one with `lambda -> 1` at infinity**:
+  `lambda_0 = k (rho_g - R0)/(rho_g + R0)` with `rho_g = sqrt(inner_radius^2 + R0^2)` and
+  `k = 1`, i.e. `1/phi^2 = 0.381966` for `R0 = 1` with the areal-radius-2 sphere and `1/3`
+  for the M2 control geometry (`R0 = 1/sqrt3`, areal radius 1).  `lambda -> c lambda` is an
+  exact symmetry of the system (`Ricci` is unchanged and so is `(1/2lambda^2) dlambda
+  dlambda`), so `k` is a free normalisation; **every run uses `k = 1`**.  An explicit
+  `--lam0` still selects another branch, and the run then prints the `k` it implies.
+* the induced metric is the round metric of **areal radius `inner_radius`** (default 2, the
+  radius in the problem statement), implemented as
+  `h - h_rr n n - (inner_radius^2/rho^2)(I - n n) = 0`.
+
+No condition is imposed on `h_rr`: that round-metric condition already fixes the scaling
+freedom `h -> s^2 h`, and pinning `h_rr` as well over-determines the radial gauge — the
+exact solution does not satisfy it once the inner sphere is placed anywhere other than the
+canonical chart.  (`Config.inner_h_rr` exists for special cases; no documented command uses
+it.)
 
 `inner_radius` defaults to **2**, which is the problem statement and is what
 `rho_in_of_R0(R0) = sqrt(4+R0^2)` places at `rho_in` in the canonical harmonic chart: the
@@ -120,6 +131,18 @@ Outer sphere (`rho = rho_out`), two modes:
 * `robin` — `n^i d_i field = -(field - field_inf)/rho_out` on `h` (with
   `field_inf = delta_ij`), on `Gamma` (`field_inf = 0`) and on `lambda`
   (`field_inf = lambda_inf`, optionally a learnable scalar)
+
+`--lam-inf` (the value the Robin condition drives `lambda` to) must equal the `k` implied by
+the inner data; with the derived `lambda_0` that is `k = 1` automatically.  `train.build`
+warns when they disagree.  That inconsistency is what parked `n2_dipole`: `lambda_0 = 1/3`
+with `R0 = 1` on the areal-radius-1 sphere gives `k = 1.943`, while its Robin condition drove
+`lambda` to 1.
+
+Normalisation of the runs already in `runs/`, for reading old figures: `m2R2_asym1`,
+`m2R3_symhybrid` and `m2R4_realrobin` are on the `k = 1` branch; `m1_sym`, `m1_3d` and
+`m2R1_trivial` used `lambda_0 = 1` (`k = phi^2 = 2.618`) and `n2_dipole` `k = 1.943`.  The
+metric results are unaffected either way — the symmetry rescales `lambda` only — but `lambda`
+values in those reports must be divided by their `k` before comparing with a `k = 1` run.
 
 ## 6. Usage
 
@@ -169,9 +192,14 @@ of the harmonic chart.
 
 ### 8.2 Milestone 1 (manufactured solution: BC data from the exact solution)
 
-Configuration: $R_0=1$, $\lambda_0=1$, $k=(\sqrt5+1)/(\sqrt5-1)=\varphi^2$, inner
-sphere at $\rho_{\rm in}=\sqrt5$ (the areal-radius-2 sphere), outer at $\rho=20$,
-Dirichlet data from the exact solution at both spheres.
+Configuration: $R_0=1$, inner sphere at $\rho_{\rm in}=\sqrt5$ (the areal-radius-2
+sphere), outer at $\rho=20$, Dirichlet data from the exact solution at both spheres.
+The runs below were made with $\lambda_0=1$, i.e. on the
+$k=(\sqrt5+1)/(\sqrt5-1)=\varphi^2$ normalisation; runs made now derive
+$\lambda_0=1/\varphi^2=0.381966$ for the same geometry so that $\lambda\to1$.  Since
+$\lambda\to c\lambda$ is an exact symmetry, the metric results ($\max|\Delta h|$ and
+friends) are the same in both normalisations, and only the quoted $\lambda$ values
+differ by the factor $\varphi^2$.
 
 What was learned about the optimisation (all runs in `runs/`):
 
@@ -241,16 +269,16 @@ results that change the specification:
    rates: $R_{ab}\sim\partial^2\delta h$ must match $(1/2\lambda^2)\lambda_a\lambda_b
    \sim\rho^{-4}$, so $\delta h\sim\rho^{-2}$ and $\Gamma\sim\rho^{-3}$.
 
-3. **$h_{rr}=1$ on the inner sphere is an extra condition** (it was added by me, not in
-   your specification) and it over-determines the symmetric sector: the harmonic chart
-   has only two free parameters $F=c_1\rho+c_2F_2$, and "areal radius 2 at $\rho=2$"
-   plus "$h_{rr}=1$ at $\rho=2$" fix both, leaving the asymptotic metric at
-   $1.165\,\delta$ instead of $\delta$. Dropping $h_{rr}=1$ makes the exact solution
-   satisfy **your entire BC set** ($\lambda=\lambda_0$ and round inner metric at
-   $\rho=2$, plus all three Robin conditions at $\rho=20$) to $10^{-10}$ or better —
-   which turns Milestone 2 into a validation problem with a known answer. Use
-   `--no-inner-h-rr` for that variant; `--ref-solution` builds the reference for
-   diagnostics.
+3. **$h_{rr}=1$ on the inner sphere is an extra condition** (added by me, not in your
+   specification) and it over-determines the symmetric sector: the harmonic chart has
+   only two free parameters $F=c_1\rho+c_2F_2$, and "areal radius 2 at $\rho=2$" plus
+   "$h_{rr}=1$ at $\rho=2$" fix both, leaving the asymptotic metric at $1.165\,\delta$
+   instead of $\delta$.  It was a mistake and it is **gone**: no run constrains $h_{rr}$
+   any more (the (default of `inner_h_rr` is now `None`, i.e. free), which makes the exact
+   solution satisfy **your entire BC set** ($\lambda=\lambda_0$ and round inner metric at
+   $\rho=2$, plus all three Robin conditions at $\rho=20$) to $10^{-10}$ or better ---
+   which turns Milestone 2 into a validation problem with a known answer.  The old
+   `--no-inner-h-rr` flag is no longer needed anywhere.
 
 Reference chart (inner areal radius 2 at $\rho=2$, $h\to\delta$): $c_1=1$,
 $c_2=1.552622$, $k=2.618034$; then $h_{rr}(\rho=2)=0.6487$ comes out of the solution

@@ -83,6 +83,21 @@ def build(cfg: Config, init_from: str | None = None):
     # two boundary conditions come from different solutions, no metric satisfies both,
     # and the run converges to a compromise instead of the exact solution.  Two seconds
     # here, or a wasted run later.
+    # With the inner data fixed, the asymptotic value of the exact solution is k =
+    # lambda_0 (rho_g+R0)/(rho_g-R0); the outer Robin condition drives lambda towards
+    # lam_inf, so the two must agree or the exact solution is not a solution of the
+    # problem being solved.
+    k = exact.k_from_lambda0(cfg.R0, cfg.lam0, r_areal=cfg.inner_radius)
+    if (cfg.outer_bc == "robin" and cfg.lam_inf is not None
+            and abs(cfg.lam_inf - k) > 1e-6 * max(1.0, abs(k))):
+        print(f"[build] WARNING: the inner data select the exact solution with "
+              f"lambda -> k = {k:.6f} (lambda_0 = {cfg.lam0:.7g} on the areal-radius-"
+              f"{cfg.inner_radius:g} sphere, R0 = {cfg.R0:g}), but the outer Robin "
+              f"condition drives lambda to lam_inf = {cfg.lam_inf:g}.")
+        print(f"[build]   the exact solution does not satisfy that outer condition.  Use "
+              f"--lam-inf {k:.6f}, or --lam0 "
+              f"{exact.lambda0_from_k(cfg.R0, cfg.lam_inf, cfg.inner_radius):.7f} to keep "
+              f"lam_inf (and re-check the inner data).")
     if exact_fields is not None:
         chk = reference_consistency(exact_fields, cfg)
         # The reference enters the loss as boundary data only in these two cases; without
@@ -178,12 +193,14 @@ def print_config_summary(cfg: Config):
     Printing them makes that visible in the first screen of the log.
     """
     orders = cfg.robin_orders or {k: cfg.robin_order for k in ("h", "G", "lam")}
+    k = exact.k_from_lambda0(cfg.R0, cfg.lam0, r_areal=cfg.inner_radius)
     print("=" * 72)
     print("effective configuration (every value below is a flag; check them)")
     print(f"  model       {cfg.arch}   {cfg.width} x {cfg.depth}, fourier {cfg.fourier}"
           f"   (Gamma derived from h)")
-    print(f"  exact data  R0 = {cfg.R0:g}   lambda_0 = {cfg.lam0:g}"
-          f"   S1 = {cfg.lam_bc_S1:g}   S2 = {cfg.lam_bc_S2:g}")
+    print(f"  exact data  R0 = {cfg.R0:g}   lambda_0 = {cfg.lam0:.7g}"
+          f"   S1 = {cfg.lam_bc_S1:g}   S2 = {cfg.lam_bc_S2:g}"
+          f"   ->  lambda -> k = {k:.7g}" + ("" if abs(k - 1.0) < 1e-9 else "   (k != 1!)"))
     print(f"  domain      rho in [{cfg.rho_in:g}, {cfg.rho_out:g}]"
           f"   inner sphere areal radius {cfg.inner_radius:g}"
           f"   h_rr {cfg.inner_h_rr if cfg.inner_h_rr is not None else 'free'}")
@@ -217,8 +234,8 @@ def print_reference_summary(cfg: Config, exact_fields):
     print(f"[ref] exact reference: lambda({cfg.rho_in:g}) = {lam_in:.6f} "
           f"(imposed {cfg.lam0:g})   lambda({cfg.rho_out:g}) = {lam_out:.6f}   "
           f"lambda -> k = {k:.6f}")
-    print(f"[ref]   reference values: M1 default (R0=1, areal radius 2, lam0=1) -> k = 2.618034;"
-          f"   M2 control (R0=1/sqrt3, areal radius 1, lam0=1/3) -> k = 1")
+    print(f"[ref]   every run uses the k = 1 branch: this one has k = {k:.6f}"
+          + ("" if abs(k - 1.0) < 1e-9 else "  <-- NOT 1: --lam0 was given explicitly"))
 
 
 def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
@@ -474,7 +491,10 @@ def parse_args(argv=None):
     if a.R0 is not None:
         cfg.R0 = a.R0
     if a.lam0 is not None:
+        # an explicit lambda_0 wins over the derived k = 1 value: say so, or the final
+        # __post_init__() would recompute it
         cfg.lam0 = a.lam0
+        cfg.lam0_auto = False
     if a.rho_out is not None:
         cfg.rho_out = a.rho_out
     if a.n_coll is not None:

@@ -23,8 +23,11 @@ from stationary.losses import (inner_bc_terms, outer_bc_terms, pde_terms,
 from stationary.model import HybridNet, SymHybridNet
 from stationary.problem import Config, sample_shell, sample_sphere
 
-R0, LAM0 = 1.0, 1.0
-K = exact.k_from_lambda0(R0, LAM0)
+R0 = 1.0
+# Every run sits on the branch with lambda -> 1; for R0 = 1 and the round sphere of areal
+# radius 2 that means lambda_0 = 1/phi^2 (see Config.__post_init__ and exact.lambda0_from_k).
+LAM0 = exact.lambda0_from_k(R0, 1.0, 2.0)
+K = exact.k_from_lambda0(R0, LAM0)          # = 1
 
 
 # --------------------------------------------------------------------- fixtures
@@ -168,6 +171,35 @@ def test_inner_radius_default_is_the_areal_radius_2():
     # the wrong value must be *detected*, not quietly absorbed
     bad = Config(R0=R0, lam0=LAM0, inner_radius=float(cfg.rho_in))
     assert reference_consistency(exact_point_fields(), bad)["h_tan"] > 1e-4
+
+
+def test_default_config_is_the_lambda_to_1_branch():
+    """lambda_0 is derived so that lambda -> 1, and h_rr is not constrained.
+
+    `lambda -> c lambda` is an exact symmetry, so the asymptotic value is a free
+    normalisation; every run uses k = 1, which makes lambda_0 a function of the geometry:
+    1/phi^2 = 0.381966 for R0 = 1 with the areal-radius-2 sphere, 1/3 for the M2 control
+    geometry (R0 = 1/sqrt3, areal radius 1).  The second half of the test is the CLI's
+    build-then-override pattern: Config() first, --R0/--inner-radius afterwards, which
+    must still end up with k = 1.
+    """
+    c = Config()
+    assert c.inner_radius == 2.0
+    assert c.inner_h_rr is None                       # free: imposing it over-determines the gauge
+    assert abs(c.lam0 - exact.lambda0_from_k(1.0, 1.0, 2.0)) < 1e-15     # = 1/phi^2 = 0.381966
+    assert abs(exact.k_from_lambda0(c.R0, c.lam0, r_areal=c.inner_radius) - 1.0) < 1e-12
+
+    c2 = Config()                                     # the CLI pattern
+    c2.R0 = 1.0 / jnp.sqrt(3.0)
+    c2.rho_in = 1.0
+    c2.inner_radius = 1.0
+    c2.__post_init__()
+    assert abs(c2.lam0 - 1.0 / 3.0) < 1e-12
+    assert abs(exact.k_from_lambda0(c2.R0, c2.lam0, r_areal=c2.inner_radius) - 1.0) < 1e-12
+
+    c3 = Config(lam0=1.0)                             # an explicit value still wins
+    assert c3.lam0 == 1.0 and c3.lam0_auto is False
+    assert abs(exact.k_from_lambda0(c3.R0, c3.lam0, r_areal=c3.inner_radius) - 2.6180340) < 1e-6
 
 
 def test_robin_terms_are_finite_and_shaped():

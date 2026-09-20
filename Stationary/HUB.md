@@ -288,6 +288,12 @@ Two limits worth knowing:
   code (a missing import for the figures is the failure mode). If you must move an
   uncommitted tree instead: `rsync -av --exclude .venv --exclude .pip-cache \
   --exclude .mplcache --exclude __pycache__ Stationary/ hub:~/PINN/Stationary/`.
+* **`$PY ./run_hub.sh ...` runs Python on a bash script.** `run_hub.sh` is a *shell* script;
+  `PY` is an environment variable it reads, so the assignment goes on the same command:
+  `PY=/path/to/python ./run_hub.sh --steps ...`. Writing it as two lines, or using
+  `$PY ./run_hub.sh`, sends the script to the interpreter, which reports a Python
+  `SyntaxError` about a line with `--outdir) ... ;;` (it tried to parse bash `case`). If you
+  see that, nothing ran and nothing was written.
 * **Your flags may not have arrived.** Every physics setting in this project is a flag, and
   a shell array that was defined in another terminal expands to nothing, so
   `./run_hub.sh "${COMMON[@]}" ...` quietly trains the *default* configuration instead.
@@ -336,23 +342,23 @@ small job: request modest CPU/RAM rather than many cores or several GPUs.
 
 ### What the numbers must come out to
 
-`lambda -> c*lambda` is an **exact symmetry** of the system (Ricci is unchanged and the
-right-hand side is invariant), so the same spacetime appears with any normalisation of
-`lambda`; which one a run produces is decided by `--lam0`. Use this table to tell at a
-glance whether a run is on the right solution (`stationary.report` prints all of it):
+Every run sits on the **`lambda -> 1` branch** (`k = 1`).  `lambda -> c lambda` is an exact
+symmetry of the system (Ricci is unchanged and so is the right-hand side), so `k = lambda`
+at infinity is a free normalisation; `k = 1` is the physically interesting one, and
+`lambda_0` is now *derived* from the geometry rather than being a flag:
+`lambda_0 = k (rho_g - R0)/(rho_g + R0)`, `rho_g = sqrt(inner_radius^2 + R0^2)`.
 
 | configuration | `lambda` at the inner sphere | at the outer sphere | inner areal radius |
 |---|---|---|---|
-| M1 check: `R0=1`, `rho_in = sqrt5 = 2.2360680`, `inner_radius = 2` (default), `dirichlet_exact` | 1 (imposed) | `lambda(20) = 2.3686974`, asymptotic `k = phi^2 = 2.6180340` | **2.000000** |
-| the same solution with `lambda -> lambda/phi^2` | 0.3819660 | `lambda(20) = 0.9047619`, asymptotic 1 | **2.000000** |
-| M2 control (§7): `R0 = 1/sqrt3`, `rho_in = inner_radius = 1`, `lam0 = 1/3`, Robin, `lam_inf = 1` | 0.3333333 | `lambda(20) = 0.9438861`, `lambda(100) = 0.9885193` | 1.000000 |
+| M1-style check: `R0 = 1`, `rho_in = sqrt5 = 2.2360680`, areal radius 2 (default), `dirichlet_exact` | **0.3819660** (derived) | `lambda(20) = 0.9047619`, `lambda -> 1` | **2.000000** |
+| M2 control (§7): `R0 = 1/sqrt3`, `rho_in = 1`, areal radius 1, `lam0 = 1/3` (derived), Robin | **0.3333333** | `lambda(20) = 0.9438861`, `lambda(100) = 0.9885193` | 1.000000 |
 
-The third row is the one with the acceptance criterion: **`lambda(100) = 0.9885`**. Note
-that `k = lam0 (rho_geom+R0)/(rho_geom-R0)` is *not* 1 for the first two rows: with
-`lambda_0 = 1` on the areal-radius-2 sphere of `R0 = 1` the asymptotic value is
-`phi^2 = 2.618`, so a Robin run must use `--lam0 0.3819660` together with
-`--lam-inf 1` if `lambda -> 1` is what you want; imposing `lambda_0 = 1` *and*
-`--lam-inf 1` is inconsistent.
+The second row is the one with the acceptance criterion: **`lambda(100) = 0.9885`**.  The
+banner and `report.txt` print `lambda_0` and the `k` it implies; `k != 1` means an explicit
+`--lam0` was given and the run is on another branch.  For reference, the stored runs from
+before this rule: `m2R2_asym1`, `m2R3_symhybrid`, `m2R4_realrobin` were already `k = 1`;
+`m1_sym`, `m1_3d`, `m2R1_trivial` used `lambda_0 = 1` (`k = phi^2 = 2.618`) and `n2_dipole`
+`k = 1.943`; their `lambda` numbers must be divided by that `k` to be compared.
 
 ## 7. The two production runs (separate, run in sequence)
 
@@ -387,17 +393,19 @@ configuration, so this takes two seconds to spot.
 
 **(1) Control first — `S1 = S2 = 0`.** Output goes to `runs/<timestamp>` inside the
 checkout (override with `OUTDIR=`; `run_hub.sh` never writes outside the project). This is
-the **order-1** Robin variant we are testing at the moment:
+the **order-1** Robin variant we are testing at the moment. Note that `--lam0` is *not*
+given: it is derived so that `lambda -> 1` (here `lambda_0 = 1/3`), and that `h_rr` is not
+constrained by default either:
 
 ```bash
 cd <checkout>
-PY=$PWD/.venv/bin/python
-$PY ./run_hub.sh --arch axisym_hybrid --outdir runs/control_ord1 \
+rm -rf runs/control_ord1                 # drop an earlier attempt, if any
+PY=$PWD/.venv/bin/python ./run_hub.sh --arch axisym_hybrid --outdir runs/control_ord1 \
     --steps 20000 --lbfgs-steps 1000 --ref-solution --ref-asymptotic 1.0 \
     --R0 0.5773502691896258 \
-    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
+    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 \
     --outer-bc robin --robin-orders h=1,lam=1 --no-robin-G --lam-inf 1.0 \
-    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
+    --decay-feature --radial log --pde-ramp-steps 500 \
     --w-inner 100 --w-outer 100 --reweight-every 1500 \
     --n-coll 4096 --n-bnd 256 --width 64 --depth 4 --fourier 8
 ```
@@ -411,14 +419,14 @@ anything else, stop the run:
 
 ```
 == command ==
-env ... -m stationary.train --outdir runs/control_ord1 ... --rho-out 100 --lam0 0.3333 ...
+env ... -m stationary.train --outdir runs/control_ord1 ... --rho-out 100 --lam-inf 1.0 ...
 =============
 ========================================================================
 effective configuration (every value below is a flag; check them)
   model       axisym_hybrid   64 x 4, fourier 8   (Gamma derived from h)
-  exact data  R0 = 0.57735   lambda_0 = 0.333333   S1 = 0   S2 = 0
+  exact data  R0 = 0.57735   lambda_0 = 0.3333333   S1 = 0   S2 = 0   ->  lambda -> k = 1
   domain      rho in [1, 100]   inner sphere areal radius 1   h_rr free
-  outer BC    robin   lambda_inf = 1 (learnable)   orders {'h': 1, 'lam': 1} ...
+  outer BC    robin   lambda_inf = 1.0 (learnable)   orders {'h': 1, 'lam': 1} ...
 [ref] exact reference: lambda(1) = 0.333333 (imposed 0.333333)   lambda(100) = 0.988519   lambda -> k = 1.000000
 ```
 

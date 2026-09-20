@@ -123,8 +123,11 @@ def main():
     print(f"exact solution : R0 = {cfg.R0:g}   ref_solution {cfg.ref_solution}   "
           f"ref_asymptotic {getattr(cfg, 'ref_asymptotic', None)}   "
           f"robin_source {cfg.robin_source}")
-    print(f"inner data     : lambda_0 = {cfg.lam0:g}   S1 = {cfg.lam_bc_S1:g}   S2 = {cfg.lam_bc_S2:g}"
-          f"   (h_rr constrained: {cfg.inner_h_rr})")
+    print(f"inner data     : lambda_0 = {cfg.lam0:g}"
+          f"{' (derived from k=1)' if getattr(cfg, 'lam0_auto', False) else ''}"
+          f"   ->  lambda -> k = {exact.k_from_lambda0(cfg.R0, cfg.lam0, r_areal=cfg.inner_radius):.6f}"
+          f"   S1 = {cfg.lam_bc_S1:g}   S2 = {cfg.lam_bc_S2:g}"
+          f"   (h_rr: {cfg.inner_h_rr if cfg.inner_h_rr is not None else 'free'})")
     lam_inf = cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init
     orders = cfg.robin_orders or {k: cfg.robin_order for k in ("h", "G", "lam")}
     print(f"outer BC       : {cfg.outer_bc}, lambda_inf = {lam_inf:g}, Robin orders {orders},"

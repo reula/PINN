@@ -23,7 +23,10 @@
 #   TRAIN_THREADS  cap on CPU threads            (default 4)
 #   POST_THREADS   cap for --post/postprocess    (default: TRAIN_THREADS)
 #   JAX_CACHE      0 disables the persistent compilation cache (default 1)
-#   PY             interpreter to use            (default python)
+#   PY             interpreter to use: an ENVIRONMENT variable, assigned on the same
+#                  command line --  PY=$PWD/.venv/bin/python ./run_hub.sh --steps ...
+#                  (default: python).  Do NOT write `$PY ./run_hub.sh`: that hands this
+#                  shell script to the interpreter, which fails with a Python SyntaxError.
 #   SMOKE          --check smoke-run output dir   (default <repo>/runs/_smoke)
 # ---------------------------------------------------------------------------
 set -euo pipefail

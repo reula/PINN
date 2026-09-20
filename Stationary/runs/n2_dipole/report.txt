@@ -4,7 +4,7 @@ RUN / CODE
 ------------------------------------------------------------------------------
 run dir        : runs/n2_dipole
 params file    : params.pkl
-git HEAD       : 0f0c879  (+12 uncommitted files)
+git HEAD       : 78098a5  (+10 uncommitted files)
 BC-weight fix  : PRESENT (reweighting touches interior groups only)
 steps          : 10000 Adam + 1000 L-BFGS   wall 81.7 min
 final loss     : 7.0121e-04
@@ -14,7 +14,8 @@ CONFIG
 ------------------------------------------------------------------------------
 arch           : axisym_hybrid   width 64 x depth 4, fourier 8
 domain         : rho in [1, 100]   inner sphere areal radius 1   radial sampling log
-inner data     : lambda_0 = 0.333333   S1 = 0.1   S2 = 0   (h_rr constrained: None)
+exact solution : R0 = 1   ref_solution False   ref_asymptotic None   robin_source False
+inner data     : lambda_0 = 0.333333   ->  lambda -> k = 1.942809   S1 = 0.1   S2 = 0   (h_rr: free)
 outer BC       : robin, lambda_inf = 1, Robin orders {'h': 2, 'G': 2, 'lam': 2}, Gamma condition included: True
 loss weights   : w_inner = 100, w_outer = 100, reweight_every = 2000
 sampling       : n_coll 4096, n_bnd 256, scale_ref None

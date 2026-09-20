@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import jax
 import jax.numpy as jnp
 
+from .exact import lambda0_from_k
 from .exact import rho_in as rho_in_of_R0
 
 
@@ -15,12 +16,29 @@ class Config:
     # ---------------------------------------------------------------- physics
     R0: float = 1.0                 # exact-solution parameter used for milestone 1
     rho_out: float = 20.0
-    lam0: float = 1.0               # constant part of lambda on the inner sphere
+    # Constant part of lambda on the inner sphere.  None (the default) DERIVES it so that
+    # the solution is the one with lambda -> 1 at infinity:
+    #     lambda_0 = k (rho_g - R0)/(rho_g + R0),  rho_g = sqrt(inner_radius^2 + R0^2),  k = 1.
+    # lambda -> c lambda is an exact symmetry of the system, so k is a free normalisation
+    # and every run uses k = 1 (see exact.lambda0_from_k).  Pass --lam0 to sit on another
+    # branch; the banner and the report then print the k it implies.
+    lam0: float | None = None
+    # True while lambda_0 is derived rather than given: it is recomputed by every
+    # __post_init__ call, which is what makes the CLI's build-then-override pattern
+    # (Config() first, --R0/--inner-radius after) come out right.  The CLI clears it when
+    # --lam0 is passed.  Stored configs from before this field existed default to False,
+    # so their recorded lambda_0 keeps its meaning.
+    lam0_auto: bool = False
     inner_radius: float | None = None   # areal radius required on the inner sphere
-                                        # None -> rho_in (round sphere of radius rho_in)
+                                        # None -> 2, the radius in the problem statement
     lam_bc_S1: float = 0.0          # dipole amplitude    S1 * z / rho_in
     lam_bc_S2: float = 0.0          # quadrupole amplitude S2 * (z^2-(x^2+y^2)/2)/rho_in^2
-    inner_h_rr: float | None = 1.0  # None -> do NOT constrain h_rr on the inner sphere
+    # h_rr on the inner sphere is deliberately NOT constrained by default: the metric on
+    # the inner sphere (round, areal radius inner_radius) already fixes the scaling
+    # freedom h -> s^2 h, and pinning h_rr as well over-determines the radial gauge --
+    # the exact solution does not satisfy it once the inner sphere is placed anywhere
+    # other than the canonical chart.  `--inner-h-rr V` still sets it if you want it.
+    inner_h_rr: float | None = None
     rho_in: float | None = None     # None -> sqrt(4 + R0^2): the areal-radius-2 sphere
 
     # ------------------------------------------------------- outer boundary
@@ -103,6 +121,14 @@ class Config:
             # This default was rho_in between commits 67a802a and this one; the runs made
             # before it (m1_sym, m1_3d) used the areal radius 2.
             self.inner_radius = 2.0
+        if self.lam0 is None or self.lam0_auto:
+            # Every run sits on the branch with lambda -> 1 (k = 1): the asymptotic value
+            # is a free normalisation (lambda -> c lambda is an exact symmetry) and 1 is
+            # the physically interesting one.  With R0 = 1 and areal radius 2 this gives
+            # lambda_0 = 1/phi^2 = 0.381966; with the M2 control geometry (R0 = 1/sqrt3,
+            # areal radius 1) it gives 1/3.  An explicit --lam0 clears lam0_auto and wins.
+            self.lam0 = lambda0_from_k(self.R0, 1.0, self.inner_radius)
+            self.lam0_auto = True
 
 
 def lam_inner_bc(x, cfg):

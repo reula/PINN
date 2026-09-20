@@ -4,7 +4,7 @@ RUN / CODE
 ------------------------------------------------------------------------------
 run dir        : runs/m2R4_realrobin
 params file    : params.pkl
-git HEAD       : 0f0c879  (+5 uncommitted files)
+git HEAD       : 78098a5  (+9 uncommitted files)
 BC-weight fix  : PRESENT (reweighting touches interior groups only)
 steps          : 20000 Adam + 2000 L-BFGS   wall 123.9 min
 final loss     : 5.3990e-08
@@ -14,7 +14,8 @@ CONFIG
 ------------------------------------------------------------------------------
 arch           : sym_hybrid   width 64 x depth 4, fourier 8
 domain         : rho in [2, 100]   inner sphere areal radius 2   radial sampling log
-inner data     : lambda_0 = 0.381966   S1 = 0   S2 = 0   (h_rr constrained: None)
+exact solution : R0 = 1   ref_solution True   ref_asymptotic 1.0   robin_source False
+inner data     : lambda_0 = 0.381966   ->  lambda -> k = 1.000000   S1 = 0   S2 = 0   (h_rr: free)
 outer BC       : robin, lambda_inf = 1, Robin orders {'h': 2, 'G': 2, 'lam': 2}, Gamma condition included: True
 loss weights   : w_inner = 100, w_outer = 100, reweight_every = 2000
 sampling       : n_coll 4096, n_bnd 256, scale_ref None
@@ -85,7 +86,9 @@ PDE RESIDUALS (raw units)
 VS EXACT REFERENCE
 ------------------------------------------------------------------------------
     reference lambda(rho_in) = 0.3819660   (run imposed 0.381966)
-    max |dh| = 1.551e-05   max |dGamma| = 2.975e-07   max |dlambda| = 1.927e-04
+    over the shell   max |dh| = 7.984e-05   max |dGamma| = 1.705e-04   max |dlambda| = 1.927e-04
+    at rho_out       max |dh| = 1.551e-05   max |dlambda| = 1.927e-04
+    reference vs the imposed inner data: lam=3.18e-33  h_tan=4.42e-32   <- CONSISTENT
 
 ------------------------------------------------------------------------------
 REWEIGHTING HISTORY (from the log, if found)

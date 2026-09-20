@@ -82,6 +82,19 @@ def k_from_lambda0(R0: float, lam0: float, r_areal: float = 2.0) -> float:
     return lam0 * (r + R0) / (r - R0)
 
 
+def lambda0_from_k(R0: float, k: float = 1.0, r_areal: float = 2.0) -> float:
+    """lam0 such that lambda -> k at infinity, on the sphere of areal radius r_areal.
+
+    The inverse of k_from_lambda0.  `lambda -> c lambda` is an exact symmetry of the
+    system (Ricci is unchanged and so is (1/2 lambda^2) d lambda d lambda), so the
+    asymptotic value is a free normalisation; k = 1 is the physically interesting one
+    (lambda -> 1 at long distances, asymptotically flat in the 4-d reading) and is the
+    default of every run (see Config.__post_init__).
+    """
+    r = float(jnp.sqrt(r_areal**2 + R0**2))
+    return k * (r - R0) / (r + R0)
+
+
 def areal_radius(rho, R0: float):
     return jnp.sqrt(jnp.asarray(rho) ** 2 - R0**2)
 
