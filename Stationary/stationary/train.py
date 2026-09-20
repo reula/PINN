@@ -215,6 +215,9 @@ def print_config_summary(cfg: Config):
           f"   reweight every {cfg.reweight_every}   pde ramp {cfg.pde_ramp_steps}")
     print(f"  sampling    n_coll {cfg.n_coll}   n_bnd {cfg.n_bnd}   radial {cfg.radial}"
           f"   decay feature {cfg.decay_feature}")
+    prec = ("float64 (x64: ~2x slower, and NOT comparable with the float32 runs)"
+            if jax.config.jax_enable_x64 else "float32 (default)")
+    print(f"  precision   {prec}")
     print(f"  plan        {cfg.steps} Adam + {cfg.lbfgs_steps} L-BFGS   outdir {cfg.outdir}")
     print("=" * 72)
 
@@ -321,17 +324,24 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
             # fell to 6.25 while w_inner rose to 229), let lambda stay at its inner
             # value and drift onto the trivial flat branch.
             pde_keys = ("compat", "ricci", "gauge", "lam_eq")
-            target = jnp.mean(jnp.stack([g[i] for i, k in enumerate(GROUP_KEYS)
-                                         if k in pde_keys]))
+            # ... and not even all of those: a group that is satisfied identically (compat
+            # is, in the metric-only schemes) has a gradient at the round-off floor, and
+            # w ~ 1/||grad|| then grows it without bound while pushing the others down.
+            # Leave such groups alone and keep them out of the target.
+            gmax = max(float(g[i]) for i, k in enumerate(GROUP_KEYS) if k in pde_keys)
+            live = [k for k in pde_keys if float(g[GROUP_KEYS.index(k)]) > cfg.reweight_floor * gmax]
+            target = jnp.mean(jnp.stack([g[GROUP_KEYS.index(k)] for k in live]))
+            w0 = {k: v for k, v in default_weights(cfg).items()}
             w_new = {}
             for i, k in enumerate(GROUP_KEYS):
-                if k not in pde_keys:
-                    w_new[k] = weights[k]           # fixed: cfg.w_inner / cfg.w_outer
+                if k not in live:
+                    w_new[k] = weights[k]      # boundary data, or nothing to balance
                     continue
                 ideal = target / (g[i] + 1e-300)
                 ratio = jnp.clip(ideal / weights[k], cfg.reweight_max_ratio_inv,
                                  1.0 / cfg.reweight_max_ratio_inv)
-                w_new[k] = weights[k] * jnp.sqrt(ratio)
+                lo, hi = w0[k] / cfg.reweight_band, w0[k] * cfg.reweight_band
+                w_new[k] = jnp.clip(weights[k] * jnp.sqrt(ratio), lo, hi)
             weights = w_new
             if verbose:
                 print(f"[reweight {it}] " + " ".join(
@@ -478,6 +488,8 @@ def parse_args(argv=None):
     p.add_argument("--scale-ref-rho-in", action="store_true")
     p.add_argument("--scale-exps", type=str, default=None)
     p.add_argument("--reweight-every", type=int, default=None)
+    p.add_argument("--reweight-band", type=float, default=None,
+                   help="how far a PDE weight may drift from its configured value")
     p.add_argument("--w-outer", type=float, default=None)
     p.add_argument("--w-inner", type=float, default=None)
     a = p.parse_args(argv)
@@ -547,6 +559,8 @@ def parse_args(argv=None):
         cfg.arch = a.arch
     if a.reweight_every is not None:
         cfg.reweight_every = a.reweight_every
+    if a.reweight_band is not None:
+        cfg.reweight_band = a.reweight_band
     if a.scale_ref is not None:
         cfg.scale_ref = a.scale_ref
     if a.scale_exps is not None:

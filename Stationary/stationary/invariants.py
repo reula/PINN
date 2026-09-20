@@ -54,23 +54,34 @@ def invariants_at(pf, rho, n=None):
 
 
 def family_params_from_solution(pf, cfg, nrho=40, lo=None, hi=None):
-    """Read (R0, k) off the solution using the two chart-independent relations."""
+    """Read (R0, k) off the solution using the two chart-independent relations.
+
+    The Ricci scalar falls like r_a^-4, so past some radius it is smaller than the
+    round-off noise of the second derivatives it comes from (a float32-trained net gives
+    |R| ~ 1e-7).  The R-based estimate of R0 therefore uses only the radii where |R|
+    stands clear of that noise, estimated from the outermost quarter of the range;
+    `n_R_points` says how many survived.  k comes from lambda, which is O(1) everywhere.
+    """
     lo = cfg.rho_in + 1e-6 if lo is None else lo
     hi = cfg.rho_out if hi is None else hi
     rhos = jnp.linspace(lo, hi, nrho)
     ra, lam, R = zip(*[invariants_at(pf, r) for r in rhos])
     ra = jnp.array(ra); lam = jnp.array(lam); R = jnp.array(R)
-    # R = 2 R0^2 / r_a^4  ->  R0^2 = R r_a^4 / 2   (use the outer half, where R is small
-    # but the relation is cleanest)
+    # R = 2 R0^2 / r_a^4  ->  R0^2 = R r_a^4 / 2   (points above the noise only)
     R0sq = 0.5 * R * ra**4
+    n_out = max(3, nrho // 4)
+    noise = float(jnp.median(jnp.abs(R[-n_out:])))
+    use = jnp.abs(R) > 4.0 * max(noise, 1e-12)
+    n_used = int(jnp.sum(use))
+    R0 = float(jnp.median(jnp.sqrt(jnp.abs(R0sq[use])))) if n_used >= 3 else float("nan")
     # lambda = k (sqrt(ra^2+R0^2)-R0)/(sqrt(ra^2+R0^2)+R0)
-    R0 = float(jnp.median(jnp.sqrt(jnp.abs(R0sq))))
     g = (jnp.sqrt(ra**2 + R0**2) - R0) / (jnp.sqrt(ra**2 + R0**2) + R0)
     k = float(jnp.median(lam / g))
     resid_R = float(jnp.max(jnp.abs(R - 2 * R0**2 / ra**4)))
     resid_lam = float(jnp.max(jnp.abs(lam - k * (jnp.sqrt(ra**2 + R0**2) - R0)
                                       / (jnp.sqrt(ra**2 + R0**2) + R0))))
     return dict(R0=R0, k=k, max_resid_R=resid_R, max_resid_lambda=resid_lam,
+                n_R_points=n_used, R_noise=noise,
                 ra=[float(v) for v in ra], lam=[float(v) for v in lam],
                 R=[float(v) for v in R], R0sq=[float(v) for v in R0sq])
 

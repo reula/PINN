@@ -33,6 +33,7 @@ from . import exact
 from .diagnostics import inner_boundary_report
 from .evaluate import load_run
 from .geometry import residuals_batch
+from .invariants import family_params_from_solution
 from .losses import inner_bc_terms, outer_bc_terms, reference_consistency
 from .model import point_fields
 from .multipoles import lambda_multipoles, multipole_radial_profile
@@ -110,6 +111,12 @@ def main():
     print(f"params file    : {a.params_file}")
     print(f"git HEAD       : {head or '?'}{'  (+%d uncommitted files)' % len(dirty.splitlines()) if dirty else '  (clean)'}")
     print(f"BC-weight fix  : {'PRESENT (reweighting touches interior groups only)' if fix else 'ABSENT -> boundary weights can be driven to zero'}")
+    # how the run was actually made, read off the saved parameters (not from any flag)
+    dts = {str(v.dtype) for v in jax.tree.leaves(state["net"]) if hasattr(v, "dtype")}
+    print(f"precision      : {', '.join(sorted(dts))}"
+          + ("   <- trained in float64 (x64): ~1e-16 round-off headroom"
+             if "float64" in dts else
+             "   <- trained in float32 (the default): round-off floor ~1e-7"))
     if rep:
         print(f"steps          : {rep.get('steps')} Adam + {rep.get('lbfgs_steps')} L-BFGS"
               f"   wall {rep.get('wall_seconds', 0) / 60:.1f} min")
@@ -294,6 +301,37 @@ def main():
     else:
         _section("VS EXACT REFERENCE")
         print("    none configured for this run (no --ref-solution / --dirichlet-exact)")
+
+    # ------------------------------------------------ chart-independent comparison
+    # The harmonic chart is not unique: the residual family F = c1 rho + c2 F2 of harmonic
+    # diffeomorphisms changes h_ij without changing the geometry, and what it changes is
+    # precisely h_rr on the inner sphere (h_rr = 1/F'^2 there).  Comparing h componentwise
+    # against a reference written in another chart therefore overstates the error -- in
+    # runs/control_ord1 the shell-wide max|dh| is 2.3e-2 while every geometric quantity
+    # agrees much better.  These are the numbers that mean something.
+    _section("CHART-INDEPENDENT (geometric invariants)")
+    ang = float(sum(jnp.sqrt(power[l]) for l in (1, 2, 3))) if power else 0.0
+    if ang > 1e-6:
+        print(f"    CAUTION: lambda has angular content (l=1,2,3 amplitudes sum to {ang:.2e}):")
+        print(f"             this solution is NOT spherically symmetric, and the relations")
+        print(f"             below assume it is.  Indicative only (meaningless for the dipole).")
+    try:
+        inv = family_params_from_solution(pf, cfg)
+        k_target = exact.k_from_lambda0(cfg.R0, cfg.lam0, r_areal=cfg.inner_radius)
+        print(f"    family read off the solution: R0 = {inv['R0']:.6f}   k = {inv['k']:.6f}"
+              f"     (the run's data imply R0 = {cfg.R0:.6f}, k = {k_target:.6f})")
+        print(f"    max |R - 2 R0^2/r_a^4| = {inv['max_resid_R']:.3e}"
+              f"   max |lambda - lambda_family| = {inv['max_resid_lambda']:.3e}")
+        print("         r_a       lambda             R     2 R0^2/r_a^4   lambda_family")
+        n = len(inv["ra"])
+        for i in range(0, n, max(1, n // 7)):
+            ra = float(inv["ra"][i])
+            g = (math.sqrt(ra**2 + inv["R0"]**2) - inv["R0"]) / \
+                (math.sqrt(ra**2 + inv["R0"]**2) + inv["R0"])
+            print(f"    {ra:10.4f} {inv['lam'][i]:12.7f} {inv['R'][i]:12.4e}"
+                  f" {2 * inv['R0']**2 / ra**4:12.4e}   {inv['k'] * g:12.7f}")
+    except Exception as exc:                                    # never lose the report
+        print(f"    skipped: {exc}")
 
     # --------------------------------------------------------------------- log
     log = a.log or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

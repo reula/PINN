@@ -90,6 +90,15 @@ class Config:
     pde_ramp_steps: int = 0     # ramp the PDE weights in over this many steps (0 = off)
     reweight_every: int = 2000  # gradient-norm adaptive reweighting period (0 = off)
     reweight_max_ratio_inv: float = 0.5   # per-update cap: weights move by at most 2x
+    # Cumulative band: over a whole run a PDE weight may not move further than this
+    # factor from its configured value.  Without it the rule w ~ 1/||grad term|| drifts:
+    # in runs/control_ord1 the `compat` weight (identically satisfied in the metric-only
+    # schemes, residual ~1e-21) grew 64x while `lam_eq` -- the group with the largest
+    # residual -- was driven down 2.1x, i.e. the most violated equation ended up with the
+    # least relative weight.  Groups whose gradient is below noise (`reweight_floor`
+    # relative to the largest) are excluded from the target and left alone entirely.
+    reweight_band: float = 4.0
+    reweight_floor: float = 1e-6
 
     # ---------------------------------------------------------- optimisation
     steps: int = 20000

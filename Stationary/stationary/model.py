@@ -12,9 +12,29 @@ Outputs (25 numbers):
 from __future__ import annotations
 
 import flax.linen as nn
+import jax
 import jax.numpy as jnp
 
 from .geometry import Fields, christoffel, gamma3, sym3
+
+
+def _rdtype():
+    """float64 iff x64 is enabled.
+
+    Flax defaults every layer to float32 whatever jax_enable_x64 says, so exporting
+    JAX_ENABLE_X64=1 alone leaves the PARAMETERS in float32: the optimiser can then not
+    refine them below ~1e-7 relative, which is exactly the headroom the higher-order
+    Robin conditions need (the fourth-order operator amplifies the field's radial
+    frequency content by (pi*fourier/log(rho_out/rho_in))^4 ~ 890 at fourier 8, 1.4e4 at
+    fourier 16).  With this helper an x64 run is float64 from the parameters up.
+    """
+    return jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
+
+
+def _dense(features, **kw):
+    d = _rdtype()
+    return nn.Dense(features, dtype=d, param_dtype=d, **kw)
+
 
 I3 = jnp.eye(3)
 
@@ -40,8 +60,8 @@ class FieldNet(nn.Module):
             feats.append(jnp.cos(jnp.pi * i * t))
         z = jnp.concatenate(feats, axis=-1)
         for _ in range(self.depth):
-            z = jnp.tanh(nn.Dense(self.width)(z))
-        out = nn.Dense(25, kernel_init=nn.initializers.normal(self.out_std),
+            z = jnp.tanh(_dense(self.width)(z))
+        out = _dense(25, kernel_init=nn.initializers.normal(self.out_std),
                        bias_init=nn.initializers.zeros)(z)
 
         h = I3 + sym3(out[..., :6])
@@ -109,8 +129,8 @@ class SymFieldNet(nn.Module):
             feats.append(jnp.cos(jnp.pi * i * t))
         z = jnp.concatenate(feats, axis=-1)
         for _ in range(self.depth):
-            z = jnp.tanh(nn.Dense(self.width)(z))
-        out = nn.Dense(6, kernel_init=nn.initializers.normal(self.out_std),
+            z = jnp.tanh(_dense(self.width)(z))
+        out = _dense(6, kernel_init=nn.initializers.normal(self.out_std),
                        bias_init=nn.initializers.zeros)(z)
 
         alpha = 1.0 + out[..., 0]
@@ -160,8 +180,8 @@ class HybridNet(nn.Module):
             feats.append(jnp.cos(jnp.pi * i * t))
         z = jnp.concatenate(feats, axis=-1)
         for _ in range(self.depth):
-            z = jnp.tanh(nn.Dense(self.width)(z))
-        out = nn.Dense(7, kernel_init=nn.initializers.normal(self.out_std),
+            z = jnp.tanh(_dense(self.width)(z))
+        out = _dense(7, kernel_init=nn.initializers.normal(self.out_std),
                        bias_init=nn.initializers.zeros)(z)
         h = I3 + sym3(out[..., :6])
         lam = jnp.exp(out[..., 6])
@@ -203,8 +223,8 @@ class SymHybridNet(nn.Module):
             feats.append(jnp.cos(jnp.pi * i * t))
         z = jnp.concatenate(feats, axis=-1)
         for _ in range(self.depth):
-            z = jnp.tanh(nn.Dense(self.width)(z))
-        out = nn.Dense(3, kernel_init=nn.initializers.normal(self.out_std),
+            z = jnp.tanh(_dense(self.width)(z))
+        out = _dense(3, kernel_init=nn.initializers.normal(self.out_std),
                        bias_init=nn.initializers.zeros)(z)
         d = jnp.eye(3)
         nn_ = jnp.einsum("ni,nj->nij", n, n)
@@ -254,8 +274,8 @@ class AxisymHybridNet(nn.Module):
             feats.append(jnp.cos(jnp.pi * i * mu))
         z = jnp.concatenate(feats, axis=-1)
         for _ in range(self.depth):
-            z = jnp.tanh(nn.Dense(self.width)(z))
-        out = nn.Dense(5, kernel_init=nn.initializers.normal(self.out_std),
+            z = jnp.tanh(_dense(self.width)(z))
+        out = _dense(5, kernel_init=nn.initializers.normal(self.out_std),
                        bias_init=nn.initializers.zeros)(z)
 
         d3 = jnp.eye(3)

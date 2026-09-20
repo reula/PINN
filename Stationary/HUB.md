@@ -340,6 +340,44 @@ Measured on the 8-core macOS CPU machine, `n_coll=4096`, width 64, depth 4:
 with **13 828 parameters** (55 KB of weights, ~165 KB per checkpoint). This is a
 small job: request modest CPU/RAM rather than many cores or several GPUs.
 
+### Precision, capacity, and how high a Robin order you can ask for
+
+The order-`n` Robin condition is `prod_{i<n}(rho d_rho + base + i)(field - field_inf) = 0`,
+i.e. `n` radial derivatives.  Each `rho d_rho` multiplies the content at t-frequency
+`omega` by `omega / log(rho_out/rho_in)`, and the Fourier features of the network reach
+`omega_max = pi * fourier`.  So the condition both **amplifies round-off** and gets
+**stiffer** as `n` or `fourier` grows — and round-off is set by the *arithmetic*, not by
+the network size.  Measured on the exact solution of the control geometry at `rho = 100`
+(`/tmp` one-off: `robin_operator` applied to `exact.reference_fields_asymptotic`), float32
+vs float64 evaluation of the *same* exact fields:
+
+| Robin order | true residual (float64) | float32 evaluation | verdict in float32 |
+|---|---|---|---|
+| 1, `lambda` | 6.6e-05 | 6.6e-05 | representable: the limit is the condition itself, not round-off |
+| 2, `lambda` | 7.4e-07 | 6.9e-07 | representable — order 2 should work in float32 |
+| 3, `lambda` | 2.5e-08 | 1.1e-06 | floor 45x above the target |
+| 4, `lambda` | 8.3e-10 | 1.2e-05 | floor 15000x above the target |
+| 2, `h` | 5.6e-11 | 6.6e-07 | floor 12000x above |
+| 4, `h` | 5.9e-12 | 4.4e-05 | floor 7.5e6x above |
+
+Consequences, in the order they should be tried:
+
+1. **Order 1 in float32** is the right first run, and its accuracy ceiling is the
+   condition's own residual (6.6e-05 at `rho = 100` for `lambda`), not the optimiser.
+2. **Order 2 in float32** is representable (floor 6.9e-07) and should be clearly better;
+   the earlier `n2_dipole` failure was an inconsistent `lam_inf` vs `k`, which `build()` now
+   refuses to start silently.
+3. **Order 3 and above, and any combination with a bigger `fourier`, need x64**
+   (`JAX_ENABLE_X64=1`): `fourier 16` doubles every amplification factor above, so in
+   float32 order 4 would floor around 2e-04 for `lambda` before the optimiser even starts.
+   Note that a bigger network does *not* lower that floor — only the arithmetic does.
+   x64 costs ~2x throughput and `run_hub.sh` warns that its results do not reproduce the
+   float32 ones.
+4. With x64 the parameters are really float64 (`stationary/model.py` routes every layer
+   through a dtype helper: Flax otherwise keeps `float32` whatever `jax_enable_x64` says,
+   which would silently defeat the point).  Both the run banner and `report.txt` print the
+   precision actually used, read off the stored parameters.
+
 ### What the numbers must come out to
 
 Every run sits on the **`lambda -> 1` branch** (`k = 1`).  `lambda -> c lambda` is an exact
@@ -413,6 +451,21 @@ PY=$PWD/.venv/bin/python ./run_hub.sh --arch axisym_hybrid --outdir runs/control
 For the GPU, change only the last line to
 `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16`; for the fourth-order
 Robin conditions change `--robin-orders h=1,lam=1` to `h=4,lam=4`.
+
+**The ladder for the Robin order and the capacity** (see §6 for the measurements behind
+it; one run at a time, and never into the same `--outdir`):
+
+| step | what | how | expect |
+|---|---|---|---|
+| 1 | order 1, float32, 64x4, f8 | the command above with `--lbfgs-steps 3000` | λ(100) ≈ 0.9882, BC rms ~3e-05; ~7 min |
+| 2 | order 2, float32, same size | `--robin-orders h=2,lam=2 --outdir runs/control_ord2` | floor 6.9e-07 is representable, so BC rms should drop ~10x |
+| 3 | order 4, **x64**, same size | prefix `JAX_ENABLE_X64=1`, `--robin-orders h=4,lam=4 --outdir runs/control_ord4_x64` | the decisive test: order 4 is 1.2e-05-floored in float32, 8.3e-10 in float64; ~15 min |
+| 4 | order 4, x64, big net | step 3 with `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity, not precision; allow 40-90 min |
+| 5 | the dipole | the §7 (2) command, at whichever order/capacity won | — |
+
+Steps 2 and 3 are cheap and settle everything before the big run; do them in that order,
+because in float32 the round-off floor grows with `fourier` (2^4 = 16x per doubling of
+`--fourier`), so "higher order *and* bigger network" only makes sense in x64.
 
 The first screen of `logs/control_ord1.log` must show the physics you asked for — with
 anything else, stop the run:

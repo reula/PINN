@@ -4,7 +4,7 @@ RUN / CODE
 ------------------------------------------------------------------------------
 run dir        : runs/m2R4_realrobin
 params file    : params.pkl
-git HEAD       : 78098a5  (+9 uncommitted files)
+git HEAD       : 0f1cb71  (+5 uncommitted files)
 BC-weight fix  : PRESENT (reweighting touches interior groups only)
 steps          : 20000 Adam + 2000 L-BFGS   wall 123.9 min
 final loss     : 5.3990e-08
@@ -89,6 +89,21 @@ VS EXACT REFERENCE
     over the shell   max |dh| = 7.984e-05   max |dGamma| = 1.705e-04   max |dlambda| = 1.927e-04
     at rho_out       max |dh| = 1.551e-05   max |dlambda| = 1.927e-04
     reference vs the imposed inner data: lam=3.18e-33  h_tan=4.42e-32   <- CONSISTENT
+
+------------------------------------------------------------------------------
+CHART-INDEPENDENT (geometric invariants)
+------------------------------------------------------------------------------
+    family read off the solution: R0 = 0.999841   k = 1.000191     (the run's data imply R0 = 1.000000, k = 1.000000)
+    max |R - 2 R0^2/r_a^4| = 8.698e-04   max |lambda - lambda_family| = 1.271e-04
+         r_a       lambda             R     2 R0^2/r_a^4   lambda_family
+        2.0000    0.3819663   1.2583e-01   1.2496e-01      0.3820934
+       14.5348    0.8717036   4.6909e-05   4.4798e-05      0.8717260
+       27.1114    0.9290822   3.3241e-06   3.7007e-06      0.9290890
+       39.6806    0.9510386   5.1524e-07   8.0645e-07      0.9510406
+       52.2474    0.9626357   2.5882e-07   2.6831e-07      0.9626355
+       64.8132    0.9698054   1.5845e-07   1.1330e-07      0.9698041
+       77.3785    0.9746765  -4.7954e-08   5.5771e-08      0.9746746
+       89.9435    0.9782019  -1.4404e-08   3.0550e-08      0.9781995
 
 ------------------------------------------------------------------------------
 REWEIGHTING HISTORY (from the log, if found)
