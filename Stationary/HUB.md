@@ -217,6 +217,25 @@ A run that consumed itself in the middle of the night therefore still leaves a c
 directory: the figures and `report.txt` are written from the last checkpoint, and the
 report says how far it got.
 
+**Comparing several runs** — after a ladder, this is the analysis step:
+
+```bash
+python -m stationary.compare runs/control_ord1 runs/control_ord1b runs/control_ord2 \
+                              runs/control_ord4_x64 runs/control_ord4_big runs/dipole_x64
+```
+
+It recomputes every quantity, with the current code and in float64, for all of the runs —
+so the columns stay comparable even though the runs were made with different Robin orders,
+different precision, or different versions of the code — and prints one table:
+precision, size, steps, wall time, `lambda` on both spheres against the exact values, the
+inner/outer boundary-condition residuals, the four PDE residuals, the chart-independent
+`(R0, k)` read off the solution, and the `l = 1,2,3` amplitudes.  The row
+`config fields it predates` counts how many `Config` fields the run's own `config.json`
+does not contain: a nonzero value means that run was made before those fields existed, so
+its *own* logged residuals may use older definitions and its recomputed numbers here are
+the ones to trust.  `--json FILE` dumps the raw numbers, `--lam-tol`/`--bc-tol` set the
+PASS/FAIL thresholds.
+
 `resume.sh` ends in `exec python ...`, so if you run it bare in a terminal it dies with
 that terminal (and Ctrl-C stops it): wrap it in `nohup ... &` as above. It checkpoints
 every `CKPT_EVERY` steps, so stopping and resuming costs at most that many steps.
@@ -452,20 +471,35 @@ For the GPU, change only the last line to
 `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16`; for the fourth-order
 Robin conditions change `--robin-orders h=1,lam=1` to `h=4,lam=4`.
 
-**The ladder for the Robin order and the capacity** (see §6 for the measurements behind
-it; one run at a time, and never into the same `--outdir`):
+**The ladder for the Robin order and the capacity.** It is one script, run in sequence on
+the single GPU, and it ends by comparing everything it produced:
 
-| step | what | how | expect |
-|---|---|---|---|
-| 1 | order 1, float32, 64x4, f8 | the command above with `--lbfgs-steps 3000` | λ(100) ≈ 0.9882, BC rms ~3e-05; ~7 min |
-| 2 | order 2, float32, same size | `--robin-orders h=2,lam=2 --outdir runs/control_ord2` | floor 6.9e-07 is representable, so BC rms should drop ~10x |
-| 3 | order 4, **x64**, same size | prefix `JAX_ENABLE_X64=1`, `--robin-orders h=4,lam=4 --outdir runs/control_ord4_x64` | the decisive test: order 4 is 1.2e-05-floored in float32, 8.3e-10 in float64; ~15 min |
-| 4 | order 4, x64, big net | step 3 with `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity, not precision; allow 40-90 min |
-| 5 | the dipole | the §7 (2) command, at whichever order/capacity won | — |
+```bash
+cd <checkout>
+PY=$PWD/.venv/bin/python ./run_ladder.sh            # steps 1-3 (~30 min)
+PY=$PWD/.venv/bin/python ./run_ladder.sh all        # steps 1-5 (~2-4 h, unattended)
+PY=$PWD/.venv/bin/python ./run_ladder.sh 4 5        # the expensive ones, after a look
+PY=$PWD/.venv/bin/python ./run_ladder.sh --compare  # just re-print the table
+PY=$PWD/.venv/bin/python ./run_ladder.sh --dry-run all   # show the commands, launch nothing
+```
 
-Steps 2 and 3 are cheap and settle everything before the big run; do them in that order,
-because in float32 the round-off floor grows with `fourier` (2^4 = 16x per doubling of
-`--fourier`), so "higher order *and* bigger network" only makes sense in x64.
+A step already done (its `runs/<name>/params.pkl` exists) is skipped unless you pass
+`--force`; a step that fails to launch stops that step but not the ladder. The steps (see
+§6 for the measurements behind them):
+
+| step | run directory | what | expect | cost |
+|---|---|---|---|---|
+| 1 | `runs/control_ord1b` | order 1, float32, 64x4 f8, 3000 L-BFGS | λ(100) ≈ 0.9882, outer BC rms ~3e-05 | ~7 min |
+| 2 | `runs/control_ord2` | order 2, float32, same size | floor 6.9e-07 is representable, so it should beat order 1 | ~7 min |
+| 3 | `runs/control_ord4_x64` | order 4, **x64**, same size | the decisive test of the round-off argument (floor 1.2e-05 in float32 vs 8.3e-10 in float64) | ~15 min |
+| 4 | `runs/control_ord4_big` | order 4, x64, `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity, not precision | 40-90 min |
+| 5 | `runs/dipole_x64` | the dipole (`--lam-bc-S1 0.1`) at the configuration that won | the physics | 40-90 min |
+
+Steps 2 and 3 are cheap and settle the order question before the big runs.  Note that a
+bigger network does **not** lower the round-off floor and that in float32 the floor grows
+as `2^4 = 16x` per doubling of `--fourier`, so "higher order *and* bigger network" only
+makes sense in x64.  If step 4 dies with a memory error on a small GPU slice, retry it
+with `LADDER_EXTRA="--n-coll 8192 --width 192 --depth 5"`.
 
 The first screen of `logs/control_ord1.log` must show the physics you asked for — with
 anything else, stop the run:

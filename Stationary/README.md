@@ -63,9 +63,13 @@ and `tests/test_pipeline.py::test_harmonic_chart_freedom`.
     stationary/evaluate.py     diagnostics and figures for a checkpoint
     stationary/profile.py      lambda (and other fields) as a function of rho
     stationary/report.py       one-screen text report of a run (paste-able)
+    stationary/compare.py      side-by-side table of several runs (the analysis step)
+    stationary/invariants.py   chart-independent content (r_a, lambda, Ricci scalar)
     stationary/multipoles.py   spherical-harmonic decomposition and figures
     stationary/diagnostics.py  residual/error/boundary-geometry reports
     postprocess.sh             figures + lambda_vs_rho.png + report.txt of a run
+    run_hub.sh                 detached run on a JupyterHub (see HUB.md)
+    run_ladder.sh              the control ladder: order 1/2/4, x64, capacity, dipole
     tests/test_pipeline.py     end-to-end tests (see below)
     verify_exact_solution.py   standalone regression test of the exact solution
 
@@ -154,6 +158,8 @@ values in those reports must be divided by their `k` before comparing with a `k 
     .venv/bin/python -m stationary.profile  runs/m1            # lambda vs rho (+ table)
     .venv/bin/python -m stationary.report   runs/m1            # text report
     ./postprocess.sh runs/m1                                   # all three of the above
+    .venv/bin/python -m stationary.compare runs/m1 runs/m2     # side-by-side table
+    .venv/bin/python -m stationary.invariants --outdir runs/m1 # chart-independent content
 
 `postprocess.sh` writes every figure plus `report.txt` into the run directory; it is what
 `run_hub.sh` runs automatically when a training process ends (see `HUB.md` §4), so a

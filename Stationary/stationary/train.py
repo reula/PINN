@@ -45,6 +45,28 @@ def make_model(cfg: Config):
     return cls(**kw)
 
 
+def exact_asset(cfg: Config):
+    """The exact solution this run uses for its data, or None.
+
+    Three distinct roles, one object each: the outer boundary data of `dirichlet_exact`,
+    the manufactured source of a Robin run (`robin_source`), and the reference kept for
+    diagnostics (`ref_solution`).  This is the single place that builds it, so that
+    training, the report and the comparison tool all see the same reference.
+    """
+    if cfg.outer_bc == "dirichlet_exact":
+        return exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
+    if cfg.ref_solution or cfg.robin_source:
+        if getattr(cfg, "ref_asymptotic", None) is not None:
+            fields, _ = exact.reference_fields_asymptotic(
+                cfg.R0, cfg.ref_asymptotic, cfg.rho_in, r_areal=cfg.inner_radius)
+        else:
+            fields, _ = exact.reference_fields(cfg.R0, cfg.lam0, cfg.rho_in,
+                                               cfg.inner_h_rr or 1.0,
+                                               r_areal=cfg.inner_radius)
+        return fields
+    return None
+
+
 def build(cfg: Config, init_from: str | None = None):
     model = make_model(cfg)
     key = jax.random.PRNGKey(cfg.seed)
@@ -59,18 +81,7 @@ def build(cfg: Config, init_from: str | None = None):
         print(f"[build] initialised network parameters from {init_from}")
 
     # exact solution (used for the milestone-1 outer BC and for diagnostics)
-    exact_fields = None
-    if cfg.outer_bc == "dirichlet_exact":
-        k = exact.k_from_lambda0(cfg.R0, cfg.lam0)
-        exact_fields = exact.exact_fields(cfg.R0, k)
-    elif cfg.ref_solution or cfg.robin_source:
-        if getattr(cfg, "ref_asymptotic", None) is not None:
-            exact_fields, _ = exact.reference_fields_asymptotic(
-                cfg.R0, cfg.ref_asymptotic, cfg.rho_in, r_areal=cfg.inner_radius)
-        else:
-            exact_fields, _ = exact.reference_fields(cfg.R0, cfg.lam0, cfg.rho_in,
-                                                     cfg.inner_h_rr or 1.0,
-                                                     r_areal=cfg.inner_radius)
+    exact_fields = exact_asset(cfg)
 
     state = {"net": params}
     if cfg.outer_bc == "robin" and cfg.lam_inf is None:
