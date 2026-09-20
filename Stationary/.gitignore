@@ -19,3 +19,6 @@ run.pid
 
 # Detached-run logs (see HUB.md)
 logs/
+
+# JAX persistent compilation cache (see postprocess.sh): large, regenerable, machine-specific.
+.jaxcache/

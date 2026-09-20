@@ -23,7 +23,7 @@ import jax
 import jax.numpy as jnp
 
 from .geometry import pack_gamma, pack_sym, residuals_batch, scaled_residuals_batch
-from .problem import lam_inner_bc
+from .problem import lam_inner_bc, sample_sphere
 
 I3 = jnp.eye(3)
 OFFW = jnp.array([1.0, jnp.sqrt(2.0), jnp.sqrt(2.0), 1.0, jnp.sqrt(2.0), 1.0])
@@ -78,6 +78,21 @@ def inner_bc_terms(point_fields, xs, cfg) -> dict:
     if cfg.inner_h_rr is not None:
         out["h_rr"] = jnp.mean(R[:, 1] ** 2)
     return out
+
+
+def reference_consistency(point_fields, cfg, n: int = 64, seed: int = 7) -> dict:
+    """How much the exact reference itself violates the imposed INNER boundary data.
+
+    Zero means the inner data and the outer data (the Dirichlet values, or the
+    manufactured Robin source) come from one and the same exact solution, so that
+    solution is a genuine zero of the loss.  Anything else means they come from two
+    different solutions: no metric can satisfy both, the run converges to a compromise,
+    and the numbers it reports near the inner sphere do not mean what they look like.
+    The usual cause is `inner_radius` not being the reference's own inner areal radius
+    (see Config.__post_init__).
+    """
+    xs = sample_sphere(jax.random.PRNGKey(seed), n, cfg.rho_in)
+    return {k: float(v) for k, v in inner_bc_terms(point_fields, xs, cfg).items()}
 
 
 # -------------------------------------------------------------- outer boundary

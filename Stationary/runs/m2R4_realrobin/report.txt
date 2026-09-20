@@ -2,9 +2,9 @@
 ------------------------------------------------------------------------------
 RUN / CODE
 ------------------------------------------------------------------------------
-run dir        : /Users/reula/Julia/PINN/Stationary/runs/m2R4_realrobin
+run dir        : runs/m2R4_realrobin
 params file    : params.pkl
-git HEAD       : 53ab430  (+13 uncommitted files)
+git HEAD       : 0f0c879  (+5 uncommitted files)
 BC-weight fix  : PRESENT (reweighting touches interior groups only)
 steps          : 20000 Adam + 2000 L-BFGS   wall 123.9 min
 final loss     : 5.3990e-08

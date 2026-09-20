@@ -18,7 +18,8 @@ import pytest
 from stationary import exact
 from stationary.geometry import (Fields, christoffel, gamma3, laplacian,
                                  pack_gamma, pack_sym, residuals_batch, sym3)
-from stationary.losses import inner_bc_terms, outer_bc_terms, pde_terms, total_loss
+from stationary.losses import (inner_bc_terms, outer_bc_terms, pde_terms,
+                               reference_consistency, total_loss)
 from stationary.model import HybridNet, SymHybridNet
 from stationary.problem import Config, sample_shell, sample_sphere
 
@@ -144,6 +145,29 @@ def test_loss_is_zero_on_exact_solution():
              "outer": sample_sphere(key, 64, cfg.rho_out)}
     loss, parts = total_loss(state, batch, cfg, model, exact_fields=exact_point_fields())
     assert float(loss) < 1e-16, (float(loss), {k: float(v) for k, v in parts.items()})
+
+
+def test_inner_radius_default_is_the_areal_radius_2():
+    """The default inner sphere is the round sphere of areal radius 2, NOT rho_in.
+
+    rho_in_of_R0(R0) = sqrt(4+R0^2) is by definition the coordinate radius at which the
+    canonical-chart exact solution has areal radius 2, so its tangential metric there is
+    1 - R0^2/rho_in^2 = 4/(4+R0^2) (0.8 for R0 = 1), not flat.  Defaulting inner_radius to
+    rho_in therefore asks for a flat tangential metric on the inner sphere, which the
+    exact solution violates by 20%; with the Dirichlet outer data taken from that same
+    solution the two boundary conditions contradict each other and the loss cannot reach
+    zero.  That was the behaviour between commit 67a802a and the fix, and it is invisible
+    in every run whose rho_in happens to equal 2, which is why it survived so long.
+    """
+    cfg = Config(R0=R0, lam0=LAM0)                     # everything defaulted
+    assert cfg.inner_radius == 2.0
+    assert abs(cfg.rho_in - float(jnp.sqrt(4.0 + R0**2))) < 1e-12
+    chk = reference_consistency(exact_point_fields(), cfg)
+    assert max(chk.values()) < 1e-14, chk
+
+    # the wrong value must be *detected*, not quietly absorbed
+    bad = Config(R0=R0, lam0=LAM0, inner_radius=float(cfg.rho_in))
+    assert reference_consistency(exact_point_fields(), bad)["h_tan"] > 1e-4
 
 
 def test_robin_terms_are_finite_and_shaped():

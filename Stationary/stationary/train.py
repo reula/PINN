@@ -28,7 +28,8 @@ import jax.numpy as jnp
 import optax
 
 from . import diagnostics, exact
-from .losses import GROUP_KEYS, default_weights, group_terms, total_loss
+from .losses import (GROUP_KEYS, default_weights, group_terms, reference_consistency,
+                     total_loss)
 from .model import (AxisymHybridNet, FieldNet, HybridNet, SymFieldNet, SymHybridNet,
                     point_fields)
 from .problem import Config, sample_shell, sample_sphere
@@ -75,6 +76,49 @@ def build(cfg: Config, init_from: str | None = None):
     if cfg.outer_bc == "robin" and cfg.lam_inf is None:
         # learnable asymptotic value (initialised away from lambda_0 on purpose)
         state["lam_inf"] = jnp.array(cfg.lam_inf_init)
+
+    # ---------------------------------------------------------- sanity of the data
+    # The exact reference is the outer boundary data (dirichlet_exact) or the source of
+    # the manufactured Robin condition.  If it does not also satisfy the INNER data, the
+    # two boundary conditions come from different solutions, no metric satisfies both,
+    # and the run converges to a compromise instead of the exact solution.  Two seconds
+    # here, or a wasted run later.
+    if exact_fields is not None:
+        chk = reference_consistency(exact_fields, cfg)
+        # The reference enters the loss as boundary data only in these two cases; without
+        # them it is a comparison asset and a mismatch is not a convergence problem.
+        matters = cfg.outer_bc == "dirichlet_exact" or cfg.robin_source
+        bad = {k: v for k, v in chk.items() if v > 1e-10}
+        if bad:
+            print(f"[build] {'WARNING: the exact reference violates the imposed INNER data' if matters else 'note: the comparison reference does not satisfy the imposed INNER data'}"
+                  f": " + "  ".join(f"{k}={v:.3e}" for k, v in bad.items()))
+            if matters:
+                print("[build]   the inner data and the outer data come from different "
+                      "solutions: no metric satisfies both, so this run cannot converge "
+                      "to the exact one.")
+            if "h_tan" in bad:
+                print(f"[build]   h_tan: inner_radius = {cfg.inner_radius:g}, but the "
+                      f"canonical-chart reference has areal radius "
+                      f"{float(jnp.sqrt(max(cfg.rho_in**2 - cfg.R0**2, 0.0))):.6f} at "
+                      f"rho = {cfg.rho_in:.6f}"
+                      + ("  -> --inner-radius that value (or --rho-in "
+                         f"{exact.rho_in(cfg.R0):.6f})"
+                         if cfg.outer_bc == "dirichlet_exact" else
+                         "  -> --ref-solution builds a reference for this radius"))
+            if "h_rr" in bad:
+                print(f"[build]   h_rr: you imposed {cfg.inner_h_rr:g}; the reference has "
+                      f"rms {float(jnp.sqrt(chk['h_rr'])):.3e} there.  h_rr over-determines "
+                      f"the radial gauge -- drop --inner-h-rr unless you are using "
+                      f"--ref-solution, which builds the reference with it.")
+            if "lam" in bad:
+                if cfg.lam_bc_S1 or cfg.lam_bc_S2:
+                    print("[build]   lam: expected -- a spherically symmetric reference "
+                          "cannot carry S1/S2; it serves for comparison only.")
+                else:
+                    print(f"[build]   lam: you imposed lam0 = {cfg.lam0:g} at "
+                          f"rho = {cfg.rho_in:g}; the reference has "
+                          f"{float(exact_fields(cfg.rho_in * jnp.array([1.0, 0.0, 0.0])).lam):.6f}"
+                          f"  -> check --lam0 / --R0 / --rho-in")
     return model, state, exact_fields
 
 
@@ -124,10 +168,67 @@ def save_checkpoint(path, state, opt_state, weights, history, step, cfg):
     return path
 
 
+def print_config_summary(cfg: Config):
+    """The effective physics of this run, first thing in the log.
+
+    Every one of these values is a flag; if a flag did not reach the process (an empty
+    shell array in `./run_hub.sh "${COMMON[@]}" ...` is the classic way), the run silently
+    becomes the default milestone-1 configuration -- R0 = 1, lambda_0 = 1, rho_out = 20,
+    dirichlet_exact -- which is a perfectly valid run of something you did not ask for.
+    Printing them makes that visible in the first screen of the log.
+    """
+    orders = cfg.robin_orders or {k: cfg.robin_order for k in ("h", "G", "lam")}
+    print("=" * 72)
+    print("effective configuration (every value below is a flag; check them)")
+    print(f"  model       {cfg.arch}   {cfg.width} x {cfg.depth}, fourier {cfg.fourier}"
+          f"   (Gamma derived from h)")
+    print(f"  exact data  R0 = {cfg.R0:g}   lambda_0 = {cfg.lam0:g}"
+          f"   S1 = {cfg.lam_bc_S1:g}   S2 = {cfg.lam_bc_S2:g}")
+    print(f"  domain      rho in [{cfg.rho_in:g}, {cfg.rho_out:g}]"
+          f"   inner sphere areal radius {cfg.inner_radius:g}"
+          f"   h_rr {cfg.inner_h_rr if cfg.inner_h_rr is not None else 'free'}")
+    if cfg.outer_bc == "robin":
+        print(f"  outer BC    robin   lambda_inf = "
+              f"{cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init} (learnable)"
+              f"   orders {orders}   Gamma condition {cfg.robin_include_G}"
+              f"   source {cfg.robin_source}")
+    else:
+        print(f"  outer BC    {cfg.outer_bc} (h and lambda from the exact solution)")
+    print(f"  weights     w_inner {cfg.w_inner:g}   w_outer {cfg.w_outer:g}"
+          f"   reweight every {cfg.reweight_every}   pde ramp {cfg.pde_ramp_steps}")
+    print(f"  sampling    n_coll {cfg.n_coll}   n_bnd {cfg.n_bnd}   radial {cfg.radial}"
+          f"   decay feature {cfg.decay_feature}")
+    print(f"  plan        {cfg.steps} Adam + {cfg.lbfgs_steps} L-BFGS   outdir {cfg.outdir}")
+    print("=" * 72)
+
+
+def print_reference_summary(cfg: Config, exact_fields):
+    """The numbers the exact reference takes on the two spheres.
+
+    This is the quickest way to see whether the run is on the solution you intended:
+    the M2 control reads lambda(rho_in) = 0.333333, lambda(100) = 0.988519 and
+    lambda -> k = 1, while the M1 default configuration reads lambda -> phi^2 = 2.618034.
+    `k` is what lambda tends to at infinity, and for the exact family it is fixed by the
+    inner data: k = lambda_0 (rho_g+R0)/(rho_g-R0) with rho_g = sqrt(inner_radius^2+R0^2).
+    """
+    lam_in = float(exact_fields(cfg.rho_in * jnp.array([1.0, 0.0, 0.0])).lam)
+    lam_out = float(exact_fields(cfg.rho_out * jnp.array([1.0, 0.0, 0.0])).lam)
+    k = exact.k_from_lambda0(cfg.R0, cfg.lam0, r_areal=cfg.inner_radius)
+    print(f"[ref] exact reference: lambda({cfg.rho_in:g}) = {lam_in:.6f} "
+          f"(imposed {cfg.lam0:g})   lambda({cfg.rho_out:g}) = {lam_out:.6f}   "
+          f"lambda -> k = {k:.6f}")
+    print(f"[ref]   reference values: M1 default (R0=1, areal radius 2, lam0=1) -> k = 2.618034;"
+          f"   M2 control (R0=1/sqrt3, areal radius 1, lam0=1/3) -> k = 1")
+
+
 def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
           resume: str | None = None):
     os.makedirs(cfg.outdir, exist_ok=True)
+    if verbose:
+        print_config_summary(cfg)
     model, state, exact_fields = build(cfg, init_from)
+    if verbose and exact_fields is not None:
+        print_reference_summary(cfg, exact_fields)
     loss_fn = lambda st, batch, sc: total_loss(st, batch, cfg, model, exact_fields, pde_scale=sc)
 
     batch = make_batch(jax.random.PRNGKey(cfg.seed + 1), cfg)

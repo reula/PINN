@@ -90,7 +90,19 @@ class Config:
             self.rho_in = rho_in_of_R0(self.R0)
         self.rho_in = float(self.rho_in)
         if self.inner_radius is None:
-            self.inner_radius = self.rho_in
+            # The inner sphere is the round sphere of AREAL RADIUS 2 -- the problem
+            # statement -- and `rho_in_of_R0(R0) = sqrt(4+R0^2)` is by construction the
+            # coordinate radius at which the canonical-chart solution has areal radius 2.
+            #
+            # It must NOT default to rho_in: the coordinate sphere |x| = rho_in has
+            # tangential metric (rho_in/rho_in)^2 = 1, i.e. flat, while the exact solution
+            # has h_tan = 1 - R0^2/rho_in^2 = 4/(4+R0^2) there (0.8 for R0 = 1). Asking for
+            # the former makes the inner data contradict the exact solution used for
+            # `dirichlet_exact` (and for the Robin source), so no metric can satisfy both:
+            # the run then converges to a hybrid that is 25% off near the inner sphere.
+            # This default was rho_in between commits 67a802a and this one; the runs made
+            # before it (m1_sym, m1_3d) used the areal radius 2.
+            self.inner_radius = 2.0
 
 
 def lam_inner_bc(x, cfg):

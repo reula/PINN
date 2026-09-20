@@ -4,7 +4,7 @@ RUN / CODE
 ------------------------------------------------------------------------------
 run dir        : runs/n2_dipole
 params file    : params.pkl
-git HEAD       : 53ab430  (+14 uncommitted files)
+git HEAD       : 0f0c879  (+12 uncommitted files)
 BC-weight fix  : PRESENT (reweighting touches interior groups only)
 steps          : 10000 Adam + 1000 L-BFGS   wall 81.7 min
 final loss     : 7.0121e-04

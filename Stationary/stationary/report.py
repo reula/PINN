@@ -33,10 +33,10 @@ from . import exact
 from .diagnostics import inner_boundary_report
 from .evaluate import load_run
 from .geometry import residuals_batch
-from .losses import inner_bc_terms, outer_bc_terms
+from .losses import inner_bc_terms, outer_bc_terms, reference_consistency
 from .model import point_fields
 from .multipoles import lambda_multipoles, multipole_radial_profile
-from .problem import lam_inner_bc, sample_sphere
+from .problem import lam_inner_bc, sample_shell, sample_sphere
 
 THETAS = (0.0, 0.7, 1.5707963)
 
@@ -120,6 +120,9 @@ def main():
     print(f"arch           : {cfg.arch}   width {cfg.width} x depth {cfg.depth}, fourier {cfg.fourier}")
     print(f"domain         : rho in [{cfg.rho_in:g}, {cfg.rho_out:g}]   "
           f"inner sphere areal radius {cfg.inner_radius:g}   radial sampling {cfg.radial}")
+    print(f"exact solution : R0 = {cfg.R0:g}   ref_solution {cfg.ref_solution}   "
+          f"ref_asymptotic {getattr(cfg, 'ref_asymptotic', None)}   "
+          f"robin_source {cfg.robin_source}")
     print(f"inner data     : lambda_0 = {cfg.lam0:g}   S1 = {cfg.lam_bc_S1:g}   S2 = {cfg.lam_bc_S2:g}"
           f"   (h_rr constrained: {cfg.inner_h_rr})")
     lam_inf = cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init
@@ -259,7 +262,10 @@ def main():
         _section("VS EXACT REFERENCE")
         print(f"    reference lambda(rho_in) = {float(ref(cfg.rho_in * jnp.array([1.0, 0, 0])).lam):.7f}"
               f"   (run imposed {cfg.lam0:g})")
-        xr = sample_sphere(jax.random.PRNGKey(1), 2048, cfg.rho_out)
+        # Over the WHOLE shell, not just the outer sphere: a run can match at rho_out and
+        # still be far off near the inner boundary, which is exactly what a wrong inner
+        # areal radius does (the discrepancy decays like 1/rho^2).
+        xr = sample_shell(jax.random.PRNGKey(1), 4096, cfg)
 
         def diff(x):
             f, e = pf(x), ref(x)
@@ -267,8 +273,21 @@ def main():
                     jnp.abs(f.lam - e.lam))
 
         dh, dG, dl = jax.vmap(diff)(xr)
-        print(f"    max |dh| = {float(jnp.max(dh)):.3e}   max |dGamma| = {float(jnp.max(dG)):.3e}"
+        print(f"    over the shell   max |dh| = {float(jnp.max(dh)):.3e}"
+              f"   max |dGamma| = {float(jnp.max(dG)):.3e}"
               f"   max |dlambda| = {float(jnp.max(dl)):.3e}")
+        xo2 = sample_sphere(jax.random.PRNGKey(2), 2048, cfg.rho_out)
+        dho, _, dlo = jax.vmap(diff)(xo2)
+        print(f"    at rho_out       max |dh| = {float(jnp.max(dho)):.3e}"
+              f"   max |dlambda| = {float(jnp.max(dlo)):.3e}")
+        # Is the reference itself compatible with the inner data?  If not, the run had no
+        # consistent solution to find; say so instead of leaving the reader to wonder.
+        chk = reference_consistency(ref, cfg)
+        worst = max(chk.values())
+        print("    reference vs the imposed inner data: "
+              + "  ".join(f"{k}={v:.2e}" for k, v in chk.items())
+              + ("   <- CONSISTENT" if worst < 1e-10 else
+                 "   <- INCONSISTENT: no metric can satisfy both sets of data"))
     else:
         _section("VS EXACT REFERENCE")
         print("    none configured for this run (no --ref-solution / --dirichlet-exact)")

@@ -192,8 +192,20 @@ directory holds:
 
 `./run_hub.sh --post` (no `--outdir` = the most recent run) redoes the figures and the
 report at any time without touching the parameters; it works on a **crashed** run too, in
-which case it falls back to the last checkpoint `ckpt.pkl`. The three steps individually,
-if you want one of them alone:
+which case it falls back to the last checkpoint `ckpt.pkl`. Each step prints how long it
+took and the output is unbuffered, so it is clear which part you are waiting for:
+
+```bash
+./run_hub.sh --post                                  # newest run, all three steps
+./run_hub.sh --post --outdir runs/<name> --only report   # just the text report (fastest)
+POST_THREADS=16 ./run_hub.sh --post ...              # widen the thread cap
+JAX_CACHE=0 ./run_hub.sh --post ...                  # disable the compilation cache
+```
+
+The first `--post` for a given architecture is compilation-bound (~1 min); later ones
+reuse `.jaxcache` and take ~30 s, or ~10 s with `--only report`. See the gotcha in §5.
+
+The three steps individually, if you want one of them alone:
 
 ```bash
 python -m stationary.evaluate --outdir runs/<name>     # figures/diagnostics
@@ -276,6 +288,35 @@ Two limits worth knowing:
   code (a missing import for the figures is the failure mode). If you must move an
   uncommitted tree instead: `rsync -av --exclude .venv --exclude .pip-cache \
   --exclude .mplcache --exclude __pycache__ Stationary/ hub:~/PINN/Stationary/`.
+* **Your flags may not have arrived.** Every physics setting in this project is a flag, and
+  a shell array that was defined in another terminal expands to nothing, so
+  `./run_hub.sh "${COMMON[@]}" ...` quietly trains the *default* configuration instead.
+  Two defences, both automatic now: the log begins with `== command ==` and the expanded
+  command line, and `stationary.train` prints an `effective configuration` banner (with the
+  reference's `lambda(rho_in)`, `lambda(rho_out)` and asymptotic `k`) before the first
+  Adam step. Compare those against §7 and stop the run if they differ. Use the literal
+  commands in §7 rather than arrays.
+* **Post-processing is compilation-bound, so it is slow the first time and fast
+  afterwards.** `evaluate` + `profile` + `report` build ~15 separate XLA graphs between
+  them and each module is its own process, so the first `--post` spends most of its time
+  in the compiler, not in the arithmetic. Two things are on by default now:
+  a **persistent compilation cache** in `<repo>/.jaxcache` (same arch + same code = reuse),
+  and a **thread cap** (`POST_THREADS`, default 4). Measured on an 8-core machine, on the
+  same run: 53 s cold, **32 s warm** (report alone 27 s cold → **8 s warm**). On a
+  128-core node the uncapped default made this worse, not better: XLA's CPU pool takes
+  *every* core for graphs this small, so it oversubscribes and fights with anything else
+  on the box. Use `--only report` when you just want the text, `POST_THREADS=8` to widen
+  it, `JAX_CACHE=0` to disable the cache (do that if `$HOME` is NFS and the cache makes
+  things *slower*). Output is line-buffered (`python -u`) and every step prints
+  `[post] NAME finished in Ns`, so a long step is visible as progress rather than a hang.
+* **Check the two lines of the report that say whether the run was well posed.** In
+  `report.txt`, `reference vs the imposed inner data: ... <- CONSISTENT` and the
+  `over the shell max |dh|` line (as opposed to `at rho_out`) are the ones that catch a
+  run whose boundary conditions contradict each other. A run can match the reference to
+  1e-6 at `rho_out` and still be 20% off at the inner sphere; the shell-wide number is
+  the honest one. `train.build` prints a WARNING before the run starts if the exact
+  reference violates the imposed inner data (the usual cause: `--inner-radius` not
+  matching the inner sphere of the exact solution — see README §5).
 * **`runs/` is tracked on purpose** — the run outputs are committed as reference
   results, so `.gitignore` deliberately does not exclude them. Large `ckpt.pkl`
   files inside them *are* ignored.
@@ -292,6 +333,26 @@ Measured on the 8-core macOS CPU machine, `n_coll=4096`, width 64, depth 4:
 
 with **13 828 parameters** (55 KB of weights, ~165 KB per checkpoint). This is a
 small job: request modest CPU/RAM rather than many cores or several GPUs.
+
+### What the numbers must come out to
+
+`lambda -> c*lambda` is an **exact symmetry** of the system (Ricci is unchanged and the
+right-hand side is invariant), so the same spacetime appears with any normalisation of
+`lambda`; which one a run produces is decided by `--lam0`. Use this table to tell at a
+glance whether a run is on the right solution (`stationary.report` prints all of it):
+
+| configuration | `lambda` at the inner sphere | at the outer sphere | inner areal radius |
+|---|---|---|---|
+| M1 check: `R0=1`, `rho_in = sqrt5 = 2.2360680`, `inner_radius = 2` (default), `dirichlet_exact` | 1 (imposed) | `lambda(20) = 2.3686974`, asymptotic `k = phi^2 = 2.6180340` | **2.000000** |
+| the same solution with `lambda -> lambda/phi^2` | 0.3819660 | `lambda(20) = 0.9047619`, asymptotic 1 | **2.000000** |
+| M2 control (§7): `R0 = 1/sqrt3`, `rho_in = inner_radius = 1`, `lam0 = 1/3`, Robin, `lam_inf = 1` | 0.3333333 | `lambda(20) = 0.9438861`, `lambda(100) = 0.9885193` | 1.000000 |
+
+The third row is the one with the acceptance criterion: **`lambda(100) = 0.9885`**. Note
+that `k = lam0 (rho_geom+R0)/(rho_geom-R0)` is *not* 1 for the first two rows: with
+`lambda_0 = 1` on the areal-radius-2 sphere of `R0 = 1` the asymptotic value is
+`phi^2 = 2.618`, so a Robin run must use `--lam0 0.3819660` together with
+`--lam-inf 1` if `lambda -> 1` is what you want; imposing `lambda_0 = 1` *and*
+`--lam-inf 1` is inconsistent.
 
 ## 7. The two production runs (separate, run in sequence)
 
@@ -315,45 +376,67 @@ inner sphere at `rho = 1` carrying the round metric of areal radius 1 with
 boundary unpenalised); `lambda -> 1` at `rho = 100`. `--no-robin-G` drops the redundant
 Gamma condition, which in this scheme only buys fifth derivatives of the network.
 
-Set the size once. The first line is the CPU reference; override it on the GPU:
-
-```bash
-SIZE=(--n-coll 4096 --n-bnd 256 --width 64 --depth 4 --fourier 8)
-# GPU:      SIZE=(--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16)
-COMMON=(--steps 20000 --lbfgs-steps 1000 --ref-solution --ref-asymptotic 1.0 \
-        --R0 0.5773502691896258 \
-        --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
-        --outer-bc robin --robin-orders h=4,lam=4 --no-robin-G --lam-inf 1.0 \
-        --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
-        --w-inner 100 --w-outer 100 --reweight-every 1500)
-```
+**Copy-paste the whole command, and do not hide the physics flags in shell arrays.** An
+array defined in an earlier terminal, or in a different tab, is *empty* in this one;
+`./run_hub.sh "${COMMON[@]}" ...` then expands to nothing, every physics flag is silently
+missing, and the run becomes the **default milestone-1 configuration** (`R0 = 1`,
+`lambda_0 = 1`, `rho_out = 20`, `dirichlet_exact`) — a valid run of something you did not
+ask for. That is exactly what happened to `runs/control_ord1` on 18 Sept. The log now
+starts with `== command ==` and the fully expanded command line, followed by the effective
+configuration, so this takes two seconds to spot.
 
 **(1) Control first — `S1 = S2 = 0`.** Output goes to `runs/<timestamp>` inside the
-checkout (override with `OUTDIR=`; `run_hub.sh` never writes outside the project):
+checkout (override with `OUTDIR=`; `run_hub.sh` never writes outside the project). This is
+the **order-1** Robin variant we are testing at the moment:
 
 ```bash
-./run_hub.sh "${COMMON[@]}" "${SIZE[@]}" \
-    --arch axisym_hybrid --outdir runs/control
+cd <checkout>
+PY=$PWD/.venv/bin/python
+$PY ./run_hub.sh --arch axisym_hybrid --outdir runs/control_ord1 \
+    --steps 20000 --lbfgs-steps 1000 --ref-solution --ref-asymptotic 1.0 \
+    --R0 0.5773502691896258 \
+    --rho-in 1.0 --inner-radius 1.0 --rho-out 100 --lam0 0.3333333333333333 \
+    --outer-bc robin --robin-orders h=1,lam=1 --no-robin-G --lam-inf 1.0 \
+    --no-inner-h-rr --decay-feature --radial log --pde-ramp-steps 500 \
+    --w-inner 100 --w-outer 100 --reweight-every 1500 \
+    --n-coll 4096 --n-bnd 256 --width 64 --depth 4 --fourier 8
 ```
 
-Check it before going further — **the run does this for you when it ends** (§4): read
-`runs/control/report.txt` and look at `runs/control/lambda_vs_rho.png`. To redo them by
-hand, or to process a run that stopped early:
+For the GPU, change only the last line to
+`--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16`; for the fourth-order
+Robin conditions change `--robin-orders h=1,lam=1` to `h=4,lam=4`.
+
+The first screen of `logs/control_ord1.log` must show the physics you asked for — with
+anything else, stop the run:
+
+```
+== command ==
+env ... -m stationary.train --outdir runs/control_ord1 ... --rho-out 100 --lam0 0.3333 ...
+=============
+========================================================================
+effective configuration (every value below is a flag; check them)
+  model       axisym_hybrid   64 x 4, fourier 8   (Gamma derived from h)
+  exact data  R0 = 0.57735   lambda_0 = 0.333333   S1 = 0   S2 = 0
+  domain      rho in [1, 100]   inner sphere areal radius 1   h_rr free
+  outer BC    robin   lambda_inf = 1 (learnable)   orders {'h': 1, 'lam': 1} ...
+[ref] exact reference: lambda(1) = 0.333333 (imposed 0.333333)   lambda(100) = 0.988519   lambda -> k = 1.000000
+```
+
+Check the run when it ends — **it does this for you** (§4): read
+`runs/control_ord1/report.txt` and look at `runs/control_ord1/lambda_vs_rho.png`. To redo
+them by hand, or to process a run that stopped early:
 
 ```bash
-./run_hub.sh --post --outdir runs/control     # figures + lambda_vs_rho.png + report.txt
-python -m stationary.evaluate --outdir runs/control     # prints max_dh vs the exact solution
-python -m stationary.profile  --outdir runs/control     # lambda vs rho, exact overlay + table
+./run_hub.sh --post --outdir runs/control_ord1     # figures + lambda_vs_rho.png + report.txt
+python -m stationary.evaluate --outdir runs/control_ord1   # prints max_dh vs the exact solution
+python -m stationary.profile  --outdir runs/control_ord1   # lambda vs rho, exact overlay + table
 ```
 
-`lambda` must reach **0.9885** at `rho = 100` and `max_dh` should be ~1e-4 or smaller.
+`lambda` must reach **0.9885** at `rho = 100` and `max_dh` over the shell should be ~1e-4 or
+smaller.
 
-**(2) Then the dipole — `S1 = 0.1`:**
-
-```bash
-./run_hub.sh "${COMMON[@]}" "${SIZE[@]}" \
-    --arch axisym_hybrid --lam-bc-S1 0.1 --lam-bc-S2 0.0 --outdir runs/dipole
-```
+**(2) Then the dipole — `S1 = 0.1`:** the same command with two changes,
+`--lam-bc-S1 0.1` and `--outdir runs/dipole`.
 
 `--ref-solution --ref-asymptotic 1.0 --R0 1/sqrt(3)` is in the shared block so that the
 dipole run also carries the *spherical* reference for comparison: its diagnostics then show

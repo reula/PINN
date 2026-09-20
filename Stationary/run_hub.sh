@@ -21,6 +21,8 @@
 #   LOGDIR         where the log goes            (default <repo>/logs)
 #   CKPT_EVERY     checkpoint period, Adam steps (default 500; 0 disables)
 #   TRAIN_THREADS  cap on CPU threads            (default 4)
+#   POST_THREADS   cap for --post/postprocess    (default: TRAIN_THREADS)
+#   JAX_CACHE      0 disables the persistent compilation cache (default 1)
 #   PY             interpreter to use            (default python)
 #   SMOKE          --check smoke-run output dir   (default <repo>/runs/_smoke)
 # ---------------------------------------------------------------------------
@@ -32,6 +34,10 @@ cd "$HERE"
 PY="${PY:-python}"
 CKPT_EVERY="${CKPT_EVERY:-500}"
 TRAIN_THREADS="${TRAIN_THREADS:-4}"
+# postprocessing (figures + report) gets the same cap unless told otherwise; exported so
+# that postprocess.sh, which runs in a child process, sees it.
+POST_THREADS="${POST_THREADS:-$TRAIN_THREADS}"
+export TRAIN_THREADS POST_THREADS
 LOGDIR="${LOGDIR:-$HERE/logs}"
 OUTDIR="${OUTDIR:-}"
 # Matplotlib must not try to build its font cache in an unwritable home/cache dir
@@ -103,7 +109,16 @@ if [ "${1:-}" = "--check" ]; then
     echo "== jax devices =="; check_devices || true
     echo "== imports =="
     "$PY" -c "import stationary.train, stationary.evaluate, stationary.multipoles; print('imports ok')"
-    echo "== test suite (takes ~4-5 min) =="
+    # The tests and the smoke run compile a lot of small graphs. Uncapped, XLA's CPU pool
+    # takes every core of the node, which on a 128-core machine is slower -- not faster --
+    # and rude to whoever else is on it. TRAIN_THREADS caps it. The compilation cache makes
+    # a repeated --check much quicker (it is keyed on the code, so it cannot go stale).
+    export OMP_NUM_THREADS="${TRAIN_THREADS}"
+    if [ "${JAX_CACHE:-1}" != "0" ]; then
+        export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-$HERE/.jaxcache}"
+        export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=0
+    fi
+    echo "== test suite (takes ~4-5 min, OMP_NUM_THREADS=$OMP_NUM_THREADS) =="
     MPLBACKEND=Agg MPLCONFIGDIR="$MPLCONFIGDIR" "$PY" -m pytest tests/ -q
     echo "== smoke run (200 steps, must finish in seconds) =="
     SMOKE="${SMOKE:-$HERE/runs/_smoke}"
@@ -136,12 +151,16 @@ fi
 # ------------------------------------------------------------------- post mode
 # `./run_hub.sh --post` re-makes the figures and the report of an existing run without
 # touching the trained parameters. With no --outdir it picks the most recent run dir.
+# `--only report` skips the figures (the report is the expensive part on a busy node).
 if [ "${1:-}" = "--post" ]; then
     shift
+    ONLY="evaluate,profile,report"
     while [ $# -gt 0 ]; do
         case "$1" in
             --outdir)   OUTDIR="$2"; shift 2 ;;
             --outdir=*) OUTDIR="${1#*=}"; shift ;;
+            --only)     ONLY="$2"; shift 2 ;;
+            --only=*)   ONLY="${1#*=}"; shift ;;
             *) echo "warning: --post ignores '$1'" >&2; shift ;;
         esac
     done
@@ -156,8 +175,10 @@ if [ "${1:-}" = "--post" ]; then
     fi
     echo "== post-processing $OUTDIR =="
     mkdir -p "$LOGDIR"
-    bash "$POST" "$OUTDIR" "$PY"
+    t0=$SECONDS
+    bash "$POST" "$OUTDIR" "$PY" "$ONLY"
     echo
+    echo "[post] total $((SECONDS - t0))s"
     echo "report    $OUTDIR/report.txt"
     echo "figures   $OUTDIR/*.png"
     exit 0
@@ -234,6 +255,11 @@ JOB_SH="$OUTDIR/job.sh"
     echo 'set -uo pipefail'
     echo "cd $(printf '%q' "$HERE")"
     echo "echo \$\$ > $(printf '%q' "$PIDFILE")"
+    echo '# The full command, with every array already expanded: if a flag you meant to pass'
+    echo '# is missing here, it did not reach the run (an empty shell array is the usual way).'
+    echo 'echo "== command =="'
+    printf 'echo'; printf ' %q' "${TRAIN[@]}"; printf '\n'
+    echo 'echo "============="'
     printf '%q ' "${TRAIN[@]}"; printf '\n'
     echo 'STATUS=$?'
     echo 'echo'

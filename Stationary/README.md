@@ -94,10 +94,24 @@ obeys `compat, gauge, lam_eq ~ rho^-3` and `ricci ~ rho^-4`.
 
 Inner sphere (`rho = rho_in`), as specified by the user:
 
-* `lambda = lambda_0`
-* the induced metric is the round metric of **areal radius 2**
-  (implemented as `h - h_rr n n - (4/rho^2)(I - n n) = 0`)
-* `h_rr = 1` (normal-normal component; fixes the remaining metric freedom)
+* `lambda = lambda_0` (plus the optional `S1`, `S2` angular terms)
+* the induced metric is the round metric of **areal radius `inner_radius`**
+  (implemented as `h - h_rr n n - (inner_radius^2/rho^2)(I - n n) = 0`)
+* `h_rr = inner_h_rr` — **1 by default**, i.e. it *is* constrained unless you pass
+  `--no-inner-h-rr`.  It fixes the remaining metric freedom but over-determines the
+  radial gauge, which is why the production runs turn it off.
+
+`inner_radius` defaults to **2**, which is the problem statement and is what
+`rho_in_of_R0(R0) = sqrt(4+R0^2)` places at `rho_in` in the canonical harmonic chart: the
+exact solution has `h_tan = 1 - R0^2/rho_in^2 = 4/(4+R0^2)` there, i.e. `0.8` for
+`R0 = 1`, *not* flat.  It must not default to `rho_in` (it did for a while, commit
+`67a802a`): that asks for `h_tan = 1`, which contradicts the Dirichlet/Robin-source data
+taken from the same exact solution, so no metric can satisfy both boundary conditions and
+the run converges to a compromise ~25% off near the inner sphere.  `train.build` now
+checks this before starting and prints the offending term and the fix; `report.py` prints
+a `reference vs the imposed inner data` line, and `tests/test_pipeline.py` pins the
+default.  If you want a scaled solution (as the M2 runs do, at `rho_in = 1`), say so with
+`--inner-radius`.
 
 Outer sphere (`rho = rho_out`), two modes:
 
@@ -120,7 +134,10 @@ Outer sphere (`rho = rho_out`), two modes:
 
 `postprocess.sh` writes every figure plus `report.txt` into the run directory; it is what
 `run_hub.sh` runs automatically when a training process ends (see `HUB.md` §4), so a
-finished — or crashed — run is complete without any further command.
+finished — or crashed — run is complete without any further command. It caps the CPU
+threads (`POST_THREADS`, default 4 — XLA otherwise takes every core of the node, which is
+slower for graphs this small) and caches XLA compilations in `.jaxcache`, which is the
+difference between ~1 min and ~30 s (or ~10 s for `--only report`).
 
 Useful flags: `--R0`, `--lam0`, `--rho-out`, `--n-coll`, `--width`, `--depth`,
 `--outer-bc {dirichlet_exact,robin}`, `--pde-ramp-steps`, `--w-inner`,
