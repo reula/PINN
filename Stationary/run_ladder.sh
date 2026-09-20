@@ -12,13 +12,19 @@
 #   step 1  order 1, float32, 64x4 f8      runs/control_ord1b      ~7 min
 #   step 2  order 2, float32, same size    runs/control_ord2       ~7 min
 #   step 3  order 4, x64,     same size    runs/control_ord4_x64   ~15 min
-#   step 4  order 4, x64, big net          runs/control_ord4_big   ~40-90 min
-#   step 5  the dipole, x64, big net       runs/dipole_x64         ~40-90 min
+#   step 4  order 1, float32, BIG net      runs/control_ord1_big   ~20-40 min
+#   step 5  the dipole, order 1, BIG net   runs/dipole_big         ~20-40 min
+#   step 6  the dipole, order 1, small net runs/dipole_small       ~7 min
 #
-# Why this order: the order-1 condition is limited by its own residual (6.6e-5 in lambda
-# at rho = 100), order 2 is representable in float32 (floor 6.9e-7) and order 4 is not
-# (floor 1.2e-5, versus an 8e-10 target) -- see HUB.md section 6.  So steps 1-3 cost ~30
-# minutes and decide what step 4 (capacity) and step 5 (the physics) should be.
+# Steps 1-3 were run on 20 September and settled the order question: order 1 wins by two
+# orders of magnitude in lambda(rho_out) (3.0e-4 against 1.6e-1 for order 2 in float32 and
+# 5.9e-2 for order 4 in float64).  The higher-order conditions are stiffer -- they amplify
+# the high radial frequencies -- and they are also more permissive, which costs accuracy on
+# a spherically symmetric solution that has no high multipoles to let through.  They are
+# not needed for the dipole either: its l = 1 tail at rho_out is ~S1 (rho_in/rho_out)^2 =
+# 1e-5, so the order-1 condition biases it by ~1e-5, thirty times below the accuracy we
+# already have.  Hence steps 4 and 5 use order 1 and spend the time on capacity instead.
+# See HUB.md section 6.
 #
 # Each step is launched with run_hub.sh, which detaches it, logs it, checkpoints it and
 # runs the figures + report when it ends; this script only waits for the run to finish
@@ -52,9 +58,9 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY=1; shift ;;
         --force)   FORCE=1; shift ;;
         --compare) COMPARE_ONLY=1; shift ;;
-        all)       WANT=(1 2 3 4 5); shift ;;
-        [1-5])     WANT+=("$1"); shift ;;
-        *) echo "unknown argument '$1' (want 1..5, all, --dry-run, --force, --compare)" >&2
+        all)       WANT=(1 2 3 4 5 6); shift ;;
+        [1-6])     WANT+=("$1"); shift ;;
+        *) echo "unknown argument '$1' (want 1..6, all, --dry-run, --force, --compare)" >&2
            exit 1 ;;
     esac
 done
@@ -75,9 +81,14 @@ run_one() {                     # run_one NAME X64(0|1) -- <extra flags...>
     [ "$x64" = "1" ] && cmd+=(JAX_ENABLE_X64=1)
     # LADDER_EXTRA overrides anything, for a quick trial of the machinery:
     #   LADDER_EXTRA="--steps 20 --lbfgs-steps 0 --n-coll 64 --n-bnd 32" ./run_ladder.sh 1
-    local -a extra=()
-    [ -n "${LADDER_EXTRA:-}" ] && read -r -a extra <<< "$LADDER_EXTRA"
-    cmd+=(bash "$HERE/run_hub.sh" "${BASE[@]}" "$@" "${extra[@]}" --outdir "$out")
+    local -a tail_args=("$@")
+    # (never expand an empty array: bash 3.2 with set -u calls that unbound)
+    if [ -n "${LADDER_EXTRA:-}" ]; then
+        local -a extra=()
+        read -r -a extra <<< "$LADDER_EXTRA"
+        tail_args+=("${extra[@]}")
+    fi
+    cmd+=(bash "$HERE/run_hub.sh" "${BASE[@]}" "${tail_args[@]}" --outdir "$out")
     echo
     echo "===================================================================="
     echo "== step $name"
@@ -109,8 +120,10 @@ for s in "${WANT[@]}"; do
         1) run_one control_ord1b   0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=1,lam=1 ;;
         2) run_one control_ord2    0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=2,lam=2 ;;
         3) run_one control_ord4_x64 1 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=4,lam=4 ;;
-        4) run_one control_ord4_big 1 -- "${BIG[@]}"   "${NICE[@]}" --robin-orders h=4,lam=4 ;;
-        5) run_one dipole_x64      1 -- "${BIG[@]}"   "${NICE[@]}" --robin-orders h=4,lam=4 \
+        4) run_one control_ord1_big 0 -- "${BIG[@]}"   "${NICE[@]}" --robin-orders h=1,lam=1 ;;
+        5) run_one dipole_big       0 -- "${BIG[@]}"   "${NICE[@]}" --robin-orders h=1,lam=1 \
+                    --lam-bc-S1 0.1 ;;
+        6) run_one dipole_small     0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=1,lam=1 \
                     --lam-bc-S1 0.1 ;;
     esac || true
 done
@@ -119,7 +132,7 @@ done
 
 # ------------------------------------------------------------------ comparison
 RUNS=()
-for n in control_ord1b control_ord2 control_ord4_x64 control_ord4_big dipole_x64; do
+for n in control_ord1b control_ord2 control_ord4_x64 control_ord1_big dipole_big dipole_small; do
     [ -f "runs/$n/config.json" ] && RUNS+=("runs/$n")
 done
 [ ${#RUNS[@]} -eq 0 ] && { echo "no runs to compare yet" >&2; exit 0; }

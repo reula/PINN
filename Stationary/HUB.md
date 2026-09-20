@@ -379,7 +379,32 @@ vs float64 evaluation of the *same* exact fields:
 | 2, `h` | 5.6e-11 | 6.6e-07 | floor 12000x above |
 | 4, `h` | 5.9e-12 | 4.4e-05 | floor 7.5e6x above |
 
-Consequences, in the order they should be tried:
+**These measurements were then tested (20 Sept, `runs/control_ord*`, 20000 Adam + 3000
+L-BFGS each, identical otherwise) and the outcome was not what the round-off argument
+alone predicted:**
+
+| run | order | precision | `lambda(100)` | error | outer BC rms (h, lam) | lam_eq rms | spurious l=2 at rho_out |
+|---|---|---|---|---|---|---|---|
+| `control_ord1b` | 1 | float32 | 0.9882606 | **3.0e-04** | 5.0e-05, 4.5e-05 | 6.4e-07 | 2.3e-07 |
+| `control_ord2` | 2 | float32 | 0.8263355 | 1.6e-01 | 1.5e-04, 1.8e-04 | 2.9e-05 | 3.4e-03 |
+| `control_ord4_x64` | 4 | float64 | 0.9303993 | 5.9e-02 | 3.5e-04, 7.7e-04 | 5.1e-06 | 2.2e-04 |
+
+* x64 did rescue order 4 (the earlier float32 attempt parked at 0.406 against 0.930 now),
+  so round-off was part of it — but it was never the whole story: order 2 fails at 0.826
+  although its float32 floor (6.9e-07) is four orders of magnitude below that error.
+* The real obstacle is **conditioning**: each `rho d_rho` multiplies the high-`omega`
+  content by `omega/L`, so the higher-order loss is stiff, and it is also *more
+  permissive* — it lets more multipoles through, which on a spherically symmetric solution
+  only removes information.  A small local sweep at a fixed budget (6000 steps) confirms
+  the stiffness: at order 2 the `lam_eq` residual improves monotonically as the radial
+  basis shrinks, 3.1e-02 (fourier 8) -> 1.2e-02 (4) -> 8.5e-03 (2), while order 1 at
+  fourier 8 stays best overall (3.4e-04 total loss against 8.3e-04 for the best order 2).
+* **Order 1 is the right choice for this problem, including the dipole**: the order-`n`
+  conditions exist to avoid penalising high multipoles, but the dipole's `l = 1` tail at
+  `rho_out = 100` is only `S1 (rho_in/rho_out)^2 ~ 1e-05`, so an order-1 condition biases
+  it by ~1e-05 — thirty times below the accuracy the control already reaches (3e-04).
+
+Consequences, in the order they were tried:
 
 1. **Order 1 in float32** is the right first run, and its accuracy ceiling is the
    condition's own residual (6.6e-05 at `rho = 100` for `lambda`), not the optimiser.
@@ -492,8 +517,9 @@ A step already done (its `runs/<name>/params.pkl` exists) is skipped unless you 
 | 1 | `runs/control_ord1b` | order 1, float32, 64x4 f8, 3000 L-BFGS | λ(100) ≈ 0.9882, outer BC rms ~3e-05 | ~7 min |
 | 2 | `runs/control_ord2` | order 2, float32, same size | floor 6.9e-07 is representable, so it should beat order 1 | ~7 min |
 | 3 | `runs/control_ord4_x64` | order 4, **x64**, same size | the decisive test of the round-off argument (floor 1.2e-05 in float32 vs 8.3e-10 in float64) | ~15 min |
-| 4 | `runs/control_ord4_big` | order 4, x64, `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity, not precision | 40-90 min |
-| 5 | `runs/dipole_x64` | the dipole (`--lam-bc-S1 0.1`) at the configuration that won | the physics | 40-90 min |
+| 4 | `runs/control_ord1_big` | order 1, float32, `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity, not precision: does the bigger net beat 3.0e-04? | 20-40 min |
+| 5 | `runs/dipole_big` | the dipole (`--lam-bc-S1 0.1`), order 1, big net | the physics | 20-40 min |
+| 6 | `runs/dipole_small` | the same dipole at 64x4 f8 | a cheap first look at the dipole | ~7 min |
 
 Steps 2 and 3 are cheap and settle the order question before the big runs.  Note that a
 bigger network does **not** lower the round-off floor and that in float32 the floor grows

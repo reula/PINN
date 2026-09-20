@@ -441,6 +441,37 @@ Ricci scalar matches 2 R0^2/r_a^4 at r_a = 2 (0.1258 vs 0.125) but is noise-domi
 further out, so lambda(r_a) is the usable invariant. Against the exact reference:
 max|dh| = 8.5e-5, max|dGamma| = 1.9e-4, max|dlambda| = 1.9e-4.
 
+### 8.8 Robin order: 1 is the right one (measured)
+
+The order-`n` Robin condition annihilates the first `n` decay powers, which lets the higher
+multipoles through.  It was introduced to avoid penalising the dipole's `l = 1` content, and
+we tested whether higher orders also improve the *validation*: three runs, identical except
+for the order (20000 Adam + 3000 L-BFGS, `rho_out = 100`, `R0 = 1/sqrt3`, areal radius 1,
+`lambda -> 1`; `stationary.compare` output, `runs/control_ord*`).
+
+| run | order | precision | `lambda(100)` | error | outer BC rms (`h`, `lambda`) | `lam_eq` rms |
+|---|---|---|---|---|---|---|
+| `control_ord1b` | 1 | float32 | 0.9882606 | **3.0e-04** | 5.0e-05, 4.5e-05 | 6.4e-07 |
+| `control_ord2` | 2 | float32 | 0.8263355 | 1.6e-01 | 1.5e-04, 1.8e-04 | 2.9e-05 |
+| `control_ord4_x64` | 4 | float64 | 0.9303993 | 5.9e-02 | 3.5e-04, 7.7e-04 | 5.1e-06 |
+
+Reading:
+
+* **x64 rescued order 4** (the earlier float32 attempt parked at `lambda(100) = 0.406`), so
+  round-off was part of the story.  But it was not the whole story: order 2 fails at 0.826
+  while its float32 round-off floor is 6.9e-07, four orders of magnitude smaller.
+* The dominant obstacle is **conditioning**.  Each `rho d_rho` multiplies the content at
+  radial frequency `omega` by `omega/log(rho_out/rho_in)`, so the higher-order loss is
+  stiff, and it is simultaneously *more permissive*: on a spherically symmetric solution
+  the extra freedom it allows is freedom to be wrong.  A fixed-budget sweep (6000 steps)
+  shows the stiffness directly -- at order 2 the `lam_eq` residual falls as the radial
+  basis shrinks: 3.1e-02 (fourier 8) -> 1.2e-02 (4) -> 8.5e-03 (2), while order 1 at
+  fourier 8 has the smallest total loss of all (3.4e-04).
+* **Order 1 is therefore used for the dipole too.**  The dipole's `l = 1` tail at
+  `rho = 100` is `~S1 (rho_in/rho_out)^2 = 1e-05`, so the order-1 condition biases it by
+  about `1e-05`, thirty times below the accuracy the control reaches (`3e-04`).  Spending
+  precision (x64) or capacity on higher-order conditions would buy less than it costs.
+
 ## 9. Running on a JupyterHub / GPU machine
 
 The hub workflow has its own document: **`HUB.md`** (setup, `run_hub.sh`,
