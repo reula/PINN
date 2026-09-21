@@ -526,12 +526,23 @@ the single GPU, and it ends by comparing everything it produced:
 
 ```bash
 cd <checkout>
-PY=$PWD/.venv/bin/python ./run_ladder.sh            # steps 1-3 (~30 min)
-PY=$PWD/.venv/bin/python ./run_ladder.sh all        # steps 1-5 (~2-4 h, unattended)
-PY=$PWD/.venv/bin/python ./run_ladder.sh 4 5        # the expensive ones, after a look
-PY=$PWD/.venv/bin/python ./run_ladder.sh --compare  # just re-print the table
 PY=$PWD/.venv/bin/python ./run_ladder.sh --dry-run all   # show the commands, launch nothing
+PY=$PWD/.venv/bin/python ./run_ladder.sh --clean          # list what a clean would delete
+PY=$PWD/.venv/bin/python ./run_ladder.sh --clean --force  # delete this ladder's runs only
+PY=$PWD/.venv/bin/python ./run_ladder.sh sweep            # measure w_outer per order (~10 min)
+W_OUTER_ORD2=10 W_OUTER_ORD4=1 PY=$PWD/.venv/bin/python ./run_ladder.sh 1 2 3   # the controls
+PY=$PWD/.venv/bin/python ./run_ladder.sh 4 5 6 7    # capacity, then the dipoles
+PY=$PWD/.venv/bin/python ./run_ladder.sh --compare  # just re-print the table
 ```
+
+**Run the sweep first.**  One fixed `w_outer` is not a fair comparison across Robin
+orders: the order-`n` residual at initialisation is `(gain)^n` larger (`8.8e-04` at order 1,
+`2.1e-01` at order 2, `4.4e+03` at order 4), so `w_outer = 100` starves the equation at
+order 2 and 4 and makes order 1 look better than it is.  `sweep` runs six short jobs
+(5000 steps, `n_coll 1024`) — order 2 and order 4 (x64) at `w_outer = 100, 10, 1` — and
+prints the weight-independent metrics.  Judge on **`lam_eq`/`ricci` and the outer BC
+residual**, not on the loss: lowering `w_outer` shrinks the loss by itself.  Then pass the
+chosen weights as `W_OUTER_ORD2` / `W_OUTER_ORD4` to the full-budget controls.
 
 A step already done (its `runs/<name>/params.pkl` exists) is skipped unless you pass
 `--force`; a step that fails to launch stops that step but not the ladder. The steps (see
@@ -542,10 +553,10 @@ A step already done (its `runs/<name>/params.pkl` exists) is skipped unless you 
 | 1 | `runs/control_ord1b` | order 1, float32, 64x4 f8, 3000 L-BFGS | λ(100) ≈ 0.9882, outer BC rms ~3e-05 | ~7 min |
 | 2 | `runs/control_ord2` | order 2, float32, same size | floor 6.9e-07 is representable, so it should beat order 1 | ~7 min |
 | 3 | `runs/control_ord4_x64` | order 4, **x64**, same size | the decisive test of the round-off argument (floor 1.2e-05 in float32 vs 8.3e-10 in float64) | ~15 min |
-| 4 | `runs/control_ord2_w10` | order 2 with `--w-outer 10` | confirms the weight finding at full budget (expect it to beat order 1) | ~7 min |
+| 4 | `runs/control_ord1_big` | order 1, float32, `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity: does the bigger net beat 3.0e-04? | 20-40 min |
 | 5 | `runs/dipole_small` | the dipole (`--lam-bc-S1 0.1`), order 1, 64x4 f8 | first look at the physics | ~7 min |
-| 6 | `runs/control_ord1_big` | order 1, float32, `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity: does the bigger net beat 3.0e-04? | 20-40 min |
-| 7 | `runs/dipole_big` | the dipole, order 1, big net | the physics at capacity | 20-40 min |
+| 6 | `runs/dipole_big` | the dipole, order 1, big net | the physics at capacity | 20-40 min |
+| 7 | `runs/dipole_ord2_small` | the same dipole at order 2 with the swept weight | tests the claim that order 1 suffices: the `l = 1` amplitude and `lambda(rho_out)` should agree with step 5 to ~1e-05 | ~7 min |
 
 Steps 2 and 3 are cheap and settle the order question before the big runs.  Note that a
 bigger network does **not** lower the round-off floor and that in float32 the floor grows
