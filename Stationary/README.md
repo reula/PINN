@@ -441,13 +441,12 @@ Ricci scalar matches 2 R0^2/r_a^4 at r_a = 2 (0.1258 vs 0.125) but is noise-domi
 further out, so lambda(r_a) is the usable invariant. Against the exact reference:
 max|dh| = 8.5e-5, max|dGamma| = 1.9e-4, max|dlambda| = 1.9e-4.
 
-### 8.8 Robin order: 1 is the right one (measured)
+### 8.8 Robin order: the weight, not the order, was the problem (measured)
 
-The order-`n` Robin condition annihilates the first `n` decay powers, which lets the higher
-multipoles through.  It was introduced to avoid penalising the dipole's `l = 1` content, and
-we tested whether higher orders also improve the *validation*: three runs, identical except
-for the order (20000 Adam + 3000 L-BFGS, `rho_out = 100`, `R0 = 1/sqrt3`, areal radius 1,
-`lambda -> 1`; `stationary.compare` output, `runs/control_ord*`).
+The order-`n` Robin condition annihilates the first `n` decay powers, which lets higher
+multipoles through.  Three runs identical except for the order (20000 Adam + 3000 L-BFGS,
+`rho_out = 100`, `R0 = 1/sqrt3`, areal radius 1, `lambda -> 1`, `w_outer = 100`,
+`runs/control_ord*`) looked at first like "order 1 wins by two orders of magnitude":
 
 | run | order | precision | `lambda(100)` | error | outer BC rms (`h`, `lambda`) | `lam_eq` rms |
 |---|---|---|---|---|---|---|
@@ -455,22 +454,66 @@ for the order (20000 Adam + 3000 L-BFGS, `rho_out = 100`, `R0 = 1/sqrt3`, areal 
 | `control_ord2` | 2 | float32 | 0.8263355 | 1.6e-01 | 1.5e-04, 1.8e-04 | 2.9e-05 |
 | `control_ord4_x64` | 4 | float64 | 0.9303993 | 5.9e-02 | 3.5e-04, 7.7e-04 | 5.1e-06 |
 
-Reading:
+That reading was wrong, and the order-2 loss trajectory shows why: its loss at the end is
+`7.05e-04` of which `6.84e-04` is the `lam_eq` group, while every boundary term is at
+`1e-08`-`1e-09`.  It did not fail on the boundary condition — it stopped solving the
+equation, because the *stiff* outer term dominated the globally clipped gradient.  The
+`order-n` Robin residual at initialisation is `(gain)^n` larger (`8.8e-04` for `n = 1`,
+`2.1e-01` for `n = 2`), so the same `w_outer = 100` is a different weight at every order.
 
-* **x64 rescued order 4** (the earlier float32 attempt parked at `lambda(100) = 0.406`), so
-  round-off was part of the story.  But it was not the whole story: order 2 fails at 0.826
-  while its float32 round-off floor is 6.9e-07, four orders of magnitude smaller.
-* The dominant obstacle is **conditioning**.  Each `rho d_rho` multiplies the content at
-  radial frequency `omega` by `omega/log(rho_out/rho_in)`, so the higher-order loss is
-  stiff, and it is simultaneously *more permissive*: on a spherically symmetric solution
-  the extra freedom it allows is freedom to be wrong.  A fixed-budget sweep (6000 steps)
-  shows the stiffness directly -- at order 2 the `lam_eq` residual falls as the radial
-  basis shrinks: 3.1e-02 (fourier 8) -> 1.2e-02 (4) -> 8.5e-03 (2), while order 1 at
-  fourier 8 has the smallest total loss of all (3.4e-04).
-* **Order 1 is therefore used for the dipole too.**  The dipole's `l = 1` tail at
-  `rho = 100` is `~S1 (rho_in/rho_out)^2 = 1e-05`, so the order-1 condition biases it by
-  about `1e-05`, thirty times below the accuracy the control reaches (`3e-04`).  Spending
-  precision (x64) or capacity on higher-order conditions would buy less than it costs.
+A fixed-budget sweep (6000 Adam + 500 L-BFGS, `n_coll = 512`, same seed) with the weight
+matched:
+
+| run | `w_outer` | final loss | `lam_eq` rms | `ricci` rms |
+|---|---|---|---|---|
+| order 1 | 100 | 3.43e-04 | 1.79e-02 | 4.25e-03 |
+| order 2 | 100 | 1.17e-03 | 3.05e-02 | 5.62e-03 |
+| order 2 | **10** | **2.29e-04** | **1.20e-02** | **2.33e-03** |
+| order 2 | 1 | 4.50e-04 | 7.76e-03 | 7.89e-04 |
+
+With a lower weight the order-2 run's *PDE* residuals improve 2.5x (`lam_eq` 3.05e-02 ->
+1.20e-02) and its loss improves 5x -- but part of the loss improvement is just the outer
+term being counted less, so the weight-independent numbers are the ones to trust.  The same
+sweep at order 4 (x64, 3000 steps, `n_coll = 256`, `runs` reproduced locally) shows that
+the weight is a **trade-off, not a bug with a correct setting**:
+
+| `w_outer` | `lam_eq` rms | `ricci` rms | outer `lambda` rms | `lambda(100)` |
+|---|---|---|---|---|
+| 100 | 2.83e-05 | 2.30e-06 | 6.2e-02 | 0.661 |
+| 10 | 1.76e-05 | 2.48e-06 | 1.2e-01 | 0.620 |
+| 1 | 1.82e-05 | 1.77e-06 | 9.9e-02 | 0.586 |
+| 0.1 | 1.49e-05 | 1.46e-06 | 2.2e-01 | 0.490 |
+
+The equation gets better and the boundary condition and the far field get worse, all
+monotonically: at 3000 steps nothing satisfies both.  (These are 1/7-budget probes, so the
+absolute numbers are far from the ladder runs; only the trends are meaningful.)  The
+apples-to-apples verdict comes from `runs/control_ord2_w10`, which is the order-2 run at the
+*full* budget of `control_ord2` with `--w-outer 10` -- and the metric that decides it is the
+**outer BC residual**, not the loss, because a smaller weight shrinks the loss by itself.
+
+There is no simple scaling law for that weight — the initial outer residual is
+`8.8e-04` (order 1), `2.1e-01` (order 2) and `4.4e+03` (order 4, from
+`runs/control_ord4_x64`, where it is 99.99% of the loss at step 1), a factor `5e6` across
+three orders — while the best weight at order 2 is `10`, not the `0.4` that matching the
+initial magnitudes would suggest.  So **measure it**: a three-point sweep
+(`--w-outer 100, 10, 1`) at 3000-6000 steps costs a few minutes and settles it.  The
+diagnostic that tells you the weight is too large is in `report.txt`: the PDE residuals
+stall while every boundary term sits at `1e-08`-`1e-09`.
+
+Consequences:
+
+* **Order 1 is still what the dipole runs use for now**, and not because higher order is
+  worse: the dipole's `l = 1` tail at `rho = 100` is `~S1 (rho_in/rho_out)^2 = 1e-05`, so
+  the order-1 condition biases it by about `1e-05`, thirty times below the accuracy the
+  control reaches (`3e-04`).
+* **Higher order will matter below `~1e-04`**: the exact solution does not satisfy the
+  order-1 condition exactly, its residual being `6.6e-05` in `lambda` at `rho = 100` (and
+  `7.4e-07` at order 2, `8.3e-10` at order 4).  So once capacity pushes the solution error
+  below that, the order-1 condition becomes the limiting factor and the higher-order route
+  -- with a matched weight, in x64 -- is the way to go.
+* Round-off is a real but later constraint: order 4 is floored at `1.2e-05` in float32
+  (versus `8.3e-10` in float64), which is why the float32 order-4 attempt parked at
+  `lambda(100) = 0.406` while the x64 one reached `0.930`.  See HUB.md section 6.
 
 ## 9. Running on a JupyterHub / GPU machine
 

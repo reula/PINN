@@ -390,19 +390,44 @@ alone predicted:**
 | `control_ord4_x64` | 4 | float64 | 0.9303993 | 5.9e-02 | 3.5e-04, 7.7e-04 | 5.1e-06 | 2.2e-04 |
 
 * x64 did rescue order 4 (the earlier float32 attempt parked at 0.406 against 0.930 now),
-  so round-off was part of it — but it was never the whole story: order 2 fails at 0.826
-  although its float32 floor (6.9e-07) is four orders of magnitude below that error.
-* The real obstacle is **conditioning**: each `rho d_rho` multiplies the high-`omega`
-  content by `omega/L`, so the higher-order loss is stiff, and it is also *more
-  permissive* — it lets more multipoles through, which on a spherically symmetric solution
-  only removes information.  A small local sweep at a fixed budget (6000 steps) confirms
-  the stiffness: at order 2 the `lam_eq` residual improves monotonically as the radial
-  basis shrinks, 3.1e-02 (fourier 8) -> 1.2e-02 (4) -> 8.5e-03 (2), while order 1 at
-  fourier 8 stays best overall (3.4e-04 total loss against 8.3e-04 for the best order 2).
-* **Order 1 is the right choice for this problem, including the dipole**: the order-`n`
-  conditions exist to avoid penalising high multipoles, but the dipole's `l = 1` tail at
-  `rho_out = 100` is only `S1 (rho_in/rho_out)^2 ~ 1e-05`, so an order-1 condition biases
-  it by ~1e-05 — thirty times below the accuracy the control already reaches (3e-04).
+  so round-off is real — order 4 is floored at 1.2e-05 in float32 against 8.3e-10 in
+  float64.  But it was not what broke order 2, whose float32 floor (6.9e-07) is four
+  orders of magnitude below its error.
+* **The actual cause was the outer weight.**  Look at the order-2 loss trajectory: its
+  final loss is 7.05e-04 of which 6.84e-04 is the `lam_eq` group, while every boundary term
+  is at 1e-08…1e-09.  It did not fail on the boundary condition — it stopped solving the
+  equation, because the stiff outer term dominated the globally clipped gradient.  The
+  order-`n` Robin residual at initialisation is `(gain)^n` larger (8.8e-04 for `n = 1`,
+  2.1e-01 for `n = 2`), so `w_outer = 100` is a different weight at every order.
+  A fixed-budget sweep (6000 Adam + 500 L-BFGS, `n_coll = 512`, same seed):
+
+  | run | `w_outer` | final loss | `lam_eq` rms | `ricci` rms |
+  |---|---|---|---|---|
+  | order 1 | 100 | 3.43e-04 | 1.79e-02 | 4.25e-03 |
+  | order 2 | 100 | 1.17e-03 | 3.05e-02 | 5.62e-03 |
+  | order 2 | **10** | **2.29e-04** | **1.20e-02** | **2.33e-03** |
+  | order 2 | 1 | 4.50e-04 | 7.76e-03 | 7.89e-04 |
+
+  With a lower weight the order-2 run's PDE residuals improve 2.5x and its loss 5x (part of
+  which is just the outer term being counted less -- trust the weight-independent PDE and
+  boundary residuals, not the loss).  At order 4 (x64, 3000 steps, `n_coll = 256`) the same
+  sweep shows a **trade-off rather than a correct setting**: as `w_outer` falls 100 -> 0.1
+  the `lam_eq` residual improves 2.83e-05 -> 1.49e-05 while the outer `lambda` residual
+  degrades 6.2e-02 -> 2.2e-01 and `lambda(100)` falls 0.661 -> 0.490.  Hence the verdict on
+  order 2 comes from `runs/control_ord2_w10`, the full-budget run with `--w-outer 10`, judged
+  on its **outer BC residual**.  There is **no simple scaling law** for that weight: the initial outer residual is 8.8e-04 (order 1), 2.1e-01
+  (order 2) and **4.4e+03** (order 4, where it is 99.99% of the loss at step 1) — a factor
+  5e6 across three orders — yet the best weight at order 2 is 10, not the 0.4 that matching
+  the initial magnitudes would suggest.  **Measure it**: a three-point sweep
+  (`--w-outer 100, 10, 1`) at 3000-6000 steps takes minutes.  The signature of too large a
+  weight is in `report.txt`: the PDE residuals stall while all boundary terms sit at
+  1e-08…1e-09.  Step 4 of the ladder re-runs order 2 at full budget with `--w-outer 10`.
+* **Order 1 is still what the dipole runs use for now** — not because higher order is
+  worse, but because the dipole's `l = 1` tail at `rho_out = 100` is only
+  `S1 (rho_in/rho_out)^2 ~ 1e-05`, so an order-1 condition biases it by ~1e-05, thirty
+  times below the accuracy the control reaches (3e-04).  Higher order becomes necessary
+  below `~1e-04`, since the exact solution itself violates the order-1 condition by
+  6.6e-05 in `lambda` (7.4e-07 at order 2, 8.3e-10 at order 4).
 
 Consequences, in the order they were tried:
 
@@ -517,9 +542,10 @@ A step already done (its `runs/<name>/params.pkl` exists) is skipped unless you 
 | 1 | `runs/control_ord1b` | order 1, float32, 64x4 f8, 3000 L-BFGS | λ(100) ≈ 0.9882, outer BC rms ~3e-05 | ~7 min |
 | 2 | `runs/control_ord2` | order 2, float32, same size | floor 6.9e-07 is representable, so it should beat order 1 | ~7 min |
 | 3 | `runs/control_ord4_x64` | order 4, **x64**, same size | the decisive test of the round-off argument (floor 1.2e-05 in float32 vs 8.3e-10 in float64) | ~15 min |
-| 4 | `runs/control_ord1_big` | order 1, float32, `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity, not precision: does the bigger net beat 3.0e-04? | 20-40 min |
-| 5 | `runs/dipole_big` | the dipole (`--lam-bc-S1 0.1`), order 1, big net | the physics | 20-40 min |
-| 6 | `runs/dipole_small` | the same dipole at 64x4 f8 | a cheap first look at the dipole | ~7 min |
+| 4 | `runs/control_ord2_w10` | order 2 with `--w-outer 10` | confirms the weight finding at full budget (expect it to beat order 1) | ~7 min |
+| 5 | `runs/dipole_small` | the dipole (`--lam-bc-S1 0.1`), order 1, 64x4 f8 | first look at the physics | ~7 min |
+| 6 | `runs/control_ord1_big` | order 1, float32, `--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16` | capacity: does the bigger net beat 3.0e-04? | 20-40 min |
+| 7 | `runs/dipole_big` | the dipole, order 1, big net | the physics at capacity | 20-40 min |
 
 Steps 2 and 3 are cheap and settle the order question before the big runs.  Note that a
 bigger network does **not** lower the round-off floor and that in float32 the floor grows

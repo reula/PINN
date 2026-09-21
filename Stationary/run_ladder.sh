@@ -12,19 +12,29 @@
 #   step 1  order 1, float32, 64x4 f8      runs/control_ord1b      ~7 min
 #   step 2  order 2, float32, same size    runs/control_ord2       ~7 min
 #   step 3  order 4, x64,     same size    runs/control_ord4_x64   ~15 min
-#   step 4  order 1, float32, BIG net      runs/control_ord1_big   ~20-40 min
-#   step 5  the dipole, order 1, BIG net   runs/dipole_big         ~20-40 min
-#   step 6  the dipole, order 1, small net runs/dipole_small       ~7 min
+#   step 4  order 2, w_outer 10 (matched)  runs/control_ord2_w10   ~7 min
+#   step 5  the dipole, order 1, small net runs/dipole_small       ~7 min
+#   step 6  order 1, float32, BIG net      runs/control_ord1_big   ~20-40 min
+#   step 7  the dipole, order 1, BIG net   runs/dipole_big         ~20-40 min
 #
-# Steps 1-3 were run on 20 September and settled the order question: order 1 wins by two
-# orders of magnitude in lambda(rho_out) (3.0e-4 against 1.6e-1 for order 2 in float32 and
-# 5.9e-2 for order 4 in float64).  The higher-order conditions are stiffer -- they amplify
-# the high radial frequencies -- and they are also more permissive, which costs accuracy on
-# a spherically symmetric solution that has no high multipoles to let through.  They are
-# not needed for the dipole either: its l = 1 tail at rho_out is ~S1 (rho_in/rho_out)^2 =
-# 1e-5, so the order-1 condition biases it by ~1e-5, thirty times below the accuracy we
-# already have.  Hence steps 4 and 5 use order 1 and spend the time on capacity instead.
-# See HUB.md section 6.
+# Steps 1-3 were run on 20 September.  They at first looked like "order 1 wins by two
+# orders of magnitude", but that was an artefact of the OUTER WEIGHT: the order-n Robin
+# residual at initialisation is ~(gain)^n larger (8.8e-4 for n = 1, 2.1e-1 for n = 2), so
+# w_outer = 100 means something completely different at each order and the stiff outer term
+# takes over the (globally clipped) gradient.  A fixed-budget sweep with the weight matched
+# gives order 2 *better* than order 1:
+#
+#   order 1, w_outer 100   loss 3.4e-04   lam_eq 1.8e-02
+#   order 2, w_outer 100   loss 1.2e-03   lam_eq 3.1e-02   <- the ladder runs
+#   order 2, w_outer  10   loss 2.3e-04   lam_eq 1.2e-02
+#   order 2, w_outer   1   loss 4.5e-04   lam_eq 7.8e-03
+#
+# So step 4 re-runs order 2 at full budget with a matched weight.  Order 1 is still the
+# right choice for the physics for now: the dipole's l = 1 tail at rho_out is only
+# ~S1 (rho_in/rho_out)^2 = 1e-5, so an order-1 condition biases it by ~1e-5, thirty times
+# below the accuracy the control reaches (3e-4).  Higher order will matter again if we push
+# the solution below ~1e-4, because order 1 is inconsistent with the exact solution at the
+# 6.6e-5 level.  See HUB.md section 6.
 #
 # Each step is launched with run_hub.sh, which detaches it, logs it, checkpoints it and
 # runs the figures + report when it ends; this script only waits for the run to finish
@@ -58,9 +68,9 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY=1; shift ;;
         --force)   FORCE=1; shift ;;
         --compare) COMPARE_ONLY=1; shift ;;
-        all)       WANT=(1 2 3 4 5 6); shift ;;
-        [1-6])     WANT+=("$1"); shift ;;
-        *) echo "unknown argument '$1' (want 1..6, all, --dry-run, --force, --compare)" >&2
+        all)       WANT=(1 2 3 4 5 6 7); shift ;;
+        [1-7])     WANT+=("$1"); shift ;;
+        *) echo "unknown argument '$1' (want 1..7, all, --dry-run, --force, --compare)" >&2
            exit 1 ;;
     esac
 done
@@ -120,10 +130,12 @@ for s in "${WANT[@]}"; do
         1) run_one control_ord1b   0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=1,lam=1 ;;
         2) run_one control_ord2    0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=2,lam=2 ;;
         3) run_one control_ord4_x64 1 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=4,lam=4 ;;
-        4) run_one control_ord1_big 0 -- "${BIG[@]}"   "${NICE[@]}" --robin-orders h=1,lam=1 ;;
-        5) run_one dipole_big       0 -- "${BIG[@]}"   "${NICE[@]}" --robin-orders h=1,lam=1 \
+        4) run_one control_ord2_w10 0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=2,lam=2 \
+                    --w-outer 10 ;;
+        5) run_one dipole_small     0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=1,lam=1 \
                     --lam-bc-S1 0.1 ;;
-        6) run_one dipole_small     0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=1,lam=1 \
+        6) run_one control_ord1_big 0 -- "${BIG[@]}"   "${NICE[@]}" --robin-orders h=1,lam=1 ;;
+        7) run_one dipole_big       0 -- "${BIG[@]}"   "${NICE[@]}" --robin-orders h=1,lam=1 \
                     --lam-bc-S1 0.1 ;;
     esac || true
 done
@@ -132,7 +144,8 @@ done
 
 # ------------------------------------------------------------------ comparison
 RUNS=()
-for n in control_ord1b control_ord2 control_ord4_x64 control_ord1_big dipole_big dipole_small; do
+for n in control_ord1b control_ord2 control_ord2_w10 control_ord4_x64 \
+         control_ord1_big dipole_small dipole_big; do
     [ -f "runs/$n/config.json" ] && RUNS+=("runs/$n")
 done
 [ ${#RUNS[@]} -eq 0 ] && { echo "no runs to compare yet" >&2; exit 0; }
