@@ -13,9 +13,13 @@
 #   PY=$PWD/.venv/bin/python ./run_ladder.sh sweep      # measure w_outer per order (~10 min)
 #
 # Recommended order after a clean slate:
-#   sweep -> read the table -> rerun the controls with the measured weights:
-#       W_OUTER_ORD2=<from the sweep> W_OUTER_ORD4=<from the sweep> ./run_ladder.sh 1 2 3
-#   then the physics:  ./run_ladder.sh 5 6 7
+#   ./run_ladder.sh sweep        # prints the weight-independent metrics per weight
+#   W_OUTER_ORD2=10 W_OUTER_ORD4=1 ./run_ladder.sh 1 2 3     # put NUMBERS here
+#   ./run_ladder.sh 4 5 6 7      # capacity, then the two dipoles and the order-2 check
+#
+# W_OUTER_ORD2/W_OUTER_ORD4 are optional NUMBERS taken from the sweep; the defaults are
+# 10 (order 2) and 1 (order 4).  PY is optional too: without it the checkout's .venv is
+# used, which on this hub is the CUDA environment.
 #
 #   step 1  order 1, float32, 64x4 f8      runs/control_ord1b      ~7 min
 #   step 2  order 2, float32, same size    runs/control_ord2       ~7 min
@@ -57,7 +61,21 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
-PY="${PY:-python}"
+# PY is an environment variable (as in run_hub.sh).  If it is not given, use the
+# checkout's own venv -- on this hub that is the CUDA environment -- rather than whatever
+# `python` happens to be (a `(base)` conda python has no jax and no stationary).
+if [ -z "${PY:-}" ]; then
+    if [ -x "$HERE/.venv/bin/python" ]; then
+        PY="$HERE/.venv/bin/python"
+    else
+        PY="python"
+    fi
+fi
+if ! "$PY" -c "import stationary" 2>/dev/null; then
+    echo "error: '$PY' cannot import the stationary package." >&2
+    echo "       Use the checkout's environment:  PY=$HERE/.venv/bin/python $0 ..." >&2
+    exit 1
+fi
 FORCE=0
 DRY=0
 CLEAN=0
@@ -98,6 +116,21 @@ if [ "$COMPARE_ONLY" = "1" ]; then
 elif [ ${#WANT[@]} -eq 0 ]; then
     WANT=(1 2 3)
 fi
+
+# ------------------------------------------------------------------ weights
+# W_OUTER_ORD2 / W_OUTER_ORD4 are the Robin weights for the higher-order controls, chosen
+# from `./run_ladder.sh sweep`.  They are NUMBERS; anything else (a leftover "<from the
+# sweep>", say) is refused here rather than confusing bash later.
+for v in W_OUTER_ORD2 W_OUTER_ORD4; do
+    eval "val=\${$v:-}"
+    if [ -n "$val" ] && ! printf '%s' "$val" | grep -Eq '^[0-9]+([.][0-9]*)?$'; then
+        echo "error: $v='$val' is not a number." >&2
+        echo "       Run ./run_ladder.sh sweep first, then e.g." >&2
+        echo "         W_OUTER_ORD2=10 W_OUTER_ORD4=1 ./run_ladder.sh 1 2 3" >&2
+        echo "       or simply omit them: the defaults are 10 (order 2) and 1 (order 4)." >&2
+        exit 1
+    fi
+done
 
 # ------------------------------------------------------------------ one step
 run_one() {                     # run_one NAME X64(0|1) -- <extra flags...>

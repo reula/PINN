@@ -530,7 +530,7 @@ PY=$PWD/.venv/bin/python ./run_ladder.sh --dry-run all   # show the commands, la
 PY=$PWD/.venv/bin/python ./run_ladder.sh --clean          # list what a clean would delete
 PY=$PWD/.venv/bin/python ./run_ladder.sh --clean --force  # delete this ladder's runs only
 PY=$PWD/.venv/bin/python ./run_ladder.sh sweep            # measure w_outer per order (~10 min)
-W_OUTER_ORD2=10 W_OUTER_ORD4=1 PY=$PWD/.venv/bin/python ./run_ladder.sh 1 2 3   # the controls
+W_OUTER_ORD2=10 W_OUTER_ORD4=1 ./run_ladder.sh 1 2 3   # the controls (NUMBERS, not prose)
 PY=$PWD/.venv/bin/python ./run_ladder.sh 4 5 6 7    # capacity, then the dipoles
 PY=$PWD/.venv/bin/python ./run_ladder.sh --compare  # just re-print the table
 ```
@@ -547,6 +547,12 @@ chosen weights as `W_OUTER_ORD2` / `W_OUTER_ORD4` to the full-budget controls.
 A step already done (its `runs/<name>/params.pkl` exists) is skipped unless you pass
 `--force`; a step that fails to launch stops that step but not the ladder. The steps (see
 §6 for the measurements behind them):
+
+`PY` is optional for the ladder: without it the checkout's own `.venv` is used (which on
+this hub is the CUDA environment) and checked by importing the package.  `W_OUTER_ORD2` /
+`W_OUTER_ORD4` are optional **numbers** with defaults 10 and 1; anything that is not a
+number is refused up front — writing `<from the sweep>` there makes bash try to read a file
+by that name.
 
 | step | run directory | what | expect | cost |
 |---|---|---|---|---|
