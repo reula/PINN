@@ -120,24 +120,22 @@ def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> di
         if cfg.robin_source and exact_fields is None:
             raise ValueError("robin_source needs exact_fields (set --ref-solution)")
 
-        def robin(field_fun, x, base, inf_val, order):
-            return robin_operator(field_fun, x, base, order, inf_val)
-
         def one(x):
             f = point_fields(x)
-            rh = robin(lambda y: point_fields(y).h, x, ph, I3, orders["h"])
-            rl = robin(lambda y: point_fields(y).lam, x, pl, lam_inf, orders["lam"])
+            rh = robin_operator(lambda y: point_fields(y).h, x, ph, orders["h"], I3)
+            rl = robin_operator(lambda y: point_fields(y).lam, x, pl, orders["lam"], lam_inf)
             sh = sl = 0.0
             if cfg.robin_source:
-                sh = robin(lambda y: exact_fields(y).h, x, ph, I3, orders["h"])
-                sl = robin(lambda y: exact_fields(y).lam, x, pl, lam_inf, orders["lam"])
+                sh = robin_operator(lambda y: exact_fields(y).h, x, ph, orders["h"], I3)
+                sl = robin_operator(lambda y: exact_fields(y).lam, x, pl, orders["lam"],
+                                    lam_inf)
             if cfg.robin_include_G:
-                rG = robin(lambda y: point_fields(y).G, x, pG, jnp.zeros((3, 3, 3)),
-                           orders["G"])
+                rG = robin_operator(lambda y: point_fields(y).G, x, pG, orders["G"],
+                                    jnp.zeros((3, 3, 3)))
                 sG = 0.0
                 if cfg.robin_source:
-                    sG = robin(lambda y: exact_fields(y).G, x, pG, jnp.zeros((3, 3, 3)),
-                               orders["G"])
+                    sG = robin_operator(lambda y: exact_fields(y).G, x, pG, orders["G"],
+                                        jnp.zeros((3, 3, 3)))
                 return jnp.concatenate([pack_sym(rh - sh) * OFFW,
                                         pack_gamma(rG - sG),
                                         jnp.array([rl - sl])])
