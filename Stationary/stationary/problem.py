@@ -104,6 +104,13 @@ class Config:
     steps: int = 20000
     lr: float = 1e-3
     lbfgs_steps: int = 300
+    # Quasi-Newton phase.  "ssbroyden" runs Crunch's self-scaling Broyden (the sibling
+    # checkout PINN/Jax/Crunch/Optimizers, imported lazily and falling back to optax.lbfgs
+    # when it is absent, as on the hub); "lbfgs" forces the optax path.  SSBroyden carries a
+    # *dense* inverse-Hessian estimate, n_params^2: the production network (13 828
+    # parameters) needs 1.53 GB in float64 and 0.76 GB in float32, which qn_max_H_gb caps.
+    qn_method: str = "ssbroyden"    # "ssbroyden" | "lbfgs"
+    qn_max_H_gb: float = 2.0        # refuse the dense SSBroyden estimate above this
     log_every: int = 200
     seed: int = 0
     outdir: str = "runs/m1"

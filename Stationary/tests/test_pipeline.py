@@ -355,6 +355,17 @@ def test_robin_operator_annihilates_powers():
                     assert abs(float(val)) > 1e-12, (base, kk, order, float(val))
 
 
+def _radial_derivatives(f, x, order):
+    """d_rho^j f at x for j = 0..order, by differentiating along the ray through x."""
+    n = x / jnp.linalg.norm(x)
+    g = lambda t: f(x + t * n)
+    vals, cur = [g(0.0)], g
+    for _ in range(order):
+        cur = jax.jacfwd(cur)
+        vals.append(cur(0.0))
+    return vals
+
+
 def test_robin_second_order_lambda_form():
     """For lambda with base 1 and order 2 the condition is rho^2 lam'' + 4 rho lam' + 2(lam-1)."""
     from stationary.losses import robin_operator
@@ -364,6 +375,63 @@ def test_robin_second_order_lambda_form():
     lam2 = lambda y: 1.0 + 2.0 / jnp.linalg.norm(y) ** 3
     # rho^-3 must survive (it is the next multipole, l = 2)
     assert abs(float(robin_operator(lam2, x, 1, 2, 1.0))) > 1e-6
+
+    # and the expansion itself, on a field that is not a single power
+    g = lambda y: 1.0 + 0.4 / jnp.linalg.norm(y) + 0.9 * y[2] / jnp.linalg.norm(y) ** 3
+    f0, f1, f2 = _radial_derivatives(g, x, 2)
+    want = 7.0**2 * f2 + 4 * 7.0 * f1 + 2 * (f0 - 1.0)
+    assert abs(float(robin_operator(g, x, 1, 2, 1.0)) - float(want)) < 1e-12
+
+
+def test_robin_operator_expansions_match_the_documented_forms():
+    """The explicit ODEs quoted in losses.py, problem.py and HUB.md are the implemented ones.
+
+    The operator is built in `theta = rho d_rho` (where the factors commute, so the product
+    annihilates a window of powers); the *expansions* in ordinary radial derivatives that the
+    docstrings quote are a separate statement, and until this test nothing checked them --
+    a formula in a comment could drift away from the code and no test would notice.
+
+    The field below is three decaying harmonics plus an exp term, so no accident of the
+    power-law basis can hide a wrong coefficient.  With psi = field - inf_val and
+    rho = |x| = 7:
+
+        n=1, base 1:  rho psi' + psi
+        n=2, base 1:  rho^2 psi'' + 4 rho psi' + 2 psi
+        n=3, base 1:  rho^3 psi''' + 9 rho^2 psi'' + 18 rho psi' + 6 psi
+        n=4, base 1:  rho^4 psi'''' + 16 rho^3 psi''' + 72 rho^2 psi'' + 96 rho psi' + 24 psi
+        n=2, base 2:  rho^2 psi'' + 6 rho psi' + 6 psi
+
+    For contrast, the form quoted in prompts.txt (`psi'' + 3 psi' + psi/rho`, the
+    characteristic polynomial of theta^2 + 3 theta + 2 evaluated at d_rho instead of at
+    theta) annihilates no power law at all: at rho = 7 it leaves 8.2e-2 on rho^-1 and 2.7e-2
+    on rho^-2, and it fails rho^-2 even though that is the power an order-2 condition exists
+    to admit.  Multiplying in theta is what makes the difference.
+    """
+    from stationary.losses import robin_operator
+
+    x = jnp.array([2.0, 3.0, 6.0])                      # |x| = 7, not axis aligned
+    rho = float(jnp.linalg.norm(x))
+
+    def field(y):
+        r = jnp.linalg.norm(y)
+        return (1.0 + 0.3 / r + 0.7 * y[2] / r**3
+                + 0.4 * (y[2] ** 2 - 0.5 * (y[0] ** 2 + y[1] ** 2)) / r**5
+                + 0.05 * jnp.exp(-r / 4.0))
+
+    f = _radial_derivatives(field, x, 4)
+    p0 = f[0] - 1.0                                     # inf_val = 1
+    cases = [
+        (1.0, 1, rho * f[1] + p0),
+        (1.0, 2, rho**2 * f[2] + 4 * rho * f[1] + 2 * p0),
+        (1.0, 3, rho**3 * f[3] + 9 * rho**2 * f[2] + 18 * rho * f[1] + 6 * p0),
+        (1.0, 4, rho**4 * f[4] + 16 * rho**3 * f[3] + 72 * rho**2 * f[2] + 96 * rho * f[1]
+         + 24 * p0),
+        (2.0, 2, rho**2 * f[2] + 6 * rho * f[1] + 6 * p0),
+    ]
+    for base, order, want in cases:
+        got = float(robin_operator(field, x, base, order, 1.0))
+        assert abs(got - float(want)) <= 1e-10 * max(1.0, abs(float(want))), \
+            (base, order, got, float(want))
 
 
 def test_inner_lambda_bc_formula():

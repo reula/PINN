@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import pickle
+import sys
 import time
 from dataclasses import asdict
 
@@ -229,7 +230,8 @@ def print_config_summary(cfg: Config):
     prec = ("float64 (x64: ~2x slower, and NOT comparable with the float32 runs)"
             if jax.config.jax_enable_x64 else "float32 (default)")
     print(f"  precision   {prec}")
-    print(f"  plan        {cfg.steps} Adam + {cfg.lbfgs_steps} L-BFGS   outdir {cfg.outdir}")
+    print(f"  plan        {cfg.steps} Adam + {cfg.lbfgs_steps} "
+          f"{'SSBroyden' if cfg.qn_method == 'ssbroyden' else 'L-BFGS'}   outdir {cfg.outdir}")
     print("=" * 72)
 
 
@@ -250,6 +252,89 @@ def print_reference_summary(cfg: Config, exact_fields):
           f"lambda -> k = {k:.6f}")
     print(f"[ref]   every run uses the k = 1 branch: this one has k = {k:.6f}"
           + ("" if abs(k - 1.0) < 1e-9 else "  <-- NOT 1: --lam0 was given explicitly"))
+
+
+# ------------------------------------------------------------------- SSBroyden
+def _crunch_minimize(root: str | None = None):
+    """Crunch's SciPy-style `minimize`, or (None, reason) when it is not available.
+
+    Crunch lives in a sibling checkout (`PINN/Jax`) and is not a dependency of this repo, so
+    the import is lazy and soft -- the quasi-Newton phase then falls back to optax.lbfgs.
+    Set CRUNCH_ROOT to point at a different location.
+    """
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # <repo>/Stationary
+    root = os.path.normpath(root or os.environ.get("CRUNCH_ROOT")
+                            or os.path.join(here, os.pardir, "Jax"))
+    if not os.path.isdir(os.path.join(root, "Crunch", "Optimizers")):
+        return None, f"no Crunch/Optimizers under {root}"
+    if root not in sys.path:
+        sys.path.append(root)
+    try:
+        from Crunch.Optimizers.minimize_backtracking import minimize
+    except Exception as exc:                                             # pragma: no cover
+        return None, f"{root}: {exc}"
+    return minimize, root
+
+
+def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool = True):
+    """Quasi-Newton phase with Crunch's self-scaling Broyden; None means "use optax.lbfgs".
+
+    Two things make it decline, both reported rather than raised: the Crunch checkout is
+    missing (it is a sibling repo, absent on the hub), or the dense inverse-Hessian estimate
+    would not fit.  That estimate is n_params^2, so the production network (13 828
+    parameters) needs 1.53 GB in float64 and 0.76 GB in float32, against `qn_max_H_gb`.
+
+    The optimiser works on a flat vector (`jax.flatten_util`), is given the identity as its
+    initial inverse Hessian, and selects the self-scaling Broyden recurrence with
+    `update_method="ssbroyden2"` -- `initial_H` and that switch travel inside `options`, which
+    is where the SciPy-style wrapper forwards them.  One batch, held fixed: the line search
+    needs a single objective.
+    """
+    minimize, where = _crunch_minimize()
+    if minimize is None:
+        if verbose:
+            print(f"[qn] SSBroyden unavailable ({where}); using optax.lbfgs", flush=True)
+        return None
+
+    flat0, unflatten = jax.flatten_util.ravel_pytree(state)
+    n = int(flat0.size)
+    gb = n * n * jnp.dtype(flat0.dtype).itemsize / 2**30
+    if gb > cfg.qn_max_H_gb:
+        if verbose:
+            print(f"[qn] SSBroyden wants a dense {n}x{n} inverse Hessian = {gb:.2f} GB "
+                  f"> --qn-max-H-gb {cfg.qn_max_H_gb:g}; using optax.lbfgs.  Shrink the "
+                  f"network, or raise the cap if the memory is really there.", flush=True)
+        return None
+
+    def fun(flat):
+        value, _ = loss_fn(unflatten(flat), batch, 1.0, weights)
+        return value
+
+    f0 = float(fun(flat0))
+    if verbose:
+        print(f"[qn] SSBroyden (ssbroyden2) from {where}: {n} parameters, {gb:.2f} GB "
+              f"inverse Hessian, up to {cfg.lbfgs_steps} iterations, start loss {f0:.6e}",
+              flush=True)
+    t0 = time.time()
+    res = minimize(fun, flat0, args=(), method="BFGS",
+                   options={"maxiter": cfg.lbfgs_steps, "gtol": 1e-9,
+                            "initial_H": jnp.eye(n, dtype=flat0.dtype),
+                            # initial_scale engages SSBroyden's tau_k^A: without it the first
+                            # step is -grad with H = I, which the Wolfe line search cannot
+                            # bracket when the Adam warm-up has left the gradient large
+                            # (measured: zero iterations, status 3 "zoom failed").
+                            "update_method": "ssbroyden2", "initial_scale": True})
+    state = unflatten(res.x)
+    _, parts = loss_fn(state, batch, 1.0, weights)
+    step0 = cfg.steps + 1
+    history = [{"step": step0, "loss": f0},
+               {"step": step0 + max(int(res.nit), 1), "loss": float(res.fun),
+                **{k: float(v) for k, v in parts.items()}}]
+    if verbose:
+        print(f"[qn] SSBroyden: loss {f0:.6e} -> {float(res.fun):.6e} in {int(res.nit)} "
+              f"iterations ({time.time() - t0:.1f}s, status {int(res.status)}, "
+              f"converged={bool(res.success)})", flush=True)
+    return state, history
 
 
 def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
@@ -383,37 +468,45 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         # end of the schedule): evaluate once so the report still carries a loss.
         _, _, loss, parts = step(state, opt_state, batch, jnp.asarray(1.0), weights)
 
-    # ------------------------------------------------------------------ L-BFGS
+    # ------------------------------------------------------------- quasi-Newton
     with open(os.path.join(cfg.outdir, "params_adam.pkl"), "wb") as fh:
         pickle.dump(jax.tree.map(lambda a: jax.device_get(a), state), fh)
 
     if cfg.lbfgs_steps > 0:
         batch = make_batch(jax.random.PRNGKey(cfg.seed + 777), cfg)
-        solver = optax.lbfgs(
-            learning_rate=1.0, memory_size=20,
-            linesearch=optax.scale_by_zoom_linesearch(max_linesearch_steps=30, verbose=False))
-        lst = solver.init(state)
+        qn = None
+        if cfg.qn_method == "ssbroyden":
+            qn = ssbroyden_phase(state, batch, weights, loss_fn, cfg, verbose)
+        if qn is not None:
+            state, qn_history = qn
+            history.extend(qn_history)
+            loss = qn_history[-1]["loss"]
+        else:
+            solver = optax.lbfgs(
+                learning_rate=1.0, memory_size=20,
+                linesearch=optax.scale_by_zoom_linesearch(max_linesearch_steps=30, verbose=False))
+            lst = solver.init(state)
 
-        @jax.jit
-        def lstep(state, lst, batch, w):
-            (value, parts), grads = jax.value_and_grad(loss_fn, has_aux=True)(state, batch, 1.0, w)
-            updates, lst = solver.update(
-                grads, lst, state, value=value, grad=grads,
-                value_fn=lambda p: loss_fn(p, batch, 1.0, w)[0])
-            return optax.apply_updates(state, updates), lst, value, parts
+            @jax.jit
+            def lstep(state, lst, batch, w):
+                (value, parts), grads = jax.value_and_grad(loss_fn, has_aux=True)(state, batch, 1.0, w)
+                updates, lst = solver.update(
+                    grads, lst, state, value=value, grad=grads,
+                    value_fn=lambda p: loss_fn(p, batch, 1.0, w)[0])
+                return optax.apply_updates(state, updates), lst, value, parts
 
-        prev = None
-        for it in range(1, cfg.lbfgs_steps + 1):
-            state, lst, loss, parts = lstep(state, lst, batch, weights)
-            if it % max(cfg.lbfgs_steps // 20, 1) == 0 or it == 1:
-                history.append({"step": cfg.steps + it, "loss": float(loss),
-                                **{k: float(v) for k, v in parts.items()}})
-                if verbose:
-                    print(f"[lbfgs {it:5d}] loss={float(loss):.6e}", flush=True)
-            cur = float(loss)
-            if prev is not None and abs(prev - cur) < 1e-14 * max(1.0, abs(prev)):
-                break
-            prev = cur
+            prev = None
+            for it in range(1, cfg.lbfgs_steps + 1):
+                state, lst, loss, parts = lstep(state, lst, batch, weights)
+                if it % max(cfg.lbfgs_steps // 20, 1) == 0 or it == 1:
+                    history.append({"step": cfg.steps + it, "loss": float(loss),
+                                    **{k: float(v) for k, v in parts.items()}})
+                    if verbose:
+                        print(f"[lbfgs {it:5d}] loss={float(loss):.6e}", flush=True)
+                cur = float(loss)
+                if prev is not None and abs(prev - cur) < 1e-14 * max(1.0, abs(prev)):
+                    break
+                prev = cur
 
     wall = time.time() - t0
 
@@ -456,6 +549,10 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--steps", type=int, default=None)
     p.add_argument("--lbfgs-steps", type=int, default=None)
+    p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs"), default=None,
+                   help="quasi-Newton phase: Crunch's SSBroyden (default), or optax.lbfgs")
+    p.add_argument("--qn-max-H-gb", type=float, default=None, dest="qn_max_H_gb",
+                   help="memory cap for SSBroyden's dense inverse Hessian (n_params^2)")
     p.add_argument("--outdir", type=str, default=None)
     p.add_argument("--R0", type=float, default=None)
     p.add_argument("--lam0", type=float, default=None)
@@ -509,6 +606,10 @@ def parse_args(argv=None):
         cfg.steps = a.steps
     if a.lbfgs_steps is not None:
         cfg.lbfgs_steps = a.lbfgs_steps
+    if a.qn_method is not None:
+        cfg.qn_method = a.qn_method
+    if a.qn_max_H_gb is not None:
+        cfg.qn_max_H_gb = a.qn_max_H_gb
     if a.outdir is not None:
         cfg.outdir = a.outdir
     if a.R0 is not None:

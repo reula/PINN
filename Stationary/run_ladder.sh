@@ -31,6 +31,21 @@
 #           -- this is the direct test of the claim that order 1 is enough for the dipole:
 #           if the l = 1 amplitude and lambda(rho_out) agree with step 5 to ~1e-5, it is.
 #
+# The Laplacian recipe (tests/test_laplace_robin.py, Laplace_Robin.md), as steps 8-10:
+#   ./run_ladder.sh recipe        # 8 9 10
+#   step 8   recipe_control       rescaled shell, 20x6 net, no Fourier features, x64,
+#                                 16384/1024 points, short Adam + SSBroyden
+#   step 9   recipe_dipole        the same with S1 = 0.1
+#   step 11  recipe_bignet         the same recipe with the production 64x4 f8 net, to see
+#                                 whether the small net is needed or only the memory was
+#   step 10  recipe_ramp_ord{1,2,3}  the order ramp 1 -> 2 -> 3, each phase warm-started
+#                                 from the previous one (--init-from), one weight per order
+# The ingredients come from that file: a dense quasi-Newton wants a SMALL network (its
+# inverse Hessian is n_params^2: 2250 params -> 40 MB, the 14533-parameter production net ->
+# 1.57 GB), points saturate at 3x, the shell may be rescaled by 1/100 (a relabelling --
+# verified numerically here, identical to float32 round-off), and the order ramp is the
+# cheapest route to a small field error.
+#
 # Steps 1-3 were run on 20 September.  They at first looked like "order 1 wins by two
 # orders of magnitude", but that was an artefact of the OUTER WEIGHT: the order-n Robin
 # residual at initialisation is ~(gain)^n larger (8.8e-4 for n = 1, 2.1e-1 for n = 2), so
@@ -92,8 +107,28 @@ SMALL=(--n-coll 4096  --n-bnd 256  --width 64  --depth 4 --fourier 8)
 BIG=(--n-coll 16384 --n-bnd 1024 --width 256 --depth 6 --fourier 16)
 NICE=(--lbfgs-steps 3000)
 
+# The Laplacian recipe's base: the SAME problem with rho rescaled by 1/100 (shell [0.01, 1],
+# R0 -> R0/100), which is a relabelling -- verified numerically: with the default residual
+# normalisation (local rho, i.e. no --scale-ref*) the two shells agree to float32 round-off
+# (7e-8 at step 1) and stay within 4% after 400 steps.  Do NOT mix normalisations across the
+# two shells: --scale-ref-rho-in on one side only breaks the equivalence by 100^p.
+QN=(--arch axisym_hybrid --outer-bc robin --no-robin-G --lam-inf 1.0 --radial log \
+    --decay-feature --w-inner 100 --w-outer 100 --reweight-every 1500 \
+    --R0 0.005773502691896258 --rho-in 0.01 --inner-radius 0.01 --rho-out 1.0)
+# The Laplacian network: 20 wide, 6 deep, no Fourier features in t (its section 7.2 measured
+# that Fourier features are not worth the extra stiffness the higher-order condition sees).
+QNET=(--width 20 --depth 6 --fourier 0)
+# 3x the round numbers, which is where that file measures the field error to saturate.
+QPT=(--n-coll 16384 --n-bnd 1024)
+# Short Adam warm-up (the quasi-Newton phase needs a single fixed batch and a bracketed line
+# search) and then SSBroyden to convergence; Crunch ships with this repo (Jax/ is tracked),
+# so a git pull puts it on the hub.
+QADAM=(--steps 2000 --lbfgs-steps 2000)
+
 LADDER_RUNS=(control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
-             dipole_small dipole_big dipole_ord2_small)
+             dipole_small dipole_big dipole_ord2_small \
+             recipe_control recipe_dipole recipe_bignet \
+             recipe_ramp_ord1 recipe_ramp_ord2 recipe_ramp_ord3)
 SWEEP_RUNS=(sweep_ord2_w100 sweep_ord2_w10 sweep_ord2_w1 \
             sweep_ord4_w100 sweep_ord4_w10 sweep_ord4_w1)
 
@@ -104,9 +139,12 @@ while [ $# -gt 0 ]; do
         --compare) COMPARE_ONLY=1; shift ;;
         --clean)   CLEAN=1; shift ;;
         sweep)     WANT=(0); shift ;;
+        recipe)    WANT=(8 9 10 11); shift ;;
+        [89]|10|11) WANT+=("$1"); shift ;;
         all)       WANT=(1 2 3 4 5 6 7); shift ;;
+
         [1-7])     WANT+=("$1"); shift ;;
-        *) echo "unknown argument '$1' (want sweep, 1..7, all, --dry-run, --force, --compare, --clean)" >&2
+        *) echo "unknown argument '$1' (want sweep, recipe, 1..10, all, --dry-run, --force, --compare, --clean)" >&2
            exit 1 ;;
     esac
 done
@@ -263,6 +301,21 @@ for s in "${WANT[@]}"; do
                     --lam-bc-S1 0.1 ;;
         7) run_one dipole_ord2_small 0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=2,lam=2 \
                     --w-outer "${W_OUTER_ORD2:-10}" --lam-bc-S1 0.1 ;;
+        8) run_one recipe_control 1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
+                    --robin-orders h=1,lam=1 ;;
+        9) run_one recipe_dipole  1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
+                    --robin-orders h=1,lam=1 --lam-bc-S1 0.1 ;;
+        11) run_one recipe_bignet 1 -- "${QN[@]}" "${QPT[@]}" "${QADAM[@]}" \
+                    --width 64 --depth 4 --fourier 8 --qn-max-H-gb 3 \
+                    --robin-orders h=1,lam=1 ;;
+        10) run_one recipe_ramp_ord1 1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
+                    --robin-orders h=1,lam=1 --w-outer 100
+            run_one recipe_ramp_ord2 1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
+                    --robin-orders h=2,lam=2 --w-outer 10 \
+                    --init-from "$HERE/runs/recipe_ramp_ord1/params.pkl"
+            run_one recipe_ramp_ord3 1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
+                    --robin-orders h=3,lam=3 --w-outer 1 \
+                    --init-from "$HERE/runs/recipe_ramp_ord2/params.pkl" ;;
     esac || true
 done
 fi
@@ -272,7 +325,8 @@ fi
 # ------------------------------------------------------------------ comparison
 RUNS=()
 for n in control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
-         dipole_small dipole_big dipole_ord2_small; do
+         dipole_small dipole_big dipole_ord2_small \
+         recipe_control recipe_dipole recipe_bignet recipe_ramp_ord3; do
     [ -f "runs/$n/config.json" ] && RUNS+=("runs/$n")
 done
 [ ${#RUNS[@]} -eq 0 ] && { echo "no runs to compare yet" >&2; exit 0; }
