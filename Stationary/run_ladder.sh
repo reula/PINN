@@ -33,13 +33,14 @@
 #
 # The Laplacian recipe (tests/test_laplace_robin.py, Laplace_Robin.md), as steps 8-10:
 #   ./run_ladder.sh recipe        # 8 9 10
-#   step 8   recipe_control       rescaled shell, 20x6 net, no Fourier features, x64,
-#                                 16384/1024 points, short Adam + SSBroyden
-#   step 9   recipe_dipole        the same with S1 = 0.1
-#   step 11  recipe_bignet         the same recipe with the production 64x4 f8 net, to see
-#                                 whether the small net is needed or only the memory was
-#   step 10  recipe_ramp_ord{1,2,3}  the order ramp 1 -> 2 -> 3, each phase warm-started
-#                                 from the previous one (--init-from), one weight per order
+#   ./run_ladder.sh recipe         # 8 9 10 11 12, the approved set, in order:
+#   step 8   recipe_control        control S1 = 0, order 1   (the lambda(100) = 0.9885 check)
+#   step 9   recipe_dipole         dipole  S1 = 0.1, order 1 (the physics baseline)
+#   step 10  recipe_ramp_ord{2,3}  the control continued at order 2 (w 10) then 3 (w 1),
+#                                  each warm-started from the previous phase; A is phase 1
+#   step 11  recipe_dipole_ord2    dipole at order 2, w_outer 10, cold-started
+#   step 12  recipe_dipole_ord3    dipole at order 3, w_outer 1,  cold-started
+#   (13 recipe_bignet and 14 recipe_ord3_alone are optional extras, not in `recipe`)
 # The ingredients come from that file: a dense quasi-Newton wants a SMALL network (its
 # inverse Hessian is n_params^2: 2250 params -> 40 MB, the 14533-parameter production net ->
 # 1.57 GB), points saturate at 3x, the shell may be rescaled by 1/100 (a relabelling --
@@ -136,8 +137,9 @@ QADAM_RAMP=(--steps 500 --lbfgs-steps 6000)
 
 LADDER_RUNS=(control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
              dipole_small dipole_big dipole_ord2_small \
-             recipe_control recipe_dipole recipe_bignet recipe_ord3_alone \
-             recipe_ramp_ord2 recipe_ramp_ord3)
+             recipe_control recipe_dipole recipe_ramp_ord2 recipe_ramp_ord3 \
+             recipe_dipole_ord2 recipe_dipole_ord3 \
+             recipe_bignet recipe_ord3_alone)
 SWEEP_RUNS=(sweep_ord2_w100 sweep_ord2_w10 sweep_ord2_w1 \
             sweep_ord4_w100 sweep_ord4_w10 sweep_ord4_w1)
 
@@ -148,8 +150,8 @@ while [ $# -gt 0 ]; do
         --compare) COMPARE_ONLY=1; shift ;;
         --clean)   CLEAN=1; shift ;;
         sweep)     WANT=(0); shift ;;
-        recipe)    WANT=(8 9 10); shift ;;
-        [89]|10|11|12) WANT+=("$1"); shift ;;
+        recipe)    WANT=(8 9 10 11 12); shift ;;
+        [89]|10|11|12|13|14) WANT+=("$1"); shift ;;
         all)       WANT=(1 2 3 4 5 6 7); shift ;;
 
         [1-7])     WANT+=("$1"); shift ;;
@@ -315,10 +317,17 @@ for s in "${WANT[@]}"; do
         # B: the dipole, S1 = 0.1, order 1
         9) run_one recipe_dipole  1 -- "${QPT[@]}" "${QADAM[@]}" --robin-orders h=1,lam=1 \
                     --lam-bc-S1 0.1 ;;
-        11) run_one recipe_bignet 1 -- "${QPT[@]}" "${QADAM[@]}" \
+        # the dipole at the two higher Robin orders, cold-started, each at its own weight
+        # (10 measured best for order 2, 1 for order 3 -- the weight is not transferable
+        # across orders, so the three dipole runs are compared at each order's best)
+        11) run_one recipe_dipole_ord2 1 -- "${QPT[@]}" "${QADAM[@]}" \
+                    --robin-orders h=2,lam=2 --w-outer 10 --lam-bc-S1 0.1 ;;
+        12) run_one recipe_dipole_ord3 1 -- "${QPT[@]}" "${QADAM[@]}" \
+                    --robin-orders h=3,lam=3 --w-outer 1 --lam-bc-S1 0.1 ;;
+        13) run_one recipe_bignet 1 -- "${QPT[@]}" "${QADAM[@]}" \
                     --width 64 --depth 4 --fourier 8 --qn-max-h-gb 3 \
                     --robin-orders h=1,lam=1 ;;
-        12) run_one recipe_ord3_alone 1 -- "${QPT[@]}" "${QADAM[@]}" --robin-orders h=3,lam=3 \
+        14) run_one recipe_ord3_alone 1 -- "${QPT[@]}" "${QADAM[@]}" --robin-orders h=3,lam=3 \
                     --w-outer 1 ;;
         10) run_one recipe_ramp_ord2 1 -- "${QPT[@]}" "${QADAM_RAMP[@]}" \
                     --robin-orders h=2,lam=2 --w-outer 10 \
@@ -336,7 +345,8 @@ fi
 RUNS=()
 for n in control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
          dipole_small dipole_big dipole_ord2_small \
-         recipe_control recipe_dipole recipe_ramp_ord3; do
+         recipe_control recipe_dipole recipe_ramp_ord3 \
+         recipe_dipole_ord2 recipe_dipole_ord3; do
     [ -f "runs/$n/config.json" ] && RUNS+=("runs/$n")
 done
 [ ${#RUNS[@]} -eq 0 ] && { echo "no runs to compare yet" >&2; exit 0; }
