@@ -298,6 +298,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
 
     flat0, unflatten = jax.flatten_util.ravel_pytree(state)
     n = int(flat0.size)
+    import math as _math
     gb = n * n * jnp.dtype(flat0.dtype).itemsize / 2**30
     if gb > cfg.qn_max_H_gb:
         if verbose:
@@ -310,30 +311,83 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         value, _ = loss_fn(unflatten(flat), batch, 1.0, weights)
         return value
 
-    f0 = float(fun(flat0))
+    def outer_res(flat):
+        """Unweighted outer-Robin contribution (h + lambda) at the current parameters.
+
+        The plateau test looks at this as well as at the total loss: one group can dominate
+        the total (the order-2 control's final loss was 97% its lambda-equation while its
+        boundary was already at the floor), so "the loss stopped moving" can hide an
+        abandoned boundary condition.
+        """
+        _, parts_ = loss_fn(unflatten(flat), batch, 1.0, weights)
+        return float(parts_.get("outer_h", 0.0)) + float(parts_.get("outer_lam", 0.0))
+
+    # Blocks, not one long call: the inverse Hessian is carried from block to block (that is
+    # what makes the quasi-Newton phase work), and the loss is inspected between blocks so
+    # the run can stop when it PLATEAUS instead of at a fixed iteration count.
+    H = jnp.eye(n, dtype=flat0.dtype)
+    x = flat0
+    f = float(fun(x))
+    o = outer_res(x)
+    block = max(1, int(cfg.qn_block))
+    n_blocks = max(1, int(_math.ceil(cfg.lbfgs_steps / block)))
+    losses = [f]
+    outers = [o]
+    total = 0
+    status = -1
+    t0 = time.time()
     if verbose:
         print(f"[qn] SSBroyden (ssbroyden2) from {where}: {n} parameters, {gb:.2f} GB "
-              f"inverse Hessian, up to {cfg.lbfgs_steps} iterations, start loss {f0:.6e}",
-              flush=True)
-    t0 = time.time()
-    res = minimize(fun, flat0, args=(), method="BFGS",
-                   options={"maxiter": cfg.lbfgs_steps, "gtol": 1e-9,
-                            "initial_H": jnp.eye(n, dtype=flat0.dtype),
-                            # initial_scale engages SSBroyden's tau_k^A: without it the first
-                            # step is -grad with H = I, which the Wolfe line search cannot
-                            # bracket when the Adam warm-up has left the gradient large
-                            # (measured: zero iterations, status 3 "zoom failed").
-                            "update_method": "ssbroyden2", "initial_scale": True})
-    state = unflatten(res.x)
+              f"inverse Hessian, blocks of {block} up to {cfg.lbfgs_steps} iterations "
+              f"({n_blocks} blocks, plateau_tol {cfg.plateau_tol:g} over "
+              f"{cfg.plateau_patience} blocks), start loss {f:.6e}", flush=True)
+    for b in range(n_blocks):
+        res = minimize(fun, x, args=(), method="BFGS",
+                       options={"maxiter": block, "gtol": cfg.qn_gtol,
+                                "initial_H": H,
+                                # initial_scale engages SSBroyden's tau_k^A: without it the
+                                # first step is -grad with H = I, which the Wolfe line search
+                                # cannot bracket when the Adam warm-up has left the gradient
+                                # large (measured: zero iterations, status 3 "zoom failed").
+                                # Later blocks carry a real H, so it is not needed there.
+                                "update_method": "ssbroyden2", "initial_scale": (b == 0)})
+        x = res.x
+        f = float(res.fun)
+        if res.hess_inv is not None:
+            H = res.hess_inv
+        total += int(res.nit)
+        status = int(res.status)
+        o = outer_res(x)
+        losses.append(f)
+        outers.append(o)
+        if verbose:
+            print(f"[qn] block {b + 1:3d}: {total:5d} iterations, loss {f:.6e}, "
+                  f"outer Robin {o:.6e} (status {status})", flush=True)
+        pat = int(cfg.plateau_patience)
+        if status == 0:
+            break
+        if total >= cfg.plateau_min_iters and len(losses) > pat:
+            old_f, old_o = losses[-1 - pat], outers[-1 - pat]
+            loss_flat = (old_f - f) < cfg.plateau_tol * max(abs(old_f), 1e-300)
+            outer_flat = (old_o - o) < cfg.plateau_tol * max(abs(old_o), 1e-300)
+            if loss_flat and outer_flat:
+                if verbose:
+                    print(f"[qn] plateaued over {pat} blocks: loss {old_f:.6e} -> {f:.6e}, "
+                          f"outer Robin {old_o:.6e} -> {o:.6e} (both < "
+                          f"{cfg.plateau_tol:g} relative); stopping after {total} "
+                          f"iterations", flush=True)
+                break
+
+    state = unflatten(x)
     _, parts = loss_fn(state, batch, 1.0, weights)
     step0 = cfg.steps + 1
-    history = [{"step": step0, "loss": f0},
-               {"step": step0 + max(int(res.nit), 1), "loss": float(res.fun),
+    history = [{"step": step0, "loss": float(losses[0])},
+               {"step": step0 + max(total, 1), "loss": f,
                 **{k: float(v) for k, v in parts.items()}}]
     if verbose:
-        print(f"[qn] SSBroyden: loss {f0:.6e} -> {float(res.fun):.6e} in {int(res.nit)} "
-              f"iterations ({time.time() - t0:.1f}s, status {int(res.status)}, "
-              f"converged={bool(res.success)})", flush=True)
+        print(f"[qn] SSBroyden: loss {losses[0]:.6e} -> {f:.6e} in {total} iterations "
+              f"({time.time() - t0:.1f}s, status {status}, "
+              f"converged={status == 0}, stopped={total < cfg.lbfgs_steps})", flush=True)
     return state, history
 
 
@@ -406,6 +460,9 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
 
     loss = None
     t0 = time.time()
+    adam_losses = []
+    adam_outers = []
+    adam_stopped = None
     for it in range(resume_step + 1, cfg.steps + 1):
         sc = 1.0 if cfg.pde_ramp_steps <= 0 else min(1.0, it / cfg.pde_ramp_steps)
         if cfg.resample_every and it % cfg.resample_every == 1 and it > 1:
@@ -443,6 +500,24 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                 print(f"[reweight {it}] " + " ".join(
                     f"{k}={float(weights[k]):.3g}" for k in GROUP_KEYS), flush=True)
         state, opt_state, loss, parts = step(state, opt_state, batch, jnp.asarray(sc), weights)
+        # the Adam phase stops on the same plateau rule (it is a warm-up, not the workhorse)
+        if it % cfg.log_every == 0:
+            cur_outer = (float(parts.get("outer_h", 0.0))
+                         + float(parts.get("outer_lam", 0.0)))
+            adam_losses.append(float(loss))
+            adam_outers.append(cur_outer)
+            pat = int(cfg.plateau_patience)
+            if it >= cfg.plateau_min_iters and len(adam_losses) > pat:
+                old_f, old_o = adam_losses[-1 - pat], adam_outers[-1 - pat]
+                if ((old_f - float(loss)) < cfg.plateau_tol * max(abs(old_f), 1e-300)
+                        and (old_o - cur_outer) < cfg.plateau_tol * max(abs(old_o), 1e-300)):
+                    if verbose:
+                        print(f"[adam {it:6d}] plateaued: loss {old_f:.6e} -> "
+                              f"{float(loss):.6e}, outer Robin {old_o:.6e} -> "
+                              f"{cur_outer:.6e}; going to the quasi-Newton phase",
+                              flush=True)
+                    adam_stopped = it
+                    break
         if it % cfg.log_every == 0 or it == 1:
             rec = {"step": it, "loss": float(loss),
                    **{k: float(v) for k, v in parts.items()}}
@@ -513,7 +588,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     # ------------------------------------------------------------- diagnostics
     pf = point_fields(model, state["net"])
     report = {"wall_seconds": wall, "final_loss": float(loss),
-              "steps": cfg.steps, "lbfgs_steps": cfg.lbfgs_steps}
+              "steps": cfg.steps, "lbfgs_steps": cfg.lbfgs_steps,
+              "adam_stopped_at": adam_stopped if adam_stopped is not None else cfg.steps}
     report.update(diagnostics.residual_report(pf, cfg))
     report.update(diagnostics.inner_boundary_report(pf, cfg))
     if exact_fields is not None:
@@ -551,6 +627,16 @@ def parse_args(argv=None):
     p.add_argument("--lbfgs-steps", type=int, default=None)
     p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs"), default=None,
                    help="quasi-Newton phase: Crunch's SSBroyden (default), or optax.lbfgs")
+    p.add_argument("--qn-block", type=int, default=None,
+                   help="iterations per quasi-Newton block (the plateau is checked between blocks)")
+    p.add_argument("--plateau-tol", type=float, default=None,
+                   help="relative loss improvement below which the run is said to have plateaued")
+    p.add_argument("--plateau-min-iters", type=int, default=None,
+                   help="never stop before this many iterations, however flat the loss looks")
+    p.add_argument("--qn-gtol", type=float, default=None,
+                   help="quasi-Newton stop on ||grad||_inf")
+    p.add_argument("--plateau-patience", type=int, default=None,
+                   help="consecutive blocks (Adam: log_every checks) without improvement")
     p.add_argument("--qn-max-H-gb", type=float, default=None, dest="qn_max_H_gb",
                    help="memory cap for SSBroyden's dense inverse Hessian (n_params^2)")
     p.add_argument("--outdir", type=str, default=None)
@@ -610,6 +696,16 @@ def parse_args(argv=None):
         cfg.qn_method = a.qn_method
     if a.qn_max_H_gb is not None:
         cfg.qn_max_H_gb = a.qn_max_H_gb
+    if a.qn_block is not None:
+        cfg.qn_block = a.qn_block
+    if a.plateau_tol is not None:
+        cfg.plateau_tol = a.plateau_tol
+    if a.plateau_patience is not None:
+        cfg.plateau_patience = a.plateau_patience
+    if a.plateau_min_iters is not None:
+        cfg.plateau_min_iters = a.plateau_min_iters
+    if a.qn_gtol is not None:
+        cfg.qn_gtol = a.qn_gtol
     if a.outdir is not None:
         cfg.outdir = a.outdir
     if a.R0 is not None:

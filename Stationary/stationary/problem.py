@@ -68,9 +68,14 @@ class Config:
 
     # ---------------------------------------------------------------- model
     arch: str = "sym"               # "sym" (spherically symmetric ansatz) | "3d"
-    width: int = 64
-    depth: int = 4
-    fourier: int = 8
+    # The Laplacian recipe's network (Laplace_Robin.md section 7.2): 20 wide, 6 deep, and no
+    # Fourier features in t.  Small on purpose -- the quasi-Newton phase carries a DENSE
+    # inverse Hessian, n_params^2, which is 0.04 GB here and 1.57 GB at the old 64x4 net --
+    # and that file measures Fourier features as not worth the extra stiffness the
+    # higher-order Robin condition then sees.  Use --width/--depth/--fourier to override.
+    width: int = 20
+    depth: int = 6
+    fourier: int = 0
     decay_feature: bool = False      # add rho_in/rho to the network features
 
     # ------------------------------------------------------------- sampling
@@ -111,6 +116,18 @@ class Config:
     # parameters) needs 1.53 GB in float64 and 0.76 GB in float32, which qn_max_H_gb caps.
     qn_method: str = "ssbroyden"    # "ssbroyden" | "lbfgs"
     qn_max_H_gb: float = 2.0        # refuse the dense SSBroyden estimate above this
+    # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of
+    # `qn_block` iterations (the inverse Hessian is carried across them), and the run stops
+    # when `patience` consecutive blocks improve the loss by less than `plateau_tol`
+    # relative -- or when the gradient norm falls below `qn_gtol`, or at the `lbfgs_steps`
+    # cap, whichever comes first.  The Adam phase stops on the same rule (checked every
+    # `log_every` steps).  `plateau_min_iters` keeps it from stopping in the first blocks,
+    # where the loss is still falling fast.
+    qn_block: int = 100
+    qn_gtol: float = 1e-9
+    plateau_tol: float = 1e-4
+    plateau_patience: int = 3
+    plateau_min_iters: int = 100
     log_every: int = 200
     seed: int = 0
     outdir: str = "runs/m1"

@@ -134,6 +134,7 @@ def measure(run_dir: str, params_file: str = "params.pkl") -> dict:
 ROWS = [
     ("what it is", None),
     ("run", "run"), ("precision", "precision"), ("arch", "arch"),
+    ("shell (rho_in, rho_out)", lambda m: f"[{m['rho_in']:g}, {m['rho_out']:g}]"),
     ("config fields it predates",
      lambda m: f"{m['missing_keys']}" + (f" ({m['missing_which']})" if m["missing_keys"] else "")),
     ("outer BC", "outer_bc"), ("robin orders", "orders"),

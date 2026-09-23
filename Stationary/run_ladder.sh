@@ -99,8 +99,13 @@ WANT=()
 
 # The shared physics: the M2 control geometry, k = 1 (derived), lambda -> 1, order-1..4
 # Robin conditions chosen per step, weights and ramp as in HUB.md section 7.
+# The production shell, SCALED by 1/100 (rho in [0.01, 1], R0/100, areal radius 0.01): the
+# same problem as [1, 100] -- verified: identical loss groups at identical parameters, and
+# two 400-step runs agreeing to 7e-8 at step 1 -- but every length is O(1), which is what
+# keeps the residual and activation magnitudes in a sane range.  Never mix normalisations
+# across the two shells (--scale-ref* on one side only breaks the equivalence by 100^p).
 BASE=(--arch axisym_hybrid --steps 20000 --ref-solution --ref-asymptotic 1.0
-      --R0 0.5773502691896258 --rho-in 1.0 --inner-radius 1.0 --rho-out 100
+      --R0 0.005773502691896258 --rho-in 0.01 --inner-radius 0.01 --rho-out 1.0
       --outer-bc robin --no-robin-G --lam-inf 1.0 --decay-feature --radial log
       --pde-ramp-steps 500 --w-inner 100 --w-outer 100 --reweight-every 1500)
 SMALL=(--n-coll 4096  --n-bnd 256  --width 64  --depth 4 --fourier 8)
@@ -112,23 +117,27 @@ NICE=(--lbfgs-steps 3000)
 # normalisation (local rho, i.e. no --scale-ref*) the two shells agree to float32 round-off
 # (7e-8 at step 1) and stay within 4% after 400 steps.  Do NOT mix normalisations across the
 # two shells: --scale-ref-rho-in on one side only breaks the equivalence by 100^p.
-QN=(--arch axisym_hybrid --outer-bc robin --no-robin-G --lam-inf 1.0 --radial log \
-    --decay-feature --w-inner 100 --w-outer 100 --reweight-every 1500 \
-    --R0 0.005773502691896258 --rho-in 0.01 --inner-radius 0.01 --rho-out 1.0)
-# The Laplacian network: 20 wide, 6 deep, no Fourier features in t (its section 7.2 measured
-# that Fourier features are not worth the extra stiffness the higher-order condition sees).
-QNET=(--width 20 --depth 6 --fourier 0)
+# The network defaults are now the Laplacian's 20x6 with no Fourier features, so the recipe
+# steps only add the point count and the quasi-Newton budget.
+QNET=()
 # 3x the round numbers, which is where that file measures the field error to saturate.
+# more than 2000 evaluation points: 16384 collocation + 1024 on each sphere
 QPT=(--n-coll 16384 --n-bnd 1024)
 # Short Adam warm-up (the quasi-Newton phase needs a single fixed batch and a bracketed line
 # search) and then SSBroyden to convergence; Crunch ships with this repo (Jax/ is tracked),
 # so a git pull puts it on the hub.
-QADAM=(--steps 2000 --lbfgs-steps 2000)
+# Adam warm-up capped at 2000 steps and the quasi-Newton phase at 6000 iterations; both stop
+# early on the plateau rule (total loss AND outer Robin, 1e-4 relative over 3 blocks of 100,
+# the package defaults), so the caps are only a safety net.
+QADAM=(--steps 2000 --lbfgs-steps 6000)
+# The ramp's phases are warm-started from the previous one, and A (the control) IS its first
+# phase, so C costs two more runs, not three.
+QADAM_RAMP=(--steps 500 --lbfgs-steps 6000)
 
 LADDER_RUNS=(control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
              dipole_small dipole_big dipole_ord2_small \
-             recipe_control recipe_dipole recipe_bignet \
-             recipe_ramp_ord1 recipe_ramp_ord2 recipe_ramp_ord3)
+             recipe_control recipe_dipole recipe_bignet recipe_ord3_alone \
+             recipe_ramp_ord2 recipe_ramp_ord3)
 SWEEP_RUNS=(sweep_ord2_w100 sweep_ord2_w10 sweep_ord2_w1 \
             sweep_ord4_w100 sweep_ord4_w10 sweep_ord4_w1)
 
@@ -139,8 +148,8 @@ while [ $# -gt 0 ]; do
         --compare) COMPARE_ONLY=1; shift ;;
         --clean)   CLEAN=1; shift ;;
         sweep)     WANT=(0); shift ;;
-        recipe)    WANT=(8 9 10 11); shift ;;
-        [89]|10|11) WANT+=("$1"); shift ;;
+        recipe)    WANT=(8 9 10); shift ;;
+        [89]|10|11|12) WANT+=("$1"); shift ;;
         all)       WANT=(1 2 3 4 5 6 7); shift ;;
 
         [1-7])     WANT+=("$1"); shift ;;
@@ -301,19 +310,20 @@ for s in "${WANT[@]}"; do
                     --lam-bc-S1 0.1 ;;
         7) run_one dipole_ord2_small 0 -- "${SMALL[@]}" "${NICE[@]}" --robin-orders h=2,lam=2 \
                     --w-outer "${W_OUTER_ORD2:-10}" --lam-bc-S1 0.1 ;;
-        8) run_one recipe_control 1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
+        # A: the control, S1 = 0, order 1
+        8) run_one recipe_control 1 -- "${QPT[@]}" "${QADAM[@]}" --robin-orders h=1,lam=1 ;;
+        # B: the dipole, S1 = 0.1, order 1
+        9) run_one recipe_dipole  1 -- "${QPT[@]}" "${QADAM[@]}" --robin-orders h=1,lam=1 \
+                    --lam-bc-S1 0.1 ;;
+        11) run_one recipe_bignet 1 -- "${QPT[@]}" "${QADAM[@]}" \
+                    --width 64 --depth 4 --fourier 8 --qn-max-h-gb 3 \
                     --robin-orders h=1,lam=1 ;;
-        9) run_one recipe_dipole  1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
-                    --robin-orders h=1,lam=1 --lam-bc-S1 0.1 ;;
-        11) run_one recipe_bignet 1 -- "${QN[@]}" "${QPT[@]}" "${QADAM[@]}" \
-                    --width 64 --depth 4 --fourier 8 --qn-max-H-gb 3 \
-                    --robin-orders h=1,lam=1 ;;
-        10) run_one recipe_ramp_ord1 1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
-                    --robin-orders h=1,lam=1 --w-outer 100
-            run_one recipe_ramp_ord2 1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
+        12) run_one recipe_ord3_alone 1 -- "${QPT[@]}" "${QADAM[@]}" --robin-orders h=3,lam=3 \
+                    --w-outer 1 ;;
+        10) run_one recipe_ramp_ord2 1 -- "${QPT[@]}" "${QADAM_RAMP[@]}" \
                     --robin-orders h=2,lam=2 --w-outer 10 \
-                    --init-from "$HERE/runs/recipe_ramp_ord1/params.pkl"
-            run_one recipe_ramp_ord3 1 -- "${QN[@]}" "${QNET[@]}" "${QPT[@]}" "${QADAM[@]}" \
+                    --init-from "$HERE/runs/recipe_control/params.pkl"
+            run_one recipe_ramp_ord3 1 -- "${QPT[@]}" "${QADAM_RAMP[@]}" \
                     --robin-orders h=3,lam=3 --w-outer 1 \
                     --init-from "$HERE/runs/recipe_ramp_ord2/params.pkl" ;;
     esac || true
@@ -326,7 +336,7 @@ fi
 RUNS=()
 for n in control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
          dipole_small dipole_big dipole_ord2_small \
-         recipe_control recipe_dipole recipe_bignet recipe_ramp_ord3; do
+         recipe_control recipe_dipole recipe_ramp_ord3; do
     [ -f "runs/$n/config.json" ] && RUNS+=("runs/$n")
 done
 [ ${#RUNS[@]} -eq 0 ] && { echo "no runs to compare yet" >&2; exit 0; }

@@ -123,7 +123,7 @@ re-register with the same name.
 ```
 
 This verifies the interpreter, prints the JAX devices (and warns if it sees CPU
-only), imports the package, runs the test suite (~4–5 min, 23 tests) and does a
+only), imports the package, runs the test suite (~7 min, 35 tests) and does a
 200-step smoke run. It is much cheaper than discovering a broken environment two
 hours into a real run.
 
@@ -471,22 +471,26 @@ before this rule: `m2R2_asym1`, `m2R3_symhybrid`, `m2R4_realrobin` were already 
 
 `tests/test_laplace_robin.py` + `Laplace_Robin.md` solve a *flat Laplacian* with the same
 Robin operator in a shell of the same ratio, and they pin down a solver recipe that is worth
-carrying over.  It is wired into the ladder as `./run_ladder.sh recipe` (steps 8-10):
+carrying over.  **The two structural choices are now the defaults** — the scaled shell and
+the 20x6 network — so a plain `./run_hub.sh ...` run uses them, and the ladder's steps 1-7
+(scaled shell too) are directly comparable with the recipe steps.  It is wired into the
+ladder as `./run_ladder.sh recipe`:
 
 ```bash
-PY=$PWD/.venv/bin/python ./run_ladder.sh recipe        # 8: control, 9: dipole, 10: ramp
-PY=$PWD/.venv/bin/python ./run_ladder.sh 8             # just the control
+PY=$PWD/.venv/bin/python ./run_ladder.sh recipe   # 8 control, 9 dipole, 10 ramp, 11 big net,
+                                                 # 12 order 3 alone (equal-cost ramp check)
+PY=$PWD/.venv/bin/python ./run_ladder.sh 8        # just the control
 ```
 
 | ingredient | value | why |
 |---|---|---|
-| network | `--width 20 --depth 6 --fourier 0` | a dense quasi-Newton carries an `n_params^2` inverse Hessian: **0.04 GB** at 2285 parameters against **1.57 GB** at the production net's 14 533. No Fourier features: that file measures them as not worth the extra stiffness the higher-order condition sees |
-| shell | `--R0 0.005773502691896258 --rho-in 0.01 --inner-radius 0.01 --rho-out 1` | the same problem with `rho` rescaled by 1/100. A relabelling — verified numerically: with the default residual normalisation (local `rho`) the two shells agree to `7e-8` at step 1 and to 4% after 400 steps, i.e. float32 round-off. **Never mix normalisations**: `--scale-ref-rho-in` on one side only breaks it by `100^p` |
-| points | `--n-coll 16384 --n-bnd 1024` | 3x the round numbers is where that file measures the field error to saturate |
+| network | `--width 20 --depth 6 --fourier 0` (**the default now**) | a dense quasi-Newton carries an `n_params^2` inverse Hessian: **0.04 GB** at 2285 parameters against **1.57 GB** at the production net's 14 533. No Fourier features: that file measures them as not worth the extra stiffness the higher-order condition sees |
+| shell | `--R0 0.005773502691896258 --rho-in 0.01 --inner-radius 0.01 --rho-out 1` (**the default in the ladder**) | the same problem with `rho` rescaled by 1/100. A relabelling — verified numerically: with the default residual normalisation (local `rho`) the two shells agree to `7e-8` at step 1 and to 4% after 400 steps, i.e. float32 round-off. **Never mix normalisations**: `--scale-ref-rho-in` on one side only breaks it by `100^p` |
+| points | `--n-coll 16384 --n-bnd 1024` — far more than the 2000 asked for | 3x the round numbers is where that file measures the field error to saturate |
 | optimiser | `--qn-method ssbroyden` (default), `--lbfgs-steps 2000` after `--steps 2000` Adam | Crunch's self-scaling Broyden with a line search; `initial_scale=True` is required after an Adam warm-up (with `H = I` the first step is `-grad` and the Wolfe search cannot bracket it: 0 iterations, status 3) |
 | precision | `JAX_ENABLE_X64=1` | the recipe is float64, and the dense Hessian is cheap at 2285 parameters |
 | order | 1 for the control and the dipole | that file's section 6.3 shows the orders cannot be discriminated at shell ratio 100 (the out-of-window content at `rho_out` is `1e-5`), which is what our own estimate said |
-| order ramp | `recipe_ramp_ord1 -> ord2 -> ord3`, warm-started with `--init-from` | its section 6.6: the ramp ends an order of magnitude below a fixed-order solve for the same per-phase budget, with a fresh inverse Hessian per phase |
+| order ramp | `recipe_ramp_ord1 -> ord2 -> ord3`, warm-started with `--init-from`, **a third of the budget per phase** | its section 6.6: the ramp ends an order of magnitude below a fixed-order solve.  A third per phase makes `recipe_ord3_alone` an equal-cost control for the question that matters here: does the ramp reach the same accuracy in FEWER total iterations? |
 
 **Crunch ships with this repo.** `Jax/` (holding `Crunch/Optimizers`) is tracked in the same
 git repository, so `git pull` on the hub brings it and the sibling-directory import resolves.
