@@ -1,7 +1,12 @@
 # Flat-Laplacian validation of the higher-order Robin conditions
 
-`tests/test_laplace_robin.py` — 8 tests, ~100 s alone, part of the normal suite (34 tests,
-~4:00-4:30; `HUB.md` already documents the suite as a 4-5 minute check).
+`tests/test_laplace_robin.py` — 9 tests, ~160 s alone; the whole suite is now **35 tests,
+~7 min** (measured 6:54), where `HUB.md` used to promise 4-5.  The two costs are the three
+solve tests (~137 s in-suite) and the ratio-4 test (~100 s in-suite, whose solves carry a
+growing mode and whose order-3 residual nests three radial derivatives).  If that matters for
+`run_hub.sh --check`, the ratio-4 test is the one to gate behind a marker: it is the only
+end-to-end demonstration that the order matters, but the other tests already pin the same
+facts exactly.
 
 ```bash
 python -m pytest tests/test_laplace_robin.py -q          # just this file
@@ -129,6 +134,7 @@ solve, is what discriminates the orders** (§6.3).
 | `network_solve_at_order_one` | SSBroyden from a random init at order 1 reaches `lam_exact` within `TOL` |
 | `network_solve_at_order_three` | the same at order 3, whose source is ~1e-16 (the condition admits the quadrupole unaided) |
 | `network_solve_with_an_order_ramp` | curriculum 1 -> 2 -> 3, parameters warm-started, reaches the same field |
+| `order_matters_without_a_source` | a ratio-4 shell with the condition imposed homogeneously: orders 1/2/3 land 3.45e-03 / 1.24e-04 / 1.40e-05 from `lam_exact` |
 
 The solver is a network — **6 hidden layers of 20 neurons, tanh** — minimised by **SSBroyden**;
 §7 has the full specification.
@@ -207,9 +213,23 @@ magnitude.
 The out-of-window content at `rho_final` is `S1 rho_in^2 ~ 1e-5` and `S2 rho_in^3 ~ 5e-8`, so an
 order-1 condition that kept them would still be satisfied to ~8e-6, and the *solution* of the
 BVP differs from `lam_exact` by only ~1e-6 between orders. Any solve-based "order matters"
-assertion would be measuring noise at this ratio; it would become testable at a smaller one
-(ratio ~4 separates the orders by ~1e-3). Order discrimination therefore lives in §4, where it
-is exact.
+assertion would be measuring noise at this ratio; order discrimination therefore lives in §4,
+where it is exact.
+
+Shrinking the shell fixes that, and it is now measured rather than estimated
+(`test_the_order_matters_without_a_source_at_a_small_shell_ratio`). With `rho_in = 0.25`
+(ratio 4) and the condition imposed *homogeneously* -- the manufactured source has to come off,
+since it is exactly what makes every order exact by construction -- the solved fields land at
+
+| order | max error vs `lam_exact` | the coefficient that survives |
+|---|---|---|
+| 1 | 3.45e-03 | spurious growing dipole, `A = S1/(rho_in + 2 rho_out^3/rho_in^2) = 3.1e-03`, plus 5.2e-04 from l = 2 |
+| 2 | 1.24e-04 | dipole admitted, quadrupole still forced to a spurious growing `A = -1.3e-04` |
+| 3 | 1.40e-05 | nothing outside the window is excited; this is the solver's floor |
+
+Ratios of 28x and 9x, i.e. the order is what decides the field once the source is gone. The
+data's leverage at the outer sphere scales as `rho_in^2`, which is why ratio 100 hides this
+(a 5e-06 effect, at the solver's floor) and ratio 4 exposes it. The test asserts 10x and 3x.
 
 The same effect appears inside the ansatz space, and there it is exact rather than small. For
 the separable basis used by the earlier solver, every basis function lay in the window
@@ -227,23 +247,36 @@ error: the first version of the gradient loss had exactly this, and its initial 
 budget cancelling a constant. Both sides must be `B[. - lam0]`; the tests assert the vanishing
 of the residual rather than trusting the convention.
 
-### 6.5 The outer weight is not transferable across orders
+### 6.5 The outer weight: what it does and does not control
 
 Production uses `w_outer = 100`. The order-n Robin residual grows steeply with `n`, so that
 weight is a different weight at every order. Order 3 on this problem:
 
-| `w_bc` | SSBroyden (300 iterations) | Adam (2000 steps) |
+| `w_bc` | 300 iterations on 352 points, seed 0 | converged on 1056 points, seeds 0/3/11 |
 |---|---|---|
-| 1 | 8.5e-04 | 4.4e-03 |
-| 10 | 1.0e-03 | 1.7e-02 |
-| 100 | 2.2e-03 | 4.1e-02 |
+| 1 | 8.5e-04 | 8.24e-07 / 6.64e-07 / 1.16e-06 |
+| 3 | — | 5.13e-07 / 6.80e-07 / 6.13e-07 |
+| 10 | 1.0e-03 | 1.27e-06 / 5.09e-07 / 4.62e-07 |
+| 100 | 2.2e-03 | **not converged**: hit the 2500-iteration cap with loss 1.6e-13 but `|g|_inf` still above 1e-8 |
 
-The file trains with `w_bc = 1`. The ordering is the same under both optimisers but the
-penalty is 2.6x instead of 10x under SSBroyden: a stiff term that dominates a clipped gradient
-step hurts far more than one that a line search can simply shorten. `HUB.md` measures the same
-effect on the production runs, where the order-n Robin residual at initialisation is 8.8e-04
-at `n = 1`, 2.1e-01 at `n = 2` and 4.4e+03 at `n = 4`, and where the order-2 control run
-failed because the outer term dominated the gradient rather than because of the condition.
+The two columns say different things, and the second is the one that matters. At the shipped
+configuration the weight is **not** a lever: `w_bc` anywhere in 1..10 converges to the same
+field within a factor 2 (6.8e-07..1.3e-06), all of it >= 8x inside `TOL`. The 2.6x ordering in
+the first column was a budget artefact -- 300 iterations stops the scheme mid-descent, where a
+stiffer term still costs something (the same table under Adam at 2000 steps was 4.4e-03 /
+1.7e-02 / 4.1e-02, an order of magnitude, because a clipped gradient step is far more exposed
+to a dominant term than a line search is).
+
+`w_bc = 100` is still qualitatively different, just not in the field: it never reached the
+gradient tolerance, because the stiff term inflates `|g|_inf` at a field accuracy where the
+loss is already 1e-13. **The stop criterion is weight-dependent**, which is worth knowing
+before reading "converged" as a property of the solve alone.
+
+`HUB.md` measures the same stiffness on the production runs, where the order-n Robin residual
+at initialisation is 8.8e-04 at `n = 1`, 2.1e-01 at `n = 2` and 4.4e+03 at `n = 4`, and where
+the order-2 control run failed because the outer term dominated the (clipped, Adam) gradient
+rather than because of the condition. That is a statement about a first-order optimiser's
+*trajectory*; the table above is about the *converged* field. Both hold.
 
 ### 6.6 The order ramp is the cheapest route to the best field
 
@@ -276,6 +309,7 @@ the Adam-era ramp was 5.4e-02..6.1e-02, an order of magnitude worse.
 | `network_solve_at_order_one` | network + SSBroyden, to convergence | 768 + 144 + 144, one fixed draw | 719..1301 (status 0) | model 1, batch 777 |
 | `network_solve_at_order_three` | network + SSBroyden, to convergence | same | 921..1396 (status 0) | model 1, batch 777 |
 | `network_solve_with_an_order_ramp` | network + SSBroyden, 3 phases | re-drawn per phase | 719+85+342 .. 1301+529+858, all status 0 | model 1, batches 777/1554/2331 |
+| `order_matters_without_a_source` | network + SSBroyden, 3 solves, no source | 256 + 48 + 48 (ratio-4 shell) | 728..1079, all status 0 | model 1, batches 777 |
 | error metric (every solve) | — | 4096 fresh shell points | — | 9 |
 
 ### 7.2 The network
