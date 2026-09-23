@@ -384,3 +384,87 @@ def test_network_solve_with_an_order_ramp_matches_the_exact_solution():
     assert all(t["converged"] for t in trace), trace
     assert trace[-1]["f"] < 1e-2 * trace[-1]["f0"], trace
     assert err < TOL, (err, trace)
+
+
+# --------------------------- the order matters: a ratio-4 shell, with the source removed
+RATIO4_IN = 0.25        # rho_in = 0.25 puts the outer sphere at a shell ratio of 4, not 100
+# This test needs neither the shipped 3x point count nor the shipped gradient tolerance: its
+# signals are 3.4e-03, 1.2e-04 and ~1e-05, far above the solver's floor at 256/48/48, and its
+# solves are the expensive ones (a target field with a *growing* mode, and three nested radial
+# derivatives for order 3): at 3x points and gtol 1e-8 it costs ~160 s for no extra separation.
+RATIO4_COLL, RATIO4_BND, RATIO4_GTOL = N_COLL // 3, N_BND // 3, 1e-7
+
+
+def cfg_ratio4() -> Config:
+    """The same statement in a ratio-4 shell.  No source: this test imposes the condition
+    homogeneously."""
+    c = Config(rho_in=RATIO4_IN, rho_out=RHO_OUT, lam0=LAM0, inner_radius=RATIO4_IN,
+               lam_bc_S1=S1, lam_bc_S2=S2, outer_bc="robin", robin_source=False,
+               robin_order=3, robin_orders={"h": 3, "G": 3, "lam": 3},
+               robin_include_G=False, lam_inf=LAM0)
+    c.__post_init__()
+    return c
+
+
+def lam_exact_ratio4(x):
+    """The decaying multipole sum for the ratio-4 shell: same data, amplitudes scaled by
+    rho_in^2 and rho_in^3."""
+    r = jnp.linalg.norm(x)
+    z = x[2]
+    quad = z * z - 0.5 * (x[0] ** 2 + x[1] ** 2)
+    return LAM0 + S1 * RATIO4_IN**2 * z / r**3 + S2 * RATIO4_IN**3 * quad / r**5
+
+
+def solve_ratio4(order, seed=0, maxiter=QN_MAXITER, gtol=RATIO4_GTOL, w_bc=W_BC,
+                 n_coll=RATIO4_COLL, n_bnd=RATIO4_BND):
+    """Solve the ratio-4 shell with `B_n[lam - lam0] = 0` and nothing on the right-hand side."""
+    cfg = cfg_ratio4()
+    k1, k2, k3 = jax.random.split(jax.random.PRNGKey(seed), 3)
+    coll = sample_shell(k1, n_coll, cfg)
+    inner = sample_sphere(k2, n_bnd, cfg.rho_in)
+    outer = sample_sphere(k3, n_bnd, cfg.rho_out)
+    model = LapNet()
+    params = model.init(jax.random.PRNGKey(seed + 1), jnp.ones((1, 3)))
+
+    def loss(p):
+        lam = lambda y: model.apply(p, y[None, :])[0]
+        lap = jax.vmap(lambda y: jnp.trace(jax.hessian(lam)(y)))(coll)
+        r_in = jax.vmap(lambda y: lam(y) - lam_inner_bc(y, cfg))(inner)
+        r_out = jax.vmap(lambda y: robin_operator(lam, y, BASE, order, LAM0))(outer)
+        return (jnp.mean((jnp.sum(coll * coll, axis=1) * lap) ** 2)
+                + w_bc * jnp.mean(r_in**2) + w_bc * jnp.mean(r_out**2))
+
+    flat0, unflatten = flatten_util.ravel_pytree(params)
+    res = crunch_minimize(lambda flat: loss(unflatten(flat)), flat0, args=(), method="BFGS",
+                          options={"maxiter": maxiter, "gtol": gtol,
+                                   "initial_H": jnp.eye(flat0.size),
+                                   "update_method": "ssbroyden2", "initial_scale": False})
+    assert bool(res.success), (order, int(res.status))     # converged, not cut off
+    xs = sample_shell(jax.random.PRNGKey(9), 4096, cfg)
+    got = jax.vmap(lambda y: model.apply(unflatten(res.x), y[None, :])[0])(xs)
+    return float(jnp.max(jnp.abs(got - jax.vmap(lam_exact_ratio4)(xs))))
+
+
+@needs_ssbroyden
+def test_the_order_matters_without_a_source_at_a_small_shell_ratio():
+    """Remove the source and the order is what decides the field -- visible at ratio 4.
+
+    Everywhere else in this file the manufactured source makes *every* order exact by
+    construction, so those solves cannot discriminate the orders; the discrimination is what
+    the source magnitudes measure.  This test takes the source off, imposes
+    `B_n[lam - lam0] = 0` homogeneously, and compares the solved field with `lam_exact`.
+
+    Why the shell has to be small: a multipole's data reaches the outer boundary with a factor
+    rho_in^2, so the spurious growing mode that a too-low order forces scales the same way.  At
+    the shipped ratio of 100 that is ~5e-06 (at the solver's own floor, see the report §6.3);
+    at ratio 4 it is ~3.6e-03.  With `A` the growing-mode coefficient, the order-1 condition
+    gives `A (rho_in + 2 rho_out^3/rho_in^2) = S1`, i.e. `A ~ 3.1e-03` here, and the l = 2
+    sector adds 5.2e-04.  Measured (256/48/48, gtol 1e-7, every solve converged): order 1 is
+    3.45e-03 off `lam_exact`, order 2 1.24e-04, order 3 1.40e-05 -- ratios 28x and 9x, against
+    assertions of 10x and 3x.  Order 2 admits the dipole but not the quadrupole; order 3 admits
+    both, so what is left is the solver's own floor.
+    """
+    err = {n: solve_ratio4(n) for n in (1, 2, 3)}
+    assert err[1] > 1e-3, err                  # order 1 distorts the field by ~3.4e-03
+    assert err[2] < err[1] / 10, err           # order 2 admits the dipole (~1.2e-04)
+    assert err[3] < err[2] / 3, err            # order 3 also admits the quadrupole (~1.4e-05)

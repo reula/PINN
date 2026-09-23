@@ -400,6 +400,12 @@ def test_robin_operator_expansions_match_the_documented_forms():
         n=3, base 1:  rho^3 psi''' + 9 rho^2 psi'' + 18 rho psi' + 6 psi
         n=4, base 1:  rho^4 psi'''' + 16 rho^3 psi''' + 72 rho^2 psi'' + 96 rho psi' + 24 psi
         n=2, base 2:  rho^2 psi'' + 6 rho psi' + 6 psi
+        n=4, base 2:  rho^4 psi'''' + 20 rho^3 psi''' + 120 rho^2 psi'' + 240 rho psi' + 120 psi
+        n=1, base 3:  rho psi' + 3 psi
+        n=2, base 3:  rho^2 psi'' + 8 rho psi' + 12 psi
+
+    The base-2 and base-3 rows cover the fields whose conditions production actually changes
+    (`robin_exps h=2, G=3`; `--robin-orders h=4` is the base-2 order-4 row).
 
     For contrast, the form quoted in prompts.txt (`psi'' + 3 psi' + psi/rho`, the
     characteristic polynomial of theta^2 + 3 theta + 2 evaluated at d_rho instead of at
@@ -418,7 +424,7 @@ def test_robin_operator_expansions_match_the_documented_forms():
                 + 0.4 * (y[2] ** 2 - 0.5 * (y[0] ** 2 + y[1] ** 2)) / r**5
                 + 0.05 * jnp.exp(-r / 4.0))
 
-    f = _radial_derivatives(field, x, 4)
+    f = _radial_derivatives(field, x, 5)
     p0 = f[0] - 1.0                                     # inf_val = 1
     cases = [
         (1.0, 1, rho * f[1] + p0),
@@ -426,7 +432,14 @@ def test_robin_operator_expansions_match_the_documented_forms():
         (1.0, 3, rho**3 * f[3] + 9 * rho**2 * f[2] + 18 * rho * f[1] + 6 * p0),
         (1.0, 4, rho**4 * f[4] + 16 * rho**3 * f[3] + 72 * rho**2 * f[2] + 96 * rho * f[1]
          + 24 * p0),
+        # base 2 and base 3 are the h and Gamma fields (robin_exps), and h at order 4 is what
+        # `--robin-orders h=4` runs in production: without these rows the formulas printed in
+        # losses.py / problem.py / HUB.md for those fields had nothing checking them.
         (2.0, 2, rho**2 * f[2] + 6 * rho * f[1] + 6 * p0),
+        (2.0, 4, rho**4 * f[4] + 20 * rho**3 * f[3] + 120 * rho**2 * f[2] + 240 * rho * f[1]
+         + 120 * p0),
+        (3.0, 1, rho * f[1] + 3 * p0),
+        (3.0, 2, rho**2 * f[2] + 8 * rho * f[1] + 12 * p0),
     ]
     for base, order, want in cases:
         got = float(robin_operator(field, x, base, order, 1.0))
