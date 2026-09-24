@@ -381,7 +381,9 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     state = unflatten(x)
     _, parts = loss_fn(state, batch, 1.0, weights)
     step0 = cfg.steps + 1
-    history = [{"step": step0, "loss": float(losses[0])},
+    _, parts0 = loss_fn(unflatten(flat0), batch, 1.0, weights)
+    history = [{"step": step0, "loss": float(losses[0]),
+                **{k: float(v) for k, v in parts0.items()}},
                {"step": step0 + max(total, 1), "loss": f,
                 **{k: float(v) for k, v in parts.items()}}]
     if verbose:

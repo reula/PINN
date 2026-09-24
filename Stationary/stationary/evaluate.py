@@ -92,11 +92,15 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
     if os.path.exists(hist_path):
         with open(hist_path) as fh:
             hist = json.load(fh)
-        steps = [h["step"] for h in hist]
+        # Not every row carries every group: the quasi-Newton phase logs its first row with
+        # `loss` only, so requiring the key in hist[0] is not enough (it used to raise
+        # KeyError: 'pde_compat' on every run that went through SSBroyden).  Plot the rows
+        # that have the key, and keep the run's own numbering on the x axis.
         for key in ("loss", "pde_compat", "pde_ricci", "pde_gauge", "pde_lam_eq"):
-            if key in hist[0]:
-                ax[0, 0].semilogy(steps, [h[key] for h in hist], label=labels[key],
-                                  lw=2 if key == "loss" else 1)
+            xs = [h["step"] for h in hist if key in h]
+            ys = [h[key] for h in hist if key in h]
+            if len(xs) > 1:
+                ax[0, 0].semilogy(xs, ys, label=labels[key], lw=2 if key == "loss" else 1)
         ax[0, 0].legend(fontsize=8)
     else:
         ax[0, 0].text(0.5, 0.5, "no history.json", ha="center", va="center",
