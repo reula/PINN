@@ -497,6 +497,52 @@ git repository, so `git pull` on the hub brings it and the sibling-directory imp
 `CRUNCH_ROOT` overrides the location; when it is missing the quasi-Newton phase falls back to
 `optax.lbfgs` with a printed reason (`--qn-method lbfgs` forces that).
 
+## 6c. The quadrupole production run and the VTK export for VisIt
+
+```bash
+PY=$PWD/.venv/bin/python ./run_ladder.sh 15       # production_quad, the ramp route
+```
+
+`production_run_quad` uses the inner data
+
+    lambda = lambda_0 - lambda_0 (1 - eps) (z^2 - (x^2+y^2)/2) / r^2 ,   eps = 0.1
+
+which in this code's parameterisation is `S1 = 0`, `S2 = -lambda_0 (1-eps) = -0.3` at
+`lambda_0 = 1/3`: `--lam-bc-S2 -0.3`.  Everything else is the control's recipe, run as the
+same ramp — order 1 (`w_outer 100`) → order 2 (`10`) → order 3 (`1`), each phase warm-started
+with `--init-from`, because order 1 is floored at 6.4e-05 in `lambda(rho_out)` by its own
+condition, while warm-started order 3 reproduces the exact solution to 1.6e-08.  There is no
+exact solution for this data (a spherical reference cannot carry `S2`), so the reference rows
+in the report are departure indicators, not errors; the guard prints a note saying so.
+
+**VTK for VisIt.** `--vtk` on the last phase makes `postprocess.sh` write
+`runs/production_quad_ord3/vtk/solution.vtk` when that run ends:
+
+* **graded Cartesian grid in PHYSICAL coordinates** (`1 … 100`, i.e. the run's scaled shell
+  `[0.01, 1]` multiplied by `1/rho_in`), geometric along each half axis so the points cluster
+  near the inner sphere, where the action is, and thin out in the far field;
+* only the hexahedral cells whose centre lies inside the shell are written — the hole and the
+  exterior cost nothing (on 41 points per axis: 66 k points, 61 k cells, ~10 MB);
+* point data: `lambda`, `lambda_minus_1`, `r_areal`, `ricci_scalar` (R of h), `ricci_sq`
+  (`R_ab R^ab` — in three dimensions the Weyl tensor vanishes, so this is the rest of the
+  curvature information beyond the scalar), and `res_ricci`, `res_lam_eq` as quality maps.
+
+Options: `--vtk-n-half N` (points per half axis, default 20 → 41 per axis; 21 s of CPU per
+file locally, so a few minutes on this hub), `--vtk-physical-inner` (default 1.0), and
+`--lambda-only` (just the two `lambda` arrays, ~4x cheaper: the others need second
+derivatives).  Regenerate by hand with
+
+```bash
+python -m stationary.vtk --outdir runs/production_quad_ord3            # all fields
+python -m stationary.vtk --outdir runs/production_quad_ord3 --lambda-only
+```
+
+**VTK files are not in git**: `runs/*/vtk/` is in `.gitignore` (they are large and
+regenerable from `params.pkl`).  To copy one to your laptop:
+`scp <hub>:~/serafin/Julia/PINN/Stationary/runs/production_quad_ord3/vtk/solution.vtk .`,
+then open it in VisIt (`File → Open`), and use `Contour`/`Slice` on `lambda_minus_1`, or
+`Volume` on `res_ricci` to see where the solution is least accurate.
+
 ## 7. The two production runs (separate, run in sequence)
 
 **They are two independent runs, not one run combining both cases.** A single run has one

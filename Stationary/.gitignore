@@ -22,3 +22,6 @@ logs/
 
 # JAX persistent compilation cache (see postprocess.sh): large, regenerable, machine-specific.
 .jaxcache/
+
+# VTK exports for VisIt (stationary/vtk.py): large, regenerable, one per run.
+runs/*/vtk/

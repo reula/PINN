@@ -636,6 +636,12 @@ def parse_args(argv=None):
     p.add_argument("--lbfgs-steps", type=int, default=None)
     p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs"), default=None,
                    help="quasi-Newton phase: Crunch's SSBroyden (default), or optax.lbfgs")
+    p.add_argument("--vtk", action="store_true",
+                   help="write VTK files for VisIt when this run is post-processed")
+    p.add_argument("--vtk-n-half", type=int, default=None,
+                   help="points per half axis of the VTK grid (geometric grading)")
+    p.add_argument("--vtk-physical-inner", type=float, default=None,
+                   help="inner radius in the coordinates the VTK files are written in")
     p.add_argument("--qn-block", type=int, default=None,
                    help="iterations per quasi-Newton block (the plateau is checked between blocks)")
     p.add_argument("--plateau-tol", type=float, default=None,
@@ -707,6 +713,12 @@ def parse_args(argv=None):
         cfg.qn_max_H_gb = a.qn_max_H_gb
     if a.qn_block is not None:
         cfg.qn_block = a.qn_block
+    if a.vtk:
+        cfg.make_vtk = True
+    if a.vtk_n_half is not None:
+        cfg.vtk_n_half = a.vtk_n_half
+    if a.vtk_physical_inner is not None:
+        cfg.vtk_physical_inner = a.vtk_physical_inner
     if a.plateau_tol is not None:
         cfg.plateau_tol = a.plateau_tol
     if a.plateau_patience is not None:

@@ -123,6 +123,11 @@ class Config:
     # cap, whichever comes first.  The Adam phase stops on the same rule (checked every
     # `log_every` steps).  `plateau_min_iters` keeps it from stopping in the first blocks,
     # where the loss is still falling fast.
+    # VTK export for VisIt (stationary/vtk.py, run by postprocess.sh when this is true):
+    # a graded Cartesian grid of the shell, in the PHYSICAL coordinates, one file per run.
+    make_vtk: bool = False
+    vtk_n_half: int = 20           # points per half axis (geometric -> clusters at rho_in)
+    vtk_physical_inner: float = 1.0  # the inner radius in the coordinates to write out
     qn_block: int = 100
     qn_gtol: float = 1e-9
     plateau_tol: float = 1e-4
