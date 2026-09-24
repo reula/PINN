@@ -549,6 +549,7 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     with open(os.path.join(cfg.outdir, "params_adam.pkl"), "wb") as fh:
         pickle.dump(jax.tree.map(lambda a: jax.device_get(a), state), fh)
 
+    qn_stopped_at = 0
     if cfg.lbfgs_steps > 0:
         batch = make_batch(jax.random.PRNGKey(cfg.seed + 777), cfg)
         qn = None
@@ -558,6 +559,7 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
             state, qn_history = qn
             history.extend(qn_history)
             loss = qn_history[-1]["loss"]
+            qn_stopped_at = qn_history[-1]["step"] - cfg.steps
         else:
             solver = optax.lbfgs(
                 learning_rate=1.0, memory_size=20,
@@ -591,7 +593,12 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     pf = point_fields(model, state["net"])
     report = {"wall_seconds": wall, "final_loss": float(loss),
               "steps": cfg.steps, "lbfgs_steps": cfg.lbfgs_steps,
-              "adam_stopped_at": adam_stopped if adam_stopped is not None else cfg.steps}
+              "adam_stopped_at": adam_stopped if adam_stopped is not None else cfg.steps,
+              # what the quasi-Newton phase actually was: the stored run info has to say so,
+              # otherwise every report reads "Adam + L-BFGS" whatever was used
+              "qn_method": cfg.qn_method, "qn_stopped_at": qn_stopped_at,
+              "plateau_tol": cfg.plateau_tol, "plateau_patience": cfg.plateau_patience,
+              "qn_block": cfg.qn_block}
     report.update(diagnostics.residual_report(pf, cfg))
     report.update(diagnostics.inner_boundary_report(pf, cfg))
     if exact_fields is not None:

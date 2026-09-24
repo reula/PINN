@@ -98,6 +98,20 @@ def main():
     pf = point_fields(model, state["net"])
     key = jax.random.PRNGKey(0)
 
+    # ------------------------------------------------- what the optimiser really was
+    # A run made before `qn_method` existed must not be relabelled by the field's default:
+    # check the stored config (and report.json) for the key itself, once, and use it in both
+    # the RUN/CODE line and the CONFIG block.
+    raw_cfg = {}
+    cfg_path = os.path.join(run_dir, "config.json")
+    if os.path.exists(cfg_path):
+        raw_cfg = json.load(open(cfg_path))
+    qn_method = raw_cfg.get("qn_method")
+    qn_known = qn_method is not None
+    if qn_method is None:
+        qn_method = "lbfgs"
+    qn_label = "L-BFGS" if qn_method == "lbfgs" else "SSBroyden"
+
     # ---------------------------------------------------------------- provenance
     _section("RUN / CODE")
     report_path = os.path.join(run_dir, "report.json")
@@ -118,7 +132,19 @@ def main():
              if "float64" in dts else
              "   <- trained in float32 (the default): round-off floor ~1e-7"))
     if rep:
-        print(f"steps          : {rep.get('steps')} Adam + {rep.get('lbfgs_steps')} L-BFGS"
+        # the quasi-Newton phase is SSBroyden unless it declined (no Crunch checkout, or the
+        # dense inverse Hessian too large) and fell back to optax.lbfgs.  Runs made before
+        # those fields existed carry neither, so fall back to config.json's qn_method.
+        qn_used = rep.get("qn_stopped_at")
+        qn_txt = qn_label
+        if not qn_known:
+            qn_txt += " (this run predates --qn-method)"
+        elif qn_used is None:
+            qn_txt += f" (cap {rep.get('lbfgs_steps')})"
+        else:
+            qn_txt += f" ({qn_used} of a {rep.get('lbfgs_steps')} cap)"
+        adam = rep.get("adam_stopped_at", rep.get("steps"))
+        print(f"steps          : {adam} Adam + {qn_txt}"
               f"   wall {rep.get('wall_seconds', 0) / 60:.1f} min")
         print(f"final loss     : {rep.get('final_loss', float('nan')):.4e}")
 
@@ -142,6 +168,15 @@ def main():
     print(f"loss weights   : w_inner = {cfg.w_inner:g}, w_outer = {cfg.w_outer:g}, "
           f"reweight_every = {cfg.reweight_every}")
     print(f"sampling       : n_coll {cfg.n_coll}, n_bnd {cfg.n_bnd}, scale_ref {cfg.scale_ref}")
+    if qn_known:
+        print(f"optimiser      : Adam then {qn_method}"
+              f"   blocks of {raw_cfg.get('qn_block', '-')}"
+              f", plateau {raw_cfg.get('plateau_tol', '-')} over"
+              f" {raw_cfg.get('plateau_patience', '-')} blocks (loss AND outer Robin)")
+    else:
+        print(f"optimiser      : Adam then optax.lbfgs"
+              f"   (this run predates the quasi-Newton settings, so the plateau rule did"
+              f" not apply)")
 
     # ------------------------------------------- the exact asset the BCs themselves use
     # Two objects that are easy to confuse: the reference that enters the outer boundary

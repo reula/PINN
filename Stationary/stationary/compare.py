@@ -7,7 +7,9 @@ Every quantity is recomputed here with the same code for every run (and in float
 the columns are comparable even when the runs were made with different code versions,
 different Robin orders or different precision:
 
-  * what the run was: precision (read off the stored parameters), size, Adam/L-BFGS steps,
+  * what the run was: precision (read off the stored parameters), size, Adam and
+    quasi-Newton steps and which quasi-Newton method ran (SSBroyden or the optax.lbfgs
+    fallback),
     wall time, Robin orders;
   * lambda on the inner and outer spheres against the exact reference;
   * the boundary-condition residuals (rms) -- the honest measure of "did it converge";
@@ -69,6 +71,8 @@ def measure(run_dir: str, params_file: str = "params.pkl") -> dict:
          "orders": (cfg.robin_orders or {k: cfg.robin_order for k in ("h", "G", "lam")}),
          "outer_bc": cfg.outer_bc,
          "steps": rep.get("steps"), "lbfgs": rep.get("lbfgs_steps"),
+         "qn_method": rep.get("qn_method", getattr(cfg, "qn_method", "lbfgs")),
+         "qn_stopped_at": rep.get("qn_stopped_at"),
          "wall_min": rep.get("wall_seconds", float("nan")) / 60.0,
          "final_loss": rep.get("final_loss", float("nan")),
          "lam0": cfg.lam0, "rho_in": cfg.rho_in, "rho_out": cfg.rho_out,
@@ -138,7 +142,8 @@ ROWS = [
     ("config fields it predates",
      lambda m: f"{m['missing_keys']}" + (f" ({m['missing_which']})" if m["missing_keys"] else "")),
     ("outer BC", "outer_bc"), ("robin orders", "orders"),
-    ("steps (Adam+LBFGS)", lambda m: f"{m['steps']}+{m['lbfgs']}"),
+    ("steps (Adam + qn)", lambda m: f"{m['steps']}+{m['lbfgs']}"),
+    ("quasi-Newton phase", lambda m: str(m["qn_method"])),
     ("wall (min)", lambda m: f"{m['wall_min']:.1f}"),
     ("final loss", lambda m: f"{m['final_loss']:.3e}"),
     ("lambda on the spheres", None),
