@@ -669,8 +669,32 @@ the manufactured loss on a covariantly perturbed Weyl candidate is 1.720418e-02 
 `rho_in/rho`, and `theta = rho d_rho` is scale-invariant, so at a fixed shell RATIO the chart
 cancels out of the whole problem.  A [0.01, 1] recipe therefore does not change the
 *conditioning*; what it changes is the ratio (100 instead of 10), i.e. how far outside the
-source the outer sphere sits.  A second run of this same configuration at ratio 100 (rods
-scaled by 1/750, `runs/weyl_rescaled`) is in flight for that comparison.
+source the outer sphere sits.
+
+**Ratio 10 against ratio 100.**  `runs/weyl_rescaled` is the same configuration with the rods
+scaled by 1/750, so that `rho_in = 3*axis_extent = 0.01` and `rho_out = 1` — the shell
+convention the other runs in this project use.  Both are 3000 cold-start SSBroyden iterations
+of the same 2265-parameter ansatz:
+
+| | ratio 10, `[7.5, 75]` | ratio 100, `[0.01, 1]` |
+|---|---|---|
+| final loss (wall time) | 2.06e-13 (7424 s) | 2.75e-13 (7822 s) |
+| `lambda` mean over the shell | 0.5867266 | 0.5867271 |
+| areal / coordinate radius at `rho_in` | 7.4115 / 7.5 | 0.00988 / 0.01 |
+| `max abs(dh)` over the shell | 6.70e-07 | 1.17e-06 |
+| `max abs(dlambda)` | 9.04e-08 | 1.57e-07 |
+| inner sphere, `max abs(lambda_net - lambda_ref)` | 1.12e-07 | 3.14e-08 |
+| `l = 0` decay fit (expected −1) | −0.926 | −0.998 |
+
+They agree where they must: `lambda` averaged over the shell comes out 0.5867266 against
+0.5867271, and the inner sphere's areal radius is 0.988 of its coordinate radius in both —
+the same geometry, exactly as the chart-invariance above requires.  What the wider shell buys
+is the far field: the `l = 0` decay exponent is −0.998 instead of −0.926, and the inner-sphere
+`lambda` error is three times smaller.  What it costs is a somewhat larger shell-wide max,
+because the same network budget now has to cover two decades of radius instead of one.  One
+number in the diagnostics is **not** comparable between the two columns: `max abs(dGamma)` is
+5.1e-04 at ratio 100 against 6.5e-07 at ratio 10, since Gamma has dimension 1/length and the
+chart rescales lengths by 75.
 
 **Files.**  `runs/weyl_prod/`: `report.txt`, `report.json`, `report_eval.json`,
 `diagnostics.png`, `lambda_inner.png`, `lambda_vs_rho.png`, `lambda_multipoles_outer.png`,
