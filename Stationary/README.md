@@ -674,11 +674,37 @@ scaled by 1/750, `runs/weyl_rescaled`) is in flight for that comparison.
 
 **Files.**  `runs/weyl_prod/`: `report.txt`, `report.json`, `report_eval.json`,
 `diagnostics.png`, `lambda_inner.png`, `lambda_vs_rho.png`, `lambda_multipoles_outer.png`,
-`lambda_multipole_decay.png`, and `vtk/solution.vtk` — 9.5 MB, a 41³ graded Cartesian grid in
-**Weyl units** (`--physical-inner 7.5`, i.e. scale factor 1, so the rods sit on the axis at
-`|z|` in [0.5, 2.5] as the analytic solution has them), 56 844 points and 52 216 hexahedra,
-carrying `lambda`, `lambda_minus_1`, `r_areal`, `ricci_scalar`, `ricci_sq`, `res_ricci` and
-`res_lam_eq`.
+`lambda_multipole_decay.png`, and `vtk/solution.vtk`.
+
+The VTK file is written by
+
+    python -m stationary.vtk --outdir runs/weyl_prod --physical-inner 7.5
+
+and it is the file the error is read from: 81 426 points, 81 920 cells, 17.3 MB, ten point
+fields led by **`lambda_err` = lambda_net − lambda_exact**, which over the grid has max
+`1.14e-07` and rms `1.53e-08`.  Then come `h_err`, `lambda_exact`, `lambda`,
+`lambda_minus_1`, `r_areal`, `ricci_scalar`, `ricci_sq`, `res_ricci`, `res_lam_eq`.
+`--physical-inner 7.5` keeps the file in **Weyl units** (scale factor 1), so the rods sit on
+the axis at `|z|` in [0.5, 2.5], exactly as the analytic solution has them.
+
+The mesh (`--grid spherical`, the default) is conforming: nodes sit on radial levels
+`rho_in * (rho_out/rho_in)^(i/n_rho)` — geometric, so both spheres are hit exactly and the
+cells grow by a constant factor outwards — times uniform angles `theta` and periodic `phi`.
+Every cell is inside the shell by construction, so there is nothing to blank out, and the
+inner sphere is resolved the same amount in **every** direction.  The graded Cartesian box
+(`--grid cartesian`, the older default) could not do that: grading each half axis clusters
+points near `+-rho_in` on the three *axes* only, leaving the rest of the inner sphere
+comparatively bare, where the field varies fastest; and roughly half its cells had to be
+discarded because their centres fell outside the shell.  The two polar rings are written as
+wedges (VTK 13) rather than hexahedra with two coincident nodes, so no cell is degenerate.
+
+One field is deliberately blanked, and it is worth knowing why: `h_err` is NaN on the axis,
+because the exact solution's *Cartesian* metric components have no unique limit there — the
+chart formula `(A x^2 + y^2)/rho_cyl^2` depends on the direction of approach, and the `k`
+quadrature divides by `rho_cyl` — while `lambda`, a scalar, is perfectly regular there.  So
+`lambda_err` is finite at every node and `h_err` carries NaN on the 82 axis nodes, which
+VisIt renders as blanked.  Avoiding the axis altogether is what a tetrahedral mesh would buy;
+the conforming spherical grid needs its poles to close the caps.
 
 ## 9. Running on a JupyterHub / GPU machine
 
