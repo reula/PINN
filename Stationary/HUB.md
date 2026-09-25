@@ -508,15 +508,29 @@ PY=$PWD/.venv/bin/python ./run_ladder.sh 15       # production_quad, the ramp ro
     lambda = lambda_0 - lambda_0 (1 - eps) (z^2 - (x^2+y^2)/2) / r^2 ,   eps = 0.1
 
 which in this code's parameterisation is `S1 = 0`, `S2 = -lambda_0 (1-eps) = -0.3` at
-`lambda_0 = 1/3`: `--lam-bc-S2 -0.3`.  Everything else is the control's recipe, run as the
-same ramp — order 1 (`w_outer 100`) → order 2 (`10`) → order 3 (`1`), each phase warm-started
-with `--init-from`, because order 1 is floored at 6.4e-05 in `lambda(rho_out)` by its own
-condition, while warm-started order 3 reproduces the exact solution to 1.6e-08.  There is no
-exact solution for this data (a spherical reference cannot carry `S2`), so the reference rows
-in the report are departure indicators, not errors; the guard prints a note saying so.
+`lambda_0 = 1/3`: `--lam-bc-S2 -0.3`.  Everything else is the control's recipe — scaled shell,
+20x6 net, float64, 16384/1024 points — and it is **one run, cold-started, at Robin order 3**,
+the condition whose inconsistency with the exact solution is 8.3e-10 against order 1's
+6.6e-05 (measured; the order-1 control is floored at 6.4e-05 in `lambda(rho_out)` for exactly
+that reason).  There is no exact solution for this data (a spherical reference cannot carry
+`S2`), so the reference rows in the report are departure indicators, not errors; the guard
+prints a note saying so.
+
+**Budget.** `QN_CAP` sets the quasi-Newton iteration cap (default 20000; the plateau rule
+stops the run earlier whenever it can):
+
+```bash
+QN_CAP=8000 PY=$PWD/.venv/bin/python ./run_ladder.sh 15
+```
+
+Order 3 costs about 0.85 s per iteration at 16384 points on this hub, so 20000 iterations is
+up to ~4.7 h in the worst case, ~85 minutes if it stops near 6000 as the dipole runs did.  A
+warm-started alternative exists if that is too slow: run order 1 into `runs/production_quad`,
+then order 2 with `--init-from runs/production_quad/params.pkl`, then order 3 likewise — that
+is what made the control reach 4e-16 in 906 iterations, at the price of two extra runs.
 
 **VTK for VisIt.** `--vtk` on the last phase makes `postprocess.sh` write
-`runs/production_quad_ord3/vtk/solution.vtk` when that run ends:
+`runs/production_quad/vtk/solution.vtk` when that run ends:
 
 * **graded Cartesian grid in PHYSICAL coordinates** (`1 … 100`, i.e. the run's scaled shell
   `[0.01, 1]` multiplied by `1/rho_in`), geometric along each half axis so the points cluster
@@ -533,13 +547,13 @@ file locally, so a few minutes on this hub), `--vtk-physical-inner` (default 1.0
 derivatives).  Regenerate by hand with
 
 ```bash
-python -m stationary.vtk --outdir runs/production_quad_ord3            # all fields
-python -m stationary.vtk --outdir runs/production_quad_ord3 --lambda-only
+python -m stationary.vtk --outdir runs/production_quad            # all fields
+python -m stationary.vtk --outdir runs/production_quad --lambda-only
 ```
 
 **VTK files are not in git**: `runs/*/vtk/` is in `.gitignore` (they are large and
 regenerable from `params.pkl`).  To copy one to your laptop:
-`scp <hub>:~/serafin/Julia/PINN/Stationary/runs/production_quad_ord3/vtk/solution.vtk .`,
+`scp <hub>:~/serafin/Julia/PINN/Stationary/runs/production_quad/vtk/solution.vtk .`,
 then open it in VisIt (`File → Open`), and use `Contour`/`Slice` on `lambda_minus_1`, or
 `Volume` on `res_ricci` to see where the solution is least accurate.
 

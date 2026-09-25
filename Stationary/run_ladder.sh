@@ -44,10 +44,10 @@
 #
 #   ./run_ladder.sh 15            # production_run_quad: the quadrupole inner data
 #       lambda = lambda_0 - lambda_0 (1-eps) (z^2-(x^2+y^2)/2)/r^2,  eps = 0.1
-#       i.e. --lam-bc-S2 -0.3 at lambda_0 = 1/3, everything else as the control, run as the
-#       same ramp (order 1 -> 2 -> 3, warm-started).  The last phase carries --vtk, so it
-#       writes runs/production_quad_ord3/vtk/solution.vtk for VisIt when it is
+#       i.e. --lam-bc-S2 -0.3 at lambda_0 = 1/3.  One run, cold-started, Robin order 3,
+#       with --vtk: it writes runs/production_quad/vtk/solution.vtk for VisIt when it is
 #       post-processed (graded Cartesian grid in PHYSICAL coordinates, 1..100).
+#       QN_CAP=8000 ./run_ladder.sh 15     # if 20000 quasi-Newton iterations is too long
 # The ingredients come from that file: a dense quasi-Newton wants a SMALL network (its
 # inverse Hessian is n_params^2: 2250 params -> 40 MB, the 14533-parameter production net ->
 # 1.57 GB), points saturate at 3x, the shell may be rescaled by 1/100 (a relabelling --
@@ -147,7 +147,7 @@ LADDER_RUNS=(control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
              recipe_control recipe_dipole recipe_ramp_ord2 recipe_ramp_ord3 \
              recipe_dipole_ord2 recipe_dipole_ord3 \
              recipe_bignet recipe_ord3_alone \
-             production_quad_ord1 production_quad_ord2 production_quad_ord3)
+             production_quad)
 SWEEP_RUNS=(sweep_ord2_w100 sweep_ord2_w10 sweep_ord2_w1 \
             sweep_ord4_w100 sweep_ord4_w10 sweep_ord4_w1)
 
@@ -338,17 +338,15 @@ for s in "${WANT[@]}"; do
         14) run_one recipe_ord3_alone 1 -- "${QPT[@]}" "${QADAM[@]}" --robin-orders h=3,lam=3 \
                     --w-outer 1 ;;
         # production_run_quad: lambda = lambda_0 - lambda_0 (1-eps) (z^2-(x^2+y^2)/2)/r^2
-        # with eps = 0.1, i.e. S2 = -lambda_0 (1-eps) = -0.3 at lambda_0 = 1/3.  Same ramp as
-        # the control (order 1 -> 2 -> 3, each warm-started from the previous), with the VTK
-        # export for VisIt on the final phase.
-        15) run_one production_quad_ord1 1 -- "${QPT[@]}" "${QADAM[@]}" \
-                    --robin-orders h=1,lam=1 --w-outer 100 --lam-bc-S2 -0.3
-            run_one production_quad_ord2 1 -- "${QPT[@]}" "${QADAM[@]}" \
-                    --robin-orders h=2,lam=2 --w-outer 10 --lam-bc-S2 -0.3 \
-                    --init-from "$HERE/runs/production_quad_ord1/params.pkl"
-            run_one production_quad_ord3 1 -- "${QPT[@]}" "${QADAM[@]}" \
-                    --robin-orders h=3,lam=3 --w-outer 1 --lam-bc-S2 -0.3 --vtk \
-                    --init-from "$HERE/runs/production_quad_ord2/params.pkl" ;;
+        # with eps = 0.1, i.e. S2 = -lambda_0 (1-eps) = -0.3 at lambda_0 = 1/3.
+        # ONE run, cold-started, Robin order 3 (the accurate condition: order 1 is floored at
+        # 6.4e-05 by its own inconsistency, order 3 reproduces the exact solution to 1.6e-08).
+        # The cap is a parameter because order 3 costs about 0.85 s per iteration at 16384
+        # points on the hub: QN_CAP=20000 (the default) allows up to ~4.7 h, so lower it if
+        # the run has to finish sooner -- the plateau rule stops it earlier when it can.
+        15) run_one production_quad 1 -- "${QPT[@]}" "${QADAM[@]}" \
+                    --lbfgs-steps "${QN_CAP:-20000}" \
+                    --robin-orders h=3,lam=3 --w-outer 1 --lam-bc-S2 -0.3 --vtk ;;
         10) run_one recipe_ramp_ord2 1 -- "${QPT[@]}" "${QADAM_RAMP[@]}" \
                     --robin-orders h=2,lam=2 --w-outer 10 \
                     --init-from "$HERE/runs/recipe_control/params.pkl"
@@ -366,7 +364,7 @@ RUNS=()
 for n in control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
          dipole_small dipole_big dipole_ord2_small \
          recipe_control recipe_dipole recipe_ramp_ord3 \
-         recipe_dipole_ord2 recipe_dipole_ord3 production_quad_ord3; do
+         recipe_dipole_ord2 recipe_dipole_ord3 production_quad; do
     [ -f "runs/$n/config.json" ] && RUNS+=("runs/$n")
 done
 [ ${#RUNS[@]} -eq 0 ] && { echo "no runs to compare yet" >&2; exit 0; }
