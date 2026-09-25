@@ -104,7 +104,7 @@ def angular_profiles(coef: dict, lmax: int = 3, n_theta: int = 181):
 
 
 # ------------------------------------------------------------------- figures
-def make_figures(point_fields, cfg, outdir: str, lmax: int = 3):
+def make_figures(point_fields, cfg, outdir: str, lmax: int = 3, exact_fields=None):
     """Write the two requested figures; returns the numbers behind them."""
     import matplotlib
     matplotlib.use("Agg")
@@ -119,14 +119,24 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3):
     xs_in = cfg.rho_in * directions(mu, phi)
     lam_net = jax.vmap(lambda y: point_fields(y).lam)(xs_in.reshape(-1, 3)).reshape(mu.shape)
 
-    from .problem import lam_inner_bc
-    lam_bc = jax.vmap(lambda y: lam_inner_bc(y, cfg))(xs_in.reshape(-1, 3)).reshape(mu.shape)
+    if cfg.inner_bc == "reference" and exact_fields is not None:
+        # In reference mode the imposed inner data is the reference's lambda, not the
+        # round-sphere polynomial: against the latter the figure would show the gap between
+        # two different solutions (0.21 for the Weyl run) and call it the network's error.
+        lam_bc = jax.vmap(lambda y: exact_fields(y).lam)(
+            xs_in.reshape(-1, 3)).reshape(mu.shape)
+        bc_label = "reference $\\lambda$ at $\\rho_{in}$"
+    else:
+        from .problem import lam_inner_bc
+        lam_bc = jax.vmap(lambda y: lam_inner_bc(y, cfg))(
+            xs_in.reshape(-1, 3)).reshape(mu.shape)
+        bc_label = "imposed $\\lambda$ at $\\rho_{in}$"
     report["inner_bc_max_err"] = float(jnp.max(jnp.abs(lam_net - lam_bc)))
     report["inner_bc_rms_err"] = float(jnp.sqrt(jnp.mean((lam_net - lam_bc) ** 2)))
 
     th = np.arccos(np.asarray(mu))[:, 0]
     fig, ax = plt.subplots(2, 2, figsize=(13, 9))
-    ax[0, 0].plot(th, np.asarray(lam_bc)[:, 0], "k--", label="imposed $\\lambda$ at $\\rho_{in}$")
+    ax[0, 0].plot(th, np.asarray(lam_bc)[:, 0], "k--", label=bc_label)
     ax[0, 0].plot(th, np.asarray(lam_net)[:, 0], "r-", label="network")
     ax[0, 0].set_title(f"$\\lambda$ on the inner sphere ($\\rho={cfg.rho_in:g}$), $\\varphi=0$")
     ax[0, 0].set_xlabel("$\\theta$"); ax[0, 0].set_ylabel("$\\lambda$"); ax[0, 0].legend()

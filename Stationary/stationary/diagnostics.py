@@ -20,6 +20,19 @@ def residual_report(point_fields, cfg: Config, n: int = 2048, seed: int = 12345)
         a = jnp.abs(v)
         out[f"res_{k}_rms"] = float(jnp.sqrt(jnp.mean(v ** 2)))
         out[f"res_{k}_max"] = float(jnp.max(a))
+    if cfg.gauge_source != "none":
+        # The harmonic residual above is NOT the equation this run solves: a chart for which
+        # it is large is exactly why an inhomogeneous source was imposed.  Reporting only
+        # the harmonic one made a converged Weyl run look like a failure (8.6e-03, the
+        # chart's own property, against the 3.3e-07 of the condition actually imposed), so
+        # report both, with the imposed one under the plain keys.
+        from .losses import gauge_source_of
+        out["res_gauge_harmonic_max"] = out["res_gauge_max"]
+        out["res_gauge_harmonic_rms"] = out["res_gauge_rms"]
+        r_s = residuals_batch(point_fields, xs, gauge_source_of(cfg, point_fields))
+        v = r_s["gauge"]
+        out["res_gauge_rms"] = float(jnp.sqrt(jnp.mean(v ** 2)))
+        out["res_gauge_max"] = float(jnp.max(jnp.abs(v)))
     # inner/outer boundary residuals are checked separately
     return out
 

@@ -53,7 +53,8 @@ def evaluate(run_dir: str, params_file: str = "params.pkl", make_plots: bool = T
 
     key = jax.random.PRNGKey(4242)
     report["bc_inner"] = {k: float(v) for k, v in
-                          inner_bc_terms(pf, sample_sphere(key, 512, cfg.rho_in), cfg).items()}
+                          inner_bc_terms(pf, sample_sphere(key, 512, cfg.rho_in), cfg,
+                                         exact_fields).items()}
     if cfg.outer_bc == "dirichlet_exact":
         report["bc_outer"] = {k: float(v) for k, v in
                               outer_bc_terms(pf, sample_sphere(key, 512, cfg.rho_out), cfg,
@@ -67,7 +68,7 @@ def evaluate(run_dir: str, params_file: str = "params.pkl", make_plots: bool = T
         _plots(run_dir, cfg, pf, exact_fields, report)
         try:                       # multipole figures: same set a training run writes
             from .multipoles import make_figures
-            report["figures"] = make_figures(pf, cfg, run_dir)
+            report["figures"] = make_figures(pf, cfg, run_dir, exact_fields=exact_fields)
         except Exception as exc:
             print(f"[evaluate] multipole figures skipped: {exc}")
     with open(os.path.join(run_dir, "report_eval.json"), "w") as fh:

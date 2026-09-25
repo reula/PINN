@@ -616,7 +616,7 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     if cfg.make_figures:
         try:
             from .multipoles import make_figures
-            report["figures"] = make_figures(pf, cfg, cfg.outdir)
+            report["figures"] = make_figures(pf, cfg, cfg.outdir, exact_fields=exact_fields)
         except Exception as exc:                      # plotting must never kill a run
             print(f"[figures] failed: {exc}", flush=True)
 

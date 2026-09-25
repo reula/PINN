@@ -108,6 +108,17 @@ class Config:
         compat=1.0, ricci=1.0, gauge=1.0, lam_eq=1.0))
     scale_exps: dict = field(default_factory=lambda: dict(
         compat=1.0, ricci=2.0, gauge=1.0, lam_eq=2.0))
+    # These exponents are not free weights: sqrt(compat) and Gamma h have dimension
+    # 1/length, Ricci and box(lambda) have 1/length^2, so multiplying by rho or rho^2
+    # (with scale_ref = None, i.e. the LOCAL rho) makes every residual dimensionless.
+    # The consequence is worth knowing before choosing a chart: together with the
+    # rho_in- and log-normalised network features and the scale-invariant Euler operator
+    # rho d_rho, it makes the WHOLE loss invariant under scaling the shell and whatever
+    # lives in it -- measured, not just argued: the manufactured Weyl loss on a covariantly
+    # perturbed Weyl candidate is 1.720418e-02 in [7.5, 75], [0.1, 1] and [0.01, 0.1]
+    # alike, equal to every printed digit and in every group.  So at a fixed shell RATIO
+    # the chart is a no-op here; what a [0.01, 1] recipe really changes is the ratio
+    # (100 instead of 10), i.e. how far outside the source the outer sphere sits.
     scale_ref: float | None = None   # None -> use local rho; else a fixed length
     w_inner: float = 10.0
     w_outer: float = 10.0

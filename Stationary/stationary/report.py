@@ -183,18 +183,12 @@ def main():
     # condition (milestone-1 Dirichlet data, or the manufactured Robin source) and the
     # reference used only for comparison. This mirrors train.build() so the boundary
     # residuals below are the ones the loss actually saw. outer_bc_terms requires it.
-    bc_exact = None
-    if cfg.outer_bc == "dirichlet_exact":
-        bc_exact = exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
-    elif cfg.ref_solution or cfg.robin_source:
-        if getattr(cfg, "ref_asymptotic", None) is not None:
-            bc_exact, _ = exact.reference_fields_asymptotic(cfg.R0, cfg.ref_asymptotic,
-                                                            cfg.rho_in,
-                                                            r_areal=cfg.inner_radius)
-        else:
-            bc_exact, _ = exact.reference_fields(cfg.R0, cfg.lam0, cfg.rho_in,
-                                                 cfg.inner_h_rr or 1.0,
-                                                 r_areal=cfg.inner_radius)
+    # One asset, built in ONE place.  This block used to re-derive the reference here, which
+    # silently gave every new kind of reference (the Weyl two-black-hole solution, for one) a
+    # report that compared the run against a DIFFERENT solution than the one its boundary
+    # data came from.  train.exact_asset is the single definition; use it.
+    from .train import exact_asset
+    bc_exact = exact_asset(cfg)
 
     # -------------------------------------------------------------------- loss
     hist_path = os.path.join(run_dir, "history.json")
@@ -215,11 +209,20 @@ def main():
                     jnp.zeros(len(THETAS)),
                     cfg.rho_in * jnp.cos(jnp.array(THETAS))], axis=-1)
     lam_net = jax.vmap(lambda x: pf(x).lam)(xs)
-    lam_bc = jax.vmap(lambda x: lam_inner_bc(x, cfg))(xs)
-    print(f"    theta     imposed        network        diff")
+    if cfg.inner_bc == "reference" and bc_exact is not None:
+        # The imposed inner data is the reference's own lambda; comparing against the
+        # round-sphere polynomial here would report the difference between two different
+        # solutions (0.2 for the Weyl run) as if it were the network's error.
+        lam_bc = jax.vmap(lambda x: bc_exact(x).lam)(xs)
+        _imposed = "reference"
+    else:
+        lam_bc = jax.vmap(lambda x: lam_inner_bc(x, cfg))(xs)
+        _imposed = "imposed"
+    print(f"    theta     {_imposed:<8}     network        diff")
     for th, b, n in zip(THETAS, lam_bc, lam_net):
         print(f"{th:>9.2f} {float(b):>13.7f} {float(n):>14.7f} {float(n - b):>11.2e}")
-    inn = inner_bc_terms(pf, sample_sphere(key, 512, cfg.rho_in), cfg)
+    inn = inner_bc_terms(pf, sample_sphere(key, 512, cfg.rho_in), cfg,
+                         exact_fields=bc_exact)
     # areal radius of the inner sphere, from the same tested route as evaluate.py, plus the
     # radial-radial component of h there, which is the one piece of the metric the BCs do
     # not fix (--inner-h-rr aside).
@@ -232,8 +235,13 @@ def main():
     h_rr_in = jnp.einsum("nij,ni,nj->n", h_in, n_in, n_in)
     geom = inner_boundary_report(pf, cfg)          # reports the areal radius SQUARED
     r2 = geom["areal_radius2_mean"]
+    # In reference mode nothing imposes an areal radius -- the inner data is whatever the
+    # reference carries -- so quoting cfg.inner_radius next to the measured value would read
+    # as a mismatch (and for the Weyl run it is a factor 3.7 out, the rod geometry).
+    _imp = ("reference mode: the inner data is the reference's own, no areal radius is "
+            "imposed" if cfg.inner_bc == "reference" else f"imposed {cfg.inner_radius:g}")
     print(f"inner sphere areal radius: {math.sqrt(r2):.8f}"
-          f"   (r^2 = {r2:.6f}, imposed {cfg.inner_radius:g})"
+          f"   (r^2 = {r2:.6f}, {_imp})"
           f"   h_rr there {float(jnp.mean(h_rr_in)):.6f}")
     print("inner BC residuals (rms): " + "  ".join(f"{k}={jnp.sqrt(v):.2e}" for k, v in inn.items()))
 
@@ -291,18 +299,22 @@ def main():
 
     # ---------------------------------------------------------------- residuals
     _section("PDE RESIDUALS (raw units)")
-    res = residuals_batch(pf, sample_sphere(key, 2048, cfg.rho_out))
+    if cfg.gauge_source != "none":
+        # "gauge" below is the condition the run IMPOSED.  The harmonic residual is a
+        # property of the chart (large for a chart adapted to a two-black-hole solution,
+        # which is why the source was imposed at all) and would be read as an error here.
+        from .losses import gauge_source_of
+        print("    (gauge is the imposed inhomogeneous condition, NOT Gamma = 0)")
+        res = residuals_batch(pf, sample_sphere(key, 2048, cfg.rho_out),
+                              gauge_source_of(cfg, pf))
+    else:
+        res = residuals_batch(pf, sample_sphere(key, 2048, cfg.rho_out))
     for k, v in res.items():
         a_ = jnp.abs(v)
         print(f"    {k:10s} rms {float(jnp.sqrt(jnp.mean(v ** 2))):.3e}   max {float(jnp.max(a_)):.3e}")
 
     # ---------------------------------------------------------------- reference
-    ref = None
-    if getattr(cfg, "ref_asymptotic", None) is not None:
-        ref, _ = exact.reference_fields_asymptotic(cfg.R0, cfg.ref_asymptotic, cfg.rho_in,
-                                                   r_areal=cfg.inner_radius)
-    else:
-        ref = bc_exact          # dirichlet_exact, or the --ref-solution asset
+    ref = bc_exact
     if ref is not None:
         _section("VS EXACT REFERENCE")
         print(f"    reference lambda(rho_in) = {float(ref(cfg.rho_in * jnp.array([1.0, 0, 0])).lam):.7f}"
