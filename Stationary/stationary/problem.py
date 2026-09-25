@@ -161,6 +161,11 @@ class Config:
     make_figures: bool = True       # lambda at the inner sphere + outer multipoles
 
     def __post_init__(self):
+        if self.weyl and self.arch in ("sym", "sym_hybrid"):
+            # Not a preference: these ansaetze have no angular freedom, so the loss has no
+            # zero at a two-black-hole field.  Use the axisymmetric ansatz (valid, since
+            # the rods are on the axis) or the general 3-D one.
+            self.arch = "axisym_hybrid"
         if self.weyl and not jax.config.jax_enable_x64:
             # The Weyl reference needs the dynamic range of float64: its k comes from a
             # quadrature over s = 1/rho' whose extreme node sits at rho' ~ 1e7, where the

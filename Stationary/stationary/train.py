@@ -38,7 +38,7 @@ from .problem import Config, sample_shell, sample_sphere
 
 def make_model(cfg: Config):
     cls = {"sym": SymFieldNet, "sym_hybrid": SymHybridNet, "hybrid": HybridNet,
-           "axisym_hybrid": AxisymHybridNet}.get(cfg.arch, FieldNet)
+           "axisym_hybrid": AxisymHybridNet, "mlp": FieldNet}.get(cfg.arch, FieldNet)
     kw = dict(width=cfg.width, depth=cfg.depth, fourier=cfg.fourier,
               rho_in=cfg.rho_in, rho_out=cfg.rho_out)
     if cfg.arch in ("sym", "sym_hybrid", "axisym_hybrid"):
@@ -221,8 +221,12 @@ def print_config_summary(cfg: Config):
           f"   inner sphere areal radius {cfg.inner_radius:g}"
           f"   h_rr {cfg.inner_h_rr if cfg.inner_h_rr is not None else 'free'}")
     if cfg.outer_bc == "robin":
+        # `lam_inf` fixed vs learnable is a real difference -- an optimisable lambda_inf
+        # lets the trivial (flat, lambda = const) branch re-select itself -- so the banner
+        # must not call a fixed value "learnable".
         print(f"  outer BC    robin   lambda_inf = "
-              f"{cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init} (learnable)"
+              f"{cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init}"
+              f" ({'fixed' if cfg.lam_inf is not None else 'learnable'})"
               f"   orders {orders}   Gamma condition {cfg.robin_include_G}"
               f"   source {cfg.robin_source}")
     else:
@@ -849,6 +853,15 @@ def parse_args(argv=None):
         cfg.robin_source = True
         cfg.inner_bc = "reference"
         cfg.gauge_source = "cylindrical"
+        if a.arch is None:
+            # A spherically symmetric ansatz has no angular freedom at all, so it cannot
+            # represent a two-black-hole field: it would converge to a compromise and its
+            # numbers would mean nothing.  The Weyl field is axisymmetric (rods on the z
+            # axis), and AxisymHybridNet's h_ij = (1+a) d_ij + b n_i n_j + c (n_i z_j +
+            # z_i n_j) + d z_i z_j with a..d functions of (rho, mu) represents every
+            # axisymmetric field content -- with five functions of two variables instead
+            # of twenty-five of three, which the optimiser notices.
+            cfg.arch = "axisym_hybrid"
         if a.outer_bc is None:
             cfg.outer_bc = "robin"
         if a.rho_in is None:
