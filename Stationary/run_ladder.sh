@@ -137,7 +137,14 @@ QPT=(--n-coll 16384 --n-bnd 1024)
 # Adam warm-up capped at 2000 steps and the quasi-Newton phase at 6000 iterations; both stop
 # early on the plateau rule (total loss AND outer Robin, 1e-4 relative over 3 blocks of 100,
 # the package defaults), so the caps are only a safety net.
-QADAM=(--steps 2000 --lbfgs-steps 6000)
+# NO ADAM PHASE by default: start cold in the quasi-Newton phase.  Measured: a cold
+# --steps 0 run goes 4.75 -> 3.2e-02 in 100 iterations, and the Adam warm-up was what made
+# initial_scale necessary (with H = I the first step is -grad, which the Wolfe search cannot
+# bracket AFTER Adam has enlarged it).  If a phase ever reports `0 iterations, status 3
+# (zoom failed)`, put a short warm-up back with --steps 500.  Note that the adaptive PDE
+# reweighting, the pde_ramp_steps ramp and the resampling all live inside the Adam loop and
+# therefore do not run: the PDE groups keep their configured (dimensional) weights.
+QADAM=(--steps 0 --lbfgs-steps 6000)
 # WARM STARTS RUN NO ADAM (--steps 0, straight into SSBroyden).  Restarting Adam at
 # lr = 1e-3 on a solution the quasi-Newton phase has already converged is how a warm-started
 # phase diverges: Adam is not a descent method and that step is huge next to the local

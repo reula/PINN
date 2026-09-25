@@ -516,6 +516,14 @@ that reason).  There is no exact solution for this data (a spherical reference c
 `S2`), so the reference rows in the report are departure indicators, not errors; the guard
 prints a note saying so.
 
+**No Adam phase.**  Production runs go straight into the quasi-Newton phase (`--steps 0`):
+measured, a cold start reaches 3.2e-02 in 100 iterations from a random initialisation, and the
+Adam warm-up was only needed because it left a gradient too large for the Wolfe search to
+bracket (`initial_scale` exists to rescue that).  If a phase reports `0 iterations, status 3
+(zoom failed)`, put a short warm-up back with `--steps 500`.  Watch out that the adaptive PDE
+reweighting, the `pde_ramp_steps` ramp and the resampling live inside the Adam loop, so with
+`--steps 0` they do not run and the PDE groups keep their configured weights.
+
 **Budget.** `QN_CAP` sets the quasi-Newton iteration cap (default 20000; the plateau rule
 stops the run earlier whenever it can):
 
