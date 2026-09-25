@@ -25,9 +25,17 @@ What is checked, with the tolerances the code has to meet:
   3. that closed form agrees with the independent autodiff connection;
   4. the decay exponents are the ones the Robin conditions assume: h - I ~ rho^-2,
      lam - 1 ~ rho^-1, Gamma ~ rho^-3;
-  5. the strut exists: k on the axis between the rods differs from its value outside them.
+  5. the strut exists: k on the axis between the rods differs from its value outside them;
+  6. the PRODUCTION loss vanishes on this solution.  Checks 1-5 are statements about the
+     fields; the last one closes the loop with the trainer: a candidate that IS the Weyl
+     solution is fed to `total_loss` -- the exact function train.py minimises -- with the
+     inner data and the Robin source from the reference and the gauge source built from the
+     candidate's own metric, and the returned loss must be machine zero.  The same loss with
+     the harmonic gauge must NOT vanish, or a loss that ignored the gauge group could pass
+     the check for the wrong reason.
 
-Exit status is 0 if every check passes, 1 otherwise.
+Exit status is 0 if every check passes, 1 otherwise.  The Weyl quadrature needs float64, so
+this script enables x64 itself (see Config.__post_init__ for why float32 fails).
 """
 from __future__ import annotations
 
@@ -40,7 +48,7 @@ jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
 
-from stationary.geometry import residuals_batch
+from stationary.geometry import Fields, residuals_batch
 from stationary.weyl import (Rods, fields_of, gauge_source_from_metric, gauge_vector,
                              h_cart, k_of, lam_of)
 
@@ -58,6 +66,9 @@ def parse_args(argv=None):
                    help="inner sampling radius (default 3 x axis extent)")
     p.add_argument("--rho-out", type=float, default=None,
                    help="outer sampling radius (default 300 x axis extent)")
+    p.add_argument("--robin-order", type=int, default=2,
+                   help="Robin order for the manufactured loss (order n passes multipoles "
+                        "l <= n-1; the Weyl solution is l = 0,1,2 so n = 3 is exact)")
     p.add_argument("--seed", type=int, default=0)
     return p.parse_args(argv)
 
@@ -179,6 +190,70 @@ def main(argv=None):
     outside = abs(kvals["far outside the rods (z = 3 extent)"])
     checks.append(("strut: k is nonzero between the rods", gap > 0.1))
     checks.append(("strut: k -> 0 outside the rods", outside < 0.05))
+
+    # ------------------------------------------ the production loss on this solution
+    # Everything above is a statement about the fields.  This section is the one that
+    # closes the loop with the trainer: build the reference, point the PRODUCTION loss
+    # (`total_loss`, the exact function train.py minimises) at a candidate that IS the
+    # Weyl solution, and check that it vanishes.  If it does, the loss has a genuine zero
+    # at a two-black-hole configuration -- so a run that converges is solving the same
+    # system this script just verified, not a spherical stand-in.
+    import flax.linen as nn
+
+    from stationary.losses import total_loss
+    from stationary.model import point_fields
+    from stationary.problem import Config, sample_sphere
+
+    class WeylFieldNet(nn.Module):
+        """A flax module whose forward pass is the exact Weyl solution.
+
+        It is a candidate like any other -- the loss, the boundary terms and the gauge
+        source all see only a callable h, Gamma, lambda.  Nothing in the trainer needs to
+        know that this one is exact, which is the point: the same network-free path is
+        what a trained `FieldNet` would be evaluated through.
+        """
+
+        rods: Rods
+        n_quad: int = 200
+
+        @nn.compact
+        def __call__(self, x):
+            x = jnp.atleast_2d(x)
+            d = self.param("dummy", nn.initializers.zeros, (1,), jnp.float64)
+            f = jax.vmap(fields_of(self.rods, self.n_quad))(x)
+            return Fields(f.h + d, f.G + d, f.lam + d)
+
+    cfg = Config(rho_in=rho_in, rho_out=rho_out, outer_bc="robin", robin_order=a.robin_order,
+                 robin_source=True, inner_bc="reference", gauge_source="cylindrical",
+                 weyl=True, weyl_half_length=a.half_length, weyl_half_gap=a.half_gap,
+                 lam_inf=1.0, n_coll=512, n_bnd=96)
+    model = WeylFieldNet(rods, a.n_quad)
+    key = jax.random.PRNGKey(a.seed + 1)
+    params = model.init(jax.random.PRNGKey(0), jnp.zeros((1, 3)))
+    ref = fields_of(rods, a.n_quad)
+    k1, k2, k3 = jax.random.split(key, 3)
+    batch = {"coll": sample_shell(k1, cfg.n_coll, rho_in, rho_out),
+             "inner": sample_sphere(k2, cfg.n_bnd, rho_in),
+             "outer": sample_sphere(k3, cfg.n_bnd, rho_out)}
+
+    loss, parts = total_loss({"net": params}, batch, cfg, model, exact_fields=ref,
+                             lam_inf=cfg.lam_inf)
+    print("manufactured loss on the Weyl solution "
+          f"(inner data from the reference, Robin source, cylindrical gauge source)")
+    for k in sorted(parts):
+        print(f"    {k:14s} = {float(parts[k]):.3e}")
+    print(f"    {'TOTAL':14s} = {float(loss):.3e}\n")
+
+    # The same loss with the HARMONIC gauge: it must NOT vanish, because the Weyl chart is
+    # not harmonic.  Without this, a loss that ignores the gauge group entirely would pass
+    # the check above for the wrong reason.
+    cfg_h = Config(**{**cfg.__dict__, "gauge_source": "none"})
+    loss_h, parts_h = total_loss({"net": params}, batch, cfg_h, model, exact_fields=ref,
+                                 lam_inf=cfg.lam_inf)
+
+    checks.append(("manufactured loss on the Weyl solution is zero", float(loss) < 1e-20))
+    checks.append(("... and is NOT zero in the harmonic gauge (the check has teeth)",
+                   float(loss_h) > 1e-8))
 
     # ------------------------------------------------------------------ verdict
     print("\n" + "=" * 72)

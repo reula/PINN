@@ -51,14 +51,56 @@ def robin_operator(field_fun, x, base, order, inf_val=0.0):
 
 
 # ------------------------------------------------------------------ PDE terms
-def pde_terms(point_fields, xs, cfg) -> dict:
-    """Mean squared (rho-scaled) residuals of the four equation groups."""
-    r = scaled_residuals_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref)
+def gauge_source_of(cfg, point_fields):
+    """The inhomogeneous gauge source cfg.gauge_source names, or None for harmonic.
+
+    Built from the CANDIDATE's own metric: the point of a gauge condition is that it does
+    not presuppose the solution, so nothing here knows about rods, U or k.
+    """
+    if cfg.gauge_source == "none":
+        return None
+    if cfg.gauge_source == "cylindrical":
+        from .weyl import gauge_source_from_metric
+        return gauge_source_from_metric(lambda x: point_fields(x).h)
+    raise ValueError(f"unknown gauge_source {cfg.gauge_source!r}")
+
+
+def pde_terms(point_fields, xs, cfg, gauge_src=None) -> dict:
+    """Mean squared (rho-scaled) residuals of the four equation groups.
+
+    `gauge_src(x)` (optional) replaces the harmonic gauge condition with the inhomogeneous
+    Gamma^i_{jk} h^{jk} = gauge_src^i, which is what lets a non-harmonic chart (the Weyl
+    chart of a two-black-hole solution) be an exact solution of the whole system; see
+    geometry.residuals_at and stationary/weyl.py.
+    """
+    if gauge_src is None:
+        gauge_src = gauge_source_of(cfg, point_fields)
+    r = scaled_residuals_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref, gauge_src)
     return {k: jnp.mean(v ** 2) for k, v in r.items()}
 
 
 # -------------------------------------------------------------- inner boundary
-def inner_bc_terms(point_fields, xs, cfg) -> dict:
+def inner_bc_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
+    """Inner boundary residuals.
+
+    "spherical" (the default) imposes the problem statement: lambda from lam_inner_bc and
+    the round metric of areal radius inner_radius on the sphere.  "reference" imposes
+    whatever the exact reference carries there, which is what a manufactured check of a
+    non-spherical solution needs -- the Weyl two-black-hole configuration has neither a
+    round inner metric nor that polynomial lambda.
+    """
+    if cfg.inner_bc == "reference":
+        if exact_fields is None:
+            raise ValueError("inner_bc = 'reference' needs exact_fields")
+
+        def one(x):
+            f, e = point_fields(x), exact_fields(x)
+            return jnp.concatenate([pack_sym(f.h - e.h) * OFFW,
+                                    jnp.array([f.lam - e.lam])])
+
+        R = jax.vmap(one)(xs)
+        return {"h": jnp.mean(R[:, :6] ** 2), "lam": jnp.mean(R[:, 6] ** 2)}
+
     def one(x):
         f = point_fields(x)
         rho = jnp.linalg.norm(x)
@@ -80,7 +122,8 @@ def inner_bc_terms(point_fields, xs, cfg) -> dict:
     return out
 
 
-def reference_consistency(point_fields, cfg, n: int = 64, seed: int = 7) -> dict:
+def reference_consistency(point_fields, cfg, n: int = 64, seed: int = 7,
+                          exact_fields=None) -> dict:
     """How much the exact reference itself violates the imposed INNER boundary data.
 
     Zero means the inner data and the outer data (the Dirichlet values, or the
@@ -92,7 +135,8 @@ def reference_consistency(point_fields, cfg, n: int = 64, seed: int = 7) -> dict
     (see Config.__post_init__).
     """
     xs = sample_sphere(jax.random.PRNGKey(seed), n, cfg.rho_in)
-    return {k: float(v) for k, v in inner_bc_terms(point_fields, xs, cfg).items()}
+    return {k: float(v)
+            for k, v in inner_bc_terms(point_fields, xs, cfg, exact_fields).items()}
 
 
 # -------------------------------------------------------------- outer boundary
@@ -170,7 +214,7 @@ def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> di
 
     pf = make_point_fields(model, state["net"])
     out = dict(pde_terms(pf, batch["coll"], cfg))
-    out["inner"] = sum(inner_bc_terms(pf, batch["inner"], cfg).values())
+    out["inner"] = sum(inner_bc_terms(pf, batch["inner"], cfg, exact_fields).values())
     out["outer"] = sum(outer_bc_terms(pf, batch["outer"], cfg, exact_fields, lam_inf).values())
     return out
 
@@ -195,7 +239,7 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     parts = {}
     for k, v in pde_terms(pf, batch["coll"], cfg).items():
         parts[f"pde_{k}"] = v
-    inner = inner_bc_terms(pf, batch["inner"], cfg)
+    inner = inner_bc_terms(pf, batch["inner"], cfg, exact_fields)
     for k, v in inner.items():
         parts[f"inner_{k}"] = v
     outer = outer_bc_terms(pf, batch["outer"], cfg, exact_fields, lam_inf)

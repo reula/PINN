@@ -327,7 +327,7 @@ def main():
               f"   max |dlambda| = {float(jnp.max(dlo)):.3e}")
         # Is the reference itself compatible with the inner data?  If not, the run had no
         # consistent solution to find; say so instead of leaving the reader to wonder.
-        chk = reference_consistency(ref, cfg)
+        chk = reference_consistency(ref, cfg, exact_fields=ref)
         worst = max(chk.values())
         print("    reference vs the imposed inner data: "
               + "  ".join(f"{k}={v:.2e}" for k, v in chk.items())

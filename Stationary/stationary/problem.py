@@ -38,6 +38,25 @@ class Config:
     # freedom h -> s^2 h, and pinning h_rr as well over-determines the radial gauge --
     # the exact solution does not satisfy it once the inner sphere is placed anywhere
     # other than the canonical chart.  `--inner-h-rr V` still sets it if you want it.
+    # Inner boundary data.  "spherical" is the physical problem statement (round sphere of
+    # radius inner_radius plus the prescribed polynomial lambda); "reference" takes the data
+    # from the exact reference instead, for a manufactured check of a solution whose inner
+    # data is not that polynomial -- the Weyl two-black-hole configuration, for instance.
+    inner_bc: str = "spherical"      # "spherical" | "reference"
+    # Gauge.  "none" is the harmonic (de Donder) condition Gamma^i_{jk} h^{jk} = 0.
+    # "cylindrical" imposes the inhomogeneous source
+    #     Gamma^i = (h_rhorho - 1) h^{ij} d_j ln rho ,
+    # which is what a chart adapted to an axisymmetric solution satisfies (stationary/
+    # weyl.py derives it and verify_weyl.py checks it).  The source is built from the
+    # CANDIDATE's own metric, so it needs no knowledge of the solution.
+    gauge_source: str = "none"       # "none" | "cylindrical"
+    # The Weyl two-black-hole reference (symmetric Israel-Khan): two rods on the axis, each
+    # of mass weyl_half_length, separated by a gap 2*weyl_half_gap.  rho_in must clear
+    # weyl_half_gap + 2*weyl_half_length.
+    weyl: bool = False
+    weyl_half_length: float = 1.0
+    weyl_half_gap: float = 0.5
+    weyl_n_quad: int = 400
     inner_h_rr: float | None = None
     rho_in: float | None = None     # None -> sqrt(4 + R0^2): the areal-radius-2 sphere
 
@@ -142,6 +161,17 @@ class Config:
     make_figures: bool = True       # lambda at the inner sphere + outer multipoles
 
     def __post_init__(self):
+        if self.weyl and not jax.config.jax_enable_x64:
+            # The Weyl reference needs the dynamic range of float64: its k comes from a
+            # quadrature over s = 1/rho' whose extreme node sits at rho' ~ 1e7, where the
+            # integrand's second derivative is ~1e-33 against intermediates ~1e-21.  In
+            # float32 that is below the ~7 digits available, U_rho^2 - U_z^2 loses its
+            # sign, and the SECOND derivative of h comes out NaN -- which would show up
+            # only as a NaN outer Robin term, far from the cause.  Fail here instead.
+            raise ValueError(
+                "cfg.weyl needs float64 (the Weyl k quadrature is not representable in "
+                "float32): run with JAX_ENABLE_X64=1 or jax.config.update("
+                "'jax_enable_x64', True) before importing jax.numpy.")
         if self.rho_in is None:
             self.rho_in = rho_in_of_R0(self.R0)
         self.rho_in = float(self.rho_in)

@@ -191,7 +191,7 @@ checking the code against itself it checks it against a genuinely different exac
 the symmetric two-rod Weyl (Israel–Khan) family, i.e. **two black holes on the axis, held
 apart by the conical strut between them**.  It needs only jax (no Crunch, no GPU, no
 training) and about 10 s, it is run by `run_hub.sh --check`, and it exits non-zero if any
-check fails.  Twelve checks, all passing:
+check fails.  Fourteen checks, all passing:
 
 * the Weyl fields satisfy this code's two geometric equations in the Weyl chart — `ricci`
   and `lam_eq` residuals at ~1e-17 — while compatibility is exact by construction, since
@@ -215,6 +215,52 @@ command line, and `Rods(spans)` accepts an arbitrary set of rods for later confi
 Note the inner sphere must clear `rho = axis_extent` (2.5 for the default), and the strut's
 `k` near the axis is the least-converged number here, since the quadrature is tuned for the
 region outside the holes.
+
+The same script closes the loop with the trainer.  It builds a candidate whose forward pass
+*is* the Weyl solution and feeds it to `total_loss` — the exact function `train.py` minimises —
+with the inner data and the Robin source taken from the reference and the gauge source built
+from the candidate's own metric.  The total loss comes out at **1.3e-28**: the loss has a
+genuine zero at a two-black-hole configuration, so a run that converges is solving the system
+this script verifies and not a spherical stand-in.  The check has teeth: the same loss with the
+harmonic condition (`gauge_source = "none"`) does **not** vanish, because the Weyl chart is not
+harmonic.
+
+### 7.2 Production run: training on the Weyl configuration
+
+    python -m stationary.train --weyl --outdir runs/weyl
+
+`--weyl` sets up the manufactured Weyl problem end to end, and every piece of it is an
+ordinary production code path rather than a special case:
+
+* `inner_bc = "reference"` takes the inner data — all six components of `h` and `lambda` —
+  from the exact reference instead of from the round sphere plus the polynomial `lambda`.
+  That is what this configuration needs: at `rho_in` the two black holes make the induced
+  metric non-spherical, and `lambda` there is not
+  `lam0 + S1 z/rho + S2 (z^2 - (x^2+y^2)/2)/rho^2`.  `inner_bc = "spherical"` stays the
+  default and is unchanged;
+* `gauge_source = "cylindrical"` imposes `Gamma^i = (h_rhorho - 1) h^{ij} d_j ln rho`, the
+  inhomogeneous de Donder condition that a chart adapted to an axisymmetric solution
+  satisfies.  The source is built from the **candidate's** own metric (derivatives of its
+  `h`), so it presupposes nothing about the solution: the network is still the only thing
+  that knows where the black holes are;
+* `outer_bc = "robin"` with `robin_source` and `lam_inf = 1` (the Weyl asymptotic value),
+  and `robin_exps` unchanged, since §7.1 measures exactly `h ~ rho^-2`, `lambda ~ rho^-1`,
+  `Gamma ~ rho^-3` for this family;
+* the reference enters the loss *only* as boundary data and as the Robin source; elsewhere it
+  is a comparison asset, exactly as in the manufactured scalar-field runs;
+* `rho_in` must clear the rods, which reach `rho = half_gap + 2*half_length`, so `--weyl`
+  defaults to `rho_in = 3 * axis_extent` (7.5 for the default rods) and
+  `rho_out = 10 * rho_in`.  `--weyl-half-length`, `--weyl-half-gap` and `--weyl-n-quad`
+  parameterise the configuration, and `--rho-in`/`--rho-out` override the shell;
+* the run **must** be in float64 (`JAX_ENABLE_X64=1`), and `--weyl` enforces that with an
+  explicit error.  The reason is specific: `k` comes from a quadrature over `s = 1/rho'`
+  whose extreme node sits at `rho' ~ 1e7`, where the integrand's second derivative is
+  ~1e-33 against intermediates ~1e-21.  In float32 that is below the seven digits
+  available, `U_rho^2 - U_z^2` loses its sign, and the **second** derivative of `h` comes
+  out NaN — which surfaces only as a NaN outer Robin term, far from its cause.
+
+A run that converges here has solved the Einstein-scalar system on a shell whose inner data is
+the field of two black holes — the first configuration in this project with no symmetry.
 
 ## 8. Results
 

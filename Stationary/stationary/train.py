@@ -54,6 +54,10 @@ def exact_asset(cfg: Config):
     diagnostics (`ref_solution`).  This is the single place that builds it, so that
     training, the report and the comparison tool all see the same reference.
     """
+    if getattr(cfg, "weyl", False):
+        from .weyl import Rods, fields_of
+        return fields_of(Rods.symmetric(cfg.weyl_half_length, cfg.weyl_half_gap),
+                         cfg.weyl_n_quad)
     if cfg.outer_bc == "dirichlet_exact":
         return exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
     if cfg.ref_solution or cfg.robin_source:
@@ -111,7 +115,7 @@ def build(cfg: Config, init_from: str | None = None):
               f"{exact.lambda0_from_k(cfg.R0, cfg.lam_inf, cfg.inner_radius):.7f} to keep "
               f"lam_inf (and re-check the inner data).")
     if exact_fields is not None:
-        chk = reference_consistency(exact_fields, cfg)
+        chk = reference_consistency(exact_fields, cfg, exact_fields=exact_fields)
         # The reference enters the loss as boundary data only in these two cases; without
         # them it is a comparison asset and a mismatch is not a convergence problem.
         matters = cfg.outer_bc == "dirichlet_exact" or cfg.robin_source
@@ -701,6 +705,20 @@ def parse_args(argv=None):
                    help="how far a PDE weight may drift from its configured value")
     p.add_argument("--w-outer", type=float, default=None)
     p.add_argument("--w-inner", type=float, default=None)
+    p.add_argument("--inner-bc", type=str, default=None, choices=("spherical", "reference"),
+                   help="inner data: the round sphere + polynomial lambda, or the exact "
+                        "reference (for a manufactured run whose solution is neither)")
+    p.add_argument("--gauge-source", type=str, default=None,
+                   choices=("none", "cylindrical"),
+                   help="harmonic gauge, or the cylindrical source a chart adapted to an "
+                        "axisymmetric solution carries (built from the candidate's metric)")
+    p.add_argument("--weyl", action="store_true",
+                   help="manufactured run on the Weyl two-black-hole reference; implies "
+                        "--inner-bc reference --gauge-source cylindrical --outer-bc robin "
+                        "--robin-source --ref-solution, and a rho_in that clears the rods")
+    p.add_argument("--weyl-half-length", type=float, default=None, dest="weyl_half_length")
+    p.add_argument("--weyl-half-gap", type=float, default=None, dest="weyl_half_gap")
+    p.add_argument("--weyl-n-quad", type=int, default=None, dest="weyl_n_quad")
     a = p.parse_args(argv)
     cfg = Config()
     if a.steps is not None:
@@ -811,6 +829,34 @@ def parse_args(argv=None):
         cfg.robin_source = True
     if a.ref_asymptotic is not None:
         cfg.ref_asymptotic = a.ref_asymptotic
+    if a.inner_bc is not None:
+        cfg.inner_bc = a.inner_bc
+    if a.gauge_source is not None:
+        cfg.gauge_source = a.gauge_source
+    if a.weyl_half_length is not None:
+        cfg.weyl_half_length = float(a.weyl_half_length)
+    if a.weyl_half_gap is not None:
+        cfg.weyl_half_gap = float(a.weyl_half_gap)
+    if a.weyl_n_quad is not None:
+        cfg.weyl_n_quad = a.weyl_n_quad
+    if a.weyl:
+        # The reference IS the solution here, so the inner data, the Robin source and the
+        # comparison asset all come from it; the only things left to choose are the shell
+        # (which must clear the rods -- they reach rho = half_gap + 2*half_length) and how
+        # far out to put the outer sphere.  Nothing about the network is special-cased.
+        cfg.weyl = True
+        cfg.ref_solution = True
+        cfg.robin_source = True
+        cfg.inner_bc = "reference"
+        cfg.gauge_source = "cylindrical"
+        if a.outer_bc is None:
+            cfg.outer_bc = "robin"
+        if a.rho_in is None:
+            cfg.rho_in = 3.0 * (cfg.weyl_half_gap + 2.0 * cfg.weyl_half_length)
+        if a.rho_out is None:
+            cfg.rho_out = 10.0 * cfg.rho_in
+        if a.lam_inf is None:
+            cfg.lam_inf = 1.0            # lambda -> 1 at infinity for Weyl
     cfg.__post_init__()
     if a.scale_ref_rho_in:
         cfg.scale_ref = cfg.rho_in
