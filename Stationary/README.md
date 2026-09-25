@@ -184,6 +184,38 @@ curvatures (flat space in polar coordinates, round `S^3`), the equivalence
 `Gamma^i = -Delta_h x^i` by two independent routes, and the residual gauge freedom
 of the harmonic chart.
 
+### 7.1 Production check: the Weyl two-black-hole solution
+
+`python -m verify_weyl` is the *production* counterpart of the pytest suite: instead of
+checking the code against itself it checks it against a genuinely different exact solution —
+the symmetric two-rod Weyl (Israel–Khan) family, i.e. **two black holes on the axis, held
+apart by the conical strut between them**.  It needs only jax (no Crunch, no GPU, no
+training) and about 10 s, it is run by `run_hub.sh --check`, and it exits non-zero if any
+check fails.  Twelve checks, all passing:
+
+* the Weyl fields satisfy this code's two geometric equations in the Weyl chart — `ricci`
+  and `lam_eq` residuals at ~1e-17 — while compatibility is exact by construction, since
+  `Gamma` is built from `h`;
+* that chart is **not** harmonic: `Gamma^i_{jk} h^{jk}` is 3.9e-03 at `rho = 7.5`, which is
+  the chart and not the physics.  The inhomogeneous source
+  `Gamma^i = (h_rhorho − 1) h^{ij} d_j ln rho` drives it to machine zero, so the Weyl
+  solution solves the **full** system — PDE, scalar equation and gauge — with no coordinate
+  transformation.  That closed form needs only the metric at the point, so it can be imposed
+  on a candidate solution, which is what a production gauge condition has to be;
+* the closed form agrees with the independent autodiff connection to 2e-17;
+* the decay exponents are exactly the ones the Robin conditions assume: `h − I ~ rho^-2`,
+  `lam − 1 ~ rho^-1`, `Gamma ~ rho^-3` (so `robin_exps` needs no retuning for this solution);
+* the strut is present: `k`, which sets the cone angle `2 pi e^-k` on the axis, is −0.588
+  across the gap and 0 outside the rods.
+
+The mapping is `h = e^{2k}(drho^2 + dz^2) + rho^2 dphi^2`, `lam = e^{2U}`; the derivation of
+that and of the gauge source is in `stationary/weyl.py`.  All parameters
+(`--half-length`, `--half-gap`, `--n-quad`, `--rho-in`, `--rho-out`, `--n-points`) are on the
+command line, and `Rods(spans)` accepts an arbitrary set of rods for later configurations.
+Note the inner sphere must clear `rho = axis_extent` (2.5 for the default), and the strut's
+`k` near the axis is the least-converged number here, since the quadrature is tuned for the
+region outside the holes.
+
 ## 8. Results
 
 ### 8.1 Exact solution and pipeline validation

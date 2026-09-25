@@ -93,11 +93,19 @@ def ricci_from_gamma(G, dG):
 
 
 # ------------------------------------------------------------------- residuals
-def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray) -> dict:
+def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
+                 gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None) -> dict:
     """All four residual groups at a single point x (no scaling applied).
 
     `fields` maps a point to (h, G, lam); the same code path is used by the
     network and by the tests (which feed the exact solution).
+
+    `gauge_src(x)` is an INHOMOGENEOUS gauge source: the gauge residual becomes
+    Gamma^i_{jk} h^{jk} - gauge_src^i instead of Gamma^i_{jk} h^{jk}.  The default None is
+    the harmonic (de Donder) condition.  A source is what lets a chart that is *not*
+    harmonic -- e.g. the Weyl chart of a two-black-hole solution -- be an exact solution
+    of the whole system without a coordinate transformation, exactly as the manufactured
+    Robin source does for the outer boundary.
     """
     h, G, lam = fields(x)
     dh, dG, dlam = jax.jacfwd(fields)(x)
@@ -109,6 +117,8 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray) -> dic
               - jnp.einsum("dac,bd->abc", G, h))
     ric = ricci_from_gamma(G, dG) - (1.0 / (2.0 * lam**2)) * jnp.outer(dlam, dlam)
     gauge = jnp.einsum("ijk,jk->i", G, Hinv)
+    if gauge_src is not None:
+        gauge = gauge - gauge_src(x)
     hess = d2lam - jnp.einsum("cij,c->ij", G, dlam)
     lam_eq = (jnp.einsum("ij,ij->", Hinv, hess)
               - (1.0 / lam) * jnp.einsum("ij,i,j->", Hinv, dlam, dlam))
@@ -116,13 +126,15 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray) -> dic
     return dict(compat=compat, ricci=ric, gauge=gauge, lam_eq=lam_eq)
 
 
-def residuals_batch(fields: Callable, xs: jnp.ndarray) -> dict:
+def residuals_batch(fields: Callable, xs: jnp.ndarray,
+                    gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None) -> dict:
     """Vectorised residuals at many points."""
-    return jax.vmap(lambda x: residuals_at(fields, x))(xs)
+    return jax.vmap(lambda x: residuals_at(fields, x, gauge_src))(xs)
 
 
 def scaled_residuals_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
-                           ref: float | None = None) -> dict:
+                           ref: float | None = None,
+                           gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None) -> dict:
     """Residuals multiplied by a length**p so that the groups can be compared.
 
     Dimensionally compat, gauge ~ 1/length and ricci, lam_eq ~ 1/length^2, so
@@ -131,7 +143,7 @@ def scaled_residuals_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
     is used instead, which measures every residual relative to the size of its own
     terms but makes the far field dominate the loss by many orders of magnitude.
     """
-    r = residuals_batch(fields, xs)
+    r = residuals_batch(fields, xs, gauge_src)
     if ref is None:
         base = jnp.linalg.norm(xs, axis=-1)
     else:

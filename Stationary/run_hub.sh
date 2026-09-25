@@ -123,6 +123,8 @@ if [ "${1:-}" = "--check" ]; then
     fi
     echo "== test suite (takes ~4-5 min, OMP_NUM_THREADS=$OMP_NUM_THREADS) =="
     MPLBACKEND=Agg MPLCONFIGDIR="$MPLCONFIGDIR" "$PY" -m pytest tests/ -q
+    echo "== Weyl two-black-hole production check (jax only, ~10 s) =="
+    "$PY" -m verify_weyl || { echo "verify_weyl FAILED"; exit 1; }
     echo "== smoke run (200 steps, must finish in seconds) =="
     SMOKE="${SMOKE:-$HERE/runs/_smoke}"
     # the shell creates the redirect target before python can create the outdir
