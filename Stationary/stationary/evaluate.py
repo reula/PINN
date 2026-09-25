@@ -44,9 +44,13 @@ def evaluate(run_dir: str, params_file: str = "params.pkl", make_plots: bool = T
     pf = point_fields(model, state["net"])
     report = {}
 
-    exact_fields = None
-    if cfg.outer_bc == "dirichlet_exact":
-        exact_fields = exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
+    # One asset, built in ONE place.  This used to build a reference only for a
+    # dirichlet_exact run, which left every Robin run without one: the boundary residuals
+    # then either raised (inner_bc="reference" needs one) or went unreported, and a Weyl run
+    # would have been compared against the spherical solution.  train.exact_asset covers
+    # dirichlet_exact, ref_solution, robin_source and weyl alike.
+    from .train import exact_asset
+    exact_fields = exact_asset(cfg)
 
     report.update(diagnostics.residual_report(pf, cfg))
     report.update(diagnostics.inner_boundary_report(pf, cfg))
@@ -55,10 +59,10 @@ def evaluate(run_dir: str, params_file: str = "params.pkl", make_plots: bool = T
     report["bc_inner"] = {k: float(v) for k, v in
                           inner_bc_terms(pf, sample_sphere(key, 512, cfg.rho_in), cfg,
                                          exact_fields).items()}
-    if cfg.outer_bc == "dirichlet_exact":
+    if cfg.outer_bc in ("dirichlet_exact", "robin"):
         report["bc_outer"] = {k: float(v) for k, v in
                               outer_bc_terms(pf, sample_sphere(key, 512, cfg.rho_out), cfg,
-                                             exact_fields).items()}
+                                             exact_fields, cfg.lam_inf).items()}
     if exact_fields is not None:
         report.update(diagnostics.exact_comparison(pf, exact_fields, cfg))
 
