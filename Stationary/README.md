@@ -593,6 +593,93 @@ Consequences:
   (versus `8.3e-10` in float64), which is why the float32 order-4 attempt parked at
   `lambda(100) = 0.406` while the x64 one reached `0.930`.  See HUB.md section 6.
 
+### 8.9 The Weyl two-black-hole configuration (first run with no symmetry at all)
+
+The manufactured problem of §7.1/§7.2, run for real: the inner data is the two-black-hole
+field on a sphere that clears the rods, the gauge condition is the inhomogeneous cylindrical
+one, and the outer condition is the order-2 Robin with its manufactured source.  The run is
+`runs/weyl_prod`.
+
+**Configuration.**  `axisym_hybrid 20 x 6`, fourier 0 (2265 parameters — five functions of
+`(rho, mu)` rather than twenty-five of three); `rho` in [7.5, 75], shell ratio 10, with the
+rods (half-length 1, half-gap 0.5) and therefore both horizons *inside* the inner sphere;
+`n_coll = 4096`, `n_bnd = 256`; `w_inner = w_outer = 10`; `scale_exps` as elsewhere (which,
+as measured below, makes the loss dimensionless and chart-independent); float64 — and it has
+to be, for the reason in §7.2.
+
+**Optimiser: SSBroyden from the random init, with no Adam phase at all** (`--steps 0`, blocks
+of 100, `initial_scale` engaged on the first block).  The loss went 1.746e+00 → 2.059e-13 in
+3000 iterations (2 h 4 min), monotonically, and was still improving by ~1.4x per block when
+the iteration cap stopped it (status 1: never a stalled line search).  Selected blocks:
+
+| iteration | 100 | 500 | 1000 | 2000 | 3000 |
+|---|---|---|---|---|---|
+| loss | 9.01e-05 | 4.15e-08 | 5.26e-10 | 4.66e-12 | 2.06e-13 |
+
+Final groups: `compat` 3.7e-36 (structural — Γ is derived from `h`), `ricci` 7.6e-14,
+`gauge` 5.3e-14, `lam_eq` 4.3e-14, `inner` 2.8e-16, `outer_h` 5.2e-16, `outer_lam` 2.2e-16.
+So a cold-started quasi-Newton phase, given the `initial_scale` it was designed with, needs no
+Adam warm-up — the warm-up was only fixing the large gradient it created itself.
+
+**Accuracy against the exact Weyl solution.**
+
+| where | `max abs(dh)` | `max abs(dGamma)` | `max abs(dlambda)` |
+|---|---|---|---|
+| over the shell, 4096 sampled interior points | 4.83e-07 | 8.58e-07 | 8.60e-08 |
+| inner sphere `rho_in` (2048 points) | 8.00e-07 | — | — |
+| outer sphere `rho_out` (2048 points) | 3.47e-07 | — | 9.63e-08 |
+
+How these are measured, because the first row is easy to misread: it is a **volume max, not a
+boundary value**.  The points come from `sample_shell`, i.e. log-uniform in `rho` across
+[7.5, 75] with uniform directions, and the max is taken pointwise and then over the sample —
+4096 points, fixed seed, none of them on either sphere.  It is a *sampled* max, not a
+certified bound: the separate 2048-point inner-sphere probe is the worst number in the table
+(8.0e-07), which is what a denser sample near the inner sphere does.  The error is not
+concentrated anywhere in particular: 4.3e-07 for `rho <= 1.2 rho_in`, 4.8e-07 in the middle,
+3.5e-07 beyond `3 rho_in`; `max abs(dlambda)` = 8.6e-08 is attained at `rho = 71.6`.
+
+**The gauge condition is satisfied, and that needs saying explicitly.**  The diagnostics
+report the residual of the condition the run *imposed* — the inhomogeneous cylindrical source
+— not `Gamma = 0`.  Measured independently at 512 shell points: imposed condition max 3.34e-07
+(rms 2.29e-08), `ricci` max 6.24e-08, `lam_eq` max 2.66e-08, and `lambda` averaged 0.819392
+against the reference's 0.819392 — six decimals.  The same probe on the exact solution with
+its own source gives 1.3e-15, so 3.3e-07 is the network's error and not a floor of the check.
+For scale: the *harmonic* residual of this solution is 8.6e-03 at `rho_in`, a property of the
+chart and precisely why the source is imposed at all; it is kept in `report.json` as
+`res_gauge_harmonic_*`.
+
+**The radial structure is the right one.**  The outer multipole diagnostic fits `l = 0`:
+power −0.926 (expected −1), `l = 1`: −2.05 (−2), `l = 2`: −2.85 (−3), with `l = 3` down in the
+1e-9 roundoff floor — exactly the Weyl asymptotics the Robin conditions assume in §7.1.
+
+**Diagnostics that deliberately do not apply here**, so that a reader of the figures is not
+misled: no areal radius is imposed (the inner data is the reference's own, and the measured
+areal radius there is 7.4115, r^2 = 54.93, against the round-sphere 2 that a spherical-data run
+would impose); the family read-off of `R0` and `k` in the chart-independent section assumes
+spherical symmetry and reports 1.99/0.9997 against the data's 1/1 — indicative only; and the
+inner-sphere figure plots `|lambda_net - lambda_ref| <= 1.1e-07`, not the distance to the
+round-sphere polynomial, which would be 0.21 of genuine Weyl-vs-round difference wearing the
+network's name.
+
+**Does the chart matter?**  Measured, because it was worth knowing before spending the compute:
+the manufactured loss on a covariantly perturbed Weyl candidate is 1.720418e-02 in
+[7.5, 75], [0.1, 1] and [0.01, 0.1] alike — equal to every printed digit and in every group.
+`scale_exps` makes each residual dimensionless (`compat`, `gauge` ×rho; `ricci`, `lam_eq`
+×rho²), the features are `t = log(rho/rho_in)/log(ratio)` and `mu = n_z`, `decay_feature` is
+`rho_in/rho`, and `theta = rho d_rho` is scale-invariant, so at a fixed shell RATIO the chart
+cancels out of the whole problem.  A [0.01, 1] recipe therefore does not change the
+*conditioning*; what it changes is the ratio (100 instead of 10), i.e. how far outside the
+source the outer sphere sits.  A second run of this same configuration at ratio 100 (rods
+scaled by 1/750, `runs/weyl_rescaled`) is in flight for that comparison.
+
+**Files.**  `runs/weyl_prod/`: `report.txt`, `report.json`, `report_eval.json`,
+`diagnostics.png`, `lambda_inner.png`, `lambda_vs_rho.png`, `lambda_multipoles_outer.png`,
+`lambda_multipole_decay.png`, and `vtk/solution.vtk` — 9.5 MB, a 41³ graded Cartesian grid in
+**Weyl units** (`--physical-inner 7.5`, i.e. scale factor 1, so the rods sit on the axis at
+`|z|` in [0.5, 2.5] as the analytic solution has them), 56 844 points and 52 216 hexahedra,
+carrying `lambda`, `lambda_minus_1`, `r_areal`, `ricci_scalar`, `ricci_sq`, `res_ricci` and
+`res_lam_eq`.
+
 ## 9. Running on a JupyterHub / GPU machine
 
 The hub workflow has its own document: **`HUB.md`** (setup, `run_hub.sh`,
