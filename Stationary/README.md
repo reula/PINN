@@ -722,13 +722,23 @@ comparatively bare, where the field varies fastest; and roughly half its cells h
 discarded because their centres fell outside the shell.  The two polar rings are written as
 wedges (VTK 13) rather than hexahedra with two coincident nodes, so no cell is degenerate.
 
-One field is deliberately blanked, and it is worth knowing why: `h_err` is NaN on the axis,
-because the exact solution's *Cartesian* metric components have no unique limit there — the
-chart formula `(A x^2 + y^2)/rho_cyl^2` depends on the direction of approach, and the `k`
-quadrature divides by `rho_cyl` — while `lambda`, a scalar, is perfectly regular there.  So
-`lambda_err` is finite at every node and `h_err` carries NaN on the 82 axis nodes, which
-VisIt renders as blanked.  Avoiding the axis altogether is what a tetrahedral mesh would buy;
-the conforming spherical grid needs its poles to close the caps.
+Every field in it is finite, and getting there fixed two real defects in the reference rather
+than papering over them.  On the axis both exact expressions were 0/0: the `k` quadrature
+divides by `rho_cyl`, and the Cartesian `h` formula `(A x^2 + y^2)/rho_cyl^2` was falling back
+to zero, when its limit is `A` — the angular part collapses, `d(rho)^2 + rho^2 d(phi)^2 =
+dx^2 + dy^2`, so `h = A * delta` there, and `k = 0` beyond the outermost rod ends makes it
+exactly `delta`.  Both now return the limit.  Note that nothing else in the pipeline ever
+looks at the axis — training samples `rho >= rho_in`, the Robin conditions sit at `rho_out` —
+so an O(1) error there was invisible until a field-by-field export of `h(computed) −
+h(exact)` was asked for.  Off the axis every value is unchanged, so no trained number in this
+document moves.
+
+The failure mode this exposed is worth recording, because it is silent: **one non-finite
+number in a legacy ASCII VTK file stops VisIt from reading every variable that follows it**,
+so a ten-field file comes back as a two-field one.  `stationary.vtk` now refuses to write such
+a value (it substitutes 0 and reports it) — a guard, not a blanking mechanism.  Current
+ranges in `runs/weyl_prod/vtk/solution.vtk`: `lambda_err` in [−1.14e-07, +4.52e-08] (max
+1.14e-07, rms 1.53e-08) and `h_err` in [7.2e-09, 8.6e-07].
 
 ## 9. Running on a JupyterHub / GPU machine
 

@@ -129,11 +129,23 @@ def k_of(rho, z, rods: Rods, n_quad: int = 400):
     here comes near a rod: the path sits at the target rho > 0, and rods are at rho = 0.
     """
     u, w = _gauss_legendre(int(n_quad))
-    smax = 1.0 / rho
+    smax = 1.0 / jnp.where(rho > 0.0, rho, 1.0)     # the axis is handled below
     s = smax * u                                    # nodes in s, ascending from ~0
     rp = 1.0 / s
     kr = jax.vmap(lambda a, b: _k_rho(a, b, rods))(rp, jnp.full_like(rp, z))
-    return -jnp.sum(w * smax * kr / s**2)
+    quad = -jnp.sum(w * smax * kr / s**2)
+    # rho = 0 is the axis, where the quadrature cannot be evaluated at all -- its nodes sit
+    # at s = u/rho -- so return the exact limit instead of inf/NaN.  This is not a fudge: k
+    # vanishes on the axis BEYOND THE OUTERMOST ROD ENDS (the same normalisation that makes
+    # k -> 0 at infinity), which is why the metric there is flat in Cartesian components.
+    # It matters well beyond tidiness: without it the exact Cartesian h is non-finite on the
+    # axis, and ONE non-finite number in an ASCII VTK file stops VisIt from reading every
+    # variable that follows it -- a ten-field file then looks like a two-field one.
+    # Note "beyond the outermost ends", not "outside every rod": on the axis BETWEEN two
+    # rods k is the strut constant (nonzero), and inside a rod it diverges.  No grid point
+    # lands there, so NaN is the honest answer for that whole inner stretch.
+    extent = max(abs(v) for a, b in rods.spans for v in (a, b))
+    return jnp.where(rho > 0.0, quad, jnp.where(jnp.abs(z) >= extent, 0.0, jnp.nan))
 
 
 # ------------------------------------------------------------------- the code's fields
@@ -148,9 +160,15 @@ def h_cart(x, rods: Rods, n_quad: int = 400):
     rho = jnp.sqrt(rho2)
     A = jnp.exp(2.0 * k_of(rho, x2, rods, n_quad))
     inv = jnp.where(rho2 > 0.0, 1.0 / jnp.maximum(rho2, 1e-300), 0.0)
-    hxx = A * x0**2 * inv + x1**2 * inv
-    hyy = A * x1**2 * inv + x0**2 * inv
-    hxy = (A - 1.0) * x0 * x1 * inv
+    # On the axis (rho_cyl = 0) the polar formula is 0/0 and its limit is NOT zero: the
+    # angular part collapses, d(rho)^2 + rho^2 d(phi)^2 = dx^2 + dy^2, so h = A (dx^2 +
+    # dy^2) + A dz^2 = A * delta there.  Getting this wrong is invisible off the axis but
+    # shows up as an isolated O(1) error exactly on it, which is what a VTK export of
+    # h(computed) - h(exact) makes obvious and nothing else does.
+    on_axis = rho2 <= 0.0
+    hxx = jnp.where(on_axis, A, A * x0**2 * inv + x1**2 * inv)
+    hyy = jnp.where(on_axis, A, A * x1**2 * inv + x0**2 * inv)
+    hxy = (A - 1.0) * x0 * x1 * inv                     # already 0 on the axis
     zero = jnp.zeros_like(hxx)
     return jnp.array([[hxx, hxy, zero],
                       [hxy, hyy, zero],

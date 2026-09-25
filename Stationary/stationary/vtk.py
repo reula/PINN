@@ -321,21 +321,21 @@ def main():
             nl = int((~jnp.isfinite(data["lambda_err"])).sum())
             if nl:
                 print(f"[vtk] WARNING: lambda_err is non-finite at {nl} nodes")
-            # On the axis the exact solution's CARTESIAN h has no unique limit -- the chart
-            # formula (A x^2 + y^2)/rho_cyl^2 depends on the approach direction, and the k
-            # quadrature divides by rho_cyl -- while lambda, a scalar, is perfectly fine
-            # there.  Those nodes get NaN, which VisIt renders as blanked: this is the
-            # marking the Cartesian-export route needs, and it is confined to the axis.
-            bad = ~jnp.isfinite(data["h_err"])
-            rc = jnp.linalg.norm(xs_chart[:, :2], axis=1)          # cylindrical rho
-            if bool(jnp.any(bad)):
-                worst = float(jnp.max(rc[bad]))
-                print(f"[vtk] h_err blanked (NaN) at {int(bad.sum())} of {bad.size} nodes, "
-                      f"max cylindrical rho there {worst:.2e}"
-                      + ("" if worst < 1e-9 else "   <- NOT on the axis, investigate"))
-            else:
-                print(f"[vtk] h_err max {float(jnp.max(data['h_err'])):.3e}")
+            print(f"[vtk] h_err: max {float(jnp.max(jnp.abs(data['h_err']))):.3e}")
     data.update(fields_at(pf, xs_chart, want_all=not a.lambda_only))
+
+    # Nothing below should be non-finite (weyl.k_of now returns the exact axis limit rather
+    # than inf).  This guard is not a blanking mechanism but a loud one: VisIt stops reading
+    # an ASCII VTK file at the first nan/inf, so a single bad value silently truncates the
+    # variable list -- which is precisely how a ten-field file came back as a two-field one.
+    for _name, _vals in list(data.items()):
+        _arr = jnp.asarray(_vals)
+        _bad = ~jnp.isfinite(_arr)
+        if bool(jnp.any(_bad)):
+            print(f"[vtk] WARNING: {_name}: {int(_bad.sum())} of {_bad.size} values are "
+                  f"non-finite and are written as 0 -- VisIt would otherwise stop reading "
+                  f"the variables after this one")
+            data[_name] = jnp.where(_bad, 0.0, _arr)
     out_dir = os.path.join(run_dir, a.subdir)
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "solution.vtk")
