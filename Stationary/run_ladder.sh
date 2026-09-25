@@ -138,9 +138,14 @@ QPT=(--n-coll 16384 --n-bnd 1024)
 # early on the plateau rule (total loss AND outer Robin, 1e-4 relative over 3 blocks of 100,
 # the package defaults), so the caps are only a safety net.
 QADAM=(--steps 2000 --lbfgs-steps 6000)
-# The ramp's phases are warm-started from the previous one, and A (the control) IS its first
-# phase, so C costs two more runs, not three.
-QADAM_RAMP=(--steps 500 --lbfgs-steps 6000)
+# WARM STARTS RUN NO ADAM (--steps 0, straight into SSBroyden).  Restarting Adam at
+# lr = 1e-3 on a solution the quasi-Newton phase has already converged is how a warm-started
+# phase diverges: Adam is not a descent method and that step is huge next to the local
+# curvature.  The quasi-Newton phase cannot diverge -- Crunch's line search returns the state
+# UNCHANGED when it fails (handle_ls_failure) -- so removing the Adam warm-up removes the
+# only way a phase can blow up.  Measured on a cold start: 4.75 -> 3.2e-02 in 100 iterations
+# with no Adam at all.
+QADAM_RAMP=(--steps 0 --lbfgs-steps 6000)
 
 LADDER_RUNS=(control_ord1b control_ord2 control_ord4_x64 control_ord1_big \
              dipole_small dipole_big dipole_ord2_small \
