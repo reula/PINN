@@ -13,7 +13,10 @@
 #
 # Writes into the run directory:
 #   diagnostics.png, lambda_inner.png, lambda_multipoles_outer.png,
-#   lambda_multipole_decay.png, lambda_vs_rho.png, report.txt
+#   lambda_multipole_decay.png, lambda_vs_rho.png, report.txt, plane/plane.png
+# (`plane/` is the (rho_cyl, z) half-plane of an axisymmetric run: lambda, the error in
+#  lambda, the metric error and the exact curvature -- the complete picture for such a run.
+#  stationary.plane skips itself, quietly and with exit 0, for a 3-D architecture.)
 #
 # Speed. Most of the wall time is XLA *compilation*, not execution: each module builds its
 # own graphs (residuals, each boundary condition, the figures). Two things keep that from
@@ -33,7 +36,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="${1:?usage: postprocess.sh RUN_DIR [PYTHON] [STEPS]}"
 PY="${2:-python}"
-STEPS="${3:-evaluate,profile,report,vtk}"
+STEPS="${3:-evaluate,profile,report,vtk,plane}"
 PARAMS="params.pkl"
 
 cd "$HERE"
@@ -105,6 +108,11 @@ if want vtk; then
         echo "[post] vtk: skipped (this run was not launched with --vtk)"
     fi
 fi
+# The (rho_cyl, z) half-plane, for an axisymmetric run.  stationary.plane decides for itself
+# whether the architecture is axisymmetric and does nothing (exit 0) if it is not, so this
+# needs no guard here; it is the cheap and complete view of such a run: lambda, the error in
+# lambda, the metric error and the exact solution's curvature, with the rods drawn on the axis.
+want plane && run_step plane "$OUT/plane/plane.png (the (rho_cyl, z) half-plane)"
 
 echo
 echo "[post] files now in $OUT:"

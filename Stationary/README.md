@@ -763,6 +763,24 @@ a value (it substitutes 0 and reports it) — a guard, not a blanking mechanism.
 ranges in `runs/weyl_prod/vtk/solution.vtk`: `lambda_err` in [−1.14e-07, +4.52e-08] (max
 1.14e-07, rms 1.53e-08) and `h_err` in [7.2e-09, 8.6e-07].
 
+**The same thing in two dimensions, which is all it needs.**  These configurations are
+axisymmetric — the rods sit on the z axis and nothing depends on `phi` — so the half-plane
+`(rho_cyl, z)` contains the entire solution, and a colour map of it shows everything the 3-D
+file does with the holes and the spheres drawn where they are:
+
+    python -m stationary.plane --outdir runs/weyl_prod --n-rho 200 --n-z 400
+
+writes `plane/plane.png` — four panels: `lambda`, `lambda_err`, `log|h_err|`, and `log R_ab
+R^ab` of the **exact** solution — with the rods as black segments on the axis and the two
+spheres dashed, plus `plane/plane.json` with the numbers.  Only the points inside the shell
+are evaluated; the rest is masked.  It refuses to run on a 3-D architecture unless `--force`
+is given, since the half-plane would then be a slice rather than the solution, and
+`postprocess.sh` runs it as a fifth step, so every axisymmetric run produces it
+automatically.  The curvature panel is the one that answers "is this shell a strong-field
+test at all?": at `rho_in = 7.5` the exact `R_ab R^ab` peaks at 1.9e-06 against ~0.19 at the
+horizon of a mass-1 hole, i.e. 1e-05 of it — which is why the curvature near the inner
+boundary looks featureless, and why the runs now in flight move the shell in.
+
 ### 8.10 Two black holes of unequal mass (1 and 0.1)
 
 `runs/weyl_unequal` is §8.9's production recipe with the lower hole's rod shortened to a tenth
@@ -815,7 +833,11 @@ trained** — 3e-05 relative — the difference from 1.44 being the `O(1/rho)` t
 `M = 1.099879` against `1.44` and `1.1` (§7.1).
 
 **Files.**  Same set as §8.9, in `runs/weyl_unequal/`, including `vtk/solution.vtk` with
-`lambda_err` first — the error field for a configuration whose λ really does have a dipole.
+`lambda_err` first — the error field for a configuration whose λ really does have a dipole —
+and `plane/plane.png`, the `(rho_cyl, z)` half-plane, where the dipole is visible as the two
+halves differing: `lambda` on the inner sphere is 0.7521097 at `z = +3` against 0.7757249 at
+`z = -3`, so the side of the *small* hole is the brighter one (verified on the exact
+solution; the trained one differs from it by 5.6e-08, so the same reading holds).
 
 ## 9. Running on a JupyterHub / GPU machine
 
