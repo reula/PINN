@@ -755,6 +755,60 @@ a value (it substitutes 0 and reports it) — a guard, not a blanking mechanism.
 ranges in `runs/weyl_prod/vtk/solution.vtk`: `lambda_err` in [−1.14e-07, +4.52e-08] (max
 1.14e-07, rms 1.53e-08) and `h_err` in [7.2e-09, 8.6e-07].
 
+### 8.10 Two black holes of unequal mass (1 and 0.1)
+
+`runs/weyl_unequal` is §8.9's production recipe with the lower hole's rod shortened to a tenth
+(`--weyl-half-length-b 0.1`).  Since a rod of length `2m` *is* a black hole of mass `m`, that is
+the mass ratio 1 : 0.1, and nothing else about the setup changes: same equations, same
+inhomogeneous gauge source, same Robin exponents, same shell — `--weyl` still derives
+`rho_in = 7.5`, because the *larger* rod sets the axis extent.  The only new ingredient is
+geometric: with unequal masses the coordinate origin is no longer the centre of mass, so the
+fields acquire a dipole.
+
+It converged rather better than either symmetric run:
+
+| | 1 : 1 (`weyl_prod`) | 1 : 0.1 (`weyl_unequal`) |
+|---|---|---|
+| final loss (wall time) | 2.06e-13 (7424 s) | **2.37e-14** (7859 s) |
+| `max abs(dh)` over the shell | 6.70e-07 | 3.41e-07 |
+| `max abs(dlambda)` | 9.04e-08 | 5.24e-08 |
+| imposed gauge residual (max) | 9.5e-06 | 3.08e-07 |
+| inner sphere, `max abs(lambda_net − lambda_ref)` | 1.12e-07 | 5.15e-08 |
+
+**The multipole content, which is the point of the exercise.**  Coefficients `a_l0` of `lambda`
+on the same sphere `rho = 75`, exact against trained, for both configurations:
+
+| `l` | exact 1 : 1 | trained 1 : 1 | exact 1 : 0.1 | trained 1 : 0.1 |
+|---|---|---|---|---|
+| 0 | 3.36079916e+00 | 3.36079916e+00 | 3.44243419e+00 | 3.44243418e+00 |
+| 1 | 5.55e-17 | −2.26e-12 | −1.017590e-03 | −1.017625e-03 |
+| 2 | −3.681397e-05 | −3.692091e-05 | −1.898468e-05 | −1.894362e-05 |
+| 3 | 0 (exactly) | −4.09e-08 | −3.941552e-07 | −3.988529e-07 |
+
+Three things to read off it:
+
+* **the mass ratio is visible in the odd multipoles and nowhere else.**  The symmetric pair has
+  `l = 1` at 5.6e-17 against a monopole of 3.36, and `l = 3` at exactly zero; the unequal pair
+  has `l = 1 = −1.0176e-03` and `l = 3 = −3.94e-07`.  The even multipoles are comparable in
+  both (the equal pair's quadrupole is in fact twice as large, its masses sitting further out);
+* **each trained run reproduces its own exact solution multipole by multipole**: `l = 0` to
+  7.3e-10 and 3.0e-09, the dipole to 3.5e-05, the quadrupole to ~2e-03, and `l = 3` to 1.2e-02 —
+  that last one being a coefficient of 4e-07, close to the floor of what 2265 parameters reach;
+* **the fitted decay powers are the right ones**: `−0.959, −1.916, −2.895, −3.875` for
+  `l = 0,1,2,3`, against the expected `−1,−2,−3,−4` that the total mass sets, versus
+  `−0.926, −2.05, −2.846` and noise for the symmetric run — whose `l = 3` is identically zero
+  and therefore has no power law to fit at all.
+
+The dipole is also the centre of mass: `D = sum m_i z_i = 1.44` exactly (rod centres at +1.5
+and −0.6, masses 1 and 0.1), so `D/M = 1.30909` is where the centre of mass sits relative to
+the mid-gap origin.  Extracted at `rho_out` it comes out **1.398367 exact against 1.398415
+trained** — 3e-05 relative — the difference from 1.44 being the `O(1/rho)` truncation that
+`verify_weyl` removes by extracting at `rho = 1e4` instead, where it gets `D = +1.4397` and
+`M = 1.099879` against `1.44` and `1.1` (§7.1).
+
+**Files.**  Same set as §8.9, in `runs/weyl_unequal/`, including `vtk/solution.vtk` with
+`lambda_err` first — the error field for a configuration whose λ really does have a dipole.
+
 ## 9. Running on a JupyterHub / GPU machine
 
 The hub workflow has its own document: **`HUB.md`** (setup, `run_hub.sh`,
