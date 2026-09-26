@@ -725,6 +725,17 @@ of that equation.  A weight of 1 is the natural starting point: at the correct s
 term is ~1e-30, so it costs the solution nothing, while at a hidden-level state it is an order
 of magnitude larger than the term it corrects.
 
+**Both diagnostics in one chain.**  `./run_quad_chain.sh` runs the pinned quarter problem and
+then the radial-term quarter problem back to back (each launched through `run_hub.sh`, each
+identical to §6d/§6e apart from its own mechanism, both cold), prints the decisive lines of
+each `report.txt` as it finishes, and ends with one `stationary.compare` table over the three
+quarter runs — the original failed one included.  Everything on its command line is appended
+to both runs (`--vtk`, `--lbfgs-steps 16000`, …), `TAG=_trial` suffixes the run directories,
+`FORCE=1` redoes a finished one, and `TAG=_trial ./run_quad_chain.sh --steps 3 --lbfgs-steps 1
+--n-coll 128 --n-bnd 32 --width 8 --depth 2 --no-figures` is the ~6-minute plumbing trial.
+Since it only waits, run it under `nohup`/`tmux` if the terminal may close; the runs
+themselves are detached and survive regardless.
+
 ## 7. The two production runs (separate, run in sequence)
 
 **They are two independent runs, not one run combining both cases.** A single run has one
