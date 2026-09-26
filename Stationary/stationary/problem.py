@@ -123,6 +123,38 @@ class Config:
     scale_ref: float | None = None   # None -> use local rho; else a fixed length
     w_inner: float = 10.0
     w_outer: float = 10.0
+
+    # ------------------------------------------------ asymptotic-value pins at rho_out
+    # A Robin condition is a DIFFERENTIAL combination, and its kernel contains the leading
+    # decaying modes of the exact solution (lambda: rho^-1, rho^-2, rho^-3 with base 1;
+    # h: rho^-2, rho^-3, rho^-4 with base 2).  It therefore says nothing about the AMPLITUDE
+    # of those modes, and that amplitude is the branch.  Measured on the production geometry:
+    # the order-3 lambda combination at rho_out is a cancellation of terms of order 0.1
+    # (rho^3 lam''' = +6.77e-02, 9rho^2 lam'' = -2.04e-01, 18rho lam' = +2.05e-01,
+    # 6(lam-1) = -6.89e-02) that leaves 1.3e-08 -- so a wrong level is paid for out of the
+    # derivatives -- and the exact h deviation from delta IS the rho^-2 kernel mode, so the
+    # h condition is satisfied identically (residual 3e-31) whatever that amplitude is.
+    # The three quadrupole runs that lost the branch all did so with a lambda outer Robin
+    # residual (rms, at rho_out) at or below 2.6e-04, against a level error of 0.68 to 0.96:
+    #   production_quad          lambda(rho_out) = 0.0238 (target 0.98852)  rms 2.6e-04
+    #   production_quad_half     lambda(rho_out) = 0.0467                  rms 4.6e-06
+    #   production_quad_quarter  lambda ~ 0.31 flat (lambda = const)       rms 7.2e-06
+    # These pins impose VALUES instead, which cannot be traded against derivatives:
+    #   pin_lam    -- the spherical MEAN of lambda at rho_out (the monopole that carries the
+    #                 branch); its l >= 1 content stays free for the Robin conditions, which
+    #                 is what a later Robin-only relaxation phase needs to fix the multipoles.
+    #   pin_h_tan  -- the tangential metric at rho_out, angle by angle (equivalently the areal
+    #                 radius there); separates the radial gauge component.
+    #   pin_h_rr   -- h_rr at rho_out (its own flag: the inner data deliberately leaves h_rr
+    #                 free, and this is the radial gauge component).
+    # The pin values are the exact reference's own values at rho_out, so nothing is
+    # hard-coded; for the quadrupole problem the true solution differs from them by
+    # ~S2 (rho_in/rho_out)^3 = 8e-08, i.e. 800x below the order-1 Robin floor (6.6e-05).
+    pin_lam: bool = False
+    pin_h_tan: bool = False
+    pin_h_rr: bool = False
+    w_pin: float = 100.0        # weight of the pin group, independent of w_outer
+
     pde_ramp_steps: int = 0     # ramp the PDE weights in over this many steps (0 = off)
     reweight_every: int = 2000  # gradient-norm adaptive reweighting period (0 = off)
     reweight_max_ratio_inv: float = 0.5   # per-update cap: weights move by at most 2x
@@ -214,6 +246,21 @@ class Config:
             # areal radius 1) it gives 1/3.  An explicit --lam0 clears lam0_auto and wins.
             self.lam0 = lambda0_from_k(self.R0, 1.0, self.inner_radius)
             self.lam0_auto = True
+        if self.pin_lam or self.pin_h_tan or self.pin_h_rr:
+            # The pins are differences from the exact reference at rho_out, so that object
+            # has to exist.  Fail here rather than inside the jitted loss: a missing
+            # reference there surfaces as a TypeError from `None(x)` in the middle of a
+            # traceback that names neither the flag nor the reason.
+            has_ref = (self.weyl or self.ref_solution or self.robin_source
+                       or self.outer_bc == "dirichlet_exact")
+            if not has_ref:
+                which = ", ".join(n for n, on in (("pin_lam", self.pin_lam),
+                                                  ("pin_h_tan", self.pin_h_tan),
+                                                  ("pin_h_rr", self.pin_h_rr)) if on)
+                raise ValueError(
+                    f"{which} compare the candidate against the exact reference at "
+                    f"rho_out, and this run builds no reference.  Add --ref-solution "
+                    f"(with --ref-asymptotic k), or drop the pin flags.")
 
 
 def lam_inner_bc(x, cfg):

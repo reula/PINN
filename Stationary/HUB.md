@@ -565,6 +565,102 @@ regenerable from `params.pkl`).  To copy one to your laptop:
 then open it in VisIt (`File → Open`), and use `Contour`/`Slice` on `lambda_minus_1`, or
 `Volume` on `res_ricci` to see where the solution is least accurate.
 
+## 6d. Far-field value pins: what the Robin conditions cannot see
+
+A Robin condition is a *differential* combination, and its kernel contains the leading
+decaying modes of the exact solution: `prod_i (rho d_rho + base + i)` annihilates
+`rho^-base … rho^-(base+order-1)`, i.e. `rho^-1, rho^-2, rho^-3` for `lambda` (base 1) and
+`rho^-2, rho^-3, rho^-4` for `h` (base 2).  So it says nothing about the *amplitude* of those
+modes — and the amplitude is the branch.  Measured at `rho_out = 1` on the production
+geometry, with the reference's own numbers:
+
+```
+the order-3 lambda combination is a cancellation of terms of order 0.1
+  rho^3 lam''' = +6.7705e-02
+  9 rho^2 lam'' = -2.0429e-01
+  18 rho lam'   = +2.0547e-01
+  6 (lam - 1)   = -6.8884e-02
+  sum           = -2.5e-08          (analytic floor 12 R0^4 = 1.3e-08)
+```
+
+so a wrong level can be paid for out of the derivatives; and the exact `h - delta` IS the
+`rho^-2` kernel mode (`h_rr = 1` identically for any amplitude), so the `h` condition is
+satisfied *identically* whatever that amplitude is.  The three quadrupole runs show it:
+
+| run | `lambda(rho_out)` (target 0.9885193) | outer Robin residual, rms | final loss |
+|---|---|---|---|
+| `production_quad` (S2 = −0.3)     | 0.0238 | 2.6e-04 | 5.6e-04 (cap) |
+| `production_quad_half` (−1/6)     | 0.0467 | 4.6e-06 | 6.3e-06 (cap) |
+| `production_quad_quarter` (−1/12) | 0.31, flat | 7.2e-06 | 1.3e-05 (plateau) |
+
+The quarter run is the sharpest case: it *converged* (plateau at 2460 of 8000 iterations)
+onto the `lambda = const` branch — the lambda-equation is satisfied trivially, the
+anisotropic inner data are absorbed in a thin inner layer — and the loss it minimised is 91 %
+`pde_ricci`.  Its metric at `rho_out` was nearly right (max `|dh|` = 3.6e-03) while its lambda
+was 0.68 off: smaller anisotropy makes that branch *more* attractive, so an amplitude sweep
+maps the same failure rather than finding a threshold.
+
+**The pins.**  `--pin-lam`, `--pin-h-tan`, `--pin-h-rr` (or `--pin-far` for all three) add
+mean-square *value* differences against the exact reference at `rho_out`, weighted by
+`--w-pin` (default 100, independent of `--w-outer`).  A value cannot be traded against a
+derivative, so the branch is fixed.  `--pin-lam` acts on the spherical **MEAN** of lambda —
+the monopole, which is where the branch lives — deliberately leaving the `l >= 1` content
+free for the Robin conditions; `--pin-h-tan` pins the tangential metric angle by angle (the
+areal-radius content) and `--pin-h-rr` the radial gauge component, separately, because the
+inner data leaves `h_rr` free.
+
+The pinned numbers are the reference's own values at `rho_out` (no constant is hard-coded;
+`[pin]` in the log prints them):
+
+```
+lambda = 0.9885193     h_tan = 0.9999670     h_rr = 0.9999993
+```
+
+and the true quadrupole solution differs from them by `|S2| (rho_in/rho_out)^3 = 8.3e-08`,
+i.e. ~800x below the order-1 Robin floor (6.6e-05) and ~30x below order 2's (7.4e-07).  So
+pinning costs no accuracy; it is the same kind of known asymptotic data as `lambda_0` being
+derived from `k = 1`.  At the quarter run's flat state the pin residual was 0.68, i.e. a
+weighted cost of ~46 against ~1e-13 for the true solution, and a boundary layer cannot hide it
+(a jump of 0.68 confined to a width `delta` costs ~`1/delta^3` in the lambda-equation loss
+near `rho_out`: ~1e6 at `delta = 0.01`).
+
+**Two stages.**  The pins exist to land on the right branch, not to be the final answer: once
+the solution is converging, drop them (a warm-started `--steps 0` run from the pinned
+`params.pkl`) so the order-3 Robin conditions determine the multipole content — the monopole's
+`rho^-1, rho^-2, rho^-3` coefficients included — from the equations.  Stage 2 starts on the
+right branch, which is a minimum of the unpinned loss, so the level has no reason to drift.
+
+```bash
+# stage 1: pinned, cold
+JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python ./run_hub.sh \
+  --arch axisym_hybrid --outdir runs/production_quad_quarter_pin \
+  --steps 500 --lbfgs-steps 8000 \
+  --R0 0.005773502691896258 --rho-in 0.01 --inner-radius 0.01 --rho-out 1.0 \
+  --ref-solution --ref-asymptotic 1.0 \
+  --outer-bc robin --robin-exps 2,3,1 --robin-orders h=3,lam=3 --no-robin-G --lam-inf 1.0 \
+  --decay-feature --radial log --pde-ramp-steps 500 \
+  --w-inner 100 --w-outer 100 --reweight-every 1500 \
+  --n-coll 16384 --n-bnd 1024 --pin-far --w-pin 100 --lam-bc-S2 -0.08333333333333333
+
+# stage 2: Robin only, warm (drop --pin-far; --steps 0 = no Adam, straight to SSBroyden)
+JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python ./run_hub.sh \
+  --arch axisym_hybrid --outdir runs/production_quad_quarter_robin \
+  --steps 0 --lbfgs-steps 4000 --init-from runs/production_quad_quarter_pin/params.pkl \
+  --R0 0.005773502691896258 --rho-in 0.01 --inner-radius 0.01 --rho-out 1.0 \
+  --ref-solution --ref-asymptotic 1.0 \
+  --outer-bc robin --robin-exps 2,3,1 --robin-orders h=3,lam=3 --no-robin-G --lam-inf 1.0 \
+  --decay-feature --radial log --w-inner 100 --w-outer 100 \
+  --n-coll 16384 --n-bnd 1024 --lam-bc-S2 -0.08333333333333333
+```
+
+What to look at: the per-block `[qn]` number is the *outer Robin + pins* combined (a run whose
+boundary is moving is not converged), the report prints the achieved value differences next to
+the reference's values, and `report.json` carries `pin_lam`, `pin_h_tan`, `pin_h_rr`.  The
+`[pin]` line in the log states what is pinned and to what; the Config refuses a pin without a
+reference (`--ref-solution`), and `tests/test_pins.py` checks the reference satisfies all three
+to < 1e-20, that a flat `lambda = 0.31` costs 0.46, that a wrong metric tail is caught, and
+that the lambda pin sees the monopole but not the quadrupole.
+
 ## 7. The two production runs (separate, run in sequence)
 
 **They are two independent runs, not one run combining both cases.** A single run has one

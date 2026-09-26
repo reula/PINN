@@ -199,13 +199,18 @@ def error_at(pf, ref, xs):
 
 
 # ------------------------------------------------------------------ the writer
-def write_vtk(path: str, points, arrays: dict, cells, cell_types):
+def write_vtk(path: str, points, arrays: dict, cells, cell_types=None):
     """Legacy ASCII VTK: an unstructured grid with scalar point data.
 
-    Mixed cell types are supported, which is what lets the spherical grid use wedges at the
-    poles instead of a hexahedron with two coincident nodes (VisIt accepts those, but some
-    filters do not).
+    Mixed cell types are supported (`cell_types`, one VTK type per cell), which is what lets
+    the spherical grid use wedges at the poles instead of a hexahedron with two coincident
+    nodes (VisIt accepts those, but some filters do not).  `cell_types=None` means every cell
+    is a hexahedron (type 12): that is the plain graded-box case, and it keeps the older
+    four-argument call working.  Passing it explicitly stays the interface the Weyl exports
+    and the spherical grid use.
     """
+    if cell_types is None:
+        cell_types = [12] * len(cells)
     n_pts = points.shape[0]
     n_cells = len(cells)
     with open(path, "w") as fh:

@@ -194,6 +194,51 @@ def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> di
     raise ValueError(f"unknown outer_bc {cfg.outer_bc!r}")
 
 
+def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
+    """Asymptotic-VALUE pins at rho_out (`cfg.pin_lam`, `cfg.pin_h_tan`, `cfg.pin_h_rr`).
+
+    Each term is the mean square of (candidate - reference) at the outer sphere, so a value
+    cannot be traded against a derivative the way a Robin residual can (see the Config
+    comment: the order-3 lambda combination is a cancellation of terms of order 0.1, and the
+    exact h deviation is a kernel mode of the h condition).  The comparison is to the exact
+    reference the run already carries, so no constant is hard-coded.
+
+    * `lam`   -- the spherical MEAN of the difference: the monopole, which is the branch.
+                 The l >= 1 content is deliberately left free, so that a later Robin-only
+                 relaxation phase can fix the multipoles from the equations.
+    * `h_tan` -- the tangential metric, angle by angle: g2 = (tr h - h_rr)/2, i.e. the areal
+                 radius content.
+    * `h_rr`  -- the radial gauge component, angle by angle.
+    """
+    if not (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr):
+        return {}
+    if exact_fields is None:
+        raise ValueError(
+            "the far-field pins are differences from the exact reference at rho_out, and "
+            "this run has no reference: add --ref-solution (with --ref-asymptotic k) or "
+            "drop the pin flags")
+
+    def one(x):
+        f, e = point_fields(x), exact_fields(x)
+        rho = jnp.linalg.norm(x)
+        n = x / rho
+        h_rr = n @ f.h @ n
+        h_rr_e = n @ e.h @ n
+        g2 = (jnp.trace(f.h) - h_rr) / 2.0
+        g2_e = (jnp.trace(e.h) - h_rr_e) / 2.0
+        return jnp.array([f.lam - e.lam, g2 - g2_e, h_rr - h_rr_e])
+
+    R = jax.vmap(one)(xs)
+    out = {}
+    if cfg.pin_lam:
+        out["lam"] = jnp.mean(R[:, 0]) ** 2
+    if cfg.pin_h_tan:
+        out["h_tan"] = jnp.mean(R[:, 1] ** 2)
+    if cfg.pin_h_rr:
+        out["h_rr"] = jnp.mean(R[:, 2] ** 2)
+    return out
+
+
 # ------------------------------------------------------------------ total loss
 GROUP_KEYS = ("compat", "ricci", "gauge", "lam_eq", "inner", "outer")
 
@@ -215,7 +260,11 @@ def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> di
     pf = make_point_fields(model, state["net"])
     out = dict(pde_terms(pf, batch["coll"], cfg))
     out["inner"] = sum(inner_bc_terms(pf, batch["inner"], cfg, exact_fields).values())
-    out["outer"] = sum(outer_bc_terms(pf, batch["outer"], cfg, exact_fields, lam_inf).values())
+    # The outer group carries the Robin conditions AND the value pins: the plateau rule and
+    # the per-block log watch this number, and a run is not converged while a pin is unmet.
+    out["outer"] = (sum(outer_bc_terms(pf, batch["outer"], cfg, exact_fields,
+                                       lam_inf).values())
+                    + sum(outer_pin_terms(pf, batch["outer"], cfg, exact_fields).values()))
     return out
 
 
@@ -245,11 +294,18 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     outer = outer_bc_terms(pf, batch["outer"], cfg, exact_fields, lam_inf)
     for k, v in outer.items():
         parts[f"outer_{k}"] = v
+    pin = outer_pin_terms(pf, batch["outer"], cfg, exact_fields)
+    for k, v in pin.items():
+        parts[f"pin_{k}"] = v
 
     loss = 0.0
     for k in ("compat", "ricci", "gauge", "lam_eq"):
         loss = loss + pde_scale * weights[k] * parts[f"pde_{k}"]
     loss = loss + weights["inner"] * sum(inner.values())
     loss = loss + weights["outer"] * sum(outer.values())
+    if pin:
+        # its own weight: the pins are data, not a decay condition, and the run that needs
+        # them is exactly the one where w_outer could not see the level at all
+        loss = loss + jnp.asarray(cfg.w_pin) * sum(pin.values())
 
     return loss, parts

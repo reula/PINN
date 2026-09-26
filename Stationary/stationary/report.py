@@ -34,7 +34,8 @@ from .diagnostics import inner_boundary_report
 from .evaluate import load_run
 from .geometry import residuals_batch
 from .invariants import family_params_from_solution
-from .losses import inner_bc_terms, outer_bc_terms, reference_consistency
+from .losses import (inner_bc_terms, outer_bc_terms, outer_pin_terms,
+                     reference_consistency)
 from .model import point_fields
 from .multipoles import lambda_multipoles, multipole_radial_profile
 from .problem import lam_inner_bc, sample_shell, sample_sphere
@@ -165,6 +166,12 @@ def main():
     orders = cfg.robin_orders or {k: cfg.robin_order for k in ("h", "G", "lam")}
     print(f"outer BC       : {cfg.outer_bc}, lambda_inf = {lam_inf:g}, Robin orders {orders},"
           f" Gamma condition included: {cfg.robin_include_G}")
+    _pins = ", ".join(nm for nm, on in (("lam mean", getattr(cfg, "pin_lam", False)),
+                                        ("h_tan", getattr(cfg, "pin_h_tan", False)),
+                                        ("h_rr", getattr(cfg, "pin_h_rr", False))) if on)
+    if _pins:
+        print(f"far-field pins : {_pins} to the reference's values at rho_out,"
+              f" w_pin = {getattr(cfg, 'w_pin', float('nan')):g}")
     print(f"loss weights   : w_inner = {cfg.w_inner:g}, w_outer = {cfg.w_outer:g}, "
           f"reweight_every = {cfg.reweight_every}")
     print(f"sampling       : n_coll {cfg.n_coll}, n_bnd {cfg.n_bnd}, scale_ref {cfg.scale_ref}")
@@ -257,6 +264,24 @@ def main():
     out = outer_bc_terms(pf, sample_sphere(key, 512, cfg.rho_out), cfg, bc_exact, lam_inf=lam_inf)
     print(f"outer BC residuals ({cfg.outer_bc}, rms): "
           + "  ".join(f"{k}={jnp.sqrt(v):.2e}" for k, v in out.items()))
+    # The far-field pins, if this run had them.  They are the only boundary terms that look
+    # at the VALUES, and a run whose Robin residual is at its floor while lambda(rho_out) is
+    # far from the reference is exactly the failure they exist to prevent, so print both
+    # the reference's value and the difference the run achieved.
+    pin = outer_pin_terms(pf, sample_sphere(key, 512, cfg.rho_out), cfg, bc_exact)
+    if pin:
+        x0 = cfg.rho_out * jnp.array([0.0, 0.0, 1.0])
+        e0 = bc_exact(x0)
+        n0 = x0 / jnp.linalg.norm(x0)
+        h_rr0 = n0 @ e0.h @ n0
+        g20 = (jnp.trace(e0.h) - h_rr0) / 2.0
+        ref_vals = {"lam": float(e0.lam), "h_tan": float(g20), "h_rr": float(h_rr0)}
+        print("far-field VALUES (rms of candidate - reference at rho_out): "
+              + "  ".join(f"{k}={jnp.sqrt(v):.2e} (ref {ref_vals[k]:.7f})"
+                          for k, v in pin.items()))
+        print(f"    weighted by w_pin = {getattr(cfg, 'w_pin', float('nan')):g};"
+              f" lam is pinned through its spherical MEAN, so an l >= 1 tail at rho_out"
+              f" is not penalised (see the multipoles below).")
 
     # ------------------------------------------------------------ lambda vs rho
     # The shape of lambda(rho), which is what says whether the run sits on the

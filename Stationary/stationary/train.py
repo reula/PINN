@@ -29,8 +29,8 @@ import jax.numpy as jnp
 import optax
 
 from . import diagnostics, exact
-from .losses import (GROUP_KEYS, default_weights, group_terms, reference_consistency,
-                     total_loss)
+from .losses import (GROUP_KEYS, default_weights, group_terms, outer_pin_terms,
+                     reference_consistency, total_loss)
 from .model import (AxisymHybridNet, FieldNet, HybridNet, SymFieldNet, SymHybridNet,
                     point_fields)
 from .problem import Config, sample_shell, sample_sphere
@@ -150,6 +150,25 @@ def build(cfg: Config, init_from: str | None = None):
                           f"rho = {cfg.rho_in:g}; the reference has "
                           f"{float(exact_fields(cfg.rho_in * jnp.array([1.0, 0.0, 0.0])).lam):.6f}"
                           f"  -> check --lam0 / --R0 / --rho-in")
+    if (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr) and exact_fields is not None:
+        # Say what is being pinned, and to what.  A value pin is only meaningful if the
+        # number is the one the exact solution has there, so print it and let the report
+        # show both it and what the run achieved (`outer_pin_terms` measures the difference).
+        xo = cfg.rho_out * jnp.array([0.0, 0.0, 1.0])
+        e = exact_fields(xo)
+        n = xo / jnp.linalg.norm(xo)
+        h_rr = n @ e.h @ n
+        g2 = (jnp.trace(e.h) - h_rr) / 2.0
+        which = ", ".join(nm for nm, on in (("lam (spherical mean)", cfg.pin_lam),
+                                            ("h_tan", cfg.pin_h_tan),
+                                            ("h_rr", cfg.pin_h_rr)) if on)
+        print(f"[pin] far-field values at rho_out = {cfg.rho_out:g} from the reference: "
+              f"lambda = {float(e.lam):.7f}   h_tan = {float(g2):.7f}   "
+              f"h_rr = {float(h_rr):.7f}")
+        print(f"[pin] pinning {which}   w_pin = {cfg.w_pin:g}   "
+              f"(the true solution differs from these by ~|S2|(rho_in/rho_out)^3 = "
+              f"{abs(cfg.lam_bc_S2) * (cfg.rho_in / cfg.rho_out) ** 3:.1e}, i.e. far below "
+              f"the Robin floors)")
     return model, state, exact_fields
 
 
@@ -229,6 +248,12 @@ def print_config_summary(cfg: Config):
               f" ({'fixed' if cfg.lam_inf is not None else 'learnable'})"
               f"   orders {orders}   Gamma condition {cfg.robin_include_G}"
               f"   source {cfg.robin_source}")
+        pins = ", ".join(nm for nm, on in (("lam mean", cfg.pin_lam),
+                                           ("h_tan", cfg.pin_h_tan),
+                                           ("h_rr", cfg.pin_h_rr)) if on)
+        if pins:
+            print(f"  far-field   PINNED to the reference at rho_out: {pins}"
+                  f"   w_pin {cfg.w_pin:g}   (values above, '[pin]' line)")
     else:
         print(f"  outer BC    {cfg.outer_bc} (h and lambda from the exact solution)")
     print(f"  weights     w_inner {cfg.w_inner:g}   w_outer {cfg.w_outer:g}"
@@ -320,15 +345,17 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         return value
 
     def outer_res(flat):
-        """Unweighted outer-Robin contribution (h + lambda) at the current parameters.
+        """Unweighted outer-boundary contribution (Robin + far-field pins) at these parameters.
 
         The plateau test looks at this as well as at the total loss: one group can dominate
         the total (the order-2 control's final loss was 97% its lambda-equation while its
         boundary was already at the floor), so "the loss stopped moving" can hide an
-        abandoned boundary condition.
+        abandoned boundary condition.  The pins are included: a run whose far-field value is
+        still moving is not converged, however flat its loss looks.
         """
         _, parts_ = loss_fn(unflatten(flat), batch, 1.0, weights)
-        return float(parts_.get("outer_h", 0.0)) + float(parts_.get("outer_lam", 0.0))
+        return (float(parts_.get("outer_h", 0.0)) + float(parts_.get("outer_lam", 0.0))
+                + float(sum(v for k, v in parts_.items() if k.startswith("pin_"))))
 
     # Blocks, not one long call: the inverse Hessian is carried from block to block (that is
     # what makes the quasi-Newton phase work), and the loss is inspected between blocks so
@@ -533,13 +560,18 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                    **{k: float(v) for k, v in parts.items()}}
             history.append(rec)
             if verbose:
+                # `pin` is its own field rather than folded into bc_out: the pins are values
+                # (data), the Robin terms are decay conditions, and when a run goes to the
+                # wrong branch it is precisely bc_out that stays at its floor.
+                pins = sum((float(v) for k, v in parts.items() if k.startswith("pin_")), 0.0)
                 print(f"[adam {it:6d}] loss={float(loss):.4e}  "
                       f"pde(compat={float(parts['pde_compat']):.2e} "
                       f"ricci={float(parts['pde_ricci']):.2e} "
                       f"gauge={float(parts['pde_gauge']):.2e} "
                       f"lam={float(parts['pde_lam_eq']):.2e})  "
                       f"bc_in={float(sum(v for k, v in parts.items() if k.startswith('inner_'))):.2e} "
-                      f"bc_out={float(sum(parts[k] for k in parts if k.startswith('outer_'))):.2e}",
+                      f"bc_out={float(sum(parts[k] for k in parts if k.startswith('outer_'))):.2e}"
+                      + (f"  pin={pins:.2e}" if pins else ""),
                       flush=True)
         if cfg.ckpt_every and it % cfg.ckpt_every == 0:
             save_checkpoint(os.path.join(cfg.outdir, CKPT_NAME), state, opt_state,
@@ -613,6 +645,11 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         report.update(diagnostics.exact_comparison(pf, exact_fields, cfg))
     if "lam_inf" in state:
         report["lam_inf"] = float(state["lam_inf"])
+    # The far-field pins are the one boundary check that looks at VALUES, so the stored run
+    # has to say what they came to: a zero outer Robin residual with an unmet pin is exactly
+    # the failure mode the pins exist to expose.
+    for k, v in outer_pin_terms(pf, batch["outer"], cfg, exact_fields).items():
+        report[f"pin_{k}"] = float(v)
     if cfg.make_figures:
         try:
             from .multipoles import make_figures
@@ -682,6 +719,19 @@ def parse_args(argv=None):
     p.add_argument("--robin-orders", type=str, default=None,
                    help="per-field orders, e.g. h=4,G=1,lam=4")
     p.add_argument("--no-robin-G", action="store_true")
+    p.add_argument("--pin-lam", action="store_true",
+                   help="pin the spherical MEAN of lambda at rho_out to the exact "
+                        "reference's value there (the monopole, i.e. the branch); the "
+                        "l >= 1 content stays free for the Robin conditions")
+    p.add_argument("--pin-h-tan", action="store_true", dest="pin_h_tan",
+                   help="pin the tangential metric at rho_out to the reference's, angle "
+                        "by angle (the areal-radius content)")
+    p.add_argument("--pin-h-rr", action="store_true", dest="pin_h_rr",
+                   help="pin h_rr at rho_out as well (the radial gauge component)")
+    p.add_argument("--pin-far", action="store_true",
+                   help="all three far-field pins (lam mean, h_tan, h_rr)")
+    p.add_argument("--w-pin", type=float, default=None,
+                   help="weight of the far-field pin group (independent of --w-outer)")
     p.add_argument("--inner-radius", type=float, default=None)
     p.add_argument("--lam-bc-S1", type=float, default=None, dest="lam_bc_S1")
     p.add_argument("--lam-bc-S2", type=float, default=None, dest="lam_bc_S2")
@@ -802,6 +852,16 @@ def parse_args(argv=None):
     if a.robin_exps is not None:
         vals = [float(v) for v in a.robin_exps.split(",")]
         cfg.robin_exps = dict(zip(["h", "G", "lam"], vals))
+    if a.pin_far:
+        cfg.pin_lam = cfg.pin_h_tan = cfg.pin_h_rr = True
+    if a.pin_lam:
+        cfg.pin_lam = True
+    if a.pin_h_tan:
+        cfg.pin_h_tan = True
+    if a.pin_h_rr:
+        cfg.pin_h_rr = True
+    if a.w_pin is not None:
+        cfg.w_pin = float(a.w_pin)
     if a.seed is not None:
         cfg.seed = a.seed
     if getattr(a, "init_from", None) is not None:
