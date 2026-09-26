@@ -264,10 +264,20 @@ def main(argv=None):
     checks.append(("... and is NOT zero in the harmonic gauge (the check has teeth)",
                    float(loss_h) > 1e-8))
 
-    # -------------------------------------------------- the mass ratio, made measurable
-    # The rod lengths ARE the masses, so an unequal pair must differ from the symmetric one
-    # in exactly two measurable ways and no more.  Both are checkable with what is already
-    # here, and both would catch a mistake in how the pair is laid out on the axis.
+    # ------------------------------------------------- the dipole, and where it comes from
+    # The rod lengths ARE the masses, so an unequal pair must differ from the symmetric one in
+    # exactly one measurable way.  Two checks, both consequences rather than restatements:
+    #
+    #   (a) z -> -z.  Equal masses must leave lambda invariant under z -> -z; unequal ones
+    #       must break it.  Cheap, structural, and it would catch a mis-placed rod.
+    #   (b) the multipoles.  For a rod of mass m centred at z_i the potential's l = 1 moment
+    #       about the origin is exactly m*z_i -- a Weyl rod has the multipole moments of a
+    #       uniform rod of the same mass -- so lambda - 1 = 2U + O(U^2) has
+    #           l = 0:  -2M/rho            M = sum m_i
+    #           l = 1:  -2D cos(theta)/rho^2,  D = sum m_i z_i
+    #       Extracting both is a statement about the SOLUTION, and D/M is the centre-of-mass
+    #       offset.  The O(U^2) corrections are O(1/rho) relative, so rho = 1e4 gives three
+    #       or four digits.
     off = jnp.array([rho_in, 0.0, 0.5 * rho_in])          # a point off the axis
     off_m = off * jnp.array([1.0, 1.0, -1.0])             # its mirror image in z
     asym = abs(float(lam_of(off, rods) - lam_of(off_m, rods)))
@@ -278,16 +288,25 @@ def main(argv=None):
                    f"unequal masses ({m_a:g} != {m_b:g}) DO break z -> -z symmetry",
                    asym < 1e-14 if equal else asym > 1e-6))
 
-    # lambda - 1 -> -2M/rho at infinity, M the total ADM mass.  Far enough out the 1/rho^2
-    # corrections are ~M/rho ~ 1e-4, so this pins the mass content to three digits, which is
-    # a real statement about the solution and not about the construction.
-    far = 1.0e4
-    ratio = float(far * (lam_of(jnp.array([far, 0.0, 0.0]), rods) - 1.0)) / (-2.0 * rods.total_mass)
-    print(f"rho (lambda - 1) at rho = {far:g}: "
-          f"{float(far * (lam_of(jnp.array([far, 0.0, 0.0]), rods) - 1.0)):+.10f}"
-          f"   (expected {-2.0 * rods.total_mass:+.10f} = -2 * {rods.total_mass:g})")
-    checks.append((f"the lambda tail carries the total mass m_a + m_b = {rods.total_mass:g} "
-                   f"(off by {abs(ratio - 1.0):.1e})", abs(ratio - 1.0) < 1e-3))
+    from stationary.multipoles import lambda_multipoles
+    r_far = 1.0e4
+    coef, _, _ = lambda_multipoles(fields_of(rods, a.n_quad), r_far, lmax=1, n_mu=64,
+                                   n_phi=64)
+    # coef[(0,0)] = integral of lambda Y_00 dOmega = sqrt(4 pi) * mean(lambda)
+    mean = float(coef[(0, 0)]) / float(jnp.sqrt(4.0 * jnp.pi))
+    amp1 = float(coef[(1, 0)])                                    # its cos(theta) coefficient
+    M_fit = -0.5 * r_far * (mean - 1.0)
+    D_fit = -0.5 * r_far**2 * amp1 / float(jnp.sqrt(4.0 * jnp.pi / 3.0))
+    M_exact = rods.total_mass
+    D_exact = sum(m * 0.5 * (aa + bb) for m, (aa, bb) in zip(rods.masses, rods.spans))
+    print(f"lambda - 1 at rho = {r_far:g}:  l = 0 mass {M_fit:.8f} (exact {M_exact:g}), "
+          f"l = 1 dipole {D_fit:+.4e} (exact {D_exact:+.4e}, ratio D/M = "
+          f"{D_fit / M_fit:+.6f} against {D_exact / M_exact:+.6f})")
+    checks.append((f"the l = 0 tail of lambda is the total mass {M_exact:g} "
+                   f"(got {M_fit:.6f})", abs(M_fit / M_exact - 1.0) < 1e-3))
+    checks.append((f"the l = 1 tail is the dipole sum m_i z_i = {D_exact:+.4f} "
+                   f"(got {D_fit:+.4e})",
+                   abs(D_fit - D_exact) < 1e-3 * max(1.0, abs(D_exact))))
 
     # ------------------------------------------------------------------ verdict
     print("\n" + "=" * 72)
