@@ -164,7 +164,10 @@ def k_of(rho, z, rods: Rods, n_quad: int = 400):
     # rods k is the strut constant (nonzero), and inside a rod it diverges.  No grid point
     # lands there, so NaN is the honest answer for that whole inner stretch.
     extent = max(abs(v) for a, b in rods.spans for v in (a, b))
-    return jnp.where(rho > 0.0, quad, jnp.where(jnp.abs(z) >= extent, 0.0, jnp.nan))
+    # same tolerance as h_cart: sin(pi) is not zero, so the pole of a spherical grid arrives
+    # just off the axis and must still get the limit rather than a quadrature at rho ~ 1e-18
+    return jnp.where(rho > 1e-12 * extent, quad,
+                     jnp.where(jnp.abs(z) >= extent, 0.0, jnp.nan))
 
 
 # ------------------------------------------------------------------- the code's fields
@@ -184,7 +187,14 @@ def h_cart(x, rods: Rods, n_quad: int = 400):
     # dy^2) + A dz^2 = A * delta there.  Getting this wrong is invisible off the axis but
     # shows up as an isolated O(1) error exactly on it, which is what a VTK export of
     # h(computed) - h(exact) makes obvious and nothing else does.
-    on_axis = rho2 <= 0.0
+    #
+    # The test is a TOLERANCE, not an equality, because sin(pi) is 1.2e-16 and not 0: a node
+    # at the south pole of a spherical grid arrives with rho_cyl ~ 1e-18, takes the other
+    # branch, and 1/rho_cyl^2 ~ 1e36 turns its second derivatives into ~1e72 -- which is how
+    # a curvature map came back with 1e41 in an otherwise smooth field.  Anything within
+    # 1e-12 of the rod scale is on the axis for every purpose, and the formula there is
+    # numerically meaningless anyway.
+    on_axis = rho2 <= (1e-12 * rods.axis_extent) ** 2
     hxx = jnp.where(on_axis, A, A * x0**2 * inv + x1**2 * inv)
     hyy = jnp.where(on_axis, A, A * x1**2 * inv + x0**2 * inv)
     hxy = (A - 1.0) * x0 * x1 * inv                     # already 0 on the axis

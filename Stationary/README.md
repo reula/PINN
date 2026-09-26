@@ -772,8 +772,25 @@ file does with the holes and the spheres drawn where they are:
 
 writes `plane/plane.png` — four panels: `lambda`, `lambda_err`, `log|h_err|`, and `log R_ab
 R^ab` of the **exact** solution — with the rods as black segments on the axis and the two
-spheres dashed, plus `plane/plane.json` with the numbers.  Only the points inside the shell
-are evaluated; the rest is masked.  It refuses to run on a 3-D architecture unless `--force`
+spheres dashed, plus `plane/plane.json` with the numbers.  The nodes form a shell-conforming
+`(r, theta)` grid — geometric in `r`, so both spheres are hit exactly and the cells grow
+outwards, every node inside the shell — which is drawn in the `(rho_cyl, z)` half-plane.
+
+Two things worth knowing:
+
+* `--physical-inner` draws the axes in whatever units you name (the same flag and meaning as
+  `stationary.vtk`), which is how a run trained in a scaled chart is presented in the standard
+  sizes: the runs of §8.9-8.10 train with `rho_out = 1` for the activation range and are drawn
+  with `--physical-inner 7.5`, a factor of 750 apart for the rescaled one.  `lambda`,
+  `lambda_err` and `h_err` are invariant under that rescaling, so only the axes, the rods and
+  the spheres move — the curvature, which has dimension 1/length^4, is converted to match;
+* the exact solution's Cartesian components are not smooth *on* the axis — the chart formula
+  `(A x^2 + y^2)/rho_cyl^2` is 0/0 there and its second derivatives are numerically meaningless
+  within ~1e-3 of it — so `weyl.h_cart` and `weyl.k_of` now treat anything within 1e-12 of the
+  rod scale as being on the axis and return the exact limit.  This is invisible to training
+  (`rho >= rho_in`) but it is what keeps a curvature map smooth all the way in: before the
+  tolerance, the south pole of the grid arrives with `rho_cyl = sin(pi) r = 1.2e-18` instead of
+  0 and produced 1e41 where the answer is 1.138e-05.  It refuses to run on a 3-D architecture unless `--force`
 is given, since the half-plane would then be a slice rather than the solution, and
 `postprocess.sh` runs it as a fifth step, so every axisymmetric run produces it
 automatically.  The curvature panel is the one that answers "is this shell a strong-field

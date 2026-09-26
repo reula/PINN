@@ -46,17 +46,25 @@ AXISYMMETRIC = ("sym", "sym_hybrid", "axisym_hybrid")
 I3 = jnp.eye(3)
 
 
-def half_plane(n_rho: int, n_z: int, rho_out: float, rho_in: float):
-    """Grid points of the (rho_cyl, z) half-plane that lie inside the shell.
+def half_plane(n_r: int, n_theta: int, rho_out: float, rho_in: float):
+    """Nodes of a shell-conforming (r, theta) grid, drawn in the (rho_cyl, z) half-plane.
 
-    Returns the flattened points and the two index arrays needed to reshape anything
-    evaluated on them back into an image (masked outside the shell).
+    NOT a uniform rectangle in (rho_cyl, z): that spends almost all its points on the far
+    field and leaves the inner sphere a handful of cells -- hopeless for a run whose chart is
+    small, or whose shell spans two decades, and it is exactly where the field varies
+    fastest.  Radial levels are geometric, so both spheres are hit exactly and the cells grow
+    by a constant factor outwards; theta is uniform.  Every node is inside the shell, so
+    nothing needs masking, and the cells are drawn as the curved quadrilaterals they are.
+
+    Returns the flattened points, an all-True mask (kept so callers need no special case),
+    and the node coordinates R = r sin(theta), Z = r cos(theta) for plotting.
     """
-    rho = jnp.linspace(0.0, rho_out, n_rho)
-    z = jnp.linspace(-rho_out, rho_out, n_z)
-    R, Z = jnp.meshgrid(rho, z, indexing="ij")
+    r = rho_in * (rho_out / rho_in) ** jnp.linspace(0.0, 1.0, n_r)
+    th = jnp.linspace(0.0, jnp.pi, n_theta)
+    R = jnp.outer(r, jnp.sin(th))
+    Z = jnp.outer(r, jnp.cos(th))
     pts = jnp.stack([R, jnp.zeros_like(R), Z], axis=-1)
-    inside = (jnp.sqrt(R**2 + Z**2) >= rho_in) & (jnp.sqrt(R**2 + Z**2) <= rho_out)
+    inside = jnp.ones(R.shape, dtype=bool)
     return pts.reshape(-1, 3), inside.reshape(-1), R, Z
 
 
@@ -83,8 +91,14 @@ def maps(pf, ref, pts, inside, shape):
     return out
 
 
-def figure(cfg, data, R, Z, out_png, exact=None):
-    """Four panels with the rods, the two spheres and equal aspect."""
+def figure(cfg, data, R, Z, out_png, factor=1.0):
+    """Four panels with the rods, the two spheres and equal aspect.
+
+    `factor` converts the run's chart coordinates to the units the figure is drawn in:
+    the fields themselves are invariant under that rescaling (lambda and h - I are), so
+    only the axes, the rods and the two spheres move.  Use it to present a run that was
+    trained in a scaled chart in the standard sizes.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -95,9 +109,13 @@ def figure(cfg, data, R, Z, out_png, exact=None):
               ("h_err", jnp.log10(data["h_err"]), "magma",
                r"$\log_{10}\ \max_{ij}|h_{net}-h_{exact}|$"),
               ("curvature", jnp.log10(data["curvature"]), "cividis",
-               r"$\log_{10}\ R_{ab}R^{ab}$ (exact)"))
+               r"$\log_{10}\ R_{ab}R^{ab}$ (exact, in the units of the axes)"))
     fig, ax = plt.subplots(2, 2, figsize=(13, 11))
-    rho_max = float(R[-1, 0])
+    # R_ab R^ab has dimension 1/length^4, so drawing the axes in other units means converting
+    # it as well.  lambda, lambda_err and h_err are invariant and need nothing.
+    data = dict(data)
+    data["curvature"] = jnp.asarray(data["curvature"]) / factor**4
+    rho_max = float(R[-1, 0]) * factor
     for a, (name, arr, cmap, title) in zip(ax.reshape(-1), panels):
         v = jnp.asarray(arr)
         finite = v[jnp.isfinite(v)]
@@ -107,14 +125,14 @@ def figure(cfg, data, R, Z, out_png, exact=None):
         elif name == "lambda_err":
             m = float(jnp.max(jnp.abs(finite)))
             kw = dict(vmin=-m, vmax=m)
-        im = a.pcolormesh(jnp.asarray(R), jnp.asarray(Z), v, cmap=cmap, shading="auto",
-                          **kw)
+        im = a.pcolormesh(jnp.asarray(R) * factor, jnp.asarray(Z) * factor, v, cmap=cmap,
+                          shading="gouraud", **kw)
         # the horizons: rods on the axis, and the two spheres
         for (z0, z1) in rods_spans(cfg):
-            a.plot([0, 0], [z0, z1], "k-", lw=6, solid_capstyle="butt")
+            a.plot([0, 0], [z0 * factor, z1 * factor], "k-", lw=6, solid_capstyle="butt")
         th = jnp.linspace(0, 2 * jnp.pi, 400)
         for r, style in ((cfg.rho_in, "w--"), (cfg.rho_out, "w:")):
-            a.plot(r * jnp.cos(th), r * jnp.sin(th), style, lw=1.2)
+            a.plot(r * factor * jnp.cos(th), r * factor * jnp.sin(th), style, lw=1.2)
         a.set_title(title, fontsize=12)
         a.set_xlabel(r"$\rho_{cyl}$")
         a.set_ylabel("$z$")
@@ -122,8 +140,10 @@ def figure(cfg, data, R, Z, out_png, exact=None):
         a.set_xlim(0, rho_max)
         a.set_ylim(-rho_max, rho_max)
         fig.colorbar(im, ax=a, shrink=0.85)
-    fig.suptitle(f"{cfg.outdir}   arch {cfg.arch}   rho in [{cfg.rho_in:g}, {cfg.rho_out:g}]"
-                 f"   rods on the axis (black)", fontsize=13)
+    fig.suptitle(f"{cfg.outdir}   arch {cfg.arch}   rho in "
+                 f"[{cfg.rho_in * factor:g}, {cfg.rho_out * factor:g}]"
+                 + ("" if factor == 1.0 else f"   (chart values x {factor:g})")
+                 + "   rods on the axis (black)", fontsize=13)
     fig.tight_layout()
     fig.savefig(out_png, dpi=110)
     plt.close(fig)
@@ -142,10 +162,16 @@ def main(argv=None):
     p.add_argument("run_dir", nargs="?", default=None)
     p.add_argument("--outdir", default=None)
     p.add_argument("--params-file", default="params.pkl")
-    p.add_argument("--n-rho", type=int, default=200, help="cells along rho_cyl")
-    p.add_argument("--n-z", type=int, default=400, help="cells along z")
+    p.add_argument("--n-rho", type=int, default=200, help="radial levels (geometric)")
+    p.add_argument("--n-z", type=int, default=400, help="angular nodes")
     p.add_argument("--force", action="store_true",
                    help="map the half-plane even for a non-axisymmetric architecture")
+    p.add_argument("--physical-inner", type=float, default=None,
+                   help="draw the axes in the units in which the inner sphere sits at this "
+                        "radius, the same flag and meaning as stationary.vtk.  The fields are "
+                        "invariant under the rescaling, so only the axes, the rods and the "
+                        "spheres move -- which is how a run trained in a scaled chart is "
+                        "presented in the standard sizes")
     a = p.parse_args(argv)
     run_dir = a.outdir or a.run_dir
     if run_dir is None:
@@ -168,17 +194,23 @@ def main(argv=None):
     print(f"[plane] {run_dir}: {int(inside.sum())} of {inside.size} grid points inside the "
           f"shell [{cfg.rho_in:g}, {cfg.rho_out:g}], arch {cfg.arch}")
     data = maps(pf, ref, pts, inside, (a.n_rho, a.n_z))
+    r_in_phys = float(a.physical_inner or cfg.vtk_physical_inner)
+    factor = r_in_phys / cfg.rho_in
 
     out_dir = os.path.join(run_dir, "plane")
     os.makedirs(out_dir, exist_ok=True)
     png = os.path.join(out_dir, "plane.png")
-    figure(cfg, data, R, Z, png)
+    figure(cfg, data, R, Z, png, factor=factor)
 
     # a one-line summary of each panel, on the grid that was actually evaluated
     summary = {"n_rho": a.n_rho, "n_z": a.n_z, "n_points": int(inside.sum()),
-               "rho_in": cfg.rho_in, "rho_out": cfg.rho_out}
+               "rho_in": cfg.rho_in, "rho_out": cfg.rho_out,
+               "physical_inner": r_in_phys, "factor": factor,
+               "rho_in_drawn": cfg.rho_in * factor, "rho_out_drawn": cfg.rho_out * factor}
     for name in ("lambda", "lambda_err", "h_err", "curvature"):
         v = jnp.asarray(data[name])[inside.reshape(a.n_rho, a.n_z)]
+        if name == "curvature":
+            v = v / factor**4        # report it in the units the axes are drawn in
         summary[name] = {"min": float(jnp.min(v)), "max": float(jnp.max(v)),
                          "rms": float(jnp.sqrt(jnp.mean(v**2)))}
     summary["curvature_horizon_scale"] = 12.0     # 12 m^2/r^6 at r = 2m for a mass-1 hole
@@ -188,7 +220,10 @@ def main(argv=None):
           f"{summary['lambda_err']['max']:.3e}] (rms {summary['lambda_err']['rms']:.3e}), "
           f"h_err max {summary['h_err']['max']:.3e}")
     print(f"[plane] R_ab R^ab of the exact solution: max "
-          f"{summary['curvature']['max']:.3e} against ~0.19 at a mass-1 horizon")
+          f"{summary['curvature']['max']:.3e} in these units, against ~0.19 at the horizon of "
+          f"a mass-1 hole")
+    print(f"[plane] axes in units where the inner sphere sits at {cfg.rho_in * factor:g} "
+          f"(factor {factor:g} from the run's chart)")
     print(f"[plane] wrote {png} and plane.json")
     return 0
 
