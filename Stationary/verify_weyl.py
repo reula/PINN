@@ -58,7 +58,11 @@ I3 = jnp.eye(3)
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--half-length", type=float, default=1.0, help="half-length of each rod")
+    p.add_argument("--half-length", type=float, default=1.0,
+                   help="mass of the upper rod (a rod of length 2m has mass m)")
+    p.add_argument("--half-length-b", type=float, default=None,
+                   help="mass of the lower rod; omit for equal masses.  Unequal masses break "
+                        "z -> -z, so the fields gain a dipole while the equations do not change")
     p.add_argument("--half-gap", type=float, default=0.5, help="half the gap between the rods")
     p.add_argument("--n-quad", type=int, default=400, help="Gauss-Legendre nodes for k")
     p.add_argument("--n-points", type=int, default=24, help="sample points for the residuals")
@@ -97,13 +101,18 @@ def decay_exponent(rhos, values):
 
 def main(argv=None):
     a = parse_args(argv)
-    rods = Rods.symmetric(a.half_length, a.half_gap)
+    rods = Rods.pair(a.half_length, a.half_length_b, a.half_gap)
     extent = rods.axis_extent
     rho_in = a.rho_in if a.rho_in is not None else 3.0 * extent
     rho_out = a.rho_out if a.rho_out is not None else 300.0 * extent
     print(f"configuration: {rods}")
-    print(f"  two black holes: rods on the axis, mass m = {a.half_length:g} each, "
-          f"gap {2 * a.half_gap:g} between them; the strut is on the axis inside the sphere")
+    m_a, m_b = rods.masses
+    print(f"  two black holes: rods on the axis of masses {m_a:g} (z > 0) and {m_b:g} "
+          f"(z < 0), total {rods.total_mass:g}, gap {2 * a.half_gap:g} between the horizons; "
+          f"the strut is on the axis inside the sphere")
+    print(f"  {'symmetric' if abs(m_a - m_b) < 1e-12 else 'ASYMMETRIC'} configuration: "
+          f"the fields {'are' if abs(m_a - m_b) < 1e-12 else 'are not'} invariant under "
+          f"z -> -z")
     print(f"  inner sphere must clear rho = {extent:g}; sampling rho in [{rho_in:g}, {rho_out:g}]")
     print(f"  quadrature: {a.n_quad} Gauss-Legendre nodes for k\n")
 
@@ -254,6 +263,31 @@ def main(argv=None):
     checks.append(("manufactured loss on the Weyl solution is zero", float(loss) < 1e-20))
     checks.append(("... and is NOT zero in the harmonic gauge (the check has teeth)",
                    float(loss_h) > 1e-8))
+
+    # -------------------------------------------------- the mass ratio, made measurable
+    # The rod lengths ARE the masses, so an unequal pair must differ from the symmetric one
+    # in exactly two measurable ways and no more.  Both are checkable with what is already
+    # here, and both would catch a mistake in how the pair is laid out on the axis.
+    off = jnp.array([rho_in, 0.0, 0.5 * rho_in])          # a point off the axis
+    off_m = off * jnp.array([1.0, 1.0, -1.0])             # its mirror image in z
+    asym = abs(float(lam_of(off, rods) - lam_of(off_m, rods)))
+    equal = abs(float(m_a) - float(m_b)) < 1e-12
+    print(f"z -> -z asymmetry of lambda at {tuple(float(v) for v in off)}: {asym:.3e}")
+    checks.append((f"z -> -z symmetry matches equal masses ({m_a:g} = {m_b:g})"
+                   if equal else
+                   f"unequal masses ({m_a:g} != {m_b:g}) DO break z -> -z symmetry",
+                   asym < 1e-14 if equal else asym > 1e-6))
+
+    # lambda - 1 -> -2M/rho at infinity, M the total ADM mass.  Far enough out the 1/rho^2
+    # corrections are ~M/rho ~ 1e-4, so this pins the mass content to three digits, which is
+    # a real statement about the solution and not about the construction.
+    far = 1.0e4
+    ratio = float(far * (lam_of(jnp.array([far, 0.0, 0.0]), rods) - 1.0)) / (-2.0 * rods.total_mass)
+    print(f"rho (lambda - 1) at rho = {far:g}: "
+          f"{float(far * (lam_of(jnp.array([far, 0.0, 0.0]), rods) - 1.0)):+.10f}"
+          f"   (expected {-2.0 * rods.total_mass:+.10f} = -2 * {rods.total_mass:g})")
+    checks.append((f"the lambda tail carries the total mass m_a + m_b = {rods.total_mass:g} "
+                   f"(off by {abs(ratio - 1.0):.1e})", abs(ratio - 1.0) < 1e-3))
 
     # ------------------------------------------------------------------ verdict
     print("\n" + "=" * 72)

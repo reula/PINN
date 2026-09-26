@@ -191,7 +191,7 @@ checking the code against itself it checks it against a genuinely different exac
 the symmetric two-rod Weyl (Israel–Khan) family, i.e. **two black holes on the axis, held
 apart by the conical strut between them**.  It needs only jax (no Crunch, no GPU, no
 training) and about 10 s, it is run by `run_hub.sh --check`, and it exits non-zero if any
-check fails.  Fourteen checks, all passing:
+check fails.  Sixteen checks, all passing:
 
 * the Weyl fields satisfy this code's two geometric equations in the Weyl chart — `ricci`
   and `lam_eq` residuals at ~1e-17 — while compatibility is exact by construction, since
@@ -206,12 +206,23 @@ check fails.  Fourteen checks, all passing:
 * the decay exponents are exactly the ones the Robin conditions assume: `h − I ~ rho^-2`,
   `lam − 1 ~ rho^-1`, `Gamma ~ rho^-3` (so `robin_exps` needs no retuning for this solution);
 * the strut is present: `k`, which sets the cone angle `2 pi e^-k` on the axis, is −0.588
-  across the gap and 0 outside the rods.
+  across the gap and 0 outside the rods;
+* **the two holes may have different masses**, and then exactly two things change.  A rod of
+  length `2m` *is* a black hole of mass `m`, so `--half-length-b` sets the lower hole's mass
+  and the fields acquire a dipole (the coordinate origin is no longer the centre of mass)
+  while the equations do not change at all.  Both consequences are checked rather than
+  assumed: `lam` must be invariant under `z -> -z` when the masses are equal (to 1e-14) and
+  must *not* be when they differ (2.7e-02 for 1 and 0.1), and the tail `rho (lam − 1) -> -2M`
+  must carry the total ADM mass — `-2.1997579916` against an expected `-2.2` for masses 1 and
+  0.1, and off by 2e-04 for the symmetric pair.
 
 The mapping is `h = e^{2k}(drho^2 + dz^2) + rho^2 dphi^2`, `lam = e^{2U}`; the derivation of
 that and of the gauge source is in `stationary/weyl.py`.  All parameters
-(`--half-length`, `--half-gap`, `--n-quad`, `--rho-in`, `--rho-out`, `--n-points`) are on the
-command line, and `Rods(spans)` accepts an arbitrary set of rods for later configurations.
+(`--half-length`, `--half-length-b`, `--half-gap`, `--n-quad`, `--rho-in`, `--rho-out`,
+`--n-points`) are on the command line; `Rods.pair(m_above, m_below, half_gap)` builds the
+two-rod family (unequal masses included, `symmetric` being the equal-mass case) and
+`Rods(spans)` accepts an arbitrary set of rods for later configurations.  `run_hub.sh --check`
+runs this script twice, once for the equal pair and once for masses 1 and 0.1.
 Note the inner sphere must clear `rho = axis_extent` (2.5 for the default), and the strut's
 `k` near the axis is the least-converged number here, since the quadrature is tuned for the
 region outside the holes.
@@ -248,6 +259,10 @@ ordinary production code path rather than a special case:
   `Gamma ~ rho^-3` for this family;
 * the reference enters the loss *only* as boundary data and as the Robin source; elsewhere it
   is a comparison asset, exactly as in the manufactured scalar-field runs;
+* `--weyl-half-length-b` gives the lower hole a different mass (masses 1 and 0.1, say).
+  Nothing else has to change: `robin_exps` still holds because the leading exponents are set
+  by the total mass, and the manufactured source absorbs the dipole that unequal masses
+  introduce.  The inner sphere then has to clear the *larger* rod;
 * `rho_in` must clear the rods, which reach `rho = half_gap + 2*half_length`, so `--weyl`
   defaults to `rho_in = 3 * axis_extent` (7.5 for the default rods) and
   `rho_out = 10 * rho_in`.  `--weyl-half-length`, `--weyl-half-gap` and `--weyl-n-quad`

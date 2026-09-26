@@ -54,7 +54,8 @@ class Config:
     # of mass weyl_half_length, separated by a gap 2*weyl_half_gap.  rho_in must clear
     # weyl_half_gap + 2*weyl_half_length.
     weyl: bool = False
-    weyl_half_length: float = 1.0
+    weyl_half_length: float = 1.0        # mass of the upper hole (rod length / 2)
+    weyl_half_length_b: float | None = None   # the lower hole; None -> equal masses
     weyl_half_gap: float = 0.5
     weyl_n_quad: int = 400
     inner_h_rr: float | None = None

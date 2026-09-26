@@ -54,14 +54,33 @@ class Rods:
     spans: tuple[tuple[float, float], ...]
 
     @staticmethod
-    def symmetric(half_length: float = 1.0, half_gap: float = 0.5) -> "Rods":
-        """Two equal rods, one on each side of z = 0, gap 2*half_gap between them."""
-        if half_length <= 0.0:
-            raise ValueError("half_length must be positive")
+    def pair(mass_above: float = 1.0, mass_below: float | None = None,
+             half_gap: float = 0.5) -> "Rods":
+        """Two rods on the axis, of masses `mass_above` (at z > 0) and `mass_below`.
+
+        A rod of length 2m is a black hole of mass m, so the argument IS the mass: the
+        symmetric configuration of the earlier runs is `pair(1, None, 0.5)`.  Unequal masses
+        break the z -> -z symmetry, which shows up in the fields (a nonzero dipole in
+        lambda: with two unequal holes the coordinate origin is no longer the centre of
+        mass) and nowhere in the equations, which is the point of trying it.  Note that a
+        rod is also the horizon, so `half_gap` is half the proper distance between the two
+        horizons and must stay positive.
+        """
+        if mass_below is None:
+            mass_below = mass_above
+        for name, v in (("mass_above", mass_above), ("mass_below", mass_below)):
+            if v <= 0.0:
+                raise ValueError(f"{name} must be positive")
         if half_gap <= 0.0:
             raise ValueError("half_gap must be positive (half_gap -> 0 merges the holes)")
-        return Rods(((-half_gap - 2.0 * half_length, -half_gap),
-                     (half_gap, half_gap + 2.0 * half_length)))
+        # the gap is symmetric about z = 0, so the rods' ends sit at +-(half_gap + 2m)
+        return Rods(((-half_gap - 2.0 * mass_below, -half_gap),
+                     (half_gap, half_gap + 2.0 * mass_above)))
+
+    @staticmethod
+    def symmetric(half_length: float = 1.0, half_gap: float = 0.5) -> "Rods":
+        """Two equal rods, one on each side of z = 0, gap 2*half_gap between them."""
+        return Rods.pair(half_length, half_length, half_gap)
 
     @property
     def masses(self) -> tuple[float, ...]:

@@ -56,8 +56,8 @@ def exact_asset(cfg: Config):
     """
     if getattr(cfg, "weyl", False):
         from .weyl import Rods, fields_of
-        return fields_of(Rods.symmetric(cfg.weyl_half_length, cfg.weyl_half_gap),
-                         cfg.weyl_n_quad)
+        return fields_of(Rods.pair(cfg.weyl_half_length, cfg.weyl_half_length_b,
+                                   cfg.weyl_half_gap), cfg.weyl_n_quad)
     if cfg.outer_bc == "dirichlet_exact":
         return exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
     if cfg.ref_solution or cfg.robin_source:
@@ -720,7 +720,13 @@ def parse_args(argv=None):
                    help="manufactured run on the Weyl two-black-hole reference; implies "
                         "--inner-bc reference --gauge-source cylindrical --outer-bc robin "
                         "--robin-source --ref-solution, and a rho_in that clears the rods")
-    p.add_argument("--weyl-half-length", type=float, default=None, dest="weyl_half_length")
+    p.add_argument("--weyl-half-length", type=float, default=None, dest="weyl_half_length",
+                   help="mass of the upper black hole (the rod length is twice it)")
+    p.add_argument("--weyl-half-length-b", type=float, default=None,
+                   dest="weyl_half_length_b",
+                   help="mass of the lower black hole; omit for equal masses.  Unequal "
+                        "masses break z -> -z: the fields gain a dipole, the equations do "
+                        "not change")
     p.add_argument("--weyl-half-gap", type=float, default=None, dest="weyl_half_gap")
     p.add_argument("--weyl-n-quad", type=int, default=None, dest="weyl_n_quad")
     a = p.parse_args(argv)
@@ -839,6 +845,8 @@ def parse_args(argv=None):
         cfg.gauge_source = a.gauge_source
     if a.weyl_half_length is not None:
         cfg.weyl_half_length = float(a.weyl_half_length)
+    if a.weyl_half_length_b is not None:
+        cfg.weyl_half_length_b = float(a.weyl_half_length_b)
     if a.weyl_half_gap is not None:
         cfg.weyl_half_gap = float(a.weyl_half_gap)
     if a.weyl_n_quad is not None:
@@ -865,7 +873,10 @@ def parse_args(argv=None):
         if a.outer_bc is None:
             cfg.outer_bc = "robin"
         if a.rho_in is None:
-            cfg.rho_in = 3.0 * (cfg.weyl_half_gap + 2.0 * cfg.weyl_half_length)
+            # clear the LARGER of the two rods
+            biggest = max(cfg.weyl_half_length,
+                          cfg.weyl_half_length_b or cfg.weyl_half_length)
+            cfg.rho_in = 3.0 * (cfg.weyl_half_gap + 2.0 * biggest)
         if a.rho_out is None:
             cfg.rho_out = 10.0 * cfg.rho_in
         if a.lam_inf is None:

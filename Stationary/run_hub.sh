@@ -125,6 +125,11 @@ if [ "${1:-}" = "--check" ]; then
     MPLBACKEND=Agg MPLCONFIGDIR="$MPLCONFIGDIR" "$PY" -m pytest tests/ -q
     echo "== Weyl two-black-hole production check (jax only, ~10 s) =="
     "$PY" -m verify_weyl || { echo "verify_weyl FAILED"; exit 1; }
+    echo "== the same check for an unequal pair, masses 1 and 0.1 =="
+    # Unequal rods break z -> -z: the fields gain a dipole and the z-symmetry / total-mass
+    # checks flip to their asymmetric form.  The equations do not care, which is the point.
+    "$PY" -m verify_weyl --half-length 1.0 --half-length-b 0.1 \
+        || { echo "verify_weyl (unequal masses) FAILED"; exit 1; }
     echo "== smoke run (200 steps, must finish in seconds) =="
     SMOKE="${SMOKE:-$HERE/runs/_smoke}"
     # the shell creates the redirect target before python can create the outdir
