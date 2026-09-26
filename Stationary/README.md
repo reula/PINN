@@ -90,9 +90,17 @@ tests through a single `fields(x) -> (h, Gamma, lambda)` callable):
     lam_eq        = h^{ij}(d_i d_j lam - G^k_{ij} d_k lam)
                     - (1/lam) h^{ij} d_i lam d_j lam                  (1)
 
-Each group is multiplied by `rho^p` (`p = 3, 4, 3, 3`), which makes the residual
-dimensionless *relative to the size of its own terms*, since the exact solution
-obeys `compat, gauge, lam_eq ~ rho^-3` and `ricci ~ rho^-4`.
+Each group is multiplied by `rho^p` with `p = 1, 2, 1, 2`: `compat` and `gauge` carry one
+derivative and have dimension 1/length, `ricci` and `lam_eq` carry two and have 1/length^2.
+With `scale_ref = None` -- the default, and what every run under `runs/` uses -- the length is
+the LOCAL `rho`, so each group is measured relative to the size of its own terms; a fixed
+`--scale-ref` measures them all in units of that one length instead.
+
+That is not the same as the decay of the *unscaled* residuals, which for the exact solution
+goes as `compat, gauge, lam_eq ~ rho^-3` and `ricci ~ rho^-4`.  An exponent set of `3, 4, 3, 3`
+would make the far field O(1) rather than dimensionless, and nothing here does that (only an
+explicit `--scale-exps 3,4,3,3` would); this paragraph claimed `p = 3, 4, 3, 3` until now,
+which contradicted §8.9 and the code.
 
 ## 5. Boundary conditions
 
