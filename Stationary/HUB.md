@@ -538,24 +538,32 @@ then order 2 with `--init-from runs/production_quad/params.pkl`, then order 3 li
 is what made the control reach 4e-16 in 906 iterations, at the price of two extra runs.
 
 **VTK for VisIt.** `--vtk` on the last phase makes `postprocess.sh` write
-`runs/production_quad/vtk/solution.vtk` when that run ends:
+`runs/production_quad/vtk/solution.vtk` when that run ends.  Since the shell-conforming grid
+became the default (`stationary/vtk.py`, `--grid spherical`, used by `postprocess.sh` without
+an override) this is the SAME export the Weyl runs use:
 
-* **graded Cartesian grid in PHYSICAL coordinates** (`1 … 100`, i.e. the run's scaled shell
-  `[0.01, 1]` multiplied by `1/rho_in`), geometric along each half axis so the points cluster
-  near the inner sphere, where the action is, and thin out in the far field;
-* only the hexahedral cells whose centre lies inside the shell are written — the hole and the
-  exterior cost nothing (on 41 points per axis: 66 k points, 61 k cells, ~10 MB);
+* **shell-conforming spherical grid in PHYSICAL coordinates** (`1 … 100`, i.e. the run's scaled
+  shell `[0.01, 1]` multiplied by `1/rho_in`): radial levels geometric so both spheres are hit
+  exactly, uniform in theta and phi, every cell inside the shell by construction, and the
+  inner sphere — where the field varies fastest — resolved the same amount in every direction.
+  The polar rings are wedges (VTK type 13), not degenerate hexahedra.  On the default
+  36 x 24 x 48: 41 k points, 41 k cells, ~8 MB;
+* `--grid cartesian` still gives the older graded box (points per half axis via `--vtk-n-half`,
+  default 20 → 41 per axis; only cells whose centre is inside the shell), kept for comparison:
+  it grades the three AXES only, so most of the inner sphere is comparatively bare;
 * point data: `lambda`, `lambda_minus_1`, `r_areal`, `ricci_scalar` (R of h), `ricci_sq`
   (`R_ab R^ab` — in three dimensions the Weyl tensor vanishes, so this is the rest of the
-  curvature information beyond the scalar), and `res_ricci`, `res_lam_eq` as quality maps.
+  curvature information beyond the scalar), `res_ricci`, `res_lam_eq` as quality maps, and —
+  when the run carried a reference — `lambda_err`, `h_err`, `lambda_exact`.
 
-Options: `--vtk-n-half N` (points per half axis, default 20 → 41 per axis; 21 s of CPU per
-file locally, so a few minutes on this hub), `--vtk-physical-inner` (default 1.0), and
+Options: `--n-rho/--n-theta/--n-phi` (defaults 36/24/48), `--grid cartesian` with
+`--n-half N`, `--physical-inner` (default 1.0), `--no-error` (skip the reference fields) and
 `--lambda-only` (just the two `lambda` arrays, ~4x cheaper: the others need second
 derivatives).  Regenerate by hand with
 
 ```bash
-python -m stationary.vtk --outdir runs/production_quad            # all fields
+python -m stationary.vtk --outdir runs/production_quad                    # spherical, all fields
+python -m stationary.vtk --outdir runs/production_quad --grid cartesian   # the old box
 python -m stationary.vtk --outdir runs/production_quad --lambda-only
 ```
 

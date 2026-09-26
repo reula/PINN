@@ -95,11 +95,12 @@ want() { case ",$STEPS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 want evaluate && run_step evaluate "diagnostics.png + lambda_inner.png + multipole figures"
 want profile  && run_step profile  "lambda_vs_rho.png (table printed below)"
 want report   && run_step report   "$OUT/report.txt" --out "$OUT/report.txt"
-# VTK for VisIt, only when the run asked for it (--vtk): a graded Cartesian grid of the
-# shell in physical coordinates.  Large and regenerable, so it is gitignored.
+# VTK for VisIt, only when the run asked for it (--vtk): the shell-conforming spherical grid
+# in physical coordinates (stationary.vtk's default --grid spherical, the same export the Weyl
+# runs use).  Large and regenerable, so it is gitignored.
 if want vtk; then
     if grep -q '"make_vtk": true' "$OUT/config.json" 2>/dev/null; then
-        run_step vtk "$OUT/vtk/solution.vtk (VisIt: graded Cartesian grid, physical coords)"
+        run_step vtk "$OUT/vtk/solution.vtk (VisIt: shell-conforming grid, physical coords)"
     else
         echo "[post] vtk: skipped (this run was not launched with --vtk)"
     fi
