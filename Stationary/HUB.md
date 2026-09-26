@@ -669,6 +669,62 @@ reference (`--ref-solution`), and `tests/test_pins.py` checks the reference sati
 to < 1e-20, that a flat `lambda = 0.31` costs 0.46, that a wrong metric tail is caught, and
 that the lambda pin sees the monopole but not the quadrupole.
 
+## 6e. The radial derivative of the lambda equation (`--w-lam-eq-radial`)
+
+The other half of the same story as §6d.  The lambda-equation is *second order*, so a loss
+built from it is blind to `lambda'''` — and `lambda'''` at `rho_out` is exactly where the
+order-3 Robin condition lets a wrong level hide (its kernel is `rho^-1, rho^-2, rho^-3`, and
+its residual is a cancellation of terms of order 0.1).  This term closes that hole from inside
+the loss instead of by imposing a value:
+
+```
+w_lam_eq_radial * rho^3 * d/d rho [ box(lambda) - (1/lambda) |grad lambda|^2 ]
+```
+
+`rho^3` is the dimensionally consistent factor, taken from `scale_exps['lam_eq'] = 2` rather
+than hard-coded (the residual is 1/length², its radial derivative 1/length³), which makes the
+term invariant under the shell rescaling `rho -> rho/s` with the fields relabelled — checked
+in `tests/test_pde_radial.py` to 1e-9.  It is ramped in with the other equation terms
+(`--pde-ramp-steps`) and carries its own weight `--w-lam-eq-radial` (0, the default, drops the
+term *and* its cost: nothing is differentiated).
+
+Measured on the production geometry (4096 points, reference built with `--ref-asymptotic 1`):
+
+| field | plain `lam_eq` | radial term | ratio |
+|---|---|---|---|
+| exact reference | 8.8e-32 | 1.2e-30 | — (a zero of both) |
+| `lambda + a/rho`, a = 0.05 (Robin kernel mode) | 3.3e-01 | 4.93 | **15x** |
+| `lambda + 0.1` (level shift) | 6.8e-04 | 9.1e-03 | **13x** |
+| radial wiggle `1e-3 sin(32(rho-1))` | 2.8e-02 | 19.8 | 703x |
+| radial wiggle `1e-5 sin(200(rho-1))` | 4.4e-03 | 110.0 | 2.5e4x |
+
+So it is 13-15x more sensitive than the equation itself to the two deviations the Robin
+condition cannot see, and its sensitivity grows with the radial wavenumber — hiding the
+mismatch in higher radial derivatives gets more expensive, not cheaper.  Cost, production
+network at 16384 points, value+gradient, CPU: the four equation groups 2.08 s, plus this term
+2.44 s, i.e. **1.17x** (an earlier formulation that built the full Jacobian and contracted
+with `n` cost 1.89x; `jax.jvp` along `n` is what makes the difference).
+
+```bash
+# the same quarter run, no pins, only the extra equation term
+JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python ./run_hub.sh \
+  --arch axisym_hybrid --outdir runs/production_quad_quarter_lamrad \
+  --steps 500 --lbfgs-steps 8000 \
+  --R0 0.005773502691896258 --rho-in 0.01 --inner-radius 0.01 --rho-out 1.0 \
+  --ref-solution --ref-asymptotic 1.0 \
+  --outer-bc robin --robin-exps 2,3,1 --robin-orders h=3,lam=3 --no-robin-G --lam-inf 1.0 \
+  --decay-feature --radial log --pde-ramp-steps 500 \
+  --w-inner 100 --w-outer 100 --reweight-every 1500 \
+  --n-coll 16384 --n-bnd 1024 --w-lam-eq-radial 1 --lam-bc-S2 -0.08333333333333333
+```
+
+The `[adam]` line then carries `lam_rad=…` next to `lam=…`, and the final value lands in the
+run's `report.json` as `pde_lam_eq_radial`.  `w_lam_eq_radial` is also folded into the
+`lam_eq` group for the gradient-norm reweighting, so a reweighting run sees the whole gradient
+of that equation.  A weight of 1 is the natural starting point: at the correct solution the
+term is ~1e-30, so it costs the solution nothing, while at a hidden-level state it is an order
+of magnitude larger than the term it corrects.
+
 ## 7. The two production runs (separate, run in sequence)
 
 **They are two independent runs, not one run combining both cases.** A single run has one

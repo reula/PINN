@@ -155,6 +155,17 @@ class Config:
     pin_h_rr: bool = False
     w_pin: float = 100.0        # weight of the pin group, independent of w_outer
 
+    # ------------------------------------- radial derivative of the lambda equation
+    # The lambda-equation is second order, so the loss is blind to lambda''', and lambda'''
+    # at rho_out is where the order-3 Robin condition lets a wrong far-field level hide (its
+    # kernel is rho^-1, rho^-2, rho^-3, so its residual is a cancellation of terms of order
+    # 0.1 leaving 1.3e-08 -- measured on runs/production_quad_quarter: outer Robin 7e-06 with
+    # lambda(rho_out) = 0.31 against 0.9885193).  Weighting d(rho)/d rho of that residual,
+    # scaled by rho^3 to stay dimensionless (lam_eq is 1/length^2, its radial derivative
+    # 1/length^3, and scale_exps['lam_eq'] = 2), makes the loss see exactly that content.
+    # 0 (the default) turns the term off entirely: nothing is even differentiated.
+    w_lam_eq_radial: float = 0.0
+
     pde_ramp_steps: int = 0     # ramp the PDE weights in over this many steps (0 = off)
     reweight_every: int = 2000  # gradient-norm adaptive reweighting period (0 = off)
     reweight_max_ratio_inv: float = 0.5   # per-update cap: weights move by at most 2x

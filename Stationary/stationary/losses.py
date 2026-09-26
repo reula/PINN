@@ -22,7 +22,8 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from .geometry import pack_gamma, pack_sym, residuals_batch, scaled_residuals_batch
+from .geometry import (pack_gamma, pack_sym, radial_derivative_residual_batch,
+                       residuals_batch, scaled_residuals_batch)
 from .problem import lam_inner_bc, sample_sphere
 
 I3 = jnp.eye(3)
@@ -77,6 +78,25 @@ def pde_terms(point_fields, xs, cfg, gauge_src=None) -> dict:
         gauge_src = gauge_source_of(cfg, point_fields)
     r = scaled_residuals_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref, gauge_src)
     return {k: jnp.mean(v ** 2) for k, v in r.items()}
+
+
+def pde_radial_terms(point_fields, xs, cfg) -> dict:
+    """Mean squared rho-scaled RADIAL DERIVATIVE of the lambda-equation residual.
+
+    Empty -- and free, nothing is differentiated -- unless `cfg.w_lam_eq_radial` is nonzero,
+    so every existing run and every existing test is unaffected.  It exists because the
+    lambda-equation is second order: the loss cannot see lambda''', and the order-3 Robin
+    condition can be satisfied with a wrong far-field level by putting the mismatch exactly
+    there (measured on runs/production_quad_quarter: outer Robin residual 7e-06 while
+    lambda(rho_out) = 0.31 against 0.9885193; the reference's own order-3 combination is a
+    cancellation of terms of order 0.1 leaving 1.3e-08).  One radial derivative makes the
+    loss sensitive to that content; `rho^3` is the dimensionally consistent factor, inherited
+    from `scale_exps['lam_eq'] = 2` rather than hard-coded.
+    """
+    if not float(getattr(cfg, "w_lam_eq_radial", 0.0) or 0.0):
+        return {}
+    r = radial_derivative_residual_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref)
+    return {"lam_eq_radial": jnp.mean(r ** 2)}
 
 
 # -------------------------------------------------------------- inner boundary
@@ -259,6 +279,11 @@ def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> di
 
     pf = make_point_fields(model, state["net"])
     out = dict(pde_terms(pf, batch["coll"], cfg))
+    # The radial-derivative term rides with the lambda-equation group here: this function
+    # feeds the gradient-norm reweighting, which balances the equation groups, and a term the
+    # reweighting cannot see would let it drive lam_eq's weight down while the unseen term
+    # carries the loss.  Its value is not used as a diagnostic anywhere (the loss parts are).
+    out["lam_eq"] = out["lam_eq"] + sum(pde_radial_terms(pf, batch["coll"], cfg).values())
     out["inner"] = sum(inner_bc_terms(pf, batch["inner"], cfg, exact_fields).values())
     # The outer group carries the Robin conditions AND the value pins: the plateau rule and
     # the per-block log watch this number, and a run is not converged while a pin is unmet.
@@ -288,6 +313,9 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     parts = {}
     for k, v in pde_terms(pf, batch["coll"], cfg).items():
         parts[f"pde_{k}"] = v
+    rad = pde_radial_terms(pf, batch["coll"], cfg)
+    for k, v in rad.items():
+        parts[f"pde_{k}"] = v
     inner = inner_bc_terms(pf, batch["inner"], cfg, exact_fields)
     for k, v in inner.items():
         parts[f"inner_{k}"] = v
@@ -301,6 +329,10 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     loss = 0.0
     for k in ("compat", "ricci", "gauge", "lam_eq"):
         loss = loss + pde_scale * weights[k] * parts[f"pde_{k}"]
+    # own weight, and ramped in with the other equation terms (pde_scale): it is an interior
+    # equation, not a boundary datum, so it should not dominate before the ramp finishes
+    for k, v in rad.items():
+        loss = loss + pde_scale * jnp.asarray(cfg.w_lam_eq_radial) * v
     loss = loss + weights["inner"] * sum(inner.values())
     loss = loss + weights["outer"] * sum(outer.values())
     if pin:

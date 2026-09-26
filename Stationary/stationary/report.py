@@ -174,6 +174,10 @@ def main():
               f" w_pin = {getattr(cfg, 'w_pin', float('nan')):g}")
     print(f"loss weights   : w_inner = {cfg.w_inner:g}, w_outer = {cfg.w_outer:g}, "
           f"reweight_every = {cfg.reweight_every}")
+    if getattr(cfg, "w_lam_eq_radial", 0.0):
+        print(f"radial eq term : w_lam_eq_radial = {cfg.w_lam_eq_radial:g}"
+              f"   (rho^3 d/drho of the lambda equation; the run's report.json carries its"
+              f" final value as pde_lam_eq_radial)")
     print(f"sampling       : n_coll {cfg.n_coll}, n_bnd {cfg.n_bnd}, scale_ref {cfg.scale_ref}")
     if qn_known:
         print(f"optimiser      : Adam then {qn_method}"

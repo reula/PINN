@@ -153,3 +153,51 @@ def scaled_residuals_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
         p = exps[k]
         out[k] = v * (base ** p)[(...,) + (None,) * (v.ndim - 1)]
     return out
+
+
+def lam_eq_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray) -> jnp.ndarray:
+    """The lambda-equation residual at one point, unscaled.
+
+    The `lam_eq` entry of `residuals_at`, on its own: `radial_derivative_residual_batch`
+    differentiates it in x, and going through `residuals_at` would differentiate the Ricci
+    and gauge groups (jax prunes unused outputs only partially, and the Ricci group is the
+    expensive one) for nothing.
+    """
+    h, G, lam = fields(x)
+    dlam = jax.jacfwd(lambda y: fields(y)[2])(x)
+    d2lam = jax.hessian(lambda y: fields(y)[2])(x)
+    Hinv = jnp.linalg.inv(h)
+    hess = d2lam - jnp.einsum("cij,c->ij", G, dlam)
+    return (jnp.einsum("ij,ij->", Hinv, hess)
+            - (1.0 / lam) * jnp.einsum("ij,i,j->", Hinv, dlam, dlam))
+
+
+def radial_derivative_residual_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
+                                     ref: float | None = None) -> jnp.ndarray:
+    """d/drho of the raw lambda-equation residual, times length**(exp + 1).
+
+    The lambda-equation is second order, so a loss built from it alone is blind to
+    lambda''' -- and lambda''' at rho_out is exactly where the order-3 Robin condition lets a
+    wrong far-field level hide (the operator's kernel is rho^-1, rho^-2, rho^-3, so its
+    residual is a cancellation of terms of order 0.1 that leaves 1.3e-08; see the Config
+    comment on the far-field pins).  One rho-derivative makes the loss see that content.
+
+    The extra factor of length keeps the term dimensionless and scale-covariant, exactly as
+    `scaled_residuals_batch` does for the groups themselves: the residual carries
+    length^-exps['lam_eq'] = length^-2 and its radial derivative length^-3, so the product
+    rho^3 d(rho)/d rho is invariant under rho -> rho/s with the fields relabelled.
+    """
+    p = float(exps.get("lam_eq", 2.0)) + 1.0
+
+    def one(x):
+        rho = jnp.linalg.norm(x)
+        n = x / rho
+        # jvp, not jacfwd + contraction: only the derivative ALONG n is wanted, and the full
+        # Jacobian would build all three directional derivatives and throw two away.  Measured
+        # on the production network at 16384 points this is the difference between 1.9x and
+        # ~1.5x the plain PDE cost per value+gradient.
+        d = jax.jvp(lambda y: lam_eq_at(fields, y), (x,), (n,))[1]
+        base = rho if ref is None else jnp.asarray(float(ref))
+        return d * base ** p
+
+    return jax.vmap(one)(xs)

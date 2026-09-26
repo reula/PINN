@@ -30,7 +30,7 @@ import optax
 
 from . import diagnostics, exact
 from .losses import (GROUP_KEYS, default_weights, group_terms, outer_pin_terms,
-                     reference_consistency, total_loss)
+                     pde_radial_terms, reference_consistency, total_loss)
 from .model import (AxisymHybridNet, FieldNet, HybridNet, SymFieldNet, SymHybridNet,
                     point_fields)
 from .problem import Config, sample_shell, sample_sphere
@@ -257,7 +257,9 @@ def print_config_summary(cfg: Config):
     else:
         print(f"  outer BC    {cfg.outer_bc} (h and lambda from the exact solution)")
     print(f"  weights     w_inner {cfg.w_inner:g}   w_outer {cfg.w_outer:g}"
-          f"   reweight every {cfg.reweight_every}   pde ramp {cfg.pde_ramp_steps}")
+          f"   reweight every {cfg.reweight_every}   pde ramp {cfg.pde_ramp_steps}"
+          + (f"   w_lam_eq_radial {cfg.w_lam_eq_radial:g}"
+             if getattr(cfg, 'w_lam_eq_radial', 0.0) else ""))
     print(f"  sampling    n_coll {cfg.n_coll}   n_bnd {cfg.n_bnd}   radial {cfg.radial}"
           f"   decay feature {cfg.decay_feature}")
     prec = ("float64 (x64: ~2x slower, and NOT comparable with the float32 runs)"
@@ -564,11 +566,13 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                 # (data), the Robin terms are decay conditions, and when a run goes to the
                 # wrong branch it is precisely bc_out that stays at its floor.
                 pins = sum((float(v) for k, v in parts.items() if k.startswith("pin_")), 0.0)
+                lam_r = float(parts.get("pde_lam_eq_radial", 0.0))
                 print(f"[adam {it:6d}] loss={float(loss):.4e}  "
                       f"pde(compat={float(parts['pde_compat']):.2e} "
                       f"ricci={float(parts['pde_ricci']):.2e} "
                       f"gauge={float(parts['pde_gauge']):.2e} "
-                      f"lam={float(parts['pde_lam_eq']):.2e})  "
+                      f"lam={float(parts['pde_lam_eq']):.2e}"
+                      + (f" lam_rad={lam_r:.2e}" if lam_r else "") + ")  "
                       f"bc_in={float(sum(v for k, v in parts.items() if k.startswith('inner_'))):.2e} "
                       f"bc_out={float(sum(parts[k] for k in parts if k.startswith('outer_'))):.2e}"
                       + (f"  pin={pins:.2e}" if pins else ""),
@@ -650,6 +654,10 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     # the failure mode the pins exist to expose.
     for k, v in outer_pin_terms(pf, batch["outer"], cfg, exact_fields).items():
         report[f"pin_{k}"] = float(v)
+    # ... and the radial-derivative equation term, which is otherwise visible only inside the
+    # total loss: an interior term, so it belongs next to the residual_report numbers.
+    for k, v in pde_radial_terms(pf, batch["coll"], cfg).items():
+        report[f"pde_{k}"] = float(v)
     if cfg.make_figures:
         try:
             from .multipoles import make_figures
@@ -732,6 +740,12 @@ def parse_args(argv=None):
                    help="all three far-field pins (lam mean, h_tan, h_rr)")
     p.add_argument("--w-pin", type=float, default=None,
                    help="weight of the far-field pin group (independent of --w-outer)")
+    p.add_argument("--w-lam-eq-radial", type=float, default=None, dest="w_lam_eq_radial",
+                   help="weight of the rho-scaled RADIAL DERIVATIVE of the lambda equation "
+                        "(0, the default, drops the term and its cost entirely).  The "
+                        "lambda-equation is second order, so without this the loss never "
+                        "sees lambda''', which is where the order-3 Robin condition can hide "
+                        "a wrong far-field level")
     p.add_argument("--inner-radius", type=float, default=None)
     p.add_argument("--lam-bc-S1", type=float, default=None, dest="lam_bc_S1")
     p.add_argument("--lam-bc-S2", type=float, default=None, dest="lam_bc_S2")
@@ -862,6 +876,8 @@ def parse_args(argv=None):
         cfg.pin_h_rr = True
     if a.w_pin is not None:
         cfg.w_pin = float(a.w_pin)
+    if a.w_lam_eq_radial is not None:
+        cfg.w_lam_eq_radial = float(a.w_lam_eq_radial)
     if a.seed is not None:
         cfg.seed = a.seed
     if getattr(a, "init_from", None) is not None:
