@@ -58,6 +58,13 @@ class Config:
     weyl_half_length_b: float | None = None   # the lower hole; None -> equal masses
     weyl_half_gap: float = 0.5
     weyl_n_quad: int = 400
+    # Rotate the whole configuration by this angle in the z-x plane (about +y).  The metric
+    # and lambda are induced on the inner sphere from the ROTATED exact solution, so the run
+    # is a manufactured one like the others, but the solution now has no symmetry at all --
+    # the axisymmetric ansatz cannot represent it and the 3-D one must -- and the cylindrical
+    # gauge condition rotates with the rods, since it is a statement about the chart and not
+    # about the geometry (see stationary.weyl.gauge_source_from_metric).
+    weyl_rotate_deg: float = 0.0
     inner_h_rr: float | None = None
     rho_in: float | None = None     # None -> sqrt(4 + R0^2): the areal-radius-2 sphere
 
@@ -216,6 +223,10 @@ class Config:
     make_figures: bool = True       # lambda at the inner sphere + outer multipoles
 
     def __post_init__(self):
+        if self.weyl and self.weyl_rotate_deg and self.arch in ("sym", "sym_hybrid",
+                                                                 "axisym_hybrid"):
+            # a rotated configuration has no axis of symmetry left
+            self.arch = "mlp"
         if self.weyl and self.arch in ("sym", "sym_hybrid"):
             # Not a preference: these ansaetze have no angular freedom, so the loss has no
             # zero at a two-black-hole field.  Use the axisymmetric ansatz (valid, since

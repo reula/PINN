@@ -55,9 +55,11 @@ def exact_asset(cfg: Config):
     training, the report and the comparison tool all see the same reference.
     """
     if getattr(cfg, "weyl", False):
-        from .weyl import Rods, fields_of
-        return fields_of(Rods.pair(cfg.weyl_half_length, cfg.weyl_half_length_b,
-                                   cfg.weyl_half_gap), cfg.weyl_n_quad)
+        from .weyl import Rods, rotated_fields, rotation_matrix
+        rot = (rotation_matrix(cfg.weyl_rotate_deg)
+               if getattr(cfg, "weyl_rotate_deg", 0.0) else None)
+        return rotated_fields(Rods.pair(cfg.weyl_half_length, cfg.weyl_half_length_b,
+                                        cfg.weyl_half_gap), cfg.weyl_n_quad, rot)
     if cfg.outer_bc == "dirichlet_exact":
         return exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
     if cfg.ref_solution or cfg.robin_source:
@@ -793,6 +795,10 @@ def parse_args(argv=None):
                         "not change")
     p.add_argument("--weyl-half-gap", type=float, default=None, dest="weyl_half_gap")
     p.add_argument("--weyl-n-quad", type=int, default=None, dest="weyl_n_quad")
+    p.add_argument("--weyl-rotate-deg", type=float, default=None, dest="weyl_rotate_deg",
+                   help="rotate the configuration by this angle in the z-x plane (about +y). "
+                        "The inner data and the gauge source rotate with it, and the solution "
+                        "loses every symmetry, so this needs the 3-D ansatz (--weyl picks it)")
     a = p.parse_args(argv)
     cfg = Config()
     if a.steps is not None:
@@ -927,6 +933,8 @@ def parse_args(argv=None):
         cfg.weyl_half_gap = float(a.weyl_half_gap)
     if a.weyl_n_quad is not None:
         cfg.weyl_n_quad = a.weyl_n_quad
+    if a.weyl_rotate_deg is not None:
+        cfg.weyl_rotate_deg = float(a.weyl_rotate_deg)
     if a.weyl:
         # The reference IS the solution here, so the inner data, the Robin source and the
         # comparison asset all come from it; the only things left to choose are the shell
@@ -937,6 +945,9 @@ def parse_args(argv=None):
         cfg.robin_source = True
         cfg.inner_bc = "reference"
         cfg.gauge_source = "cylindrical"
+        if a.arch is None and cfg.weyl_rotate_deg:
+            # rotated: no symmetry left, so the general 3-D ansatz is the only correct choice
+            cfg.arch = "mlp"
         if a.arch is None:
             # A spherically symmetric ansatz has no angular freedom at all, so it cannot
             # represent a two-black-hole field: it would converge to a compromise and its

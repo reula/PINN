@@ -210,6 +210,43 @@ def lam_of(x, rods: Rods):
     return jnp.exp(2.0 * U_of(rho, x[2], rods))
 
 
+def rotation_matrix(angle_deg: float):
+    """Rotation by `angle_deg` in the z-x plane, i.e. about +y:
+
+        x' =  x cos(a) + z sin(a),   y' = y,   z' = -x sin(a) + z cos(a).
+
+    Chosen so that the rotated chart is the unrotated one seen from a frame turned by the
+    same angle; the axis of the Weyl rods becomes n = R z.
+    """
+    a = jnp.deg2rad(angle_deg)
+    c, s = jnp.cos(a), jnp.sin(a)
+    return jnp.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+
+
+def rotated_fields(rods: Rods, n_quad: int = 400, rot=None):
+    """The Weyl solution in rotated coordinates.
+
+    h -> R h R^T and Gamma^i_{jk} -> R^i_a R^j_b R^k_c Gamma^a_{bc} (one index up, two down),
+    both evaluated at R^T x; lambda is a scalar and is unchanged.  This is EXACTLY the same
+    solution, and it solves the same equations, because they are generally covariant.  What is
+    not covariant is the gauge: the chart is no longer adapted to the z axis, so the
+    cylindrical condition has to be rotated with it -- `gauge_source_from_metric(h, R z)`.
+
+    A rotated Weyl configuration is the first one in this project with no symmetry at all, so
+    it is the first that the axisymmetric ansatz cannot represent and the 3-D one must.
+    """
+    base = fields_of(rods, n_quad)
+    if rot is None:
+        return base
+    Rt = jnp.asarray(rot).T
+
+    def fields(x):
+        f = base(Rt @ x)
+        return Fields(rot @ f.h @ Rt,
+                      jnp.einsum("ia,jb,kc,abc->ijk", rot, rot, rot, f.G), f.lam)
+    return fields
+
+
 def fields_of(rods: Rods, n_quad: int = 400):
     """A `fields(x) -> Fields` callable for the code's residual machinery."""
     def fields(x):
@@ -218,12 +255,22 @@ def fields_of(rods: Rods, n_quad: int = 400):
     return fields
 
 
-def gauge_source_from_metric(h):
+def gauge_source_from_metric(h, axis=None):
     """The gauge source in closed form, from the metric alone:
 
-        Gamma^i = (h_rhorho - 1) h^{ij} d_j ln rho ,      rho = sqrt(x^2 + y^2) .
+        Gamma^i = (h_rhorho - 1) h^{ij} d_j ln rho_n ,    rho_n = |x - (x.n) n| ,
 
-    Exact for any h = A(drho^2 + dz^2) + rho^2 dphi^2 written in Cartesian components.
+    the cylindrical radius about the unit axis `n` (`axis=None` means z, the case every run
+    before the rotated one used).  Rotating the axis rotates the condition with it, which is
+    what a rotated configuration needs: the metric may be rotated freely -- the equations are
+    generally covariant -- but the GAUGE is a statement about a chart, so it must be rotated
+    by the same amount.
+
+    Exact for any h = A(drho_n^2 + dz_n^2) + rho_n^2 dphi_n^2 written in Cartesian
+    components, i.e. for the Weyl family about any axis.  The code below is the z-axis
+    version with (x, y, 0) -- the direction perpendicular to z -- replaced by the
+    perpendicular part about `n`; d(rho_n)^2 + rho_n^2 d(phi_n)^2 is the flat metric of that
+    perpendicular plane whichever plane it is.
     Derivation: with h^{jk}Gamma^i_{jk} = -(1/sqrt(det h)) d_m(sqrt(det h) h^{im}), the
     (x,y) block of this h has determinant exactly A (so det h = A^2, sqrt(det h) = A), the
     zz term A h^{zz} = 1 is constant -- hence Gamma^z = 0 identically -- and in the x
@@ -233,12 +280,16 @@ def gauge_source_from_metric(h):
     function of the metric components at the point, so it can be imposed as a gauge
     condition on a candidate solution.  Both agree to 6e-17 on the Weyl fields.
     """
+    n = jnp.array([0.0, 0.0, 1.0]) if axis is None else jnp.asarray(axis, jnp.float64)
+    n = n / jnp.linalg.norm(n)
+
     def one(x):
         H = h(x)
-        rho2 = x[0] ** 2 + x[1] ** 2
-        rhohat = jnp.array([x[0], x[1], 0.0]) / jnp.sqrt(rho2)
+        perp = x - (x @ n) * n                        # the part perpendicular to the axis
+        rho2 = perp @ perp
+        rhohat = perp / jnp.sqrt(rho2)
         A = rhohat @ H @ rhohat                       # h_rhorho
-        dlnrho = jnp.array([x[0], x[1], 0.0]) / rho2
+        dlnrho = perp / rho2
         return (A - 1.0) * jnp.linalg.solve(H, dlnrho)
     return one
 

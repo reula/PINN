@@ -61,8 +61,12 @@ def gauge_source_of(cfg, point_fields):
     if cfg.gauge_source == "none":
         return None
     if cfg.gauge_source == "cylindrical":
-        from .weyl import gauge_source_from_metric
-        return gauge_source_from_metric(lambda x: point_fields(x).h)
+        from .weyl import gauge_source_from_metric, rotation_matrix
+        axis = None
+        if getattr(cfg, "weyl_rotate_deg", 0.0):
+            # the condition is about a chart: rotate its axis with the configuration
+            axis = rotation_matrix(cfg.weyl_rotate_deg) @ jnp.array([0.0, 0.0, 1.0])
+        return gauge_source_from_metric(lambda x: point_fields(x).h, axis=axis)
     raise ValueError(f"unknown gauge_source {cfg.gauge_source!r}")
 
 
