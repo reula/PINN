@@ -982,3 +982,47 @@ and the inner boundary data `lambda_0`, `S1`, `S2` -- so a PNG or a notebook cel
 told apart from the next one. The plotting helpers here call `plt.close("all")` first, so
 re-running a cell replaces its plot instead of stacking another one.
 
+
+## 12. A long 3-D run: the rotated configuration, with a denser collocation set
+
+This is the run §8.12 of `README.md` asks for.  The rotated two-rod configuration has no
+symmetry left, so it needs the 3-D `mlp` ansatz (25 output fields against the axisymmetric
+ansatz's five functions of two variables), and on a CPU it produced a specific failure worth
+fixing rather than repeating: over 8000 iterations the **loss fell 13x while every physical
+error grew** (rms `|dh|` 3.6e-03 -> 8.3e-03, `max |dh|` 7.1e-02 -> 3.6e-01, `max |res_lam_eq|`
+47 -> 3375).  The loss is a mean square over the collocation set, so it hardly notices a spike,
+and the optimiser is free to buy a smaller average by concentrating the residual on a few
+points.  Hence `--n-coll 8192`, four times the previous set: if the diagnosis is right the mean
+then samples the spikes and the errors track the loss down; if `max |dh|` still climbs while
+the loss falls, the limit is the ansatz and not the objective.
+
+Everything else is the same manufactured problem: masses 1 and 0.1, the closest shell (standard
+`[3.5, 35]`, ratio 10), rotated 45 degrees in the z-x plane, inner data, Robin source and gauge
+source all from the rotated exact solution about the rotated axis.  Trained in the chart scaled
+to `rho_out = 1` for the activation range; the config in the run directory records the chart,
+so present and post-process it with `--physical-inner 3.5`.
+
+**Copy-paste the whole command.**  Cold start (`--steps 0`), so nothing on the hub has to be
+carried over, and `run_hub.sh` supplies `--outdir` and the checkpoint interval and appends
+`postprocess.sh` when the run ends:
+
+    PY=$PWD/.venv/bin/python ./run_hub.sh --weyl --weyl-half-length 0.028571428571 --weyl-half-length-b 0.002857142857 --weyl-half-gap 0.014285714286 --weyl-rotate-deg 45 --rho-in 0.1 --rho-out 1 --steps 0 --lbfgs-steps 20000 --qn-block 250 --n-coll 8192 --n-bnd 512 --outdir runs/weyl_rot45_hub --seed 0
+
+The plateau rule (three blocks improving by less than 1e-4 relative, `--qn-block 250` here)
+may stop it early, and that is a result too: it would put a floor on what this architecture
+reaches on this objective.
+
+Two things to expect from `postprocess.sh` on this run.  The figures, `report.txt` and the
+multipole panels are produced as usual; the half-plane map is **skipped by design**, because
+this solution is not axisymmetric, so `stationary.plane` refuses unless forced.  For a slice
+through the `y = 0` plane, in the standard sizes:
+
+    .venv/bin/python -m stationary.plane --outdir runs/weyl_rot45_hub --n-rho 120 --n-z 240 --physical-inner 3.5 --force
+
+and for the 3-D view, `stationary.vtk` with the same `--physical-inner 3.5`, which is what
+`runs/weyl_rot45/vtk/solution.vtk` already is.
+
+**What to compare.**  The final `max_dh`, `rms_dh`, `max_dlam` and the residual maxima from
+`<outdir>/report.json`, against the two CPU runs of §8.12 (`runs/weyl_rot45`,
+`runs/weyl_rot45_long`).  The question is not whether the loss is smaller than 2.28e-05 -- it
+will be -- but whether the *errors* are smaller with it.
