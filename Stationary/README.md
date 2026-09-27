@@ -897,6 +897,57 @@ inner sphere sits at 1 rather than where the holes actually are.
 **Files.**  `runs/weyl_close4/` and `runs/weyl_close35/`, each with the §8.9 set (figures,
 `report.txt`, `report.json`) and `plane/plane.png`, all in standard units.
 
+### 8.12 A rotated configuration: the 3-D solver, and a gauge that must rotate with it
+
+The task: take the closest shell of §8.11, rotate it 45° in the z-x plane (about +y), induce
+the rotated metric and `lambda` on the inner sphere, solve with the 3-D solver, and compare
+with the exact rotated solution.  `runs/weyl_rot45`.
+
+**Rotating the geometry is free; rotating the gauge is not.**  The equations are generally
+covariant, so `h -> R h R^T`, `Gamma^i_{jk} -> R^i_a R^j_b R^k_c Gamma^a_{bc}` and `lambda`
+unchanged, all evaluated at `R^T x`, is exactly the same solution, and it solves the same
+system.  The gauge condition is a statement about a *chart*, so the cylindrical condition
+`Gamma^i = (h_rhorho - 1) h^{ij} d_j ln rho` has to be rotated with the rods, to the source
+about `n = R z`.  `gauge_source_from_metric(h, axis)` now takes that axis; the generalization
+is one line, because only the direction perpendicular to the axis appears — `d(rho_n)^2 +
+rho_n^2 d(phi_n)^2` is the flat metric of whichever perpendicular plane it is.
+
+Checked on the exact rotated solution *before any training*, at 45° and shell `[4, 40]`:
+`compat` 1.9e-16, `ricci` 1.6e-15, `lam_eq` 7.1e-17 (the rotated fields solve the system); the
+**harmonic** residual is 3.0e-02, so the rotated chart is nowhere near harmonic, as expected;
+and with the **rotated** cylindrical source the gauge residual is 3.4e-16.  Independently, the
+rotated source equals `R·(unrotated source at R^T x)` to 5.8e-17.
+
+**The run.**  Same configuration and recipe as §8.11's closest shell (masses 1 and 0.1,
+standard shell `[3.5, 35]`, ratio 10, trained in the chart scaled to `rho_out = 1` with the
+rods at 1/35), 45° rotated, 2048 + 256 points, cold-start SSBroyden, checkpoints every 250.
+The one forced change is the ansatz: a rotated two-rod configuration has no symmetry left, so
+the axisymmetric one cannot represent it and `--weyl` picks the general 3-D `mlp` (2725
+parameters, 25 output fields) without being asked.
+
+| | rotated, 3-D (`weyl_rot45`) | unrotated, axisymmetric (`weyl_close35`) |
+|---|---|---|
+| iterations | 1500 | 3000 |
+| final loss (wall time) | 1.75e-04 (58 min) | 3.06e-12 (2 h 4 min) |
+| `rms abs(dh)` | 3.63e-03 | — |
+| `max abs(dh)` | 7.12e-02 | 7.72e-05 |
+| `rms abs(dlambda)` | 2.32e-04 | — |
+| `max abs(dlambda)` | 5.19e-03 | 1.76e-06 |
+
+So the 3-D solver does solve the rotated, fully non-symmetric, manufactured problem — with the
+rotated gauge condition imposed on the candidate's own metric — but at this budget it lands
+two to four orders of magnitude coarser than the axisymmetric run at the same shell.  That is
+not a defect of the formulation: it is the cost of the general ansatz, twenty-five fields of
+three variables instead of five functions of two, and the loss was still improving ~1.2x per
+block when the cap stopped it.  The inner data, the Robin source and the gauge source are all
+exact here (they come from the rotated reference), so what is being measured is purely the
+network's ability to represent a genuinely three-dimensional field.
+
+**Files.**  `runs/weyl_rot45/`: figures and `report.txt` as usual, `vtk/solution.vtk` on the
+shell-conforming grid in standard units (`--physical-inner 3.5`), and `plane/plane.png` from
+`--force` — the half-plane is a *slice* of this solution and not the whole of it, which is the
+one thing the rotated case changes about how these runs are best looked at.
+
 ## 9. Running on a JupyterHub / GPU machine
 
 The hub workflow has its own document: **`HUB.md`** (setup, `run_hub.sh`,
