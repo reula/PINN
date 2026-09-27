@@ -1009,7 +1009,14 @@ either sphere, not in the reference.  The standard sizes (rods of half-length 1 
 carried over, and `run_hub.sh` supplies `--outdir` and the checkpoint interval and appends
 `postprocess.sh` when the run ends:
 
-    PY=$PWD/.venv/bin/python ./run_hub.sh --weyl --weyl-half-length 0.028571428571 --weyl-half-length-b 0.002857142857 --weyl-half-gap 0.014285714286 --weyl-rotate-deg 45 --rho-in 0.1 --rho-out 1 --vtk-physical-inner 0.1 --steps 0 --lbfgs-steps 20000 --qn-block 250 --n-coll 8192 --n-bnd 512 --outdir runs/weyl_rot45_hub --seed 0
+    JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python ./run_hub.sh --weyl --weyl-half-length 0.028571428571 --weyl-half-length-b 0.002857142857 --weyl-half-gap 0.014285714286 --weyl-rotate-deg 45 --rho-in 0.1 --rho-out 1 --vtk-physical-inner 0.1 --steps 0 --lbfgs-steps 20000 --qn-block 250 --n-coll 8192 --n-bnd 512 --outdir runs/weyl_rot45_hub --seed 0
+
+**`JAX_ENABLE_X64=1` is not optional here**, and leaving it out is a two-second failure rather
+than a subtle one: the Weyl reference needs float64 (its `k` quadrature puts its extreme node
+at `rho' ~ 1e7`, where float32 has no digits left), so `Config` refuses outright with
+`cfg.weyl needs float64`.  Carrying the flag on the same line as `PY=...` is deliberate: an
+exported variable in another terminal is empty in this one, which is the same failure mode as
+the shell arrays described in section 7.
 
 `--vtk-physical-inner 0.1` is the run's own inner radius, so the config records it and every
 figure, slice and VTK this run produces is drawn in the run's chart `[0.1, 1]` with scale
