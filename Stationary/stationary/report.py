@@ -164,8 +164,13 @@ def main():
           f"   (h_rr: {cfg.inner_h_rr if cfg.inner_h_rr is not None else 'free'})")
     lam_inf = cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init
     orders = cfg.robin_orders or {k: cfg.robin_order for k in ("h", "G", "lam")}
+    # The base exponents are as much a part of the condition as the orders -- base 1 annihilates
+    # rho^-1, rho^-2, rho^-3 while base 3 would annihilate rho^-3, rho^-4, rho^-5 -- and they
+    # used to be recorded only in config.json, which made a report impossible to check on its own.
+    exps = {k: (int(v) if float(v).is_integer() else float(v))
+            for k, v in (cfg.robin_exps or {}).items()}
     print(f"outer BC       : {cfg.outer_bc}, lambda_inf = {lam_inf:g}, Robin orders {orders},"
-          f" Gamma condition included: {cfg.robin_include_G}")
+          f" base exponents {exps}, Gamma condition included: {cfg.robin_include_G}")
     _pins = ", ".join(nm for nm, on in (("lam mean", getattr(cfg, "pin_lam", False)),
                                         ("h_tan", getattr(cfg, "pin_h_tan", False)),
                                         ("h_rr", getattr(cfg, "pin_h_rr", False))) if on)

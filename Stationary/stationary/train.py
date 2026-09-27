@@ -245,10 +245,13 @@ def print_config_summary(cfg: Config):
         # `lam_inf` fixed vs learnable is a real difference -- an optimisable lambda_inf
         # lets the trivial (flat, lambda = const) branch re-select itself -- so the banner
         # must not call a fixed value "learnable".
+        exps = {k: (int(v) if float(v).is_integer() else float(v))
+                for k, v in (cfg.robin_exps or {}).items()}
         print(f"  outer BC    robin   lambda_inf = "
               f"{cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init}"
               f" ({'fixed' if cfg.lam_inf is not None else 'learnable'})"
-              f"   orders {orders}   Gamma condition {cfg.robin_include_G}"
+              f"   orders {orders}   base exponents {exps}"
+              f"   Gamma condition {cfg.robin_include_G}"
               f"   source {cfg.robin_source}")
         pins = ", ".join(nm for nm, on in (("lam mean", cfg.pin_lam),
                                            ("h_tan", cfg.pin_h_tan),

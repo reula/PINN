@@ -42,7 +42,8 @@ from . import exact
 from .evaluate import load_run
 from .geometry import residuals_batch
 from .invariants import family_params_from_solution
-from .losses import inner_bc_terms, outer_bc_terms
+from .losses import (inner_bc_terms, outer_bc_terms, outer_pin_terms,
+                     pde_radial_terms)
 from .model import point_fields
 from .multipoles import lambda_multipoles
 from .problem import Config, sample_sphere
@@ -69,6 +70,18 @@ def measure(run_dir: str, params_file: str = "params.pkl") -> dict:
          "missing_which": ",".join(missing[:4]) + ("..." if len(missing) > 4 else ""),
          "arch": f"{cfg.arch} {cfg.width}x{cfg.depth} f{cfg.fourier}",
          "orders": (cfg.robin_orders or {k: cfg.robin_order for k in ("h", "G", "lam")}),
+         "exps": {k: (int(v) if float(v).is_integer() else float(v))
+                  for k, v in (cfg.robin_exps or {}).items()},
+         # What this run added to the loss beyond the equation groups and the Robin
+         # conditions.  Without it a table can compare a pinned run against a plain one and
+         # say nothing about why their far fields differ.
+         # NOTE the parentheses: `A if c else [] + B` binds the + to the else branch, which
+         # silently dropped the radial term whenever the pins were on.
+         "extras": "  ".join(
+             ([f"pins({','.join(n for n, on in (('lam mean', cfg.pin_lam), ('h_tan', cfg.pin_h_tan), ('h_rr', cfg.pin_h_rr)) if on)})"
+               f" w_pin={cfg.w_pin:g}"] if (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr) else [])
+             + ([f"w_lam_eq_radial={cfg.w_lam_eq_radial:g}"] if cfg.w_lam_eq_radial else [])
+         ) or "-",
          "outer_bc": cfg.outer_bc,
          "steps": rep.get("steps"), "lbfgs": rep.get("lbfgs_steps"),
          "qn_method": rep.get("qn_method", getattr(cfg, "qn_method", "lbfgs")),
@@ -93,10 +106,17 @@ def measure(run_dir: str, params_file: str = "params.pkl") -> dict:
     hrr = jnp.einsum("nij,ni,nj->n", hs, nn, nn)
     m["ra_in"] = cfg.rho_in * math.sqrt(float(jnp.mean((jnp.trace(hs, axis1=-2, axis2=-1)
                                                         - hrr) / 2.0)))
-    out = outer_bc_terms(pf, xo, cfg, exact_asset(cfg),
+    ref_asset = exact_asset(cfg)
+    out = outer_bc_terms(pf, xo, cfg, ref_asset,
                          lam_inf=cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init)
     for k, v in out.items():
         m[f"bc_out_{k}"] = math.sqrt(float(v))
+    # The value pins and the radial equation term, when the run had them: recomputed from the
+    # state like everything else here, so an old run is shown with today's definitions.
+    for k, v in outer_pin_terms(pf, xo, cfg, ref_asset).items():
+        m[f"pin_{k}"] = math.sqrt(float(v))
+    for k, v in pde_radial_terms(pf, sample_sphere(key, 2048, cfg.rho_out), cfg).items():
+        m[f"pde_{k}"] = math.sqrt(float(v))
 
     # ------------------------------------------------------------------ PDE residuals
     res = residuals_batch(pf, sample_sphere(key, 2048, cfg.rho_out))
@@ -141,7 +161,8 @@ ROWS = [
     ("shell (rho_in, rho_out)", lambda m: f"[{m['rho_in']:g}, {m['rho_out']:g}]"),
     ("config fields it predates",
      lambda m: f"{m['missing_keys']}" + (f" ({m['missing_which']})" if m["missing_keys"] else "")),
-    ("outer BC", "outer_bc"), ("robin orders", "orders"),
+    ("outer BC", "outer_bc"), ("robin orders", "orders"), ("robin base exponents", "exps"),
+    ("extra loss terms", "extras"),
     ("steps (Adam + qn)", lambda m: f"{m['steps']}+{m['lbfgs']}"),
     ("quasi-Newton phase", lambda m: str(m["qn_method"])),
     ("wall (min)", lambda m: f"{m['wall_min']:.1f}"),
@@ -159,10 +180,15 @@ ROWS = [
     ("inner: h_tan", lambda m: f"{m['bc_in_h_tan']:.2e}"),
     ("outer: h", lambda m: f"{m.get('bc_out_h', float('nan')):.2e}"),
     ("outer: lambda", lambda m: f"{m.get('bc_out_lam', float('nan')):.2e}"),
+    ("far-field pins (value)",
+     lambda m: "  ".join(f"{k[4:]}={m[k]:.1e}" for k in ("pin_lam", "pin_h_tan", "pin_h_rr")
+                         if k in m) or "-"),
     ("PDE residuals (rms, raw)", None),
     ("compat", lambda m: f"{m['pde_compat']:.2e}"),
     ("gauge", lambda m: f"{m['pde_gauge']:.2e}"),
     ("lam_eq", lambda m: f"{m['pde_lam_eq']:.2e}"),
+    ("lam_eq_radial (rho^3 d/drho)",
+     lambda m: f"{m['pde_lam_eq_radial']:.2e}" if "pde_lam_eq_radial" in m else "-"),
     ("ricci", lambda m: f"{m['pde_ricci']:.2e}"),
     ("chart-independent content", None),
     ("(R0, k) read off", lambda m: f"({m['fit_R0']:.5f}, {m['fit_k']:.6f})"),
@@ -174,17 +200,27 @@ ROWS = [
 
 def table(ms: list[dict]):
     names = [m["run"] for m in ms]
-    w = max(24, max(len(n) for n in names) + 1)
-    print(f"{'quantity':32s}" + "".join(f"{n:>{w}s}" for n in names))
-    print("-" * (32 + w * len(names)))
+    rows = []
     for label, get in ROWS:
         if get is None:
-            print(f"{label}")
+            rows.append((label, None))
             continue
         if isinstance(get, str):                      # a plain field name
             key = get
             get = lambda m, key=key: str(m[key])
-        print(f"{label:32s}" + "".join(f"{get(m):>{w}s}" for m in ms))
+        rows.append((label, [get(m) for m in ms]))
+    # Width from the CONTENT, not just the run names: the "extra loss terms" and far-field pin
+    # cells are longer than a run name, and an overflowing cell silently collides with the next
+    # column.
+    w = max([24] + [len(n) + 1 for n in names]
+            + [len(c) + 2 for _, cells in rows if cells for c in cells])
+    print(f"{'quantity':32s}" + "".join(f"{n:>{w}s}" for n in names))
+    print("-" * (32 + w * len(names)))
+    for label, cells in rows:
+        if cells is None:
+            print(f"{label}")
+            continue
+        print(f"{label:32s}" + "".join(f"{c:>{w}s}" for c in cells))
 
 
 def verdicts(ms: list[dict], lam_tol: float, bc_tol: float):
