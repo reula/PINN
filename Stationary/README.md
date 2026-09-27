@@ -856,6 +856,47 @@ halves differing: `lambda` on the inner sphere is 0.7521097 at `z = +3` against 
 `z = -3`, so the side of the *small* hole is the brighter one (verified on the exact
 solution; the trained one differs from it by 5.6e-08, so the same reading holds).
 
+### 8.11 Stronger curvature: moving the inner sphere in (4 and 3.5)
+
+The shells of §8.9–8.10 sit 5.0 from the nearest horizon -- two axis extents -- and are
+therefore a *weak-field* test: the exact `R_ab R^ab` at `rho_in = 7.5` peaks at 3.3e-06,
+against ~0.19 at the horizon of a mass-1 hole, i.e. 1.7e-05 of it.  That is why the curvature
+looks featureless near the inner boundary in the maps, and it is worth fixing, because a
+solver that is only ever exercised where the field is nearly flat is not being tested.
+`verify_weyl` already passes at `rho_in = 4` and 3.5 (17/17 each, including the `n_quad`
+convergence at the sphere and the manufactured loss on the exact solution, 2.2e-29 at
+`rho_in = 4`), so the reference is exact there; the open question was the network.
+
+Both runs are the §8.10 configuration (masses 1 and 0.1) and the same recipe -- cold-start
+SSBroyden, 3000 iterations, 4096 + 256 points, shell ratio 10 -- trained in a chart scaled so
+that `rho_out = 1` (rods at 1/40 and 1/35 of standard size).  That scaling is for the
+activation range, and §8.9 measures it to be exactly neutral for the loss at a fixed ratio;
+the numbers below are converted back to the **standard sizes**, i.e. rods of half-length 1 and
+0.1 and the shells named in the first column.
+
+| shell (standard) | distance to the horizon | `R_ab R^ab` at `rho_in` | `max abs(dh)` | `lambda_err` rms | final loss |
+|---|---|---|---|---|---|
+| `[7.5, 75]` (§8.10) | 5.0 | 3.28e-06 | 3.48e-07 | 8.29e-09 | 2.37e-14 |
+| `[4, 40]` | 1.5 | 5.80e-03 (1800×) | 1.57e-05 (45×) | 4.33e-08 (5×) | 7.13e-13 (30×) |
+| `[3.5, 35]` | 1.0 | 5.29e-02 (16000×) | 7.72e-05 (220×) | 4.08e-07 (49×) | 3.06e-12 (129×) |
+
+In words: bringing the inner sphere from 5.0 to 1.0 horizon distances intensifies the
+curvature by four orders of magnitude and costs a factor ~200 in the metric error, 3.5e-07 to
+7.7e-05.  The solution stays usable throughout -- `lambda` to 4e-07 rms, the *imposed* gauge
+condition to 1.3e-05 once Gamma is converted from chart to standard units -- and the losses are
+1e-13 and 3e-12, so the optimiser is not what limits this: what grows is the network's
+difficulty in resolving a field that varies on the horizon scale.  Both runs stop at the
+iteration cap with status 1 and were still improving.
+
+The charts are `[0.1, 1]` with the rods at 1/40 and 1/35 of standard size, so the maps were
+drawn with `--physical-inner 4` and `--physical-inner 3.5` respectively.  That flag is what
+puts a scaled run's figure into the standard sizes, and it is worth passing explicitly: the
+run's own `vtk_physical_inner` defaults to 1, which would draw the axes in a chart where the
+inner sphere sits at 1 rather than where the holes actually are.
+
+**Files.**  `runs/weyl_close4/` and `runs/weyl_close35/`, each with the §8.9 set (figures,
+`report.txt`, `report.json`) and `plane/plane.png`, all in standard units.
+
 ## 9. Running on a JupyterHub / GPU machine
 
 The hub workflow has its own document: **`HUB.md`** (setup, `run_hub.sh`,
