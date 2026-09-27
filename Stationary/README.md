@@ -938,8 +938,32 @@ So the 3-D solver does solve the rotated, fully non-symmetric, manufactured prob
 rotated gauge condition imposed on the candidate's own metric — but at this budget it lands
 two to four orders of magnitude coarser than the axisymmetric run at the same shell.  That is
 not a defect of the formulation: it is the cost of the general ansatz, twenty-five fields of
-three variables instead of five functions of two, and the loss was still improving ~1.2x per
-block when the cap stopped it.  The inner data, the Robin source and the gauge source are all
+three variables instead of five functions of two.
+
+**A longer run makes it worse, and that is the interesting part.**  Warm-starting from that
+solution and running to 8000 iterations (`runs/weyl_rot45_long`, 5 h 10 min) drives the loss
+down another factor of 13, to 2.28e-05 -- and every physical error goes *up*:
+
+| | 1500 iterations | 8000 iterations | axisymmetric (`weyl_close35`) |
+|---|---|---|---|
+| final loss | 1.75e-04 | **2.28e-05** | 3.06e-12 |
+| `rms abs(dh)` | 3.63e-03 | 8.26e-03 | — |
+| `max abs(dh)` | 7.12e-02 | **3.57e-01** | 7.72e-05 |
+| `rms abs(dlambda)` | 2.32e-04 | 4.31e-03 | — |
+| `max abs(dlambda)` | 5.19e-03 | 6.44e-02 | 1.76e-06 |
+| `max abs(res_ricci)` / `max abs(res_lam_eq)` | 15.6 / 46.9 | **242 / 3375** | — |
+
+The loss is a **mean square** over 2048 points, so it barely notices a spike: the optimiser is
+free to buy a smaller average by concentrating the residual on a few points, and the residual
+maxima say exactly that — `lam_eq` reaching 3375 while its mean keeps falling.  Two
+consequences worth carrying forward.  First, for the rotated 3-D problem the budget was never
+the limit: the loss was decelerating towards a floor (~1.02x per block at the end, against the
+1.2x I extrapolated from the first 400 iterations, so the extrapolation was wrong), and more
+iterations of the same mean-square objective make the solution *worse* in the max norm, not
+better.  Second, the fix is not more iterations but a loss that sees the spikes — more
+collocation points, so that the mean samples them, or a pointwise weighting of the residual.
+That is the natural next experiment here, and it is a statement about the objective rather
+than about the rotated configuration, which the exact solution satisfies to 1e-15 either way.  The inner data, the Robin source and the gauge source are all
 exact here (they come from the rotated reference), so what is being measured is purely the
 network's ability to represent a genuinely three-dimensional field.
 
