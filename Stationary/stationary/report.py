@@ -207,7 +207,9 @@ def main():
         hist = json.load(open(hist_path))
         _section("LOSS TRAJECTORY (first, middle, last logged)")
         keys = [k for k in ("loss", "pde_compat", "pde_ricci", "pde_gauge", "pde_lam_eq",
-                            "inner_lam", "inner_h_tan", "outer_h", "outer_lam") if k in hist[0]]
+                            "pde_lam_eq_radial",
+                            "inner_lam", "inner_h_tan", "outer_h", "outer_lam",
+                            "pin_lam", "pin_h_tan", "pin_h_rr") if k in hist[0]]
         print("    step  " + "".join(f"{k:>13}" for k in keys))
         for i in (0, len(hist) // 2, len(hist) - 1):
             row = hist[i]

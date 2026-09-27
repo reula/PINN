@@ -66,6 +66,30 @@ def _shifted(ref_fields, dl):
     return f
 
 
+def test_it_is_blind_to_a_constant_lambda(ref, xs):
+    """The limitation, stated as a test: a constant lambda satisfies the lambda-equation
+    IDENTICALLY -- grad lambda = 0 and grad grad lambda = 0, for ANY h -- so this term, and
+    every other differential condition built from that equation, gives no gradient at all
+    against the "lambda = const" branch the quadrupole runs kept falling onto (measured:
+    runs/production_quad_quarter_lamrad plateaued at 831 of 8000 iterations with
+    lambda(rho_out) = 0.131).  Only data that fixes the LEVEL sees that branch; that is what
+    the value pins are for.  This term is a regularizer against rho-varying structure (the
+    evasion ripples), not a branch selector.
+    """
+    cfg, ref_fields = ref
+    for c in (0.13, 0.31, 1.0):
+        flat = _shifted(ref_fields, lambda x, c=c: c - ref_fields(x).lam)   # lambda == c
+        assert float(pde_terms(flat, xs, cfg)["lam_eq"]) == 0.0
+        assert float(pde_radial_terms(flat, xs, cfg)["lam_eq_radial"]) == 0.0
+
+    def flat_flat_metric(x, c=0.31):
+        rho = jnp.linalg.norm(x)
+        return Fields(jnp.eye(3), jnp.zeros((3, 3, 3)), c + 0.0 * rho)
+
+    assert float(pde_terms(flat_flat_metric, xs, cfg)["lam_eq"]) == 0.0
+    assert float(pde_radial_terms(flat_flat_metric, xs, cfg)["lam_eq_radial"]) == 0.0
+
+
 def test_the_weight_zero_switch_costs_nothing(ref, xs):
     cfg, ref_fields = ref
     assert pde_radial_terms(ref_fields, xs, production_cfg(w_lam_eq_radial=0.0)) == {}
