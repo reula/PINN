@@ -115,7 +115,10 @@ def figure(cfg, data, R, Z, out_png, factor=1.0):
     # it as well.  lambda, lambda_err and h_err are invariant and need nothing.
     data = dict(data)
     data["curvature"] = jnp.asarray(data["curvature"]) / factor**4
-    rho_max = float(R[-1, 0]) * factor
+    # NOT R[-1, 0]: with the (r, theta) node grid that is r * sin(0) = 0, which would limit
+    # both axes to a point and draw an empty figure -- the scales and the labels would be
+    # there and nothing else.  The outer sphere is the extent of the plot.
+    rho_max = float(R.max()) * factor
     for a, (name, arr, cmap, title) in zip(ax.reshape(-1), panels):
         v = jnp.asarray(arr)
         finite = v[jnp.isfinite(v)]
@@ -126,7 +129,11 @@ def figure(cfg, data, R, Z, out_png, factor=1.0):
             m = float(jnp.max(jnp.abs(finite)))
             kw = dict(vmin=-m, vmax=m)
         im = a.pcolormesh(jnp.asarray(R) * factor, jnp.asarray(Z) * factor, v, cmap=cmap,
-                          shading="gouraud", **kw)
+                          shading="auto", **kw)   # = 'nearest' here: X, Y and the values
+                                                  # have the same shape (nodes), which is the
+                                                  # case matplotlib draws as cell-centred;
+                                                  # 'gouraud' silently draws NOTHING for this
+                                                  # curvilinear grid
         # the horizons: rods on the axis, and the two spheres
         for (z0, z1) in rods_spans(cfg):
             a.plot([0, 0], [z0 * factor, z1 * factor], "k-", lw=6, solid_capstyle="butt")
