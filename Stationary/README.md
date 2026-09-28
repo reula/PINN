@@ -963,7 +963,34 @@ iterations of the same mean-square objective make the solution *worse* in the ma
 better.  Second, the fix is not more iterations but a loss that sees the spikes — more
 collocation points, so that the mean samples them, or a pointwise weighting of the residual.
 That is the natural next experiment here, and it is a statement about the objective rather
-than about the rotated configuration, which the exact solution satisfies to 1e-15 either way.  The inner data, the Robin source and the gauge source are all
+than about the rotated configuration, which the exact solution satisfies to 1e-15 either way.
+
+**It was the objective.**  The same run on the hub's GPU, collocation set quadrupled to 8192
+and a 20000-iteration cap, stopped on the plateau rule at 12165 iterations (141 min, loss
+6.93e-08) -- and this time the errors came down with the loss:
+
+| | 1500 it, 2048 pts | 8000 it, 2048 pts | 12165 it, **8192 pts** (hub) | axisymmetric |
+|---|---|---|---|---|
+| final loss | 1.75e-04 | 2.28e-05 | 6.93e-08 | 3.06e-12 |
+| `max abs(dh)` | 7.12e-02 | 3.57e-01 | **1.13e-03** | 7.72e-05 |
+| `rms abs(dh)` | 3.63e-03 | 8.26e-03 | 7.60e-05 | — |
+| `max abs(dlambda)` | 5.19e-03 | 6.44e-02 | **1.04e-04** | 1.76e-06 |
+| `rms abs(dlambda)` | 2.32e-04 | 4.31e-03 | 3.77e-05 | — |
+
+Four times the collocation points turned a run that was getting worse with every iteration into
+one within a factor ~15 of the axisymmetric solve at the same shell -- 1.13e-03 against
+7.72e-05, where before it was a factor 4600 out.  The loss fell 2530x while `max abs(dh)` fell
+63x: not one-to-one, since the loss is a mean square of rho-scaled residuals and this is a max
+of field differences, but unambiguous in direction, and the plateau stop says the objective now
+bottoms out instead of buying a smaller average with a worse solution.  `max abs(dGamma)`
+remains the worst quantity (7.2e-02 in chart units, 2.1e-03 in the standard sizes), which is
+what one expects of the derivative field.
+
+Two lessons to keep: a mean-square loss needs enough points that the mean actually samples the
+spikes, and a plateau in the loss is not evidence of convergence until the errors are checked
+against it.  Nothing about the rotated configuration changed -- its exact solution still
+satisfies the system to 1e-15 with the rotated gauge source, and `runs/weyl_rot45_hub` is now
+the reference rotated 3-D solve.  The inner data, the Robin source and the gauge source are all
 exact here (they come from the rotated reference), so what is being measured is purely the
 network's ability to represent a genuinely three-dimensional field.
 
