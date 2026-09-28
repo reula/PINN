@@ -1113,3 +1113,56 @@ half as densely, and the lesson of section 12 is that the mean has to sample the
     JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python ./run_hub.sh --weyl --weyl-half-length 0.014285714286 --weyl-half-length-b 0.001428571429 --weyl-half-gap 0.007142857143 --weyl-rotate-deg 45 --rho-in 0.05 --rho-out 1 --vtk-physical-inner 0.05 --steps 0 --lbfgs-steps 20000 --qn-block 250 --n-coll 16384 --n-bnd 1024 --outdir runs/weyl_rot45_wide --seed 0
 
 Compare it against section 12 the same way: `max_dh` first, not the loss.
+
+## 15. The Robin source: what it is already doing, and the two experiments left
+
+Every run in sections 12 and 14 has `robin_source=True`, because `--weyl` sets it: the outer
+condition is `B[field_net] = B[field_exact]` from the exact reference, NOT `B[field] = 0`.  It
+never assumes decay, which is why those runs reach the exact solution even though their outer
+sphere sits where `lambda - 1 = -6.3e-02` rather than in the tail.  The tell is in their own
+reports: `outer_h` and `outer_lam` around 1e-11, and `lambda(rho_out)` agreeing with the exact
+value to five decimals.
+
+So "put the source on the Robin condition" is already done.  What is left is to measure what it
+is worth, and there are two separate questions:
+
+**(a) No source at all** -- the case where no exact solution is available, so the outer condition
+must impose decay, which the exact solution violates by 6.3e-02 there.  The loss has no zero and
+the run converges to a compromise; the comparison measures what missing boundary knowledge
+costs.  Now possible:
+
+    JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python ./run_hub.sh --weyl --no-robin-source --weyl-half-length 0.014285714286 --weyl-half-length-b 0.001428571429 --weyl-half-gap 0.007142857143 --weyl-rotate-deg 45 --rho-in 0.05 --rho-out 1 --vtk-physical-inner 0.05 --steps 0 --lbfgs-steps 20000 --qn-block 250 --n-coll 16384 --n-bnd 1024 --outdir runs/weyl_rot45_wide_nosrc --seed 0
+
+**(b) A tail source instead of the exact one** -- `B[field_net] = B[field_tail]` with
+`field_tail` built from the measurable tail alone (`1 - 2M/rho - 2D z/rho^3` for lambda, and the
+corresponding `h` and `Gamma`), assuming only the total mass and the dipole are known.  This is
+the practically relevant case and it isolates a different question: the cost of a *truncated*
+boundary model rather than of no model.  Not implemented: it needs a small asymptotic reference
+generator in `stationary/weyl.py`, since `--ref-asymptotic` is wired to the canonical family and
+the `weyl` branch of `exact_asset` bypasses it.  Half an hour of work, self-contained.
+
+Compare either against the exact solution first (`max_dh`) and against section 14 second.
+
+## 16. Bringing a hub run back here
+
+Only the trained parameters and the run's own record need to travel; everything else -- the
+report, the figures, the `(rho_cyl, z)` slice, the VisIt mesh -- is regenerated locally from
+`params.pkl`, because the exact reference is analytic.  About 30 kB in total, and it means the
+hub is needed for training only, never for post-processing.
+
+From the Mac.  Note the host is `serafin.ccad.unc.edu.ar`, not the `jupyter_ccad` alias, and the
+path is relative to the login directory, which is `/home/reula/serafin`:
+
+    cd /Users/reula/Julia/PINN/Stationary
+    mkdir -p runs/<name>
+    scp serafin.ccad.unc.edu.ar:Julia/PINN/Stationary/runs/<name>/{params.pkl,config.json,history.json,report.json,report.txt} runs/<name>/
+
+Then:
+
+    JAX_ENABLE_X64=1 ./postprocess.sh runs/<name> .venv/bin/python
+    JAX_ENABLE_X64=1 .venv/bin/python -m stationary.plane --outdir runs/<name> --physical-inner <the run's rho_in> --force
+    JAX_ENABLE_X64=1 .venv/bin/python -m stationary.vtk --outdir runs/<name> --physical-inner <the run's rho_in>
+
+`--physical-inner` is the run's own inner radius, from its `config.json`, which keeps every
+figure in the chart the run trained in.  Use `3.5` (or whatever the standard size is for that
+configuration) instead if you want the standard sizes; only the axes move.
