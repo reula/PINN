@@ -1166,3 +1166,22 @@ Then:
 `--physical-inner` is the run's own inner radius, from its `config.json`, which keeps every
 figure in the chart the run trained in.  Use `3.5` (or whatever the standard size is for that
 configuration) instead if you want the standard sizes; only the axes move.
+
+## 17. Known issue: post-processing loses the `weyl_*` fields
+
+`stationary.evaluate.load_run` rebuilds the `Config` from `config.json` but does not carry the
+`weyl_*` fields through, so `getattr(cfg, "weyl", False)` is False in everything that goes via
+it -- `stationary.plane` among them.  The symptom is the exact-solution curvature panel of a
+rotated run's slice: `R_ab R^ab` around 8e+04 where the answer is ~5e-02, with **no NaN
+anywhere**, because that panel is being computed from the Cartesian components instead of by
+`weyl.curvature_invariant`.
+
+Everything else on that path is done and checked.  `weyl.curvature_invariant` evaluates the
+scalar in the cylindrical chart, where the metric components are smooth; it agrees with the
+Cartesian route to all printed digits at three off-axis points (5.615272e-06, 1.277369e-05,
+1.133819e-05) and returns NaN rather than a wrong number within 1e-9 of the rod scale.  `plane.py`
+already calls it whenever `cfg.weyl` is set (see `curv_fn`, lines 89, 100-101, 225-235), and
+`--force` slices of non-Weyl runs are unaffected either way.
+
+Carrying `weyl`, `weyl_rotate_deg` and the remaining `weyl_*` keys through `load_run` is the
+whole fix; the rotated runs' slices correct themselves as soon as it is made.
