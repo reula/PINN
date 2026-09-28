@@ -1073,3 +1073,43 @@ Post-processing a few-thousand-parameter network is cheap on a CPU: the figures,
 the comparison are seconds to minutes, and the trained parameters are unaffected by how they
 are read.  The same holds for `stationary.evaluate`, `stationary.plane` and `stationary.vtk`
 run by hand -- pass `JAX_PLATFORMS=cpu` if they raise `JaxRuntimeError` about the cache.
+
+## 14. Twice the region, still inside rho = 1
+
+The rotated run of section 12 stops its outer boundary where the solution has not reached its
+algebraic tail: on that sphere the reference has `lambda - 1 = -6.26e-02`, so the Robin condition
+there is doing real work rather than merely enforcing decay.  Doubling the region while keeping
+the outer sphere at rho = 1:
+
+| | section 12 | this run |
+|---|---|---|
+| standard shell | `[3.5, 35]` | `[3.5, 70]` |
+| chart (what the network sees) | `[0.1, 1]` | `[0.05, 1]` |
+| rod half-lengths | 0.028571429 / 0.002857143 | 0.014285714 / 0.001428571 |
+| half-gap | 0.014285714 | 0.007142857 |
+| `lambda - 1` at `rho_out` | -6.3e-02 | -3.1e-02 |
+
+The rods and the shell scale together, so the geometry is unchanged -- the inner sphere is still
+1.4 axis extents from the horizon, the same closest shell -- and nothing in the run or in its
+output goes above radius 1.  `--vtk-physical-inner 0.05` is the run's own inner radius, so the
+config records it and every figure, slice and VTK comes out in the chart without a later flag.
+
+**What doubling does, and does not, buy.**  `lambda - 1` falls like `2M/rho` with `M = 1.1`, so
+the decay is algebraic: doubling the box only halves the deviation, -6.3e-02 to -3.1e-02.  To
+reach 1e-03 would take `rho ~ 2200`.  For THIS configuration (masses 1 and 0.1, so `M = 1.1`) the
+law gives `lambda - 1` = -6.3e-02 at rho = 35, -3.1e-02 at 70, -6.3e-03 at 350 and -1.0e-03 at
+2200.  So if the aim is that the outer sphere sits in a genuinely decaying region, the knob is
+the *ratio* and it wants a factor ten, not two -- a ratio-100 version of this run would put the
+outer sphere at rho = 350 and `lambda - 1` at -6.3e-03.  (The ratio-100 run of section 8.9 quotes
+-5.3e-03 on its outer sphere, but that is the equal-mass pair with `M = 2`; same law, twice the
+mass, so the two are not comparable without saying which.)  This section does what was asked --
+twice the region, still inside rho = 1 -- and a ratio-100 version is the natural next step if the
+decay itself is the point.
+
+**Double the points too.**  The region is twice as large, so the same 8192 points would sample it
+half as densely, and the lesson of section 12 is that the mean has to sample the spikes.  Hence
+16384, with the boundary count doubled to match:
+
+    JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python ./run_hub.sh --weyl --weyl-half-length 0.014285714286 --weyl-half-length-b 0.001428571429 --weyl-half-gap 0.007142857143 --weyl-rotate-deg 45 --rho-in 0.05 --rho-out 1 --vtk-physical-inner 0.05 --steps 0 --lbfgs-steps 20000 --qn-block 250 --n-coll 16384 --n-bnd 1024 --outdir runs/weyl_rot45_wide --seed 0
+
+Compare it against section 12 the same way: `max_dh` first, not the loss.
