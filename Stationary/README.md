@@ -990,7 +990,23 @@ Two lessons to keep: a mean-square loss needs enough points that the mean actual
 spikes, and a plateau in the loss is not evidence of convergence until the errors are checked
 against it.  Nothing about the rotated configuration changed -- its exact solution still
 satisfies the system to 1e-15 with the rotated gauge source, and `runs/weyl_rot45_hub` is now
-the reference rotated 3-D solve.  The inner data, the Robin source and the gauge source are all
+the reference rotated 3-D solve.
+
+**These runs are complete as they stand, and this is the point to be clear about.**  The outer
+boundary is *not* asking the network to decay.  With `robin_source` on -- which `--weyl` sets,
+and which every run of §8.9-8.12 therefore has -- the condition is
+
+    Robin(field_net) = Robin(field_exact)      for h, Gamma and lambda,
+
+the exact operator evaluated on the exact solution, with the same `robin_exps` and the same
+order.  So the boundary data are exact at whatever radius the shell ends, the loss has a genuine
+zero at the exact solution, and nothing further needs adding to the formulation: not a larger
+region, not an asymptotic tail, not the source "put on" the condition.  Each run's own report
+shows it working -- `outer_h` and `outer_lam` at the 1e-11 level, and `lambda(rho_out)` matching
+the exact value to five decimals even though that sphere sits where `lambda - 1 = -6.3e-02`
+rather than in the tail.  The two experiments HUB.md section 15 describes are about the *other*
+case, where the boundary values are not known from an exact solution, and are not prerequisites
+for anything here.  The inner data, the Robin source and the gauge source are all
 exact here (they come from the rotated reference), so what is being measured is purely the
 network's ability to represent a genuinely three-dimensional field.
 

@@ -68,7 +68,25 @@ def half_plane(n_r: int, n_theta: int, rho_out: float, rho_in: float):
     return pts.reshape(-1, 3), inside.reshape(-1), R, Z
 
 
-def maps(pf, ref, pts, inside, shape):
+def in_chunks(f, xs, chunk: int):
+    """Apply a vmap to a point array in bounded batches.
+
+    Evaluating the whole grid at once needs memory for every point's autodiff at the same
+    time, which on a GPU is enough to exhaust the device: an 80 000-point grid asks for
+    hundreds of MiB per intermediate and the allocator gives up partway.  Chunking changes
+    nothing about the result, only the peak.
+    """
+    n = int(xs.shape[0])
+    if chunk <= 0 or chunk >= n:
+        return f(xs)
+    parts = [f(xs[i:i + chunk]) for i in range(0, n, chunk)]
+    if isinstance(parts[0], tuple):        # a Fields namedtuple, or any tuple of arrays
+        return tuple(jnp.concatenate([p[k] for p in parts], axis=0)
+                     for k in range(len(parts[0])))
+    return jnp.concatenate(parts, axis=0)
+
+
+def maps(pf, ref, pts, inside, shape, chunk: int = 2048):
     """The four panels, evaluated at the grid points and masked outside the shell.
 
     Returned with the grid's shape (n_rho, n_z), NaN outside the shell, ready to plot.
@@ -83,7 +101,7 @@ def maps(pf, ref, pts, inside, shape):
                 jnp.max(jnp.abs(f.h - e.h)),
                 jnp.trace(ric @ hinv @ ric @ hinv))
 
-    lam, dlam, dh, curv = jax.vmap(one)(pts)
+    lam, dlam, dh, curv = in_chunks(jax.vmap(one), pts, chunk)
     keep = inside
     out = {}
     for name, v in (("lambda", lam), ("lambda_err", dlam), ("h_err", dh), ("curvature", curv)):
@@ -173,6 +191,10 @@ def main(argv=None):
     p.add_argument("--n-z", type=int, default=400, help="angular nodes")
     p.add_argument("--force", action="store_true",
                    help="map the half-plane even for a non-axisymmetric architecture")
+    p.add_argument("--chunk", type=int, default=2048,
+                   help="points evaluated per batch.  The whole grid at once exhausts a GPU "
+                        "allocator (80k points needs hundreds of MiB per intermediate); "
+                        "0 = no chunking")
     p.add_argument("--physical-inner", type=float, default=None,
                    help="draw the axes in the units in which the inner sphere sits at this "
                         "radius, the same flag and meaning as stationary.vtk.  The fields are "
@@ -200,7 +222,7 @@ def main(argv=None):
     pts, inside, R, Z = half_plane(a.n_rho, a.n_z, cfg.rho_out, cfg.rho_in)
     print(f"[plane] {run_dir}: {int(inside.sum())} of {inside.size} grid points inside the "
           f"shell [{cfg.rho_in:g}, {cfg.rho_out:g}], arch {cfg.arch}")
-    data = maps(pf, ref, pts, inside, (a.n_rho, a.n_z))
+    data = maps(pf, ref, pts, inside, (a.n_rho, a.n_z), chunk=a.chunk)
     r_in_phys = float(a.physical_inner or cfg.vtk_physical_inner)
     factor = r_in_phys / cfg.rho_in
 
