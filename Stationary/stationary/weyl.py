@@ -247,6 +247,47 @@ def rotated_fields(rods: Rods, n_quad: int = 400, rot=None):
     return fields
 
 
+def curvature_invariant(rods: Rods, n_quad: int = 400, axis=None):
+    """R_ab R^ab of the exact solution, evaluated in a chart where it is well conditioned.
+
+    The Cartesian components of the Weyl metric are smooth off the axis but their SECOND
+    derivatives are not: the chart formula (A x^2 + y^2)/rho_cyl^2 has a 1/rho_cyl^4
+    amplification near it, so a curvature computed from them comes out ~1e+04 where the answer
+    is ~5e-02 on a slice that contains the axis -- which the rotated runs' slices do, since the
+    singular line is the ROTATED axis.
+
+    R_ab R^ab is a scalar, so it may be computed in any chart.  Do it in the cylindrical one,
+    h = A(drho^2 + dz^2) + rho^2 dphi^2 with A = e^{2k}, whose components are perfectly smooth:
+    the Christoffel symbols and their derivatives come from the same AD as everywhere else, and
+    the only conditioning left is the exact 1/rho^2 in the inverse, which the invariant's own
+    cancellation handles down to rho ~ 1e-6 of the rod scale.  Closer than that the point is
+    blanked (NaN) rather than reported wrong.
+
+    `axis` is the rod axis (None means z), so this works for the rotated configurations too.
+    """
+    from .geometry import christoffel as _christoffel, ricci_from_gamma  # local: avoid a cycle
+    n = jnp.array([0.0, 0.0, 1.0]) if axis is None else jnp.asarray(axis, jnp.float64)
+    n = n / jnp.linalg.norm(n)
+
+    def h_cyl(y):
+        r, zz = y[0], y[2]
+        r = jnp.abs(r)
+        A = jnp.exp(2.0 * k_of(r, zz, rods, n_quad))
+        return jnp.diag(jnp.array([A, r**2, A]))
+
+    def one(x):
+        z = x @ n
+        rho = jnp.linalg.norm(x - z * n)
+        y = jnp.array([rho, 0.0, z])          # phi = 0: nothing depends on it
+        G = _christoffel(h_cyl, y)
+        dG = jax.jacfwd(lambda w: _christoffel(h_cyl, w))(y)
+        ric = ricci_from_gamma(G, dG)
+        hinv = jnp.linalg.inv(h_cyl(y))
+        val = jnp.trace(ric @ hinv @ ric @ hinv)
+        return jnp.where(rho > 1e-9 * rods.axis_extent, val, jnp.nan)
+    return one
+
+
 def fields_of(rods: Rods, n_quad: int = 400):
     """A `fields(x) -> Fields` callable for the code's residual machinery."""
     def fields(x):

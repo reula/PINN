@@ -86,7 +86,7 @@ def in_chunks(f, xs, chunk: int):
     return jnp.concatenate(parts, axis=0)
 
 
-def maps(pf, ref, pts, inside, shape, chunk: int = 2048):
+def maps(pf, ref, pts, inside, shape, chunk: int = 2048, curv_fn=None):
     """The four panels, evaluated at the grid points and masked outside the shell.
 
     Returned with the grid's shape (n_rho, n_z), NaN outside the shell, ready to plot.
@@ -97,9 +97,9 @@ def maps(pf, ref, pts, inside, shape, chunk: int = 2048):
         _, dG, _ = jax.jacfwd(ref)(x)
         ric = ricci_from_gamma(e.G, dG)
         hinv = jnp.linalg.inv(e.h)
-        return (f.lam, f.lam - e.lam,
-                jnp.max(jnp.abs(f.h - e.h)),
-                jnp.trace(ric @ hinv @ ric @ hinv))
+        curv = (jnp.trace(ric @ hinv @ ric @ hinv) if curv_fn is None
+                else curv_fn(x))        # see weyl.curvature_invariant for why
+        return (f.lam, f.lam - e.lam, jnp.max(jnp.abs(f.h - e.h)), curv)
 
     lam, dlam, dh, curv = in_chunks(jax.vmap(one), pts, chunk)
     keep = inside
@@ -222,7 +222,17 @@ def main(argv=None):
     pts, inside, R, Z = half_plane(a.n_rho, a.n_z, cfg.rho_out, cfg.rho_in)
     print(f"[plane] {run_dir}: {int(inside.sum())} of {inside.size} grid points inside the "
           f"shell [{cfg.rho_in:g}, {cfg.rho_out:g}], arch {cfg.arch}")
-    data = maps(pf, ref, pts, inside, (a.n_rho, a.n_z), chunk=a.chunk)
+    curv_fn = None
+    if getattr(cfg, "weyl", False):
+        # the Cartesian route is only reliable away from the axis; the Weyl chart is reliable
+        # everywhere, and a rotated configuration's slice contains its singular line
+        from .weyl import Rods, curvature_invariant, rotation_matrix
+        ax = (rotation_matrix(cfg.weyl_rotate_deg) @ jnp.array([0.0, 0.0, 1.0])
+              if getattr(cfg, "weyl_rotate_deg", 0.0) else None)
+        curv_fn = curvature_invariant(
+            Rods.pair(cfg.weyl_half_length, cfg.weyl_half_length_b, cfg.weyl_half_gap),
+            cfg.weyl_n_quad, ax)
+    data = maps(pf, ref, pts, inside, (a.n_rho, a.n_z), chunk=a.chunk, curv_fn=curv_fn)
     r_in_phys = float(a.physical_inner or cfg.vtk_physical_inner)
     factor = r_in_phys / cfg.rho_in
 
