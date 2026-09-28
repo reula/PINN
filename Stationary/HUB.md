@@ -1044,3 +1044,32 @@ invariant and need nothing.  It does not touch the run.
 `<outdir>/report.json`, against the two CPU runs of §8.12 (`runs/weyl_rot45`,
 `runs/weyl_rot45_long`).  The question is not whether the loss is smaller than 2.28e-05 -- it
 will be -- but whether the *errors* are smaller with it.
+
+## 13. Gotcha: GPU autotune-cache I/O errors kill post-processing, not training
+
+Seen on the first `weyl_rot45_hub` run.  Training completed normally -- 12165 iterations,
+final loss 6.93e-08, the whole diagnostics block printed -- and then `postprocess.sh` died:
+
+    E0927 legacy_cache.cc:69] Failed to insert autotune cache: UNKNOWN: <repo>/.jaxcache/
+        xla_gpu_per_fusion_autotune_cache_dir/tmp/tmp_per_fusion_cache_*.textproto;
+        Input/output error
+    jax.errors.JaxRuntimeError: UNKNOWN: Failed to get configs for: 2 out of 5 instructions.
+
+That is XLA failing to write its per-fusion autotune results, and it is not a physics failure:
+it hits whichever stage compiles a *new* graph, so the training log looks perfect while
+`report.txt` stops mid-file and the figures are missing.  The symptom to recognise is a report
+that ends after `OUTER BOUNDARY`, with `[post] report FAILED (continuing)` earlier in the log --
+`postprocess.sh` deliberately continues past a failed step, so nothing else announces it.
+
+Two remedies, either is enough:
+
+    rm -rf .jaxcache && JAX_CACHE=0 ./postprocess.sh runs/<name> .venv/bin/python
+
+and, always reliable because it never touches the GPU autotuner at all:
+
+    JAX_PLATFORMS=cpu ./postprocess.sh runs/<name> .venv/bin/python
+
+Post-processing a few-thousand-parameter network is cheap on a CPU: the figures, the report and
+the comparison are seconds to minutes, and the trained parameters are unaffected by how they
+are read.  The same holds for `stationary.evaluate`, `stationary.plane` and `stationary.vtk`
+run by hand -- pass `JAX_PLATFORMS=cpu` if they raise `JaxRuntimeError` about the cache.
