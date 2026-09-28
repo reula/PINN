@@ -32,10 +32,10 @@ import jax.numpy as jnp
 from . import exact
 from .diagnostics import inner_boundary_report
 from .evaluate import load_run
-from .geometry import residuals_batch
 from .invariants import family_params_from_solution
-from .losses import (inner_bc_terms, outer_bc_terms, outer_pin_terms,
-                     reference_consistency)
+from .geometry import pack_gamma, pack_sym, residuals_batch
+from .losses import (OFFW, inner_bc_terms, outer_bc_terms, outer_pin_terms,
+                     reference_consistency, robin_coefficients)
 from .model import point_fields
 from .multipoles import lambda_multipoles, multipole_radial_profile
 from .problem import lam_inner_bc, sample_shell, sample_sphere
@@ -275,6 +275,45 @@ def main():
     out = outer_bc_terms(pf, sample_sphere(key, 512, cfg.rho_out), cfg, bc_exact, lam_inf=lam_inf)
     print(f"outer BC residuals ({cfg.outer_bc}, rms): "
           + "  ".join(f"{k}={jnp.sqrt(v):.2e}" for k, v in out.items()))
+    # -------------------------------------------- what each residual is made of
+    # A Robin residual of 1e-06 can be two numbers of order 1 cancelling, and then it says
+    # nothing about the branch.  runs/production_quad_quarter reported lam = 6.5e-06 at rho_out
+    # while its order-3 terms were rho^3 d3(lam) = +3.796 against 6 (lam - 1) = -4.102 -- a
+    # boundary layer in the last 1% of the domain, invisible in the residual and in the coarse
+    # lambda(rho) table.  So print the terms.
+    _xr = sample_sphere(key, 512, cfg.rho_out)
+    _rho = float(cfg.rho_out)
+    _fields = {"lam": (lambda x: pf(x).lam, float(lam_inf), lambda v: jnp.reshape(v, (1,))),
+               "h": (lambda x: pf(x).h, jnp.eye(3), lambda M: pack_sym(M) * OFFW)}
+    if cfg.robin_include_G:
+        _fields["G"] = (lambda x: pf(x).G, jnp.zeros((3, 3, 3)), pack_gamma)
+    for _key, (_field_of, _inf, _packer) in _fields.items():
+        if _key not in out:
+            continue
+        _base = float(cfg.robin_exps[_key])
+        _order = int(orders.get(_key, cfg.robin_order))
+        _coeffs = robin_coefficients(_base, _order)
+
+        def _terms_at(x, _field_of=_field_of, _inf=_inf, _packer=_packer,
+                      _coeffs=_coeffs, _order=_order):
+            n = x / jnp.linalg.norm(x)
+            f0 = lambda r: _field_of(r * n) - _inf
+            cols = []
+            for j in range(_order + 1):
+                dj = f0
+                for _ in range(j):
+                    dj = jax.jacfwd(dj)
+                cols.append(jnp.ravel(_packer(dj(_rho))) * (_rho ** j) * _coeffs[j])
+            return jnp.stack(cols)
+
+        _T = jax.vmap(_terms_at)(_xr)
+        _rms = jnp.sqrt(jnp.mean(_T ** 2, axis=(0, 2)))
+        # highest derivative first, so the last entry is the one whose size IS the level error
+        print(f"    terms of the {_key} combination (base {_base:g}, order {_order}):  "
+              + "   ".join(f"{_coeffs[j]:g} rho^{j} d{j} = {float(_rms[j]):.2e}"
+                           for j in reversed(range(_order + 1))))
+    print("    (each entry is the rms of ONE term of that sum: a residual far below its own"
+          " terms means they cancel, which is how a wrong far-field level hides)")
     # The far-field pins, if this run had them.  They are the only boundary terms that look
     # at the VALUES, and a run whose Robin residual is at its floor while lambda(rho_out) is
     # far from the reference is exactly the failure they exist to prevent, so print both

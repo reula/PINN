@@ -51,6 +51,43 @@ def robin_operator(field_fun, x, base, order, inf_val=0.0):
     return cur(x)
 
 
+def robin_coefficients(base: float, order: int) -> list[float]:
+    """Coefficients c_j of prod_i (rho d_rho + base + i) = sum_j c_j rho^j d_rho^j.
+
+    The Euler operators commute, so the product is a polynomial in L = rho d_rho, and
+    L^k = sum_j S(k, j) rho^j d_rho^j with S the Stirling numbers of the SECOND kind (the
+    falling powers are the other convention).  With the coefficients in hand a Robin residual
+    can be written as the SUM OF ITS TERMS, which is the diagnostic that matters here: a
+    residual of 1e-06 can be two numbers of order 1 cancelling.  Measured on
+    runs/production_quad_quarter, whose order-3 lambda combination at rho_out is
+
+        rho^3 d3(lam) = +3.796      9 rho^2 d2(lam) = +0.1645
+        18 rho d1(lam) = +0.1420    6 (lam - 1)    = -4.102     sum = +4.4e-05
+
+    -- that is how a run kept lambda(rho_out) = 0.3163 against 0.9885193 while reporting an
+    outer Robin residual of 6.5e-06.  base 1, order 3 gives [6, 18, 9, 1] and base 2, order 3
+    gives [24, 36, 12, 1]; `tests/test_robin_terms.py` checks the annihilation properties.
+    """
+    a = [1.0]                                  # product of (x + base + i), a[k] = coeff of x^k
+    for i in range(order):
+        s_ = float(base) + i
+        new = [0.0] * (len(a) + 1)
+        for k, c in enumerate(a):
+            new[k] += c * s_
+            new[k + 1] += c
+        a = new
+    S = [[0.0] * (order + 1) for _ in range(order + 1)]      # Stirling, second kind
+    S[0][0] = 1.0
+    for k in range(1, order + 1):
+        for j in range(1, k + 1):
+            S[k][j] = j * S[k - 1][j] + S[k - 1][j - 1]
+    c = [0.0] * (order + 1)
+    for k in range(order + 1):
+        for j in range(k + 1):
+            c[j] += a[k] * S[k][j]
+    return c
+
+
 # ------------------------------------------------------------------ PDE terms
 def gauge_source_of(cfg, point_fields):
     """The inhomogeneous gauge source cfg.gauge_source names, or None for harmonic.
