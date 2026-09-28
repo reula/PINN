@@ -108,11 +108,13 @@ if want vtk; then
         echo "[post] vtk: skipped (this run was not launched with --vtk)"
     fi
 fi
-# The (rho_cyl, z) half-plane, for an axisymmetric run.  stationary.plane decides for itself
-# whether the architecture is axisymmetric and does nothing (exit 0) if it is not, so this
-# needs no guard here; it is the cheap and complete view of such a run: lambda, the error in
-# lambda, the metric error and the exact solution's curvature, with the rods drawn on the axis.
-want plane && run_step plane "$OUT/plane/plane.png (the (rho_cyl, z) half-plane)"
+# The (rho_cyl, z) half-plane: lambda, the error in lambda, the metric error and the exact
+# solution's curvature, with the rods drawn on the axis.  For an axisymmetric run that is the
+# WHOLE solution; --force makes it run for the others too, where it is a slice -- and the title
+# of the figure says which, so a slice is never mistaken for the whole thing.  Without --force
+# a non-axisymmetric run is skipped silently, which is how a run ends up with no picture of its
+# field at all.
+want plane && run_step plane "$OUT/plane/plane.png (the (rho_cyl, z) plane)" --force
 
 echo
 echo "[post] files now in $OUT:"
