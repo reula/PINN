@@ -315,35 +315,58 @@ Two limits worth knowing:
   ```bash
   # run from this directory (Stationary/), so that `-m stationary.bench` resolves
   PY=$PWD/.venv/bin/python            # a plain assignment in THIS shell -- see the note below
-  JAX_ENABLE_X64=1  $PY -m stationary.bench --reps 3 <every train flag>
-  JAX_PLATFORMS=cpu $PY -m stationary.bench --reps 3 <the same flags>
+  JAX_PLATFORMS=cpu $PY -m stationary.bench --reps 3 <every train flag>   # the CPU
+  $PY -m stationary.bench --reps 3 <the same flags>                       # the GPU
   ```
 
   Note the `$PY` on the command line. `PY=$PWD/.venv/bin/python ./run_hub.sh ...` works
   because `run_hub.sh` is the command there and reads `PY` from its environment; write the
   same prefix in front of `-m` and bash runs a program called `-m` and dies with
   `bash: -m: command not found`. If you would rather not keep `PY` around, use the path
-  directly: `JAX_ENABLE_X64=1 $PWD/.venv/bin/python -m stationary.bench --reps 3 ...`.
+  directly: `$PWD/.venv/bin/python -m stationary.bench --reps 3 ...`.
 
-  Measured for the production quarter-quadrupole problem (`axisym_hybrid` 20x6, 2285
-  parameters, float64, `n_bnd 1024`), on CPU:
+  **bench measures float64 by itself**, as every post-processing module here does, so
+  `JAX_ENABLE_X64` neither has to be set nor can override it; `--float32` asks for float32
+  explicitly and is only for the float32 runs.  It did not always: a run measured in float32
+  reported 0.89 GiB and 0.026 s for a configuration that really needs 1.60 GiB and 0.048 s,
+  and nothing in the output said the run would be float32.  Read the `TEMPORARIES` line first
+  and the time second -- the memory is what decides whether a run dies.
 
-  | configuration | XLA temporaries | one value+gradient |
-  |---|---|---|
-  | `n_coll 2048` | 1.00 GiB | — |
-  | `n_coll 4096` | 1.31 GiB | — |
-  | `n_coll 8192` | 1.92 GiB | 2.24 s (with `--w-lam-eq-radial`) |
-  | `n_coll 16384` | **3.16 GiB** | — |
-  | `n_coll 16384`, **no** `--w-lam-eq-radial` | 2.58 GiB | 2.29 s |
-  | `n_coll 16384` + `--w-lam-eq-radial` | 3.16 GiB | **4.45 s** |
+  Measured on the production quarter-quadrupole problem (`axisym_hybrid` 20x6, 2285
+  parameters, float64, `n_bnd 1024`, with `--pin-far --w-lam-eq-radial 1` unless noted).
+  **The machine is part of the number** -- mixing them is how a 3.16 GiB CPU figure came to be
+  quoted as a GPU requirement:
 
-  Two things to read off it. The demand is linear in `--n-coll` above 4096, so **`--n-coll
-  8192` needs 1.92 GiB and fits a 12 GiB slice even with the 75% preallocation left on,
-  while 16384 (3.16 GiB) does not** -- 9.0 + 3.16 > 12 is exactly the `production_quad_
-  quarter_pinrad` failure, where the requested allocation was 4.00 GiB and only 3.0 GiB was
-  free. And `--w-lam-eq-radial` costs **~1.9x in time and +0.6 GiB**, not the 1.17x that
-  section 6e measured; re-measure it on your own machine with `stationary.bench` on either
-  side of the flag before deciding whether a run needs it.
+  | where | `n_coll` | XLA temporaries | one value+gradient |
+  |---|---|---|---|
+  | GPU, A30 12 GiB slice | 16384 | **1.60 GiB** | **0.048 s** |
+  | CPU, hub 96 cores / 96 threads | 16384 | 3.16 GiB | 1.171 s |
+  | CPU, 8-core Mac / 4 threads | 16384 | 3.16 GiB | 4.45 s |
+  | CPU, 8-core Mac / 4 threads, no `--w-lam-eq-radial` | 16384 | 2.58 GiB | 2.29 s |
+  | CPU, 8-core Mac / 4 threads | 8192 | 1.92 GiB | 2.24 s |
+  | CPU, 8-core Mac / 4 threads | 4096 | 1.31 GiB | — |
+  | CPU, 8-core Mac / 4 threads | 2048 | 1.00 GiB | — |
+
+  Four things to read off it.
+
+  * **The A30 is 24x the 96-core CPU, and uses half the memory.** 0.048 s against 1.171 s, and
+    1.60 GiB against 3.16 GiB, because XLA fuses better on the GPU than on the CPU.  For this
+    configuration the 20000-iteration quasi-Newton cap is **16-48 minutes on the A30 against
+    6.5-19.5 hours on the CPU**, so a platform decision should start here and not from a core
+    count.  Scaling the CPU by threads is a dead end anyway: 4 threads to 96 bought 3.8x.
+  * **The GPU memory figure is not the CPU one.** `production_quad_quarter_pinrad` was refused
+    a 4.00 GiB allocation, and 3.16 GiB (the CPU number) makes that look like "the working set
+    is too big for the slice".  It is not: the graph needs 1.60 GiB.
+  * **What actually broke it is the allocator limit.** JAX reports `bytes_limit 9.00 GiB` on
+    this slice even with preallocation off -- 75% of the 12 GiB the container is given -- and
+    the default preallocation fills that whole allowance at startup, so the run has nothing
+    left to allocate from and the first large buffer is refused.  `XLA_PYTHON_CLIENT_
+    PREALLOCATE=false` is therefore not a nicety but the fix, and `run_hub.sh` already exports
+    it.  Set it in the launching shell as well, and `grep -n PREALLOC run_hub.sh` if a run OOMs
+    anyway: a job re-run by hand from `job.sh` does not inherit it.
+  * `--w-lam-eq-radial` costs **~1.9x in time and +0.6 GiB** (2.29 s -> 4.45 s, 2.58 -> 3.16
+    GiB on the Mac), not the 1.17x section 6e measured.  Re-measure it with `stationary.bench`
+    on either side of the flag before deciding that a run needs it.
 * **Check how much GPU you were given, not just that you got one.** `nvidia-smi` on
   this hub reports `0MiB / 750MiB` for an A30 -- i.e. a small vGPU slice, not the card.
   The `--check` smoke run alone needs ~750 MiB, so it dies with

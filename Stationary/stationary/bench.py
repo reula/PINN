@@ -21,9 +21,11 @@ Accepts every flag `stationary.train` accepts (it goes through the same parser),
 and run it on each platform you are choosing between:
 
     JAX_PLATFORMS=cpu  python -m stationary.bench <flags>
-    JAX_ENABLE_X64=1 python -m stationary.bench <flags>          # the GPU, on the hub
+    python -m stationary.bench <flags>                           # the GPU, on the hub
 
-Read it like this.  `temp` is what the compiled gradient needs in ONE piece, on top of the
+Read it like this.  It measures **float64** -- what the production runs use -- and says so in
+its header; `--float32` asks for float32 explicitly, and only the float32 training runs want
+it.  `temp` is what the compiled gradient needs in ONE piece, on top of the
 parameters -- if it does not fit in what is free, the run dies wherever that graph is first
 built, which for a quasi-Newton run is iteration 0 after the whole Adam phase.  The
 per-value+gradient time times the iteration count is the floor on the wall time; a
@@ -36,6 +38,18 @@ import os
 import time
 
 import jax
+
+# float64 by default, as in every post-processing module (evaluate, report, profile, vtk,
+# plane, compare, invariants).  bench measures a TRAINING configuration, and the training runs
+# are float64 too -- train.py leaves the flag alone and the runs are launched with
+# JAX_ENABLE_X64=1.  A float32 measurement of a float64 run is not merely imprecise, it is
+# plausible: an A30 measured that way reported 0.89 GiB and 0.026 s for a configuration that
+# really needs 1.60 GiB and 0.048 s, and nothing in the output says the run would be float32.
+# Doing this here rather than relying on the environment also means a shell that drops or
+# overrides JAX_ENABLE_X64 cannot quietly change what is being measured.  Ask for float32
+# explicitly with --float32.
+jax.config.update("jax_enable_x64", True)
+
 import jax.numpy as jnp
 
 from .losses import default_weights, total_loss
@@ -72,8 +86,17 @@ def main(argv=None):
     p.add_argument("--reps", type=int, default=5)
     p.add_argument("--no-time", action="store_true",
                    help="size the compiled gradient only; do not execute it")
+    p.add_argument("--float32", action="store_true",
+                   help="measure float32 instead of the default float64.  Only the float32 "
+                        "training runs want this; the production runs are float64, and "
+                        "measuring them in float32 understates the memory and the time")
     p.add_argument("-h", "--help", action="help")
     mine, rest = p.parse_known_args(argv)
+
+    if mine.float32:
+        # Before anything is built: build(), make_batch() and the compile below all read the
+        # flag when they trace, not when this module was imported.
+        jax.config.update("jax_enable_x64", False)
 
     cfg = parse_args(rest + ["--outdir", cfg_outdir(rest)])
 
@@ -85,8 +108,10 @@ def main(argv=None):
                         ("bytes_in_use", _device_memory()[1])):
         if value is not None:
             print(f"  {name:11s} {_gib(value)}   (reported by the backend, before we allocate)")
-    print(f"  x64         {jax.config.read('jax_enable_x64')}"
-          f"{'   <- float64' if jax.config.read('jax_enable_x64') else '   <- float32'}")
+    x64 = bool(jax.config.read("jax_enable_x64"))
+    print(f"  x64         {x64}   <- "
+          + ("float64" if x64 else
+             "float32, ASKED FOR with --float32: not what the production runs use"))
     print(f"  preallocate {os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE', '(default: 75% of the device!)')}")
 
     model, state, exact_fields = build(cfg)
