@@ -54,6 +54,19 @@ def test_config_json_exists_even_if_the_quasi_newton_phase_dies(tmp_path, monkey
     assert json.load(open(outdir / "config.json"))["arch"] == "sym_hybrid"
 
 
+class SimulatedCrash(Exception):
+    """Deliberately NOT a RuntimeError.
+
+    `jax.errors.JaxRuntimeError` IS a subclass of RuntimeError, so `pytest.raises(RuntimeError)`
+    around a call that compiles a graph silently absorbs a real device failure -- a broken
+    autotune cache on the hub, say -- and the test then reports whatever the assertion after it
+    trips over.  That is exactly what happened: an `Input/output error` writing the GPU
+    autotune cache surfaced as `KeyError: 'params'`, pointing at this file instead of at the
+    machine.  Catching a type nothing else uses, and recording what reached disk in a
+    `finally`, keeps an infrastructure failure looking like one.
+    """
+
+
 def test_a_completed_block_writes_params_pkl(tmp_path, monkeypatch):
     """Each block must put the weights on disk, so a crash costs at most one block."""
     outdir = tmp_path / "run"
@@ -64,15 +77,19 @@ def test_a_completed_block_writes_params_pkl(tmp_path, monkeypatch):
                 history=None):
         cfg.lbfgs_steps = 1
         cfg.qn_block = 1
-        real(state, batch, weights, loss_fn, cfg, verbose, gradnorms, history)
+        try:
+            real(state, batch, weights, loss_fn, cfg, verbose, gradnorms, history)
+        finally:
+            # In `finally` so that a failure inside the block is still reported as itself,
+            # with the record of what did reach disk attached.
+            captured["params"] = os.path.exists(outdir / "params.pkl")
+            captured["history"] = os.path.exists(outdir / "history.json")
         # The block is done and has written; now die, as a device error would.
-        captured["params"] = os.path.exists(outdir / "params.pkl")
-        captured["history"] = os.path.exists(outdir / "history.json")
-        raise RuntimeError("simulated crash after one block")
+        raise SimulatedCrash("crash after one completed block")
 
     monkeypatch.setattr(T, "ssbroyden_phase", wrapped)
     cfg = parse_args(TINY + ["--outdir", str(outdir), "--steps", "0", "--lbfgs-steps", "1"])
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SimulatedCrash):
         T.train(cfg, verbose=False)
     assert captured["params"], "the completed block did not write params.pkl"
     assert captured["history"], (

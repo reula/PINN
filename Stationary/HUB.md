@@ -22,10 +22,19 @@ A 20 000-step Adam phase takes **~1–2 h** here (`runs/m2R4_realrobin` = 7 435 
 ## 1. One-time setup
 
 > **On this hub the CUDA environment is the checkout's own `.venv`**, not a separate
-> one: `<checkout>/.venv/bin/python -c "import jax; print(jax.devices())"` reports
-> `[cuda:0]`, while `~/venvs/pinn` was created without the CUDA jax and is CPU-only.
-> Either use the checkout's venv -- `PY=$PWD/.venv/bin/python ./run_hub.sh ...`, see
-> section 1b -- or install `jax[cuda12]` into `~/venvs/pinn` as below. Do not create yet
+> one: `<checkout>/Stationary/.venv/bin/python -c "import jax; print(jax.devices())"`
+> reports `[cuda:0]`, while `~/venvs/pinn` was created without the CUDA jax and is
+> CPU-only. On this hub `<checkout>` is **`~/serafin/Julia/PINN`** (the JupyterHub home
+> is `/home/reula`; there is no `~/PINN`), so the interpreter is
+> `~/serafin/Julia/PINN/Stationary/.venv/bin/python`. The venv lives in the
+> **`Stationary/`** folder, next to the `stationary` package -- so every bare
+> `$PWD/.venv/bin/python` in this document assumes you are `cd`-ed there, and
+> `-m stationary.bench` / `-m stationary.train` need that working directory too. From
+> elsewhere, write the path out: `<checkout>/Stationary/.venv/bin/python` with
+> `PYTHONPATH=<checkout>/Stationary`.
+> Either use the checkout's venv -- `PY=$PWD/.venv/bin/python ./run_hub.sh ...` from
+> inside `Stationary/`, see section 1b -- or install `jax[cuda12]` into `~/venvs/pinn`
+> as below. Do not create yet
 > another environment expecting it to have a GPU: a venv is CPU-only unless the CUDA
 > jax is installed into it *first*, with `requirements.txt` afterwards (it pins `jax`
 > but deliberately not `jaxlib`, so installing it first would install the CPU wheel).
@@ -34,7 +43,7 @@ Python, JAX and friends. **Do not copy the local `.venv`** from the Mac — it i
 ARM build. Recreate it on the hub:
 
 ```bash
-cd ~/PINN/Stationary                      # clone of github.com/reula/PINN
+cd ~/serafin/Julia/PINN/Stationary        # clone of github.com/reula/PINN (NOT ~/PINN)
 python -m venv ~/venvs/pinn && source ~/venvs/pinn/bin/activate
 
 # Pick ONE jax install, then the pinned requirements (see requirements.txt for why
@@ -67,8 +76,9 @@ and two paths to the same directory (`~/serafin/...` versus `/serafin/<user>/...
 picks up whichever interpreter you launch, silently falling back to CPU if that one has
 the CPU build, so check rather than assume.
 
-**On this hub: the checkout's `.venv` is the CUDA one; `~/venvs/pinn` is CPU-only.**
-Quickest confirmation and the recommended way to launch either of them:
+**On this hub: `Stationary/.venv` is the CUDA one; `~/venvs/pinn` is CPU-only.**
+Quickest confirmation and the recommended way to launch either of them (run this from
+inside `Stationary/`, so `$PWD/.venv` is the venv and not the repo root):
 
 ```bash
 pwd -P                              # the physical path of the checkout you are in
@@ -303,9 +313,17 @@ Two limits worth knowing:
   needs in one piece, which is the number that decides whether a run fits:
 
   ```bash
-  JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python -m stationary.bench --reps 3 <every train flag>
-  JAX_PLATFORMS=cpu PY=$PWD/.venv/bin/python -m stationary.bench --reps 3 <the same flags>
+  # run from this directory (Stationary/), so that `-m stationary.bench` resolves
+  PY=$PWD/.venv/bin/python            # a plain assignment in THIS shell -- see the note below
+  JAX_ENABLE_X64=1  $PY -m stationary.bench --reps 3 <every train flag>
+  JAX_PLATFORMS=cpu $PY -m stationary.bench --reps 3 <the same flags>
   ```
+
+  Note the `$PY` on the command line. `PY=$PWD/.venv/bin/python ./run_hub.sh ...` works
+  because `run_hub.sh` is the command there and reads `PY` from its environment; write the
+  same prefix in front of `-m` and bash runs a program called `-m` and dies with
+  `bash: -m: command not found`. If you would rather not keep `PY` around, use the path
+  directly: `JAX_ENABLE_X64=1 $PWD/.venv/bin/python -m stationary.bench --reps 3 ...`.
 
   Measured for the production quarter-quadrupole problem (`axisym_hybrid` 20x6, 2285
   parameters, float64, `n_bnd 1024`), on CPU:
@@ -352,7 +370,7 @@ Two limits worth knowing:
   `git status` and `git push` before starting work on the hub, or the hub gets stale
   code (a missing import for the figures is the failure mode). If you must move an
   uncommitted tree instead: `rsync -av --exclude .venv --exclude .pip-cache \
-  --exclude .mplcache --exclude __pycache__ Stationary/ hub:~/PINN/Stationary/`.
+  --exclude .mplcache --exclude __pycache__ Stationary/ hub:~/serafin/Julia/PINN/Stationary/`.
 * **`$PY ./run_hub.sh ...` runs Python on a bash script.** `run_hub.sh` is a *shell* script;
   `PY` is an environment variable it reads, so the assignment goes on the same command:
   `PY=/path/to/python ./run_hub.sh --steps ...`. Writing it as two lines, or using
@@ -1120,6 +1138,21 @@ Two remedies, either is enough:
 and, always reliable because it never touches the GPU autotuner at all:
 
     JAX_PLATFORMS=cpu ./postprocess.sh runs/<name> .venv/bin/python
+
+**Better than either, when `$HOME` is NFS: move the cache off it.**  `JAX_CACHE=0` throws away
+the 30 s -> 5 s the cache is for, and `JAX_PLATFORMS=cpu` throws away the GPU; pointing the
+cache at local disk keeps both, because the `Input/output error` is the filesystem and not the
+cache:
+
+    export JAX_COMPILATION_CACHE_DIR=/tmp/jaxcache-$USER
+
+Anything that sets the cache directory is exposed, and that is more than post-processing:
+`run_hub.sh --check` sets it too, so the test suite can lose compilations to this as well.  It
+did -- `Failed to insert autotune cache: ... Input/output error` followed by
+`Could not get config for HLO`, failing `test_sym_hybrid_manufactured_robin_is_exact` and
+turning a 7-minute suite into a 65-minute one, because every failed insert costs a re-autotune.
+A *training* launch is the one path that does **not** set the cache directory, so the run
+itself is safe; its post-processing and `--check` are not.
 
 Post-processing a few-thousand-parameter network is cheap on a CPU: the figures, the report and
 the comparison are seconds to minutes, and the trained parameters are unaffected by how they

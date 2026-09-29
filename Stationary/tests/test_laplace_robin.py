@@ -64,9 +64,6 @@ jax.config.update("jax_enable_x64", True)
 
 from jax import flatten_util
 
-import os
-import sys
-
 import flax.linen as nn
 import jax.numpy as jnp
 import pytest
@@ -79,19 +76,19 @@ from stationary.problem import Config, lam_inner_bc, sample_shell, sample_sphere
 # dependency of this repo, so it is imported defensively: when it is absent the solve tests
 # skip with a reason naming the path (set CRUNCH_ROOT if the checkout is elsewhere).  The
 # optimiser works on a flat parameter vector and carries a dense inverse-Hessian estimate.
-CRUNCH_ROOT = os.environ.get("CRUNCH_ROOT", "/Users/reula/Julia/PINN/Jax")
-if CRUNCH_ROOT not in sys.path:
-    sys.path.append(CRUNCH_ROOT)
-try:
-    from Crunch.Optimizers.minimize_backtracking import minimize as crunch_minimize
-    HAVE_SSBROYDEN = True
-except Exception:                                    # pragma: no cover - import guard
-    crunch_minimize = None
-    HAVE_SSBROYDEN = False
+#
+# The lookup is train._crunch_minimize's, NOT a second copy of it.  This file used to
+# hard-code the fallback as "/Users/reula/Julia/PINN/Jax" -- this workstation's path -- so on
+# the hub the import failed and these four tests skipped in silence, and the machine that
+# actually runs the production jobs checked four fewer things than the laptop did.
+from stationary.train import _crunch_minimize
+
+crunch_minimize, CRUNCH_WHERE = _crunch_minimize()
+HAVE_SSBROYDEN = crunch_minimize is not None
 
 needs_ssbroyden = pytest.mark.skipif(
     not HAVE_SSBROYDEN,
-    reason=f"Crunch.Optimizers.minimize not importable (looked in {CRUNCH_ROOT}; "
+    reason=f"Crunch.Optimizers.minimize not importable ({CRUNCH_WHERE}); "
            "set CRUNCH_ROOT to the directory holding Crunch/)")
 
 # --------------------------------------------------------------- problem data
