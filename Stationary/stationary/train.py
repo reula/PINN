@@ -47,20 +47,28 @@ def make_model(cfg: Config):
     return cls(**kw)
 
 
-def exact_asset(cfg: Config):
+def exact_asset(cfg: Config, n_quad: int | None = None):
     """The exact solution this run uses for its data, or None.
 
     Three distinct roles, one object each: the outer boundary data of `dirichlet_exact`,
     the manufactured source of a Robin run (`robin_source`), and the reference kept for
     diagnostics (`ref_solution`).  This is the single place that builds it, so that
     training, the report and the comparison tool all see the same reference.
+
+    `n_quad` overrides the Weyl quadrature node count and is for DIAGNOSTICS ONLY: `h_cart`
+    runs the quadrature inside the metric, so a twice-differentiated metric costs n_quad times
+    a cheap one, and the geometry block of `report.py` -- a few dozen scalars -- took minutes
+    at the default 400.  The Gauss-Legendre rule converges exponentially on this integrand, so
+    64 nodes is accurate to ~1e-12 away from the rods.  None (the default) means
+    `cfg.weyl_n_quad`, so training and every boundary condition are untouched.
     """
     if getattr(cfg, "weyl", False):
         from .weyl import Rods, rotated_fields, rotation_matrix
         rot = (rotation_matrix(cfg.weyl_rotate_deg)
                if getattr(cfg, "weyl_rotate_deg", 0.0) else None)
         return rotated_fields(Rods.pair(cfg.weyl_half_length, cfg.weyl_half_length_b,
-                                        cfg.weyl_half_gap), cfg.weyl_n_quad, rot)
+                                        cfg.weyl_half_gap),
+                              cfg.weyl_n_quad if n_quad is None else int(n_quad), rot)
     if cfg.outer_bc == "dirichlet_exact":
         return exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
     if cfg.ref_solution or cfg.robin_source:
@@ -473,7 +481,23 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                   f"network, or raise the cap if the memory is really there.", flush=True)
         return None
 
+    @jax.jit
     def fun(flat):
+        """The objective handed to Crunch -- JITTED, and it has to be.
+
+        Crunch evaluates it as `jax.value_and_grad(fun)(x0)` with no jit of its own
+        (`Optimizers/bfgs_backtracking.py:108`), once at the start of every block.  Unjitted,
+        JAX traces the function and then executes its primitives ONE AT A TIME: measured
+        62.4 s per call against 1.1 s with the jit cache warm, a factor of 56, and it is the
+        same pathology as eager dispatch rather than merely a slow one -- a thousand separate
+        compilations, each taking its own allocation out of the BFC pool.
+
+        That is what killed `production_quad_quarter_pin_r400_long` at its FIRST block:
+        `bfc_allocator.cc:598` refusing 1.27 MiB with the "this may mean fragmentation"
+        notice, then the autotuner unable to find 27.39 MiB, the traceback pointing straight
+        at `bfgs_backtracking.py:108` -> `fun`.  The pool had grown and fragmented under the
+        per-primitive allocations and could not serve the next graph.
+        """
         value, _ = loss_fn(unflatten(flat), batch, 1.0, weights)
         return value
 

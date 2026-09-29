@@ -39,6 +39,43 @@ TINY = ["--arch", "sym_hybrid", "--n-coll", "32", "--n-bnd", "8",
         "--width", "4", "--depth", "2", "--no-figures"]
 
 
+def test_the_objective_handed_to_crunch_is_jitted(tmp_path, monkeypatch):
+    """Crunch calls `jax.value_and_grad(fun)(x0)` with no jit of its own, once per block.
+
+    This is the check the tracer spy below CANNOT make.  An unjitted `fun` is still *traced*
+    by `value_and_grad`, so the spy sees tracers and reports no eager evaluation -- while JAX
+    goes on to execute the primitives one at a time.  Measured: 62.4 s per call against 1.1 s
+    jitted at n_coll 2048, and it is what exhausted the BFC pool on the first block of
+    production_quad_quarter_pin_r400_long.  So assert the property directly: what Crunch is
+    handed must be a jit-wrapped function, which exposes `.lower`.
+    """
+    real = T._crunch_minimize
+    captured = {}
+
+    def fake_minimize():
+        minimize, where = real()
+        if minimize is None:
+            return None, where
+
+        def spy(fun, *a, **k):
+            captured["jitted"] = hasattr(fun, "lower")
+            return minimize(fun, *a, **k)
+
+        return spy, where
+
+    monkeypatch.setattr(T, "_crunch_minimize", fake_minimize)
+    cfg = parse_args(TINY + ["--outdir", str(tmp_path / "run"), "--steps", "0",
+                             "--lbfgs-steps", "20", "--qn-block", "20"])
+    T.train(cfg, verbose=False)
+
+    if not captured:
+        pytest.skip("Crunch is not importable here, so the SSBroyden phase did not run")
+    assert captured["jitted"], (
+        "the objective handed to Crunch is not jitted, so its `value_and_grad(fun)(x0)` "
+        "dispatches every primitive separately -- 56x slower, and it fragments the GPU "
+        "allocator until the autotuner cannot allocate")
+
+
 def test_no_loss_evaluation_in_the_phase_sees_concrete_arrays(tmp_path, monkeypatch):
     seen = []
     real = T.total_loss
