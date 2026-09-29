@@ -161,6 +161,18 @@ def build(cfg: Config, init_from: str | None = None):
                           f"rho = {cfg.rho_in:g}; the reference has "
                           f"{float(exact_fields(cfg.rho_in * jnp.array([1.0, 0.0, 0.0])).lam):.6f}"
                           f"  -> check --lam0 / --R0 / --rho-in")
+    if cfg.pin_lam_robin:
+        # No reference involved: say what the condition IS and what it implies, so the log
+        # records the pin the run was actually given.
+        lam_inf = cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init
+        print(f"[pin] pinning the ORDER-1 ROBIN COMBINATION of the spherical mean of lambda "
+              f"at rho_out = {cfg.rho_out:g}:")
+        print(f"[pin]   rho d_rho <lambda> + (<lambda> - lambda_inf) = 0   with "
+              f"lambda_inf = {lam_inf:g}   w_pin = {cfg.w_pin:g}")
+        print(f"[pin]   the mean of the pointwise order-1 condition, so it needs NO reference; "
+              f"its own residual on the exact")
+        print(f"[pin]   solution is the order-1 floor (6.6e-05 in lambda at shell ratio 100, "
+              f"~4e-06 at ratio 400).")
     if (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr) and exact_fields is not None:
         # Say what is being pinned, and to what.  A value pin is only meaningful if the
         # number is the one the exact solution has there, so print it and let the report
@@ -278,11 +290,12 @@ def print_config_summary(cfg: Config):
               f"   orders {orders}   base exponents {exps}"
               f"   Gamma condition {cfg.robin_include_G}"
               f"   source {cfg.robin_source}")
-        pins = ", ".join(nm for nm, on in (("lam mean", cfg.pin_lam),
-                                           ("h_tan", cfg.pin_h_tan),
-                                           ("h_rr", cfg.pin_h_rr)) if on)
+        pins = ", ".join(nm for nm, on in (
+            ("lam mean (order-1 Robin combination, no reference needed)", cfg.pin_lam_robin),
+            ("lam mean (value, from the reference)", cfg.pin_lam),
+            ("h_tan", cfg.pin_h_tan), ("h_rr", cfg.pin_h_rr)) if on)
         if pins:
-            print(f"  far-field   PINNED to the reference at rho_out: {pins}"
+            print(f"  far-field   PINNED at rho_out: {pins}"
                   f"   w_pin {cfg.w_pin:g}   (values above, '[pin]' line)")
     else:
         print(f"  outer BC    {cfg.outer_bc} (h and lambda from the exact solution)")
@@ -372,6 +385,18 @@ def _first_reweight_after(cfg: Config, iters: int):
     """
     e = int(cfg.reweight_every or 0)
     return None if e <= 0 else (iters // e + 1) * e
+
+
+def boundary_number(parts) -> float:
+    """The unweighted boundary content the plateau test watches, from BOTH spheres.
+
+    Every `inner_*`, `outer_*` and `pin_*` term, added.  The inner sphere used to be left out,
+    which let a run stop on a flat loss and a flat outer boundary while the inner data were
+    still being approached: `production_quad_quarter_pin_r400_long` stopped at step 1300 with
+    its outer Robin at 1.1e-09 and an inner lambda residual of 1.6e-04, the worst number in
+    its own report.  A boundary still being approached is not convergence, wherever it is.
+    """
+    return sum(v for k, v in parts.items() if k.startswith(("inner_", "outer_", "pin_")))
 
 
 def _pde_str(parts, pde_keys) -> str:
@@ -525,25 +550,26 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         """
         return loss_fn(unflatten(flat), batch, 1.0, weights)
 
-    def _outer_of(parts):
-        """The unweighted outer-boundary number the plateau test watches."""
-        return (parts.get("outer_h", 0.0) + parts.get("outer_lam", 0.0)
-                + sum(v for k, v in parts.items() if k.startswith("pin_")))
-
     def outer_res(flat):
-        """(unweighted outer-boundary contribution, all loss parts) at these parameters.
+        """(unweighted boundary contribution from BOTH spheres, all loss parts) here.
 
-        The plateau test looks at the outer terms as well as at the total loss: one group can
-        dominate the total (the order-2 control's final loss was 97% its lambda-equation while
-        its boundary was already at the floor), so "the loss stopped moving" can hide an
+        The plateau test looks at the boundary terms as well as at the total loss: one group
+        can dominate the total (the order-2 control's final loss was 97% its lambda-equation
+        while its boundary was already at the floor), so "the loss stopped moving" can hide an
         abandoned boundary condition.  The pins are included: a run whose far-field value is
         still moving is not converged, however flat its loss looks.
+
+        BOTH spheres, and the inner terms were missing until this run made the cost visible:
+        `production_quad_quarter_pin_r400_long` stopped at step 1300 with its loss and its
+        outer Robin flat to 1e-4 relative, while the inner residual was the worst number in
+        its own report -- 1.6e-04 in lambda against the 16384-point run's 1.7e-05.  A boundary
+        that is still being approached is not convergence, whichever sphere it is on.
 
         The parts come back too because the per-block checkpoint needs them: they are what
         makes a crashed run's `history.json` a real trajectory rather than a single number.
         """
         parts = {k: float(v) for k, v in loss_value_and_parts(flat)[1].items()}
-        return _outer_of(parts), parts
+        return boundary_number(parts), parts
 
     def write_progress(row):
         """Append a trajectory row and put it, plus the weights, on disk -- atomically.
@@ -579,7 +605,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     _v0, _p0 = loss_value_and_parts(x)
     f = float(_v0)
     parts_start = {k: float(v) for k, v in _p0.items()}
-    o = _outer_of(parts_start)
+    o = boundary_number(parts_start)
     block = max(1, int(cfg.qn_block))
     n_blocks = max(1, int(_math.ceil(cfg.lbfgs_steps / block)))
     step0 = cfg.steps + 1
@@ -778,8 +804,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         state, opt_state, loss, parts = step(state, opt_state, batch, jnp.asarray(sc), weights)
         # the Adam phase stops on the same plateau rule (it is a warm-up, not the workhorse)
         if it % cfg.log_every == 0:
-            cur_outer = (float(parts.get("outer_h", 0.0))
-                         + float(parts.get("outer_lam", 0.0)))
+            # both spheres, exactly as the quasi-Newton phase's plateau test does
+            cur_outer = boundary_number(parts)
             adam_losses.append(float(loss))
             adam_outers.append(cur_outer)
             pat = int(cfg.plateau_patience)
@@ -974,6 +1000,13 @@ def parse_args(argv=None):
                    help="pin the spherical MEAN of lambda at rho_out to the exact "
                         "reference's value there (the monopole, i.e. the branch); the "
                         "l >= 1 content stays free for the Robin conditions")
+    p.add_argument("--pin-lam-robin", action="store_true", dest="pin_lam_robin",
+                   help="pin the same monopole through the ORDER-1 ROBIN COMBINATION "
+                        "instead of its value: rho d_rho <lam> + (<lam> - lam_inf) = 0, the "
+                        "mean of the pointwise --robin-orders lam=1 condition.  Needs lam_inf "
+                        "and NO reference, so unlike --pin-lam it works on a run whose inner "
+                        "data are angular (S1/S2), where no spherical solution exists to pin "
+                        "against")
     p.add_argument("--pin-h-tan", action="store_true", dest="pin_h_tan",
                    help="pin the tangential metric at rho_out to the reference's, angle "
                         "by angle (the areal-radius content)")
@@ -1123,6 +1156,8 @@ def parse_args(argv=None):
         cfg.pin_lam = cfg.pin_h_tan = cfg.pin_h_rr = True
     if a.pin_lam:
         cfg.pin_lam = True
+    if a.pin_lam_robin:
+        cfg.pin_lam_robin = True
     if a.pin_h_tan:
         cfg.pin_h_tan = True
     if a.pin_h_rr:

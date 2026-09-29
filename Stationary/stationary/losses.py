@@ -270,17 +270,37 @@ def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
     * `h_tan` -- the tangential metric, angle by angle: g2 = (tr h - h_rr)/2, i.e. the areal
                  radius content.
     * `h_rr`  -- the radial gauge component, angle by angle.
+
+    `cfg.pin_lam_robin` pins the same monopole through the order-1 Robin COMBINATION rather
+    than its value:
+
+        rho d_rho <lam> + (<lam> - lam_inf) = 0
+
+    Averaging commutes with rho d_rho, so this is the mean of the pointwise order-1 condition
+    `robin_operator(lam, x, base=1, order=1, inf_val=lam_inf)` -- exactly what
+    `--robin-orders lam=1` imposes at every angle, imposed on the spherical mean.  It needs
+    lam_inf and NO reference, which is what makes it the one pin available to a run whose
+    inner data are angular (S1/S2): for those the spherical reference is not a solution at
+    all, so every other pin here would be pinning a departure.  The mean is pinned and the
+    l >= 1 content of the combination is left free, the same deliberate blind spot as above.
     """
-    if not (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr):
+    robin_lam = bool(getattr(cfg, "pin_lam_robin", False))
+    if not (cfg.pin_lam or robin_lam or cfg.pin_h_tan or cfg.pin_h_rr):
         return {}
-    if exact_fields is None:
+    if exact_fields is None and (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr):
         raise ValueError(
-            "the far-field pins are differences from the exact reference at rho_out, and "
-            "this run has no reference: add --ref-solution (with --ref-asymptotic k) or "
-            "drop the pin flags")
+            "the far-field value pins are differences from the exact reference at rho_out, "
+            "and this run has no reference: add --ref-solution (with --ref-asymptotic k) or "
+            "drop the pin flags.  --pin-lam-robin is the exception: it needs lam_inf only.")
+
+    lam_inf = cfg.lam_inf if getattr(cfg, "lam_inf", None) is not None else cfg.lam_inf_init
 
     def one(x):
-        f, e = point_fields(x), exact_fields(x)
+        f = point_fields(x)
+        if robin_lam:
+            # the pointwise order-1 combination; its mean IS the combination of the mean
+            return jnp.array([robin_operator(lambda y: point_fields(y).lam, x, 1.0, 1, lam_inf)])
+        e = exact_fields(x)
         rho = jnp.linalg.norm(x)
         n = x / rho
         h_rr = n @ f.h @ n
@@ -291,7 +311,9 @@ def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
 
     R = jax.vmap(one)(xs)
     out = {}
-    if cfg.pin_lam:
+    if robin_lam:
+        out["lam"] = jnp.mean(R[:, 0]) ** 2
+    elif cfg.pin_lam:
         out["lam"] = jnp.mean(R[:, 0]) ** 2
     if cfg.pin_h_tan:
         out["h_tan"] = jnp.mean(R[:, 1] ** 2)

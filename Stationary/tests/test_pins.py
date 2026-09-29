@@ -153,3 +153,82 @@ def test_pins_without_a_reference_fail_loudly(ref):
     with pytest.raises(ValueError, match="builds no reference"):
         Config(R0=R0, rho_in=0.01, inner_radius=0.01, rho_out=1.0, outer_bc="robin",
                ref_solution=False, robin_source=False, pin_lam=True)
+
+
+# ------------------------------------------------- the reference-free Robin-mean pin
+def robin_cfg(**over):
+    """The production geometry with ONLY the order-1 Robin-mean pin, and no reference."""
+    base = dict(R0=R0, rho_in=0.01, inner_radius=0.01, rho_out=4.0, lam_inf=1.0,
+                ref_asymptotic=1.0, ref_solution=True, outer_bc="robin",
+                robin_exps=dict(h=2.0, G=3.0, lam=1.0), robin_orders=dict(h=3, lam=3),
+                robin_include_G=False, pin_lam=False, pin_h_tan=False, pin_h_rr=False,
+                pin_lam_robin=True)
+    base.update(over)
+    cfg = Config(**base)
+    return cfg
+
+
+@pytest.fixture(scope="module")
+def robin_ref():
+    cfg = robin_cfg()
+    fields, _ = exact.reference_fields_asymptotic(
+        cfg.R0, 1.0, cfg.rho_in, r_areal=cfg.inner_radius)
+    return cfg, fields
+
+
+def test_the_robin_mean_pin_needs_no_reference(robin_ref):
+    """The one pin a run with angular inner data can use: it consults lam_inf and nothing."""
+    cfg, ref_fields = robin_ref
+    with_ref = outer_pin_terms(ref_fields, _xs(cfg), cfg, ref_fields)
+    without = outer_pin_terms(ref_fields, _xs(cfg), cfg, None)
+    assert set(without) == {"lam"}
+    assert float(without["lam"]) == float(with_ref["lam"])
+
+
+def test_the_reference_satisfies_the_robin_mean_pin_to_its_own_order_1_floor(robin_ref):
+    """Not zero, and that is the point: the floor is -2 R0^2 / rho^2.
+
+    (rho d_rho + 1) annihilates rho^-1 exactly, so it is blind to the monopole AMPLITUDE and
+    sees only the rho^-2 and rho^-3 terms -- which the exact solution has (2 R0^2 / rho^2),
+    hence a residual of 4.16e-06 here rather than machine zero.  That is the accepted price of
+    a condition that does not assume the coefficient is known.
+    """
+    cfg, ref_fields = robin_ref
+    got = float(outer_pin_terms(ref_fields, _xs(cfg), cfg, ref_fields)["lam"]) ** 0.5
+    expected = 2 * cfg.R0**2 / cfg.rho_out**2
+    assert got == pytest.approx(expected, rel=0.02), (got, expected)
+    assert got < 1e-5, "the order-1 floor at ratio 400 must be small"
+
+
+def test_the_robin_mean_pin_rejects_the_flat_branch(robin_ref):
+    """lambda ~ 0.31 is what production_quad_quarter converged to."""
+    cfg, ref_fields = robin_ref
+
+    def flat(x):
+        f = ref_fields(x)
+        return Fields(f.h, f.G, 0.31 + 0.0 * f.lam)
+
+    v = float(outer_pin_terms(flat, _xs(cfg), cfg, None)["lam"])
+    assert v > 0.1, v
+
+
+def test_the_robin_mean_pin_is_the_operator_applied_to_the_mean(robin_ref):
+    """Averaging commutes with rho d_rho, so the mean of the pointwise condition IS the
+    condition applied to the mean -- which is what makes the implementation legitimate."""
+    cfg, ref_fields = robin_ref
+    xs = _xs(cfg, n=256)
+    mean_of_op = jnp.mean(outer_pin_terms(ref_fields, xs, cfg, None)["lam"]) ** 0.5
+
+    def lam_bar(r):
+        return jnp.mean(jnp.array([ref_fields(r * x / jnp.linalg.norm(x)).lam for x in xs]))
+
+    r = cfg.rho_out
+    op_on_mean = abs(float(r * jax.grad(lam_bar)(r) + (lam_bar(r) - cfg.lam_inf)))
+    assert float(mean_of_op) == pytest.approx(op_on_mean, rel=1e-3), (mean_of_op, op_on_mean)
+
+
+def test_the_two_lambda_pins_are_mutually_exclusive_and_only_one_needs_a_reference():
+    for over, msg in (({"pin_lam": True, "pin_lam_robin": True}, "ROBIN COMBINATION"),
+                      ({"pin_lam": True, "pin_lam_robin": False}, "no reference")):
+        with pytest.raises(ValueError, match=msg):
+            robin_cfg(ref_solution=False, **over).__post_init__()

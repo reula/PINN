@@ -120,3 +120,20 @@ def test_the_phase_still_reports_the_same_opening_values(tmp_path, monkeypatch):
         assert k in first, f"the opening row lost {k}"
     assert "outer" not in first or True     # outer_* are the per-group keys
     assert any(k.startswith("outer_") for k in first)
+
+
+def test_the_plateau_watches_both_spheres():
+    """The stopping rule must not declare convergence while a boundary is still moving.
+
+    `production_quad_quarter_pin_r400_long` stopped at step 1300 with its loss and its outer
+    Robin flat (1.1e-09) while its inner lambda residual was 1.6e-04 -- ten times the previous
+    run's.  The inner terms were simply not in the number the plateau rule compared.
+    """
+    from stationary.train import boundary_number
+
+    assert boundary_number({"inner_lam": 3.0}) == 3.0, "the inner sphere is not watched"
+    assert boundary_number({"outer_h": 2.0}) == 2.0
+    assert boundary_number({"pin_lam": 1.0}) == 1.0
+    assert boundary_number({"inner_lam": 1.0, "outer_h": 2.0, "pin_lam": 4.0,
+                            "pde_ricci": 1e9}) == 7.0, "PDE groups must not enter it"
+    assert boundary_number({}) == 0.0

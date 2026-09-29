@@ -157,7 +157,30 @@ class Config:
     # The pin values are the exact reference's own values at rho_out, so nothing is
     # hard-coded; for the quadrupole problem the true solution differs from them by
     # ~S2 (rho_in/rho_out)^3 = 8e-08, i.e. 800x below the order-1 Robin floor (6.6e-05).
+    # Both pins act on the same object, the spherical mean minus the asymptotic value, and
+    # they are the first two members of the SAME operator family --robin-orders uses:
+    #     order 0:  <lam> - lam_inf = 0                      (the value; prod over no factors)
+    #     order 1:  rho d_rho <lam> + (<lam> - lam_inf) = 0   (the first-order combination)
+    # Order 0 is what `pin_lam` does and needs the reference's own value at rho_out.  Order 1
+    # is `pin_lam_robin` and needs NO reference, only lam_inf, which is what makes it the one
+    # pin available to a run whose inner data are angular (S1/S2): for those the spherical
+    # reference is not a solution at all, so order 0 would be pinning a departure.  The
+    # general order-n combination is `robin_operator(lam, x, base=1, order=n, inf_val=lam_inf)`
+    # averaged, so extending this to order 2 or 3 is one parameter if it is ever wanted.
+    # Neither is a substitute for the POINTWISE Robin condition at the configured order: the
+    # mean fixes the monopole, the pointwise condition is what constrains the local, angular
+    # content, and a run needs both.
     pin_lam: bool = False
+    # order 1, and it constrains the SHAPE of the monopole rather than its size: `rho d_rho +
+    # 1` annihilates rho^-1 exactly, so it is blind to the monopole amplitude a in
+    # lam = 1 + a/rho -- which is deliberate.  The amplitude is not known a priori for a run
+    # with angular inner data (that is what Robin conditions are for); it is fixed by the
+    # inner data and the interior, while this pin fixes the rho^-2 and rho^-3 terms and
+    # rejects the constant branch outright (measured: the exact solution gives 1.7e-11, the
+    # lambda ~ 0.31 branch 4.8e-01).  Its floor on the exact solution is the order-1 residual
+    # -2 R0^2 / rho_out^2 (4.2e-06 at ratio 400), i.e. negligible at the solution and 10
+    # orders decisive away from it.
+    pin_lam_robin: bool = False
     pin_h_tan: bool = False
     pin_h_rr: bool = False
     w_pin: float = 100.0        # weight of the pin group, independent of w_outer
@@ -274,11 +297,22 @@ class Config:
             # areal radius 1) it gives 1/3.  An explicit --lam0 clears lam0_auto and wins.
             self.lam0 = lambda0_from_k(self.R0, 1.0, self.inner_radius)
             self.lam0_auto = True
+        if self.pin_lam and self.pin_lam_robin:
+            # First, because it is a contradiction between two flags and independent of
+            # whether a reference exists: reporting "no reference" for it would send the
+            # reader off to add --ref-solution for a pin they should not have asked for.
+            raise ValueError(
+                "--pin-lam pins the MEAN VALUE of lambda and --pin-lam-robin pins the order-1 "
+                "ROBIN COMBINATION of the mean; both act on the same monopole, so ask for one "
+                "of them.")
         if self.pin_lam or self.pin_h_tan or self.pin_h_rr:
             # The pins are differences from the exact reference at rho_out, so that object
             # has to exist.  Fail here rather than inside the jitted loss: a missing
             # reference there surfaces as a TypeError from `None(x)` in the middle of a
             # traceback that names neither the flag nor the reason.
+            # pin_lam_robin is NOT in this list on purpose: it is the mean of the order-1
+            # Robin combination, which needs lam_inf and nothing else, so it is the one pin a
+            # run with no exact solution can use.
             has_ref = (self.weyl or self.ref_solution or self.robin_source
                        or self.outer_bc == "dirichlet_exact")
             if not has_ref:
@@ -288,7 +322,9 @@ class Config:
                 raise ValueError(
                     f"{which} compare the candidate against the exact reference at "
                     f"rho_out, and this run builds no reference.  Add --ref-solution "
-                    f"(with --ref-asymptotic k), or drop the pin flags.")
+                    f"(with --ref-asymptotic k), or drop the pin flags.  For the lambda "
+                    f"monopole there is --pin-lam-robin, which pins the order-1 Robin "
+                    f"combination of the mean and needs no reference.")
 
 
 def reference_is_departure_only(cfg) -> bool:

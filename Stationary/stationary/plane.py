@@ -16,8 +16,14 @@ unless `--force` is given, since the half-plane would then be a slice and not th
 Writes into <outdir>/plane/: `plane.png` (four panels) and `plane.json` (the numbers).
 
     lambda          the computed field, so its structure is visible
-    lambda_err      lambda(computed) - lambda(exact), signed, diverging colour map
-    h_err           max_ij |h(computed) - h(exact)|, log scale
+    lambda_err      lambda(computed) - lambda(reference), signed, diverging colour map.
+                    A DEPARTURE, not an error, whenever the run's inner data are angular
+                    (S1/S2): then no spherical solution satisfies the data, so the reference
+                    is not a solution of this problem and this panel shows how far the
+                    solution has left the spherical one.  The panel title and the console
+                    say which it is; the field name keeps `err` for the scripts and states
+                    that read it.
+    h_err           max_ij |h(computed) - h(reference)|, log scale -- same caveat
     curvature       R_ab R^ab of the EXACT solution, log scale -- how curved the domain
                     really is, which is what decides whether a shell is a strong-field
                     test at all.  At rho_in = 7.5 for the two-rod solution this is 2.8e-06,
@@ -121,11 +127,18 @@ def figure(cfg, data, R, Z, out_png, factor=1.0):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    from .problem import reference_is_departure_only
+    dep = reference_is_departure_only(cfg)
     panels = (("lambda", data["lambda"], "viridis", r"$\lambda$ (computed)"),
               ("lambda_err", data["lambda_err"], "RdBu_r",
-               r"$\lambda_{net} - \lambda_{exact}$"),
+               # titled as a departure when that is what it is: this panel is the one that
+               # gets pasted, and 8e-02 from a reference that cannot solve the problem reads
+               # as a failed run unless the panel says otherwise
+               (r"$\lambda_{net} - \lambda_{sph}$  (DEPARTURE, not error)" if dep else
+                r"$\lambda_{net} - \lambda_{exact}$")),
               ("h_err", jnp.log10(data["h_err"]), "magma",
-               r"$\log_{10}\ \max_{ij}|h_{net}-h_{exact}|$"),
+               (r"$\log_{10}\ \max_{ij}|h_{net}-h_{sph}|$  (DEPARTURE)" if dep else
+                r"$\log_{10}\ \max_{ij}|h_{net}-h_{exact}|$")),
               ("curvature", jnp.log10(data["curvature"]), "cividis",
                r"$\log_{10}\ R_{ab}R^{ab}$ (exact, in the units of the axes)"))
     fig, ax = plt.subplots(2, 2, figsize=(13, 11))
@@ -255,6 +268,13 @@ def main(argv=None):
     summary["curvature_horizon_scale"] = 12.0     # 12 m^2/r^6 at r = 2m for a mass-1 hole
     with open(os.path.join(out_dir, "plane.json"), "w") as fh:
         json.dump(summary, fh, indent=2)
+    from .problem import reference_is_departure_only
+    departure = reference_is_departure_only(cfg)
+    if departure:
+        print("[plane] lambda_err / h_err are DEPARTURES from the spherical reference, not "
+              "errors:")
+        print("[plane]   this run's inner data are angular (S1/S2), so no spherical solution "
+              "satisfies them.")
     print(f"[plane] lambda_err in [{summary['lambda_err']['min']:.3e}, "
           f"{summary['lambda_err']['max']:.3e}] (rms {summary['lambda_err']['rms']:.3e}), "
           f"h_err max {summary['h_err']['max']:.3e}")
