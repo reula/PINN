@@ -477,6 +477,35 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         value, _ = loss_fn(unflatten(flat), batch, 1.0, weights)
         return value
 
+    @jax.jit
+    def loss_value_and_parts(flat):
+        """(loss, parts) at these parameters -- COMPILED, and it has to be.
+
+        This has to be jitted.  Called eagerly it runs the whole loss at the collocation
+        points op by op under Python: measured at 39.9 s against 0.052 s compiled for
+        n_coll 2048 in float64, a factor of 764.  The phase needs it once before the first
+        block and once per block (for the plateau test's outer number and the log line), so
+        at `--qn-block 100` an eager full-loss evaluation used to land in every hundredth
+        iteration -- the right order to account for the 0.69-0.85 s per iteration these runs
+        take (`production_quad_quarter_pin_r400` spent 119.8 min on 8001 iterations,
+        `production_quad_pin` 185.1 min on 16000) against the 0.048 s per value+gradient the
+        tooling reports.
+
+        On a 12 GiB slice it is also what BREAKS them.  Eager dispatch materialises every
+        intermediate, including the ones compilation fuses away, and those grow with the
+        collocation count -- so `production_quad_quarter_pin_r400_long` (n_coll 32768) died at
+        its first quasi-Newton block with the BFC allocator refusing 3.80 MiB, then 1.27 MiB,
+        then 432 KiB, and finally failing inside the autotuner on 27.39 MiB.  Those are not
+        the sizes a working set fails on; that is a pool already filled and fragmented by the
+        two eager evaluations that ran immediately before the compiled gradient.
+        """
+        return loss_fn(unflatten(flat), batch, 1.0, weights)
+
+    def _outer_of(parts):
+        """The unweighted outer-boundary number the plateau test watches."""
+        return (parts.get("outer_h", 0.0) + parts.get("outer_lam", 0.0)
+                + sum(v for k, v in parts.items() if k.startswith("pin_")))
+
     def outer_res(flat):
         """(unweighted outer-boundary contribution, all loss parts) at these parameters.
 
@@ -489,10 +518,8 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         The parts come back too because the per-block checkpoint needs them: they are what
         makes a crashed run's `history.json` a real trajectory rather than a single number.
         """
-        _, parts_ = loss_fn(unflatten(flat), batch, 1.0, weights)
-        outer = (float(parts_.get("outer_h", 0.0)) + float(parts_.get("outer_lam", 0.0))
-                 + float(sum(v for k, v in parts_.items() if k.startswith("pin_"))))
-        return outer, {k: float(v) for k, v in parts_.items()}
+        parts = {k: float(v) for k, v in loss_value_and_parts(flat)[1].items()}
+        return _outer_of(parts), parts
 
     def write_progress(row):
         """Append a trajectory row and put it, plus the weights, on disk -- atomically.
@@ -519,11 +546,16 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     # the run can stop when it PLATEAUS instead of at a fixed iteration count.
     H = jnp.eye(n, dtype=flat0.dtype)
     x = flat0
-    f = float(fun(x))
-    # parts_start is evaluated HERE, before any reweighting, so the opening row of the
-    # history is measured under the same weights as `losses[0]`.  (It used to be recomputed
-    # at the end, after the loop had already reweighted, which mixed the two.)
-    o, parts_start = outer_res(x)
+    # ONE compiled call for the opening loss, its parts and the outer number.  This used to
+    # be two eager ones (`fun(x)` and `outer_res(x)`), and at n_coll 32768 they are what
+    # filled and fragmented the allocator immediately before Crunch compiled its first
+    # gradient -- see loss_value_and_parts.  parts_start is evaluated HERE, before any
+    # reweighting, so the opening row of the history is measured under the same weights as
+    # `losses[0]`; it used to be recomputed at the end, after the loop had reweighted.
+    _v0, _p0 = loss_value_and_parts(x)
+    f = float(_v0)
+    parts_start = {k: float(v) for k, v in _p0.items()}
+    o = _outer_of(parts_start)
     block = max(1, int(cfg.qn_block))
     n_blocks = max(1, int(_math.ceil(cfg.lbfgs_steps / block)))
     step0 = cfg.steps + 1
