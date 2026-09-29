@@ -15,6 +15,7 @@ jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
 import matplotlib
+import matplotlib.ticker as mticker
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -23,7 +24,7 @@ from . import diagnostics, exact
 from .losses import inner_bc_terms, outer_bc_terms, pde_terms
 from .model import point_fields
 from .train import make_model
-from .problem import Config, sample_shell, sample_sphere
+from .problem import Config, reference_is_departure_only, sample_shell, sample_sphere
 
 
 def load_run(run_dir: str, params_file: str = "params.pkl"):
@@ -69,7 +70,7 @@ def evaluate(run_dir: str, params_file: str = "params.pkl", make_plots: bool = T
     print(json.dumps(report, indent=2, default=float))
 
     if make_plots:
-        _plots(run_dir, cfg, pf, exact_fields, report)
+        _plots(run_dir, cfg, pf, exact_fields, report, model=model)
         try:                       # multipole figures: same set a training run writes
             from .multipoles import make_figures
             report["figures"] = make_figures(pf, cfg, run_dir, exact_fields=exact_fields)
@@ -80,7 +81,20 @@ def evaluate(run_dir: str, params_file: str = "params.pkl", make_plots: bool = T
     return report
 
 
-def _plots(run_dir, cfg, pf, exact_fields, report):
+def pde_plot_keys(model) -> tuple:
+    """The per-group curves the residual panels should carry, in plot order.
+
+    The formulation's own groups (`losses.equation_keys`) and not a hard-coded four: for a
+    metric-only model compatibility is not in the loss, and its 3.5e-36 value would otherwise
+    draw a straight line 36 decades below everything else and flatten the log axis until the
+    curves that matter are indistinguishable.  That is a plotting failure, not a small
+    residual -- the term is not being minimised at all.
+    """
+    from .losses import equation_keys
+    return tuple(f"pde_{k}" for k in equation_keys(model))
+
+
+def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
     """Six self-describing panels; every axis is labelled and every curve is in a legend."""
     import matplotlib.pyplot as plt
 
@@ -88,6 +102,8 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
 
     name = os.path.basename(os.path.normpath(run_dir))
     fig, ax = plt.subplots(2, 3, figsize=(17, 9))
+    pde_keys = pde_plot_keys(model)
+    departure_only = reference_is_departure_only(cfg)
 
     # ---------------------------------------------------------------- 1. loss history
     hist_path = os.path.join(run_dir, "history.json")
@@ -101,7 +117,7 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
         # `loss` only, so requiring the key in hist[0] is not enough (it used to raise
         # KeyError: 'pde_compat' on every run that went through SSBroyden).  Plot the rows
         # that have the key, and keep the run's own numbering on the x axis.
-        for key in ("loss", "pde_compat", "pde_ricci", "pde_gauge", "pde_lam_eq"):
+        for key in ("loss",) + pde_keys:
             xs = [h["step"] for h in hist if key in h]
             ys = [h[key] for h in hist if key in h]
             if len(xs) > 1:
@@ -128,7 +144,13 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
     r_tang = ((jnp.einsum("nii->n", ref.h) - r_hrr) / 2.0 / rhos**2) if has_ref else None
 
     lam_inf = cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init
-    ref_name = "exact/reference solution" if has_ref else "reference (none for this run)"
+    # `departure_only`: the reference is spherically symmetric and this run's inner data are
+    # not, so it is not a solution of this problem and the differences are departure, not
+    # error.  The curves stay -- seeing where the solution leaves the spherical one is the
+    # point of the angular data -- but nothing is titled or labelled as an error.
+    ref_name = ("exact/reference solution" if not departure_only else
+                "spherical reference (departure, not a target)") if has_ref else \
+               "reference (none for this run)"
 
     ax[0, 1].plot(rhos, f.lam, "C0-", lw=2, label="PINN")
     if has_ref:
@@ -158,11 +180,25 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
     ax[1, 0].legend(fontsize=8)
 
     # ------------------------------------------------------------ 5. error vs rho
-    if has_ref:
+    if has_ref and not departure_only:
         ax[1, 1].loglog(rhos, jnp.abs(f.lam - ref.lam) + 1e-18, label=r"$|\Delta\lambda|$")
         ax[1, 1].loglog(rhos, jnp.abs(h_rr - r_hrr) + 1e-18, label=r"$|\Delta h_{rr}|$")
         ax[1, 1].loglog(rhos, jnp.abs(tang - r_tang) + 1e-18, label=r"$|\Delta\alpha|$")
-        ax[1, 1].set_title("pointwise difference from the reference")
+        ax[1, 1].set_title("pointwise error against the exact reference")
+    elif has_ref:
+        # Not an error panel.  This run's inner data are angular and the reference is
+        # symmetric, so it is not a solution of this problem: the curves say how far the
+        # solution has left the spherical one, and a reader must not take them for accuracy.
+        ax[1, 1].loglog(rhos, jnp.abs(f.lam - ref.lam) + 1e-18,
+                        label=r"departure $|\lambda-\lambda_{sph}|$")
+        ax[1, 1].loglog(rhos, jnp.abs(h_rr - r_hrr) + 1e-18,
+                        label=r"departure $|\Delta h_{rr}|$")
+        ax[1, 1].loglog(rhos, jnp.abs(tang - r_tang) + 1e-18,
+                        label=r"departure $|\Delta\alpha|$")
+        ax[1, 1].loglog(rhos, jnp.abs(f.lam - lam_inf) + 1e-18,
+                        label=r"$|\lambda-\lambda_\infty|$")
+        ax[1, 1].set_title("DEPARTURE from the spherical reference, not error\n"
+                           "(no exact solution exists for angular inner data)")
     else:
         ax[1, 1].loglog(rhos, jnp.abs(f.lam - lam_inf) + 1e-18,
                         label=fr"$|\lambda-\lambda_\infty|$")
@@ -174,8 +210,7 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
     # -------------------------------------------------------- 6. residuals vs rho
     res = jax.vmap(lambda x: residuals_batch(pf, x[None, :]))(xs)
     res = jax.tree.map(lambda a: a[:, 0], res)
-    for key, lab in (("compat", "compatibility"), ("ricci", "Ricci"),
-                     ("gauge", "harmonic gauge"), ("lam_eq", r"$\lambda$ equation")):
+    for key, lab in ((k[4:], labels.get(k, k[4:])) for k in pde_keys):
         ax[1, 2].loglog(rhos, jnp.max(jnp.abs(res[key]), axis=tuple(range(1, res[key].ndim)))
                         + 1e-18, label=lab)
     ax[1, 2].set_title("PDE residuals (max over components), raw units")
@@ -183,13 +218,42 @@ def _plots(run_dir, cfg, pf, exact_fields, report):
     ax[1, 2].set_ylabel("residual")
     ax[1, 2].legend(fontsize=8)
 
+    # ------------------------------------------------- inner region, where the action is
+    # The shell spans rho_out/rho_in, a factor of hundreds for these runs, so on a linear
+    # axis the first decade -- where the field varies fastest and where the inner data are
+    # imposed -- is a sliver a few pixels wide, and the eye cannot see whether the boundary
+    # condition is met or how the solution leaves it.  Log axes on the radial panels, plus an
+    # inset on the lambda profile zoomed to the inner decade.
+    for a in (ax[0, 1], ax[0, 2], ax[1, 0]):
+        a.set_xscale("log")
+    inner_hi = min(cfg.rho_in * 10.0, cfg.rho_out)
+    if inner_hi > cfg.rho_in:
+        ins = ax[0, 1].inset_axes([0.46, 0.44, 0.51, 0.53])
+        ins.plot(rhos, f.lam, "C0-", lw=2)
+        if has_ref:
+            ins.plot(rhos, ref.lam, "k--", lw=1)
+        ins.axhline(cfg.lam0, color="grey", ls="-.", alpha=0.6)
+        ins.set_xscale("log")
+        ins.set_xlim(cfg.rho_in, inner_hi)
+        # a decade of ticks in a 2-inch inset collides; four is what fits legibly
+        ins.xaxis.set_major_locator(mticker.LogLocator(numticks=4))
+        ins.xaxis.set_minor_locator(mticker.NullLocator())
+        ins.tick_params(labelsize=6)
+        ins.set_title(f"inner region  "
+                      fr"$\rho\in[{cfg.rho_in:g},{inner_hi:g}]$", fontsize=7)
+        ins.grid(alpha=0.3)
+
     for a in ax.ravel():
         a.grid(alpha=0.3)
     fig.suptitle(f"{name}   (arch={cfg.arch}, "
                  fr"$\rho\in[{cfg.rho_in:g},{cfg.rho_out:g}]$, "
                  fr"$\lambda_0={cfg.lam0:g}$, $\lambda_\infty={lam_inf:g}$, "
                  fr"$\bf S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
-                 f"Robin order {cfg.robin_orders or cfg.robin_order})", fontsize=11)
+                 f"Robin order {cfg.robin_orders or cfg.robin_order})"
+                 # said on the figure itself, because the panel is the thing people paste
+                 + ("\nangular inner data: the spherical reference is NOT a solution of this "
+                    "problem -- differences from it are departure, not error"
+                    if departure_only else ""), fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     out = os.path.join(run_dir, "diagnostics.png")
     fig.savefig(out, dpi=120)

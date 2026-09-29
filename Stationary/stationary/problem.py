@@ -291,6 +291,25 @@ class Config:
                     f"(with --ref-asymptotic k), or drop the pin flags.")
 
 
+def reference_is_departure_only(cfg) -> bool:
+    """True when the exact reference cannot be a solution of THIS run's problem.
+
+    The reference is spherically symmetric, so it cannot carry angular inner data (S1, S2).
+    For those runs it is not an exact solution to compare against: it violates the imposed
+    inner data by construction, and every difference from it is DEPARTURE -- how far the
+    solution has moved from the spherical one, which is the point of the angular data -- not
+    error.  Nothing in the numbers distinguishes the two, so the plots must not present them
+    as errors (`evaluate`, `profile`) or as an error row (`report`).
+
+    `inner_bc = "reference"` is the exception and the reason this is a function rather than a
+    flag test: there the inner data ARE the reference's own, as in the Weyl runs, so the
+    comparison is exactly the error.
+    """
+    if getattr(cfg, "inner_bc", "spherical") == "reference":
+        return False
+    return bool(getattr(cfg, "lam_bc_S1", 0.0) or getattr(cfg, "lam_bc_S2", 0.0))
+
+
 def lam_inner_bc(x, cfg):
     """lambda prescribed on the inner sphere:
 

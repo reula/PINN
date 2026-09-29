@@ -130,6 +130,53 @@ def test_the_log_does_not_advertise_a_group_the_loss_ignores():
     assert "compat=3.00e-36" in _pde_str(hybrid, FIRST_ORDER_PDE_KEYS)
 
 
+# ------------------------------------------------- the same rule, in the FIGURES
+def test_the_residual_figures_draw_only_the_formulations_own_groups():
+    """The plotted curves must follow the loss, not a hard-coded four.
+
+    A compatibility curve at 3.5e-36 on a log axis does not merely add a line: it stretches
+    the axis over 36 decades and flattens every curve that matters into the top pixel row.
+    """
+    from stationary.evaluate import pde_plot_keys
+
+    for arch, expected in (("sym_hybrid", METRIC_ONLY_PDE_KEYS),
+                           ("axisym_hybrid", METRIC_ONLY_PDE_KEYS),
+                           ("hybrid", METRIC_ONLY_PDE_KEYS),
+                           ("sym", FIRST_ORDER_PDE_KEYS),
+                           ("mlp", FIRST_ORDER_PDE_KEYS)):
+        cfg = T.parse_args(["--arch", arch, "--outdir", "/tmp/eqk"] + TINY)
+        keys = pde_plot_keys(T.make_model(cfg))
+        assert keys == tuple(f"pde_{k}" for k in expected), arch
+        assert ("pde_compat" in keys) is (arch in FIRST_ORDER), arch
+
+
+# ---------------------------------------------------- departure vs error
+@pytest.mark.parametrize("over,expected", [
+    ({}, False),                                        # S1 = S2 = 0: a real comparison
+    ({"lam_bc_S1": 0.1}, True),                         # dipole inner data
+    ({"lam_bc_S2": -1 / 12}, True),                     # quadrupole inner data
+    ({"lam_bc_S1": 0.1, "lam_bc_S2": 0.2}, True),
+    # inner_bc = "reference" is the exception: there the reference's own values ARE the inner
+    # data (the Weyl runs), so the comparison is the error and must stay a comparison.
+    ({"lam_bc_S2": -1 / 12, "inner_bc": "reference"}, False),
+])
+def test_reference_is_a_departure_only_when_it_cannot_carry_the_inner_data(over, expected):
+    from stationary.problem import reference_is_departure_only
+    cfg = T.parse_args(["--arch", "axisym_hybrid", "--outdir", "/tmp/eqk"] + TINY)
+    for k, v in over.items():
+        setattr(cfg, k, v)
+    assert reference_is_departure_only(cfg) is expected
+
+
+def test_every_place_that_shows_the_comparison_consults_the_predicate():
+    """evaluate, profile and report are the three a reader meets; they must agree."""
+    import inspect
+    from stationary import evaluate, profile, report
+
+    for mod in (evaluate, profile, report):
+        assert "reference_is_departure_only" in inspect.getsource(mod), mod.__name__
+
+
 def test_the_radial_term_still_prints_when_it_is_on():
     """`_pde_str` shares the Adam line and the quasi-Newton line; neither may lose lam_rad."""
     parts = {"pde_ricci": 1e-3, "pde_gauge": 1e-4, "pde_lam_eq": 1e-5,

@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 from . import exact
 from .evaluate import load_run
 from .model import point_fields
+from .problem import reference_is_departure_only
 
 
 def directions(theta, n_phi=1):
@@ -72,11 +73,18 @@ def main():
         ref = exact.exact_fields(cfg.R0, exact.k_from_lambda0(cfg.R0, cfg.lam0))
 
     fig, ax = plt.subplots(1, 2, figsize=(14, 5))
+    # A spherically symmetric reference cannot carry angular inner data (S1, S2), so for
+    # those runs it is not a solution of this problem: label it, and the second panel, as
+    # DEPARTURE.  The curves stay -- where the solution leaves the spherical one is the point
+    # of the angular data -- but nothing may read as an error.
+    departure_only = reference_is_departure_only(cfg)
+    ref_label = ("spherical reference (departure, not a target)" if departure_only
+                 else "exact reference")
     for th, lam in curves.items():
         ax[0].plot(rhos, lam, label=fr"$\theta={th:.2f}$")
     if ref is not None:
         lam_ref = profile(ref, cfg, a.n_rho, (thetas[0],))[1][thetas[0]]
-        ax[0].plot(rhos, lam_ref, "k--", lw=1.5, label="exact reference")
+        ax[0].plot(rhos, lam_ref, "k--", lw=1.5, label=ref_label)
     if ref is not None:
         # The reference is rebuilt from cfg.R0; if that R0 is not the one the run was
         # actually built with, its lambda on the inner sphere will not match lam0 and
@@ -110,9 +118,16 @@ def main():
                        label=fr"$|\lambda-\lambda_\infty|$")
     ax[1].set_xscale("log")
     ax[1].set_xlabel(r"$\rho$")
-    ax[1].set_ylabel(r"$|\lambda-\lambda_{\rm ref}|$")
-    ax[1].set_title("difference from the reference" if ref is not None
-                    else fr"distance from $\lambda_\infty={lam_inf:g}$")
+    ax[1].set_ylabel(r"$|\lambda-\lambda_{\rm sph}|$ (departure)" if departure_only
+                     else r"$|\lambda-\lambda_{\rm ref}|$")
+    if ref is None:
+        title = fr"distance from $\lambda_\infty={lam_inf:g}$"
+    elif departure_only:
+        title = ("DEPARTURE from the spherical reference, not error\n"
+                 "(no exact solution exists for angular inner data)")
+    else:
+        title = "difference from the reference"
+    ax[1].set_title(title)
     ax[1].legend(fontsize=8)
     ax[1].grid(alpha=0.3)
 
