@@ -217,6 +217,24 @@ A run that consumed itself in the middle of the night therefore still leaves a c
 directory: the figures and `report.txt` are written from the last checkpoint, and the
 report says how far it got.
 
+That sentence is only true because of three things it is worth knowing, since a run that
+dies of device memory has none of them by accident:
+
+* `config.json` is written **before** anything is computed. `postprocess.sh` refuses a
+  directory without it ("not a run directory", exit 1), so while it was written last, a run
+  that died anywhere in the quasi-Newton phase could not be post-processed at all -- nothing
+  in it could be recovered, however much had survived.
+* the quasi-Newton phase writes **`params.pkl` and `history.json` after every block**
+  (`--qn-block`, default 100). It has no checkpoint of its own and with `--steps 0` there is
+  no `ckpt.pkl` either, so before this an OOM at iteration 300 of 20 000 left only
+  `params_adam.pkl` -- the Adam warm-up, none of the work. Now a crash costs at most one
+  block, the report still carries the trajectory, and `--init-from
+  runs/<name>/params.pkl` picks the run up from that block (the PDE weights and the
+  curvature estimate are not carried: a continuation re-adapts them).
+* the crash is bounded, not reported. Nothing marks the directory as incomplete, so check
+  `history.json`'s last `step` against the plan in `config.json` before reading a crashed
+  run's numbers as final.
+
 **Comparing several runs** — after a ladder, this is the analysis step:
 
 ```bash
@@ -280,6 +298,34 @@ Two limits worth knowing:
   share instead, `XLA_PYTHON_CLIENT_ALLOCATOR=platform` is the fully on-demand allocator).
   The `--check` smoke run now uses the light production architecture (`sym_hybrid`,
   `n_coll=256`) rather than the 25-field 3-D model.
+* **Size the run before you launch it, with `stationary.bench`.** It compiles the same
+  `value_and_grad` the quasi-Newton line search evaluates and reports what the compiled graph
+  needs in one piece, which is the number that decides whether a run fits:
+
+  ```bash
+  JAX_ENABLE_X64=1 PY=$PWD/.venv/bin/python -m stationary.bench --reps 3 <every train flag>
+  JAX_PLATFORMS=cpu PY=$PWD/.venv/bin/python -m stationary.bench --reps 3 <the same flags>
+  ```
+
+  Measured for the production quarter-quadrupole problem (`axisym_hybrid` 20x6, 2285
+  parameters, float64, `n_bnd 1024`), on CPU:
+
+  | configuration | XLA temporaries | one value+gradient |
+  |---|---|---|
+  | `n_coll 2048` | 1.00 GiB | — |
+  | `n_coll 4096` | 1.31 GiB | — |
+  | `n_coll 8192` | 1.92 GiB | 2.24 s (with `--w-lam-eq-radial`) |
+  | `n_coll 16384` | **3.16 GiB** | — |
+  | `n_coll 16384`, **no** `--w-lam-eq-radial` | 2.58 GiB | 2.29 s |
+  | `n_coll 16384` + `--w-lam-eq-radial` | 3.16 GiB | **4.45 s** |
+
+  Two things to read off it. The demand is linear in `--n-coll` above 4096, so **`--n-coll
+  8192` needs 1.92 GiB and fits a 12 GiB slice even with the 75% preallocation left on,
+  while 16384 (3.16 GiB) does not** -- 9.0 + 3.16 > 12 is exactly the `production_quad_
+  quarter_pinrad` failure, where the requested allocation was 4.00 GiB and only 3.0 GiB was
+  free. And `--w-lam-eq-radial` costs **~1.9x in time and +0.6 GiB**, not the 1.17x that
+  section 6e measured; re-measure it on your own machine with `stationary.bench` on either
+  side of the flag before deciding whether a run needs it.
 * **Check how much GPU you were given, not just that you got one.** `nvidia-smi` on
   this hub reports `0MiB / 750MiB` for an A30 -- i.e. a small vGPU slice, not the card.
   The `--check` smoke run alone needs ~750 MiB, so it dies with
@@ -520,9 +566,15 @@ prints a note saying so.
 measured, a cold start reaches 3.2e-02 in 100 iterations from a random initialisation, and the
 Adam warm-up was only needed because it left a gradient too large for the Wolfe search to
 bracket (`initial_scale` exists to rescue that).  If a phase reports `0 iterations, status 3
-(zoom failed)`, put a short warm-up back with `--steps 500`.  Watch out that the adaptive PDE
-reweighting, the `pde_ramp_steps` ramp and the resampling live inside the Adam loop, so with
-`--steps 0` they do not run and the PDE groups keep their configured weights.
+(zoom failed)`, put a short warm-up back with `--steps 500`.  The adaptive PDE reweighting
+now runs in **every** optimiser phase — `--reweight-every` counts optimiser iterations on a
+single counter that Adam and the quasi-Newton phase both advance, so `--steps 0
+--reweight-every 1500` reweights every 1500 quasi-Newton iterations.  A reweight drops the
+carried curvature estimate (the inverse Hessian for SSBroyden, the 20-pair memory for
+`optax.lbfgs`), because it describes the objective that has just changed.  The
+`pde_ramp_steps` ramp and the resampling **do** still live inside the Adam loop, so with
+`--steps 0` they do not run: the PDE groups keep their configured weights on the ramp's
+account and the collocation set is fixed.
 
 **Budget.** `QN_CAP` sets the quasi-Newton iteration cap (default 20000; the plateau rule
 stops the run earlier whenever it can):

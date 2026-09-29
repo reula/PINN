@@ -174,6 +174,12 @@ class Config:
     w_lam_eq_radial: float = 0.0
 
     pde_ramp_steps: int = 0     # ramp the PDE weights in over this many steps (0 = off)
+    # Period in OPTIMISER ITERATIONS, counted on one counter that Adam and the
+    # quasi-Newton phase both advance, so `--steps 0 --reweight-every 1500` reweights every
+    # 1500 quasi-Newton iterations.  It used to be an Adam-step period, which meant a run
+    # that skipped or shortened Adam never reweighted at all
+    # (runs/production_quad_quarter_pin_r400 asked for 1500, ran 8000 quasi-Newton
+    # iterations, and logged no [reweight] line).
     reweight_every: int = 2000  # gradient-norm adaptive reweighting period (0 = off)
     reweight_max_ratio_inv: float = 0.5   # per-update cap: weights move by at most 2x
     # Cumulative band: over a whole run a PDE weight may not move further than this

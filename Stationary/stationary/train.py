@@ -220,6 +220,22 @@ def save_checkpoint(path, state, opt_state, weights, history, step, cfg):
     return path
 
 
+def write_params(outdir, state, name: str = "params.pkl"):
+    """Write the parameter state itself (`params.pkl`, or `params_adam.pkl`), atomically.
+
+    This is the bare tree that `--init-from` reads and that `postprocess.sh` falls back to
+    when there is no ckpt.pkl -- so it is the one copy of the trained weights, and it goes
+    through a temp file and a rename for the same reason save_checkpoint does: a kill during
+    the write must not be able to destroy the previous one.
+    """
+    path = os.path.join(outdir, name)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as fh:
+        pickle.dump(jax.tree.map(jax.device_get, state), fh)
+    os.replace(tmp, path)
+    return path
+
+
 def print_config_summary(cfg: Config):
     """The effective physics of this run, first thing in the log.
 
@@ -316,7 +332,84 @@ def _crunch_minimize(root: str | None = None):
     return minimize, root
 
 
-def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool = True):
+# ------------------------------------------------------------------ reweighting
+# Gradient-norm adaptive weighting of the four interior equation groups.  It lives out here,
+# outside the optimiser loops, because every phase uses it: the rule used to sit inside the
+# Adam loop, so a run that skipped or shortened Adam never reweighted at all.
+# `runs/production_quad_quarter_pin_r400` advertised `reweight_every = 1500`, ran 500 Adam +
+# 8000 quasi-Newton iterations, and logged no `[reweight]` line -- the period was longer
+# than its whole Adam phase.
+def _reweight_crosses(cfg: Config, lo: int, hi: int) -> bool:
+    """Does the cumulative iteration interval (lo, hi] contain a reweighting point?
+
+    For the two phases that advance one iteration at a time -- Adam and the `optax.lbfgs`
+    fallback -- where `(it - 1, it]` crossing a multiple is exactly Adam's old trigger.  The
+    SSBroyden phase advances in blocks instead and carries an explicit counter
+    (`_first_reweight_after`), so that a block whose line search stops early cannot re-trigger
+    on a point it has already passed.  `reweight_every` counts OPTIMISER ITERATIONS on one
+    counter that every phase advances, so the schedule is continuous from Adam into the
+    quasi-Newton phase.
+    """
+    e = int(cfg.reweight_every or 0)
+    return e > 0 and hi > 1 and hi >= e and hi // e > lo // e
+
+
+def _first_reweight_after(cfg: Config, iters: int):
+    """First reweighting point strictly after `iters` cumulative optimiser iterations.
+
+    This is where the quasi-Newton phase picks the schedule up from the Adam phase: passing
+    `cfg.steps` skips any point Adam already consumed, so the two phases never both reweight
+    at the same iteration.
+    """
+    e = int(cfg.reweight_every or 0)
+    return None if e <= 0 else (iters // e + 1) * e
+
+
+def _reweighted(cfg: Config, weights, g, when: int, verbose: bool = True):
+    """One gradient-norm reweighting update; returns the new weight dict.
+
+    Reweights ONLY the interior equation groups.  The boundary terms are data, and
+    w ~ 1/||grad term|| is backwards for them: the condition that is most violated has the
+    largest gradient and so receives the SMALLEST weight -- which is how an earlier run
+    silenced its outer Robin condition (w_outer fell to 6.25 while w_inner rose to 229), let
+    lambda stay at its inner value and drift onto the trivial flat branch.
+    """
+    pde_keys = ("compat", "ricci", "gauge", "lam_eq")
+    # ... and not even all of those: a group that is satisfied identically (compat is, in
+    # the metric-only schemes) has a gradient at the round-off floor, and w ~ 1/||grad||
+    # then grows it without bound while pushing the others down.  Leave such groups alone
+    # and keep them out of the target.
+    gmax = max(float(g[i]) for i, k in enumerate(GROUP_KEYS) if k in pde_keys)
+    live = [k for k in pde_keys if float(g[GROUP_KEYS.index(k)]) > cfg.reweight_floor * gmax]
+    if not live:
+        # Every interior group is at the round-off floor (a converged solution, or a state
+        # where all four gradients underflow to zero).  There is nothing to balance between,
+        # and `jnp.stack` of an empty list raises -- so leave the weights alone.  This was
+        # reachable before the rule was extracted from the Adam loop; the guard is new.
+        if verbose:
+            print(f"[reweight {when}] every interior group is at the gradient floor "
+                  f"(max {gmax:.2e}); weights unchanged", flush=True)
+        return dict(weights)
+    target = jnp.mean(jnp.stack([g[GROUP_KEYS.index(k)] for k in live]))
+    w0 = {k: v for k, v in default_weights(cfg).items()}
+    new = {}
+    for i, k in enumerate(GROUP_KEYS):
+        if k not in live:
+            new[k] = weights[k]        # boundary data, or nothing to balance
+            continue
+        ideal = target / (g[i] + 1e-300)
+        ratio = jnp.clip(ideal / weights[k], cfg.reweight_max_ratio_inv,
+                         1.0 / cfg.reweight_max_ratio_inv)
+        lo, hi = w0[k] / cfg.reweight_band, w0[k] * cfg.reweight_band
+        new[k] = jnp.clip(weights[k] * jnp.sqrt(ratio), lo, hi)
+    if verbose:
+        print(f"[reweight {when}] " + " ".join(f"{k}={float(new[k]):.3g}" for k in GROUP_KEYS),
+              flush=True)
+    return new
+
+
+def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool = True,
+                    gradnorms=None, history=None):
     """Quasi-Newton phase with Crunch's self-scaling Broyden; None means "use optax.lbfgs".
 
     Two things make it decline, both reported rather than raised: the Crunch checkout is
@@ -329,6 +422,14 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     `update_method="ssbroyden2"` -- `initial_H` and that switch travel inside `options`, which
     is where the SciPy-style wrapper forwards them.  One batch, held fixed: the line search
     needs a single objective.
+
+    `gradnorms(state, batch)` is the jitted per-group gradient-norm function used by the
+    Adam phase's reweighting.  Given it, this phase reweights the interior equation groups
+    on the same cumulative-iteration schedule (`cfg.reweight_every`), which is what makes
+    `--steps 0 --reweight-every 1500` mean something.  A reweight changes the objective, so
+    the carried inverse Hessian is dropped and `initial_scale` re-engaged for that block:
+    H describes the old function, and the first step of a new objective needs the same
+    treatment the first block gets.
     """
     minimize, where = _crunch_minimize()
     if minimize is None:
@@ -352,17 +453,41 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         return value
 
     def outer_res(flat):
-        """Unweighted outer-boundary contribution (Robin + far-field pins) at these parameters.
+        """(unweighted outer-boundary contribution, all loss parts) at these parameters.
 
-        The plateau test looks at this as well as at the total loss: one group can dominate
-        the total (the order-2 control's final loss was 97% its lambda-equation while its
-        boundary was already at the floor), so "the loss stopped moving" can hide an
+        The plateau test looks at the outer terms as well as at the total loss: one group can
+        dominate the total (the order-2 control's final loss was 97% its lambda-equation while
+        its boundary was already at the floor), so "the loss stopped moving" can hide an
         abandoned boundary condition.  The pins are included: a run whose far-field value is
         still moving is not converged, however flat its loss looks.
+
+        The parts come back too because the per-block checkpoint needs them: they are what
+        makes a crashed run's `history.json` a real trajectory rather than a single number.
         """
         _, parts_ = loss_fn(unflatten(flat), batch, 1.0, weights)
-        return (float(parts_.get("outer_h", 0.0)) + float(parts_.get("outer_lam", 0.0))
-                + float(sum(v for k, v in parts_.items() if k.startswith("pin_"))))
+        outer = (float(parts_.get("outer_h", 0.0)) + float(parts_.get("outer_lam", 0.0))
+                 + float(sum(v for k, v in parts_.items() if k.startswith("pin_"))))
+        return outer, {k: float(v) for k, v in parts_.items()}
+
+    def write_progress(row):
+        """Append a trajectory row and put it, plus the weights, on disk -- atomically.
+
+        This is what makes a crash cost at most one block instead of the whole phase.  The
+        phase runs for hours and has no checkpoint of its own, and with `--steps 0` there is
+        no ckpt.pkl either: a run killed inside its first block used to leave ONLY
+        `params_adam.pkl` -- the Adam warm-up, none of the work -- and `history.json`, which
+        is what makes `report.txt` say how far the run got, was not written until the end.
+        A report with no trajectory cannot tell a converged 8000 from an abandoned 800.
+
+        The PDE weights and the curvature estimate are not carried: a continuation
+        re-adapts the weights and rebuilds H over its first blocks.
+        """
+        rows_so_far.append(row)
+        tmp = os.path.join(cfg.outdir, "history.json.tmp")
+        with open(tmp, "w") as fh:
+            json.dump(history_prefix + rows_so_far, fh, indent=2)
+        os.replace(tmp, os.path.join(cfg.outdir, "history.json"))
+        write_params(cfg.outdir, unflatten(x))
 
     # Blocks, not one long call: the inverse Hessian is carried from block to block (that is
     # what makes the quasi-Newton phase work), and the loss is inspected between blocks so
@@ -370,9 +495,15 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     H = jnp.eye(n, dtype=flat0.dtype)
     x = flat0
     f = float(fun(x))
-    o = outer_res(x)
+    # parts_start is evaluated HERE, before any reweighting, so the opening row of the
+    # history is measured under the same weights as `losses[0]`.  (It used to be recomputed
+    # at the end, after the loop had already reweighted, which mixed the two.)
+    o, parts_start = outer_res(x)
     block = max(1, int(cfg.qn_block))
     n_blocks = max(1, int(_math.ceil(cfg.lbfgs_steps / block)))
+    step0 = cfg.steps + 1
+    history_prefix = list(history or [])
+    rows_so_far = [{"step": step0, "loss": f, **parts_start}]
     losses = [f]
     outers = [o]
     total = 0
@@ -383,7 +514,30 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
               f"inverse Hessian, blocks of {block} up to {cfg.lbfgs_steps} iterations "
               f"({n_blocks} blocks, plateau_tol {cfg.plateau_tol:g} over "
               f"{cfg.plateau_patience} blocks), start loss {f:.6e}", flush=True)
+        if cfg.reweight_every and gradnorms is None:
+            print(f"[qn] reweight_every = {cfg.reweight_every} was asked for but no "
+                  f"gradient-norm function was supplied: the PDE weights stay as configured",
+                  flush=True)
+    # The reweighting points still to come, on the cumulative iteration counter Adam was
+    # advancing.  The first one is the first multiple of `reweight_every` after the Adam
+    # phase (so a point Adam already consumed is not used twice here).  A monotone counter
+    # rather than a window test: a block may stop early in its line search, and a window
+    # would then re-trigger on a point it had already passed.
+    e_rw = int(cfg.reweight_every or 0)
+    next_rw = _first_reweight_after(cfg, cfg.steps) if gradnorms is not None else None
     for b in range(n_blocks):
+        # Reweight BEFORE the block, and throw away the curvature estimate: the objective has
+        # just changed, so H no longer describes it.  `initial_scale` then re-derives the step
+        # length for H = I on this block, exactly as it does for the first one.  The points are
+        # consumed against the block's PLANNED span, which is the most a block can cover.
+        reweighted = False
+        while next_rw is not None and cfg.steps + total + block >= next_rw:
+            weights = _reweighted(cfg, weights, gradnorms(unflatten(x), batch), next_rw,
+                                  verbose)
+            next_rw += e_rw
+            reweighted = True
+        if reweighted:
+            H = jnp.eye(n, dtype=flat0.dtype)
         res = minimize(fun, x, args=(), method="BFGS",
                        options={"maxiter": block, "gtol": cfg.qn_gtol,
                                 "initial_H": H,
@@ -391,17 +545,20 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                                 # first step is -grad with H = I, which the Wolfe line search
                                 # cannot bracket when the Adam warm-up has left the gradient
                                 # large (measured: zero iterations, status 3 "zoom failed").
-                                # Later blocks carry a real H, so it is not needed there.
-                                "update_method": "ssbroyden2", "initial_scale": (b == 0)})
+                                # Later blocks carry a real H, so it is not needed there --
+                                # nor after a reweight, where H has been reset to I.
+                                "update_method": "ssbroyden2",
+                                "initial_scale": (b == 0 or reweighted)})
         x = res.x
         f = float(res.fun)
         if res.hess_inv is not None:
             H = res.hess_inv
         total += int(res.nit)
         status = int(res.status)
-        o = outer_res(x)
+        o, parts_b = outer_res(x)
         losses.append(f)
         outers.append(o)
+        write_progress({"step": cfg.steps + total, "loss": f, **parts_b})
         if verbose:
             print(f"[qn] block {b + 1:3d}: {total:5d} iterations, loss {f:.6e}, "
                   f"outer Robin {o:.6e} (status {status})", flush=True)
@@ -421,23 +578,30 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                 break
 
     state = unflatten(x)
-    _, parts = loss_fn(state, batch, 1.0, weights)
-    step0 = cfg.steps + 1
-    _, parts0 = loss_fn(unflatten(flat0), batch, 1.0, weights)
-    history = [{"step": step0, "loss": float(losses[0]),
-                **{k: float(v) for k, v in parts0.items()}},
-               {"step": step0 + max(total, 1), "loss": f,
-                **{k: float(v) for k, v in parts.items()}}]
+    # The per-block rows already are the trajectory, and the last of them is the final
+    # state; `write_progress` has been putting them on disk as they happened.  One row per
+    # block replaces the old two-row summary, which is what lets a crashed run's report show
+    # where it stopped -- and costs nothing, since `outer_res` was already evaluating the
+    # parts the plateau test needs.
+    history = list(rows_so_far)
     if verbose:
         print(f"[qn] SSBroyden: loss {losses[0]:.6e} -> {f:.6e} in {total} iterations "
               f"({time.time() - t0:.1f}s, status {status}, "
               f"converged={status == 0}, stopped={total < cfg.lbfgs_steps})", flush=True)
-    return state, history
+    return state, history, weights
 
 
 def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
           resume: str | None = None):
     os.makedirs(cfg.outdir, exist_ok=True)
+    # The configuration is known before anything is computed, so record it now rather than
+    # at the end: `postprocess.sh` refuses a directory without config.json ("not a run
+    # directory"), so writing it last meant a run that died anywhere in the quasi-Newton
+    # phase -- which has no checkpoint of its own, and with `--steps 0` no ckpt.pkl either --
+    # could not be post-processed AT ALL, whatever had survived in it.  Nothing mutates cfg
+    # after this point.
+    with open(os.path.join(cfg.outdir, "config.json"), "w") as fh:
+        json.dump(asdict(cfg), fh, indent=2)
     if verbose:
         print_config_summary(cfg)
     model, state, exact_fields = build(cfg, init_from)
@@ -511,38 +675,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         sc = 1.0 if cfg.pde_ramp_steps <= 0 else min(1.0, it / cfg.pde_ramp_steps)
         if cfg.resample_every and it % cfg.resample_every == 1 and it > 1:
             batch = make_batch(jax.random.PRNGKey(cfg.seed + it), cfg)
-        if (cfg.reweight_every and cfg.reweight_every > 0 and it > 1
-                and it % cfg.reweight_every == 0):
-            g = group_gradnorms(state, batch)
-            # Reweight ONLY the interior equation groups.  The boundary terms are data,
-            # and w ~ 1/||grad term|| is backwards for them: the condition that is most
-            # violated has the largest gradient and so receives the SMALLEST weight --
-            # which is how an earlier run silenced its outer Robin condition (w_outer
-            # fell to 6.25 while w_inner rose to 229), let lambda stay at its inner
-            # value and drift onto the trivial flat branch.
-            pde_keys = ("compat", "ricci", "gauge", "lam_eq")
-            # ... and not even all of those: a group that is satisfied identically (compat
-            # is, in the metric-only schemes) has a gradient at the round-off floor, and
-            # w ~ 1/||grad|| then grows it without bound while pushing the others down.
-            # Leave such groups alone and keep them out of the target.
-            gmax = max(float(g[i]) for i, k in enumerate(GROUP_KEYS) if k in pde_keys)
-            live = [k for k in pde_keys if float(g[GROUP_KEYS.index(k)]) > cfg.reweight_floor * gmax]
-            target = jnp.mean(jnp.stack([g[GROUP_KEYS.index(k)] for k in live]))
-            w0 = {k: v for k, v in default_weights(cfg).items()}
-            w_new = {}
-            for i, k in enumerate(GROUP_KEYS):
-                if k not in live:
-                    w_new[k] = weights[k]      # boundary data, or nothing to balance
-                    continue
-                ideal = target / (g[i] + 1e-300)
-                ratio = jnp.clip(ideal / weights[k], cfg.reweight_max_ratio_inv,
-                                 1.0 / cfg.reweight_max_ratio_inv)
-                lo, hi = w0[k] / cfg.reweight_band, w0[k] * cfg.reweight_band
-                w_new[k] = jnp.clip(weights[k] * jnp.sqrt(ratio), lo, hi)
-            weights = w_new
-            if verbose:
-                print(f"[reweight {it}] " + " ".join(
-                    f"{k}={float(weights[k]):.3g}" for k in GROUP_KEYS), flush=True)
+        if _reweight_crosses(cfg, it - 1, it):
+            weights = _reweighted(cfg, weights, group_gradnorms(state, batch), it, verbose)
         state, opt_state, loss, parts = step(state, opt_state, batch, jnp.asarray(sc), weights)
         # the Adam phase stops on the same plateau rule (it is a warm-up, not the workhorse)
         if it % cfg.log_every == 0:
@@ -595,17 +729,17 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         _, _, loss, parts = step(state, opt_state, batch, jnp.asarray(1.0), weights)
 
     # ------------------------------------------------------------- quasi-Newton
-    with open(os.path.join(cfg.outdir, "params_adam.pkl"), "wb") as fh:
-        pickle.dump(jax.tree.map(lambda a: jax.device_get(a), state), fh)
+    write_params(cfg.outdir, state, "params_adam.pkl")
 
     qn_stopped_at = 0
     if cfg.lbfgs_steps > 0:
         batch = make_batch(jax.random.PRNGKey(cfg.seed + 777), cfg)
         qn = None
         if cfg.qn_method == "ssbroyden":
-            qn = ssbroyden_phase(state, batch, weights, loss_fn, cfg, verbose)
+            qn = ssbroyden_phase(state, batch, weights, loss_fn, cfg, verbose,
+                                 gradnorms=group_gradnorms, history=history)
         if qn is not None:
-            state, qn_history = qn
+            state, qn_history, weights = qn
             history.extend(qn_history)
             loss = qn_history[-1]["loss"]
             qn_stopped_at = qn_history[-1]["step"] - cfg.steps
@@ -625,6 +759,13 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
 
             prev = None
             for it in range(1, cfg.lbfgs_steps + 1):
+                # Same cumulative schedule as Adam and SSBroyden.  A reweight changes the
+                # objective, so the L-BFGS memory (the last 20 curvature pairs) describes the
+                # old one and is dropped; the step length is recomputed from the new gradient.
+                if _reweight_crosses(cfg, cfg.steps + it - 1, cfg.steps + it):
+                    weights = _reweighted(cfg, weights, group_gradnorms(state, batch),
+                                          cfg.steps + it, verbose)
+                    lst = solver.init(state)
                 state, lst, loss, parts = lstep(state, lst, batch, weights)
                 if it % max(cfg.lbfgs_steps // 20, 1) == 0 or it == 1:
                     history.append({"step": cfg.steps + it, "loss": float(loss),
@@ -670,14 +811,17 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         except Exception as exc:                      # plotting must never kill a run
             print(f"[figures] failed: {exc}", flush=True)
 
+    # config.json was already written at the top of this function: it is the record the run
+    # is identified by, and postprocess.sh refuses a directory without it, so it must not
+    # depend on getting this far.  Rewritten here only so that it cannot go stale if some
+    # later change starts mutating cfg mid-run.
     with open(os.path.join(cfg.outdir, "config.json"), "w") as fh:
         json.dump(asdict(cfg), fh, indent=2)
     with open(os.path.join(cfg.outdir, "history.json"), "w") as fh:
         json.dump(history, fh, indent=2)
     with open(os.path.join(cfg.outdir, "report.json"), "w") as fh:
         json.dump(report, fh, indent=2)
-    with open(os.path.join(cfg.outdir, "params.pkl"), "wb") as fh:
-        pickle.dump(jax.tree.map(lambda a: jax.device_get(a), state), fh)
+    write_params(cfg.outdir, state)
 
     if verbose:
         print("\n=== final diagnostics ===")
@@ -759,6 +903,12 @@ def parse_args(argv=None):
     p.add_argument("--ref-solution", action="store_true")
     p.add_argument("--decay-feature", action="store_true")
     p.add_argument("--robin-source", action="store_true")
+    p.add_argument("--no-robin-source", action="store_true",
+                   help="drop the manufactured Robin source, so the outer condition imposes "
+                        "DECAY instead of matching the exact operator.  The loss then has no "
+                        "zero whenever the exact solution violates that condition at rho_out "
+                        "(it does by 6.3e-02 in lambda for the closest Weyl shell), so this is "
+                        "the honest no-exact-solution-available case, not a converged one")
     p.add_argument("--ref-asymptotic", type=float, default=None,
                    help="build the diagnostic reference with this asymptotic lambda")
     p.add_argument("--seed", type=int, default=None)
@@ -971,6 +1121,9 @@ def parse_args(argv=None):
             cfg.rho_out = 10.0 * cfg.rho_in
         if a.lam_inf is None:
             cfg.lam_inf = 1.0            # lambda -> 1 at infinity for Weyl
+    if a.no_robin_source:
+        # after the --weyl block, which sets it on: this is the way to ask for the run without
+        cfg.robin_source = False
     cfg.__post_init__()
     if a.scale_ref_rho_in:
         cfg.scale_ref = cfg.rho_in

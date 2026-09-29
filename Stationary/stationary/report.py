@@ -420,6 +420,23 @@ def main():
               + "  ".join(f"{k}={v:.2e}" for k, v in chk.items())
               + ("   <- CONSISTENT" if worst < 1e-10 else
                  "   <- INCONSISTENT: no metric can satisfy both sets of data"))
+        if worst >= 1e-10 and (cfg.lam_bc_S1 or cfg.lam_bc_S2):
+            # The angular inner data (S1/S2) are the case where "INCONSISTENT" is not a
+            # problem but the whole point: a spherically symmetric reference cannot carry
+            # them, so the run MUST depart from it, and the lines above measure that
+            # departure rather than the error.  `train.build` prints the same warning, but
+            # only into the training log, which a reader of report.txt never sees -- and
+            # max |dh| = 1.7e-01 for a quarter-quadrupole run reads as a broken run when it
+            # is in fact the imposed physics.
+            print(f"    NOTE: the inner data are not spherically symmetric "
+                  f"(S1 = {cfg.lam_bc_S1:g}, S2 = {cfg.lam_bc_S2:g}) while the reference is,")
+            print("          so the max |dh| / max |dGamma| / max |dlambda| lines above are "
+                  "DEPARTURE from")
+            print("          the spherical solution, not errors of this run: no metric can "
+                  "satisfy both.")
+            print("          The multipole amplitudes and their fitted decay powers below are "
+                  "the check")
+            print("          that applies to these runs.")
     else:
         _section("VS EXACT REFERENCE")
         print("    none configured for this run (no --ref-solution / --dirichlet-exact)")
