@@ -96,6 +96,18 @@ With `scale_ref = None` -- the default, and what every run under `runs/` uses --
 the LOCAL `rho`, so each group is measured relative to the size of its own terms; a fixed
 `--scale-ref` measures them all in units of that one length instead.
 
+**The metric-only ("hybrid") architectures carry three of these four, not four.**  There
+`Gamma` is the Christoffel symbol of `h`, computed from the same `h` that enters the residual,
+so `compat` holds identically and is a constraint on nothing -- it sits at the round-off floor
+(3.5e-36 in the production runs).  `losses.equation_keys(model)` is the single place that
+decides, keyed off the model's `derives_gamma`, and the loss, the reweighting and the per-step
+log all read it from there.  The *first-order* architectures (`sym`, `mlp`) output `Gamma`
+independently and keep compatibility as their strongest equation -- §8.6 is the measurement of
+what it costs them.  `pde_compat` is still computed and still reported for every model, in
+`report.json` and in `history.json`: for a hybrid run it is the structural check that `Gamma`
+really is `h`'s Christoffel symbol, and it is the first number that would move if that
+derivation broke.
+
 That is not the same as the decay of the *unscaled* residuals, which for the exact solution
 goes as `compat, gauge, lam_eq ~ rho^-3` and `ricci ~ rho^-4`.  An exponent set of `3, 4, 3, 3`
 would make the far field O(1) rather than dimensionless, and nothing here does that (only an
@@ -473,7 +485,8 @@ The disagreement is confined to h_rr, i.e. the radial (gauge) component, and the
 dominant residual is compatibility: the independent-Gamma ansatz is spending its
 accuracy on tying Gamma to d h. That motivates `arch="sym_hybrid"`: the network outputs
 only (alpha, beta, u) and Gamma is the Christoffel symbol of h, so compatibility holds
-identically (`pde_compat ~ 1e-18`) and there are three fewer outputs.
+identically (`pde_compat ~ 1e-18`), there are three fewer outputs, and the group is dropped
+from the loss altogether (`losses.equation_keys`; §4).
 
 ### 8.6 The independent-Gamma ansatz was the bottleneck (main numerical result)
 
@@ -1053,9 +1066,10 @@ weight grew 81 -> 229. The only term enforcing `lambda -> 1` was therefore silen
 instead of the required 0.9885) and the solution drifted onto the trivial branch
 (lambda ~ const, nearly flat metric, max|dh| = 0.42).
 
-The reweighting now touches the four interior groups only; the boundary weights stay at
-`w_inner`/`w_outer`. Verified on a 400-step control run: the outer Robin mean square falls
-1.56e+03 -> 4.57e-02 -> 2.36e-04 while its weight is held at 100, and the 23 tests pass.
+The reweighting now touches the interior equation groups only -- three for the metric-only
+schemes, four for the first-order ones (`losses.equation_keys`) -- and the boundary weights
+stay at `w_inner`/`w_outer`. Verified on a 400-step control run: the outer Robin mean square
+falls 1.56e+03 -> 4.57e-02 -> 2.36e-04 while its weight is held at 100, and the 23 tests pass.
 
 Runs affected: anything started before this fix **with `--reweight-every > 0`**.
 `m1_sym`, `m1_3d`, `m2R3_symhybrid` and `m2R4_realrobin` used the same old rule, but there

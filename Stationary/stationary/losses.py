@@ -303,6 +303,27 @@ def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
 # ------------------------------------------------------------------ total loss
 GROUP_KEYS = ("compat", "ricci", "gauge", "lam_eq", "inner", "outer")
 
+# Which equation groups can constrain anything, per formulation.  A metric-only ("hybrid")
+# model derives Gamma from h, so compatibility holds IDENTICALLY: it is a constraint on
+# nothing, and the loss used to carry it anyway.  Its value there is ~1e-36, so dropping it
+# changes no number -- what it changes is that the reported loss stops counting a fourth
+# equation that is not one, and the group list stops implying the first-order formulation.
+# The first-order models (FieldNet, SymFieldNet) output Gamma independently and need it.
+FIRST_ORDER_PDE_KEYS = ("compat", "ricci", "gauge", "lam_eq")
+METRIC_ONLY_PDE_KEYS = ("ricci", "gauge", "lam_eq")
+
+
+def equation_keys(model=None) -> tuple:
+    """The equation groups `model`'s formulation actually imposes.
+
+    Keyed off the model's own `derives_gamma`, not off `cfg.arch`, so a caller that hands over
+    a metric-only model gets the metric-only loss whatever the config says.
+    """
+    if model is not None and getattr(model, "derives_gamma", False):
+        return METRIC_ONLY_PDE_KEYS
+    return FIRST_ORDER_PDE_KEYS
+
+
 
 def default_weights(cfg):
     w = {k: jnp.asarray(cfg.eq_weights[k]) for k in ("compat", "ricci", "gauge", "lam_eq")}
@@ -312,9 +333,13 @@ def default_weights(cfg):
 
 
 def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> dict:
-    """Unweighted mean-squared residuals of the six loss groups.
+    """Unweighted mean-squared residuals of the six residual groups.
 
-    Used both for diagnostics and for gradient-norm adaptive weighting.
+    Used both for diagnostics and for gradient-norm adaptive weighting.  Note that `compat` is
+    returned even for a metric-only model, where `equation_keys` keeps it out of the loss: it is
+    then a structural check (Gamma is h's Christoffel symbol, so the residual should be at the
+    round-off floor) rather than a term, and the reweighting never sees it because the caller
+    passes the model's own keys.
     """
     from .model import point_fields as make_point_fields
 
@@ -368,7 +393,7 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
         parts[f"pin_{k}"] = v
 
     loss = 0.0
-    for k in ("compat", "ricci", "gauge", "lam_eq"):
+    for k in equation_keys(model):
         loss = loss + pde_scale * weights[k] * parts[f"pde_{k}"]
     # own weight, and ramped in with the other equation terms (pde_scale): it is an interior
     # equation, not a boundary datum, so it should not dominate before the ramp finishes

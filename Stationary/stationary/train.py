@@ -29,8 +29,9 @@ import jax.numpy as jnp
 import optax
 
 from . import diagnostics, exact
-from .losses import (GROUP_KEYS, default_weights, group_terms, outer_pin_terms,
-                     pde_radial_terms, reference_consistency, total_loss)
+from .losses import (FIRST_ORDER_PDE_KEYS, GROUP_KEYS, default_weights, equation_keys,
+                     group_terms, outer_pin_terms, pde_radial_terms, reference_consistency,
+                     total_loss)
 from .model import (AxisymHybridNet, FieldNet, HybridNet, SymFieldNet, SymHybridNet,
                     point_fields)
 from .problem import Config, sample_shell, sample_sphere
@@ -365,16 +366,40 @@ def _first_reweight_after(cfg: Config, iters: int):
     return None if e <= 0 else (iters // e + 1) * e
 
 
-def _reweighted(cfg: Config, weights, g, when: int, verbose: bool = True):
+def _pde_str(parts, pde_keys) -> str:
+    """The `pde(...)` fragment of the per-step log, shared by the Adam and quasi-Newton lines.
+
+    Lists only the groups the formulation imposes (`losses.equation_keys`), so a metric-only
+    run does not print a `compat` that is not in its loss.  The residual itself is still
+    computed and still lands in `report.json` as `pde_compat`: it is the structural check that
+    Gamma really is the Christoffel symbol of h, and it would be the first thing to move if the
+    derivation broke.
+    """
+    names = {"lam_eq": "lam"}
+    bits = [f"{names.get(k, k)}={float(parts.get(f'pde_{k}', 0.0)):.2e}" for k in pde_keys]
+    lam_r = float(parts.get("pde_lam_eq_radial", 0.0))
+    if lam_r:
+        bits.append(f"lam_rad={lam_r:.2e}")
+    return "pde(" + " ".join(bits) + ")"
+
+
+def _reweighted(cfg: Config, weights, g, when: int, verbose: bool = True, pde_keys=None):
     """One gradient-norm reweighting update; returns the new weight dict.
 
-    Reweights ONLY the interior equation groups.  The boundary terms are data, and
-    w ~ 1/||grad term|| is backwards for them: the condition that is most violated has the
-    largest gradient and so receives the SMALLEST weight -- which is how an earlier run
-    silenced its outer Robin condition (w_outer fell to 6.25 while w_inner rose to 229), let
-    lambda stay at its inner value and drift onto the trivial flat branch.
+    Reweights ONLY the interior equation groups the loss actually carries -- `pde_keys`, which
+    the caller takes from `losses.equation_keys(model)`.  For a metric-only model that is
+    `ricci, gauge, lam_eq`: `compat` holds identically there, so it is not in the loss and must
+    not be balanced against terms that are.  (The `reweight_floor` rule below would drop it
+    anyway, its gradient sitting at the round-off floor, but a group absent from the loss being
+    weighted by a rule that cannot see the loss is exactly the kind of accident this avoids.)
+
+    The boundary terms are data, and w ~ 1/||grad term|| is backwards for them: the condition
+    that is most violated has the largest gradient and so receives the SMALLEST weight -- which
+    is how an earlier run silenced its outer Robin condition (w_outer fell to 6.25 while
+    w_inner rose to 229), let lambda stay at its inner value and drift onto the trivial flat
+    branch.
     """
-    pde_keys = ("compat", "ricci", "gauge", "lam_eq")
+    pde_keys = tuple(pde_keys or FIRST_ORDER_PDE_KEYS)
     # ... and not even all of those: a group that is satisfied identically (compat is, in
     # the metric-only schemes) has a gradient at the round-off floor, and w ~ 1/||grad||
     # then grows it without bound while pushing the others down.  Leave such groups alone
@@ -409,7 +434,7 @@ def _reweighted(cfg: Config, weights, g, when: int, verbose: bool = True):
 
 
 def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool = True,
-                    gradnorms=None, history=None):
+                    gradnorms=None, history=None, pde_keys=None):
     """Quasi-Newton phase with Crunch's self-scaling Broyden; None means "use optax.lbfgs".
 
     Two things make it decline, both reported rather than raised: the Crunch checkout is
@@ -533,7 +558,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         reweighted = False
         while next_rw is not None and cfg.steps + total + block >= next_rw:
             weights = _reweighted(cfg, weights, gradnorms(unflatten(x), batch), next_rw,
-                                  verbose)
+                                  verbose, pde_keys)
             next_rw += e_rw
             reweighted = True
         if reweighted:
@@ -560,8 +585,20 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         outers.append(o)
         write_progress({"step": cfg.steps + total, "loss": f, **parts_b})
         if verbose:
-            print(f"[qn] block {b + 1:3d}: {total:5d} iterations, loss {f:.6e}, "
-                  f"outer Robin {o:.6e} (status {status})", flush=True)
+            # The same breakdown the Adam loop prints, for the same reason: a run that stalls
+            # has to be attributed to an equation group WHILE it is running.  With `--steps 0`
+            # there is no Adam line to carry it, and the only other number here is the total
+            # loss, which cannot tell a stuck lambda-equation from a stuck Ricci group -- a run
+            # at 6.2e-03 falling 1% per block looks the same whether the cause is the equation,
+            # the gauge, or the radial term.  (`outer=` is gone as a separate item because
+            # `bc_out + pin` is the same number, and each part is more use than their sum.)
+            pins = sum(v for k, v in parts_b.items() if k.startswith("pin_"))
+            print(f"[qn] block {b + 1:3d}: {total:5d} iterations, loss {f:.6e}  "
+                  f"{_pde_str(parts_b, pde_keys)}  "
+                  f"bc_in={sum(v for k, v in parts_b.items() if k.startswith('inner_')):.2e} "
+                  f"bc_out={sum(parts_b[k] for k in parts_b if k.startswith('outer_')):.2e}"
+                  + (f"  pin={pins:.2e}" if pins else "")
+                  + f"  (status {status})", flush=True)
         pat = int(cfg.plateau_patience)
         if status == 0:
             break
@@ -615,6 +652,10 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     opt_state = opt.init(state)
 
     weights = default_weights(cfg)
+    # The equation groups this formulation actually imposes: three for a metric-only model,
+    # where compatibility holds identically, four for the first-order ones.  The loss, the
+    # reweighting and the per-block log all read it from here so they cannot disagree.
+    pde_keys = equation_keys(model)
     lam_inf_fixed = None if cfg.lam_inf is None else jnp.asarray(cfg.lam_inf)
     loss_fn = lambda st, b, sc, w: total_loss(st, b, cfg, model, exact_fields,
                                               pde_scale=sc, weights=w, lam_inf=lam_inf_fixed)
@@ -676,7 +717,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         if cfg.resample_every and it % cfg.resample_every == 1 and it > 1:
             batch = make_batch(jax.random.PRNGKey(cfg.seed + it), cfg)
         if _reweight_crosses(cfg, it - 1, it):
-            weights = _reweighted(cfg, weights, group_gradnorms(state, batch), it, verbose)
+            weights = _reweighted(cfg, weights, group_gradnorms(state, batch), it, verbose,
+                                  pde_keys)
         state, opt_state, loss, parts = step(state, opt_state, batch, jnp.asarray(sc), weights)
         # the Adam phase stops on the same plateau rule (it is a warm-up, not the workhorse)
         if it % cfg.log_every == 0:
@@ -705,13 +747,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                 # (data), the Robin terms are decay conditions, and when a run goes to the
                 # wrong branch it is precisely bc_out that stays at its floor.
                 pins = sum((float(v) for k, v in parts.items() if k.startswith("pin_")), 0.0)
-                lam_r = float(parts.get("pde_lam_eq_radial", 0.0))
                 print(f"[adam {it:6d}] loss={float(loss):.4e}  "
-                      f"pde(compat={float(parts['pde_compat']):.2e} "
-                      f"ricci={float(parts['pde_ricci']):.2e} "
-                      f"gauge={float(parts['pde_gauge']):.2e} "
-                      f"lam={float(parts['pde_lam_eq']):.2e}"
-                      + (f" lam_rad={lam_r:.2e}" if lam_r else "") + ")  "
+                      f"{_pde_str(parts, pde_keys)}  "
                       f"bc_in={float(sum(v for k, v in parts.items() if k.startswith('inner_'))):.2e} "
                       f"bc_out={float(sum(parts[k] for k in parts if k.startswith('outer_'))):.2e}"
                       + (f"  pin={pins:.2e}" if pins else ""),
@@ -737,7 +774,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         qn = None
         if cfg.qn_method == "ssbroyden":
             qn = ssbroyden_phase(state, batch, weights, loss_fn, cfg, verbose,
-                                 gradnorms=group_gradnorms, history=history)
+                                 gradnorms=group_gradnorms, history=history,
+                                 pde_keys=pde_keys)
         if qn is not None:
             state, qn_history, weights = qn
             history.extend(qn_history)
@@ -764,7 +802,7 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                 # old one and is dropped; the step length is recomputed from the new gradient.
                 if _reweight_crosses(cfg, cfg.steps + it - 1, cfg.steps + it):
                     weights = _reweighted(cfg, weights, group_gradnorms(state, batch),
-                                          cfg.steps + it, verbose)
+                                          cfg.steps + it, verbose, pde_keys)
                     lst = solver.init(state)
                 state, lst, loss, parts = lstep(state, lst, batch, weights)
                 if it % max(cfg.lbfgs_steps // 20, 1) == 0 or it == 1:

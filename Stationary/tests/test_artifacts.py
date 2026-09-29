@@ -73,12 +73,15 @@ def test_a_completed_block_writes_params_pkl(tmp_path, monkeypatch):
     real = T.ssbroyden_phase
     captured = {}
 
-    def wrapped(state, batch, weights, loss_fn, cfg, verbose=True, gradnorms=None,
-                history=None):
+    def wrapped(*args, **kwargs):
+        # Take `cfg` by type rather than by position: this wrapper has already been broken once
+        # by a parameter being added to ssbroyden_phase, and a TypeError there is reported as a
+        # failure of the checkpointing, which it is not.
+        cfg = next(a for a in args if isinstance(a, T.Config))
         cfg.lbfgs_steps = 1
         cfg.qn_block = 1
         try:
-            real(state, batch, weights, loss_fn, cfg, verbose, gradnorms, history)
+            real(*args, **kwargs)
         finally:
             # In `finally` so that a failure inside the block is still reported as itself,
             # with the record of what did reach disk attached.

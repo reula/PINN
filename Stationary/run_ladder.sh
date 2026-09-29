@@ -141,9 +141,12 @@ QPT=(--n-coll 16384 --n-bnd 1024)
 # --steps 0 run goes 4.75 -> 3.2e-02 in 100 iterations, and the Adam warm-up was what made
 # initial_scale necessary (with H = I the first step is -grad, which the Wolfe search cannot
 # bracket AFTER Adam has enlarged it).  If a phase ever reports `0 iterations, status 3
-# (zoom failed)`, put a short warm-up back with --steps 500.  Note that the adaptive PDE
-# reweighting, the pde_ramp_steps ramp and the resampling all live inside the Adam loop and
-# therefore do not run: the PDE groups keep their configured (dimensional) weights.
+# (zoom failed)`, put a short warm-up back with --steps 500.  The adaptive PDE reweighting
+# runs in every phase now, on one cumulative iteration counter, so --steps 0 no longer
+# disables it; a reweight drops the carried curvature estimate, because the objective it
+# describes has just changed.  The pde_ramp_steps ramp and the resampling DO still live inside
+# the Adam loop and therefore do not run: the PDE groups keep their configured (dimensional)
+# weights and the collocation set is fixed.
 QADAM=(--steps 0 --lbfgs-steps 6000)
 # WARM STARTS RUN NO ADAM (--steps 0, straight into SSBroyden).  Restarting Adam at
 # lr = 1e-3 on a solution the quasi-Newton phase has already converged is how a warm-started

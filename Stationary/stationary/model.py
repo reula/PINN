@@ -40,6 +40,11 @@ I3 = jnp.eye(3)
 
 
 class FieldNet(nn.Module):
+    # First-order formulation: Gamma is an independent output, so compatibility is a real
+    # equation.  The metric-only classes below set this True -- see losses.equation_keys,
+    # which is what keeps a constraint on nothing out of the loss.
+    derives_gamma = False
+
     width: int = 64
     depth: int = 4
     fourier: int = 8
@@ -107,6 +112,8 @@ class SymFieldNet(nn.Module):
     making the one-dimensional structure easy for the optimiser.  alpha, beta and u
     are offset so that the initial state is flat space with constant lambda.
     """
+    derives_gamma = False
+
     width: int = 64
     depth: int = 3
     fourier: int = 12
@@ -161,6 +168,8 @@ class HybridNet(nn.Module):
     direction of the independent-connection formulation, at the price of taking
     second derivatives of the network output.
     """
+    derives_gamma = True
+
     width: int = 64
     depth: int = 4
     fourier: int = 8
@@ -201,6 +210,8 @@ class SymHybridNet(nn.Module):
     six scalar outputs.  The pair (alpha, beta) is exactly the gauge-independent
     content of the harmonic-gauge spherically symmetric metric.
     """
+    derives_gamma = True
+
     width: int = 64
     depth: int = 4
     fourier: int = 8
@@ -249,6 +260,8 @@ class AxisymHybridNet(nn.Module):
     represent every axisymmetric field content.  Gamma is the Christoffel symbol of h,
     so compatibility holds identically.
     """
+    derives_gamma = True
+
     width: int = 64
     depth: int = 4
     fourier: int = 8
