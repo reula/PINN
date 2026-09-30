@@ -414,6 +414,27 @@ def _first_reweight_after(cfg: Config, iters: int):
     return None if e <= 0 else (iters // e + 1) * e
 
 
+def _map_budget():
+    """(mapped regions this process holds, the kernel's limit for it), or (None, None).
+
+    Linux only; everywhere else the answer is "not measurable" and every caller must cope.
+    This is what the quasi-Newton phase runs out of: `minimize_bfgs` is not jitted and builds
+    its line search -- and the whole objective inside it -- afresh on every call, so each
+    block compiles a new XLA program whose LLVM section memory is never returned.  Those are
+    tiny code mappings, so RSS does not move and no memory limit is ever reached; the count
+    climbs by a fixed amount per block until `vm.max_map_count` (65530 by default) refuses the
+    next small one, which surfaces as `LLVM ERROR: Unable to allocate section memory!` after
+    `allocateMappedMemory failed with error: Cannot allocate memory`.
+    """
+    try:
+        with open("/proc/self/maps") as fh:
+            cur = sum(1 for _ in fh)
+        with open("/proc/sys/vm/max_map_count") as fh:
+            return cur, int(fh.read().split()[0])
+    except (OSError, ValueError):
+        return None, None
+
+
 def boundary_number(parts) -> float:
     """The unweighted boundary content the plateau test watches, from BOTH spheres.
 
@@ -647,6 +668,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     # cannot be re-derived cheaply.
     H = (jnp.asarray(start_H, dtype=flat0.dtype) if start_H is not None
          else jnp.eye(n, dtype=flat0.dtype))
+    maps_start, maps_limit = _map_budget()
     x = flat0
     # ONE compiled call for the opening loss, its parts and the outer number.  This used to
     # be two eager ones (`fun(x)` and `outer_res(x)`), and at n_coll 32768 they are what
@@ -731,6 +753,25 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         losses.append(f)
         outers.append(o)
         write_progress({"step": cfg.steps + total, "loss": f, **parts_b})
+        if b == 0 and maps_start is not None:
+            # Self-calibrating: the cost depends on the size of the compiled line search, so
+            # it is MEASURED on this run's first block rather than assumed.  Said once, before
+            # the run wastes an hour dying at block 23 for the fourth time.
+            maps_now, _ = _map_budget()
+            cost = (maps_now or 0) - maps_start
+            if cost > 0:
+                room = (maps_limit - maps_now) // cost
+                if n_blocks - 1 > room:
+                    safe = max(block, -(-int(cfg.lbfgs_steps) // max(1, int(room))))
+                    print(f"[qn] WARNING: {cost} address-space regions leaked per block, and "
+                          f"{maps_limit - maps_now} of the kernel's {maps_limit} remain: this "
+                          f"process has room for ~{room} more blocks of the {n_blocks - 1} "
+                          f"planned.", flush=True)
+                    print(f"[qn]   It will die of 'LLVM ERROR: Unable to allocate section "
+                          f"memory' near block {1 + int(room)}, after ~"
+                          f"{int(room) * block} more iterations.  Use --qn-block {safe} or "
+                          f"larger: the leak is per BLOCK, not per iteration, so bigger"
+                          f" blocks cost nothing.", flush=True)
         if cfg.log_resources:
             # `jit` is the number of compiled executables this objective holds.  It must stay
             # at 1: it is one jitted function called with one shape, so ANY growth means a

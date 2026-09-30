@@ -179,3 +179,46 @@ def test_a_resume_runs_only_the_iterations_it_still_owes():
                                               (400, 400, 50, 0), (250, 400, 50, 3)):
         got = int(math.ceil(max(0, cap - start_total) / block))
         assert got == expected, (start_total, cap, got, expected)
+
+
+def test_the_phase_warns_before_it_dies_of_the_mapping_limit(tmp_path, monkeypatch, capsys):
+    """The leak is predictable one block in, so say so then rather than at hour two.
+
+    `minimize_bfgs` is not jitted, so every block recompiles its line search and the objective
+    inside it; the LLVM section memory is never returned and the kernel's `vm.max_map_count`
+    eventually refuses a 27-byte suballocation.  Four runs died at block 23 that way, each
+    after ~90 minutes.  The per-block cost is measured on the FIRST block, so the warning does
+    not have to assume anything about the model's size.
+    """
+    import sys
+    from stationary import train
+
+    calls = {"n": 0}
+
+    def fake_budget():
+        calls["n"] += 1
+        return (64000, 65530) if calls["n"] == 1 else (65200, 65530)
+
+    monkeypatch.setattr(train, "_map_budget", fake_budget)
+    monkeypatch.setattr(sys, "argv", [
+        "train", "--outdir", str(tmp_path), "--arch", "sym_hybrid", "--width", "8",
+        "--depth", "2", "--steps", "0", "--lbfgs-steps", "200", "--qn-block", "100",
+        "--n-coll", "512", "--n-bnd", "64", "--no-figures", "--ref-solution",
+        "--ref-asymptotic", "1.0", "--outer-bc", "robin", "--robin-exps", "2,3,1",
+        "--robin-orders", "h=3,lam=3", "--no-robin-G", "--lam-inf", "1.0"])
+    train.train(train.parse_args())
+
+    out = capsys.readouterr().out
+    assert "1200 address-space regions leaked per block" in out, out[-2000:]
+    assert "room for ~0 more blocks" in out
+    assert "--qn-block 200" in out, "must recommend a value that fits the remaining budget"
+    assert "per BLOCK, not per iteration" in out, "the reason bigger blocks are free"
+
+
+def test_the_map_budget_is_measurable_or_honestly_not():
+    """Linux gives both numbers; anything else must say so rather than invent them."""
+    from stationary.train import _map_budget
+    cur, limit = _map_budget()
+    assert (cur is None) == (limit is None)
+    if cur is not None:
+        assert 0 < cur < limit
