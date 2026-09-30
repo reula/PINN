@@ -11,7 +11,20 @@ I3 = jnp.eye(3)
 
 
 def residual_report(point_fields, cfg: Config, n: int = 2048, seed: int = 12345) -> dict:
-    """RMS and max of every equation group on a validation sample."""
+    """RMS and max of every equation group on a validation sample OVER THE SHELL.
+
+    THE REGION MATTERS, AND THIS IS NOT THE ONE report.txt PRINTS.  This samples
+    `sample_shell`, i.e. all of rho in [rho_in, rho_out], log-uniformly, so it is dominated by
+    the innermost points: a residual with dimension 1/length^2 is ~1/rho^2 larger there than
+    at the outer sphere.  `report.txt`'s "PDE RESIDUALS (raw units)" block samples the OUTER
+    SPHERE only, and the two differ by four orders of magnitude for that reason alone.
+    Measured on runs/pq_r400_robin, `res_ricci_rms` is 17.7 here against 4.57e-04 there, a
+    ratio of 3.9e4 -- the same run, two regions.
+
+    Both are legitimate and they answer different questions: "how wrong is the solution where
+    it is hardest" against "is the far field converged".  They must never be compared with
+    each other, and until this note existed neither said which region it had used.
+    """
     key = jax.random.PRNGKey(seed)
     xs = sample_shell(key, n, cfg)
     r = residuals_batch(point_fields, xs)
