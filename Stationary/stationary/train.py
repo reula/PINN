@@ -360,25 +360,77 @@ def print_reference_summary(cfg: Config, exact_fields):
 
 
 # ------------------------------------------------------------------- SSBroyden
+def _crunch_candidates(here: str):
+    """Everywhere a Crunch checkout is looked for, in order of preference.
+
+    Crunch -- the JAX fork of `jax.scipy.optimize` that adds the self-scaling Broyden, a
+    translation of Optim.jl's `SSBroyden` -- is TRACKED in this repository as `Jax/Crunch`
+    (it entered in 231e705), so `<repo>/Jax` comes first and an existing checkout behaves
+    exactly as before.  A copy inside `Stationary/` itself, in the repo root, or ABOVE the
+    repo is found too, and that is not cosmetic: the hub is synced with
+    `rsync ... Stationary/ hub:.../Stationary/`, so a machine carrying only `Stationary/` has
+    no `<repo>/Jax` at all -- with `<Stationary>/Crunch`, `<Stationary>/Jax/Crunch` or
+    `../Crunch` the quasi-Newton phase still gets SSBroyden instead of quietly falling back
+    to optax.lbfgs.
+
+    `here` is `<repo>/Stationary`.  The returned paths are the ones to put on `sys.path`: the
+    directories that may contain `Crunch/`, and with it the `line_search_backtracking` module
+    the fork imports at its top level (`bfgs_backtracking.py` does `from
+    line_search_backtracking import backtracking`, so a root without that file cannot work).
+    """
+    repo = os.path.dirname(os.path.abspath(here))                    # <repo>
+    up = os.path.dirname(repo)                                       # above <repo>
+    ordered = [os.path.join(repo, "Jax"),                            # tracked here
+               os.path.join(here, "Jax"), here,                      # Stationary, and in it
+               repo,                                                # the repo root
+               os.path.join(up, "Jax"), up]                          # and above the repo
+    seen, out = set(), []
+    for cand in ordered:
+        cand = os.path.normpath(cand)
+        if cand not in seen:
+            seen.add(cand)
+            out.append(cand)
+    return out
+
+
 def _crunch_minimize(root: str | None = None):
     """Crunch's SciPy-style `minimize`, or (None, reason) when it is not available.
 
-    Crunch lives in a sibling checkout (`PINN/Jax`) and is not a dependency of this repo, so
-    the import is lazy and soft -- the quasi-Newton phase then falls back to optax.lbfgs.
-    Set CRUNCH_ROOT to point at a different location.
+    Looks in every location `_crunch_candidates` lists and returns the first that imports;
+    the phase prints which one it was.  `CRUNCH_ROOT`, or the `root` argument, overrides the
+    search with a SINGLE location -- deliberately, so that a typo is reported rather than
+    silently satisfied by some other copy.  The import is lazy and soft in every case: when
+    nothing imports, the quasi-Newton phase falls back to optax.lbfgs with a printed reason.
     """
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # <repo>/Stationary
-    root = os.path.normpath(root or os.environ.get("CRUNCH_ROOT")
-                            or os.path.join(here, os.pardir, "Jax"))
-    if not os.path.isdir(os.path.join(root, "Crunch", "Optimizers")):
-        return None, f"no Crunch/Optimizers under {root}"
-    if root not in sys.path:
-        sys.path.append(root)
-    try:
-        from Crunch.Optimizers.minimize_backtracking import minimize
-    except Exception as exc:                                             # pragma: no cover
-        return None, f"{root}: {exc}"
-    return minimize, root
+    explicit = root or os.environ.get("CRUNCH_ROOT")
+    candidates = [os.path.normpath(explicit)] if explicit else _crunch_candidates(here)
+    reasons = []
+    for cand in candidates:
+        if not os.path.isdir(os.path.join(cand, "Crunch", "Optimizers")):
+            reasons.append(f"no Crunch/Optimizers under {cand}")
+            continue
+        if cand not in sys.path:
+            sys.path.append(cand)
+        try:
+            from Crunch.Optimizers.minimize_backtracking import minimize
+        except Exception as exc:                                         # pragma: no cover
+            # A root can hold a Crunch that does not import: an incomplete copy, or one whose
+            # line_search_backtracking is missing.  Undo what the attempt left behind -- in
+            # particular sys.modules, where a half-built `Crunch` would otherwise be returned
+            # to the NEXT candidate's `import Crunch` and fail there for the wrong reason.
+            reasons.append(f"{cand}: {exc}")
+            for mod in [m for m in list(sys.modules)
+                        if m in ("Crunch", "line_search_backtracking")
+                        or m.startswith("Crunch.")]:
+                sys.modules.pop(mod, None)
+            try:
+                sys.path.remove(cand)
+            except ValueError:
+                pass
+            continue
+        return minimize, cand
+    return None, ("; ".join(reasons) if reasons else "no candidate root")
 
 
 # ------------------------------------------------------------------ reweighting
@@ -518,8 +570,8 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                     gradnorms=None, history=None, pde_keys=None, start_H=None, start_total=0):
     """Quasi-Newton phase with Crunch's self-scaling Broyden; None means "use optax.lbfgs".
 
-    Two things make it decline, both reported rather than raised: the Crunch checkout is
-    missing (it is a sibling repo, absent on the hub), or the dense inverse-Hessian estimate
+    Two things make it decline, both reported rather than raised: no Crunch checkout is found
+    (see `_crunch_candidates` for where it is looked for), or the dense inverse-Hessian estimate
     would not fit.  That estimate is n_params^2, so the production network (13 828
     parameters) needs 1.53 GB in float64 and 0.76 GB in float32, against `qn_max_H_gb`.
 

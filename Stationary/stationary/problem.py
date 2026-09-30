@@ -260,9 +260,10 @@ class Config:
     steps: int = 20000
     lr: float = 1e-3
     lbfgs_steps: int = 300
-    # Quasi-Newton phase.  "ssbroyden" runs Crunch's self-scaling Broyden (the sibling
-    # checkout PINN/Jax/Crunch/Optimizers, imported lazily and falling back to optax.lbfgs
-    # when it is absent, as on the hub); "lbfgs" forces the optax path.  SSBroyden carries a
+    # Quasi-Newton phase.  "ssbroyden" runs Crunch's self-scaling Broyden (the JAX fork
+    # tracked here as Jax/Crunch, also looked for inside Stationary/ and above the repo --
+    # see train._crunch_candidates -- imported lazily and falling back to optax.lbfgs when
+    # none of them is present); "lbfgs" forces the optax path.  SSBroyden carries a
     # *dense* inverse-Hessian estimate, n_params^2: the production network (13 828
     # parameters) needs 1.53 GB in float64 and 0.76 GB in float32, which qn_max_H_gb caps.
     qn_method: str = "ssbroyden"    # "ssbroyden" | "lbfgs"

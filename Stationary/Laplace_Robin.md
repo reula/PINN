@@ -387,10 +387,13 @@ res = crunch_minimize(fun, flat0, args=(), method="BFGS",
 | batching | none: one full batch (1056 points) for the whole phase |
 | cost | 17 s (order 1), 33 s (order 3), 42 s (the 1 -> 2 -> 3 ramp) on 8 CPU cores alone; inside the full suite the same three take 21 / 49 / 67 s, i.e. the suite is ~50% slower than the sum of its files |
 
-**Import.** Crunch is a sibling checkout (`PINN/Jax`), not a dependency of this repo, so the
-import is guarded: `CRUNCH_ROOT` overrides the location and the three solve tests *skip* with
-a reason naming the path when it is unavailable (that is what keeps the suite green on the
-hub, where only `Stationary/` is cloned).
+**Import.** Crunch is tracked in this repo as `Jax/Crunch` (it entered in 231e705), so the
+import is guarded but usually satisfied: `train._crunch_candidates` looks in `<repo>/Jax`
+first and then inside `Stationary/` and above the repo, `CRUNCH_ROOT` overrides the search with
+a single location, and the three solve tests *skip* with a reason naming every path tried when
+nothing imports.  On the hub only `Stationary/` is synced, which is why the six files the
+minimise path needs are also carried at `Stationary/Jax/` (kept byte-identical to the canonical
+`Jax/` by `tests/test_crunch_lookup.py`).
 
 ### 7.5 The same optimiser in production (`stationary/train.py`)
 

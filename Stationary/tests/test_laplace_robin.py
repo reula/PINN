@@ -41,7 +41,8 @@ EVERY order by construction, so a solve at any order must reproduce it.
 
 The solver is a plain network -- **6 hidden layers of 20 neurons, tanh** -- minimised by
 Crunch's **SSBroyden** (the self-scaling Broyden recurrence `ssbroyden2` in
-`PINN/Jax/Crunch/Optimizers`, imported from the sibling checkout; the solve tests skip when
+`Jax/Crunch/Optimizers`, tracked in this repo and looked for inside `Stationary/` as well;
+the solve tests skip when
 that checkout is absent, at `CRUNCH_ROOT`).  Inputs are the gauge-adapted features of the
 production models -- the unit direction `n = x/rho`, the normalised log radius
 `t = log(rho/rho_in)/log(rho_out/rho_in)` and the decay variable `rho_in/rho` --, and the
@@ -72,7 +73,8 @@ from stationary.losses import robin_operator
 from stationary.problem import Config, lam_inner_bc, sample_shell, sample_sphere
 
 # ------------------------------------------------------ the SSBroyden optimiser
-# Crunch's self-scaling Broyden lives in the sibling checkout (PINN/Jax/Crunch) and is not a
+# Crunch's self-scaling Broyden is tracked in this repo (Jax/Crunch, and looked for in
+# Stationary/ and above the repo) and is not a
 # dependency of this repo, so it is imported defensively: when it is absent the solve tests
 # skip with a reason naming the path (set CRUNCH_ROOT if the checkout is elsewhere).  The
 # optimiser works on a flat parameter vector and carries a dense inverse-Hessian estimate.

@@ -581,10 +581,17 @@ PY=$PWD/.venv/bin/python ./run_ladder.sh 8        # just the control
 | order | 1 for the control and the dipole | that file's section 6.3 shows the orders cannot be discriminated at shell ratio 100 (the out-of-window content at `rho_out` is `1e-5`), which is what our own estimate said |
 | order ramp | `recipe_ramp_ord2 -> recipe_ramp_ord3`, warm-started with `--init-from` and **zero Adam steps** (straight into SSBroyden) | its section 6.6: the ramp ends an order of magnitude below a fixed-order solve.  Restarting Adam at lr = 1e-3 on an already converged solution is how such a phase diverges, so warm starts skip it; the quasi-Newton phase cannot diverge, as Crunch's line search returns the state unchanged when it fails.  `recipe_ord3_alone` remains the equal-cost control for "does the ramp reach the same accuracy in fewer total iterations?" |
 
-**Crunch ships with this repo.** `Jax/` (holding `Crunch/Optimizers`) is tracked in the same
-git repository, so `git pull` on the hub brings it and the sibling-directory import resolves.
-`CRUNCH_ROOT` overrides the location; when it is missing the quasi-Newton phase falls back to
-`optax.lbfgs` with a printed reason (`--qn-method lbfgs` forces that).
+**Crunch ships with this repo, twice on purpose.** `Jax/` (holding `Crunch/Optimizers`) is the
+canonical, tracked fork, and `Stationary/Jax/` carries the six files the minimise path actually
+imports (`Crunch/Optimizers/{bfgs,bfgs_backtracking,minimize,minimize_backtracking}.py`,
+`line_search_backtracking.py` and the two `__init__.py`) so that a sync of `Stationary/` ALONE
+still has SSBroyden -- which is what the `rsync ... Stationary/ hub:.../Stationary/` line above
+sends.  `train._crunch_candidates` looks in `<repo>/Jax` first, then in `<Stationary>/Jax`,
+`Stationary/` itself, the repo root and above the repo; `tests/test_crunch_lookup.py` pins the
+order and fails if the two copies differ by a byte, so a re-copy is the only way to update the
+small one.  `CRUNCH_ROOT` overrides the search with a single location; when nothing imports, the
+quasi-Newton phase falls back to `optax.lbfgs` with a printed reason (`--qn-method lbfgs` forces
+that).
 
 ## 6c. The quadrupole production run and the VTK export for VisIt
 
