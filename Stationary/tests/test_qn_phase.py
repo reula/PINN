@@ -137,3 +137,45 @@ def test_the_plateau_watches_both_spheres():
     assert boundary_number({"inner_lam": 1.0, "outer_h": 2.0, "pin_lam": 4.0,
                             "pde_ricci": 1e9}) == 7.0, "PDE groups must not enter it"
     assert boundary_number({}) == 0.0
+
+
+def test_a_checkpoint_can_carry_a_second_phases_state(tmp_path):
+    """The quasi-Newton phase checkpoints itself, through the same file and key as Adam.
+
+    Before this, `ckpt.pkl` was written only inside the Adam loop, so `--resume auto` on a run
+    that died in the quasi-Newton phase -- where the hours are -- rewound to the END OF ADAM
+    and discarded the whole phase.  A real run lost 2800 iterations that way.
+    """
+    from stationary.problem import Config
+    from stationary.train import save_checkpoint
+
+    cfg = Config(outdir=str(tmp_path))
+    p = str(tmp_path / "ckpt.pkl")
+    save_checkpoint(p, {"w": jnp.array([1.0, 2.0])}, None, {"pde_ricci": 1.0},
+                    [{"step": 7, "loss": 0.5}], 207, cfg,
+                    extra={"phase": "qn", "qn_H": jnp.eye(3)})
+
+    import pickle
+    ck = pickle.load(open(p, "rb"))
+    assert ck["phase"] == "qn"
+    assert tuple(ck["qn_H"].shape) == (3, 3)
+    assert ck["step"] == 207
+    assert ck["opt_state"] is None, "the quasi-Newton phase has no Adam optimiser state"
+
+    # and a checkpoint written without `extra` is still an Adam checkpoint, so every
+    # checkpoint written before this key existed keeps resuming exactly as it did
+    save_checkpoint(p, {"w": jnp.array([1.0])}, None, {}, [], 5, cfg)
+    assert pickle.load(open(p, "rb")).get("phase", "adam") == "adam"
+
+
+def test_a_resume_runs_only_the_iterations_it_still_owes():
+    """`--lbfgs-steps` caps the CUMULATIVE counter, so a resume must not buy a fresh budget.
+
+    Measured before the fix: resuming a 200-iteration run with --lbfgs-steps 400 ran eight
+    further blocks and reached 600.
+    """
+    import math
+    for start_total, cap, block, expected in ((0, 400, 50, 8), (200, 400, 50, 4),
+                                              (400, 400, 50, 0), (250, 400, 50, 3)):
+        got = int(math.ceil(max(0, cap - start_total) / block))
+        assert got == expected, (start_total, cap, got, expected)

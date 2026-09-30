@@ -219,21 +219,28 @@ def batch_for_step(cfg: Config, step: int):
     return make_batch(jax.random.PRNGKey(cfg.seed + last), cfg)
 
 
-def save_checkpoint(path, state, opt_state, weights, history, step, cfg):
-    """Dump everything needed to continue an interrupted Adam phase.
+def save_checkpoint(path, state, opt_state, weights, history, step, cfg, extra=None):
+    """Dump everything needed to continue from where this was called.
 
     `weights` is included because the gradient-norm reweighting is path
     dependent: it multiplies the previous weights, so it cannot be recomputed
     from the step index alone.
+
+    `extra` carries what the phase-specific caller knows and this function cannot: the
+    quasi-Newton phase records `phase="qn"` and its inverse Hessian, which is what lets
+    `--resume auto` re-enter that phase instead of rewinding to the end of Adam.  Both
+    phases use the same file and the same key, so there is exactly one resume path.
     """
     payload = {
         "state": jax.tree.map(jax.device_get, state),
-        "opt_state": jax.tree.map(jax.device_get, opt_state),
+        "opt_state": jax.tree.map(jax.device_get, opt_state) if opt_state is not None else None,
         "weights": jax.tree.map(jax.device_get, weights),
         "history": history,
         "step": step,
         "config": asdict(cfg),
     }
+    if extra:
+        payload.update(extra)
     tmp = path + ".tmp"
     with open(tmp, "wb") as fh:
         pickle.dump(payload, fh)
@@ -467,7 +474,7 @@ def _reweighted(cfg: Config, weights, g, when: int, verbose: bool = True, pde_ke
 
 
 def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool = True,
-                    gradnorms=None, history=None, pde_keys=None):
+                    gradnorms=None, history=None, pde_keys=None, start_H=None, start_total=0):
     """Quasi-Newton phase with Crunch's self-scaling Broyden; None means "use optax.lbfgs".
 
     Two things make it decline, both reported rather than raised: the Crunch checkout is
@@ -590,11 +597,33 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             json.dump(history_prefix + rows_so_far, fh, indent=2)
         os.replace(tmp, os.path.join(cfg.outdir, "history.json"))
         write_params(cfg.outdir, unflatten(x))
+        # AND a resume checkpoint, at the same place and under the same key the Adam phase
+        # uses, so there is one resume path rather than two.  Before this, `ckpt.pkl` was
+        # written only inside the Adam loop, so `--resume auto` on a run that died here --
+        # which is where hours are spent -- rewound to the END OF ADAM and threw the whole
+        # quasi-Newton phase away.  The step is the cumulative counter, so the Adam loop runs
+        # zero iterations on resume and `qn_stopped_at` recovers the iteration count.
+        #
+        # `carry_H` is the inverse Hessian, n^2 float64.  Worth carrying at 2285 parameters
+        # (42 MB, once per block); not at 13828 (1.5 GB per block, 300 blocks).  Above the
+        # gate the field and the step are still checkpointed and the phase rebuilds H, which
+        # is what `write_progress` re-adapting the weights already assumed.
+        save_checkpoint(os.path.join(cfg.outdir, CKPT_NAME), unflatten(x), None, weights,
+                        history_prefix + rows_so_far, cfg.steps + total, cfg,
+                        extra={"phase": "qn",
+                               "qn_H": (jax.device_get(H) if carry_H else None)})
 
     # Blocks, not one long call: the inverse Hessian is carried from block to block (that is
     # what makes the quasi-Newton phase work), and the loss is inspected between blocks so
     # the run can stop when it PLATEAUS instead of at a fixed iteration count.
-    H = jnp.eye(n, dtype=flat0.dtype)
+    #
+    # On a RESUME this is the Hessian the interrupted phase had reached, when the checkpoint
+    # could carry it (it is n^2 floats: free at 2285 parameters, 1.5 GB at 13828, which is why
+    # `carry_H` gates it).  Without it the phase restarts from the identity, which costs the
+    # first few blocks rather than the whole run -- the field, not the curvature, is what
+    # cannot be re-derived cheaply.
+    H = (jnp.asarray(start_H, dtype=flat0.dtype) if start_H is not None
+         else jnp.eye(n, dtype=flat0.dtype))
     x = flat0
     # ONE compiled call for the opening loss, its parts and the outer number.  This used to
     # be two eager ones (`fun(x)` and `outer_res(x)`), and at n_coll 32768 they are what
@@ -607,13 +636,22 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     parts_start = {k: float(v) for k, v in _p0.items()}
     o = boundary_number(parts_start)
     block = max(1, int(cfg.qn_block))
-    n_blocks = max(1, int(_math.ceil(cfg.lbfgs_steps / block)))
-    step0 = cfg.steps + 1
+    # On a resume, only the iterations still owed: `--lbfgs-steps` is the cap on the CUMULATIVE
+    # counter (that is what the per-block line prints, and what the plateau test compares), so
+    # resuming a 200-iteration run with --lbfgs-steps 400 must run four more blocks, not eight.
+    # It ran eight before this: the cap was recomputed from zero, so every resume bought
+    # another full budget and a resumed run overran by exactly what it had already done.
+    n_blocks = int(_math.ceil(max(0, int(cfg.lbfgs_steps) - start_total) / block))
+    # The opening row MEASURES the state the phase starts from.  On a fresh start that is the
+    # state after Adam, i.e. step cfg.steps + 1; on a resume it is the state at the iteration
+    # the checkpoint carries, so it takes that step rather than one past it -- otherwise a
+    # resume that finds nothing left to do reports one iteration more than it has done.
+    step0 = cfg.steps + (start_total if start_total > 0 else 1)
     history_prefix = list(history or [])
     rows_so_far = [{"step": step0, "loss": f, **parts_start}]
     losses = [f]
     outers = [o]
-    total = 0
+    total = start_total
     status = -1
     t0 = time.time()
     if verbose:
@@ -631,7 +669,11 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     # rather than a window test: a block may stop early in its line search, and a window
     # would then re-trigger on a point it had already passed.
     e_rw = int(cfg.reweight_every or 0)
-    next_rw = _first_reweight_after(cfg, cfg.steps) if gradnorms is not None else None
+    # The inverse Hessian, in bytes: n^2 float64.  Carried in the per-block checkpoint only
+    # while it is small enough that writing it every block is cheaper than rebuilding it.
+    carry_H = (n * n * 8 <= 128 * 1024 * 1024)
+    next_rw = (_first_reweight_after(cfg, cfg.steps + total)
+               if gradnorms is not None else None)
     for b in range(n_blocks):
         # Reweight BEFORE the block, and throw away the curvature estimate: the objective has
         # just changed, so H no longer describes it.  `initial_scale` then re-derives the step
@@ -760,6 +802,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     resume_step = 0
     if resume is None:
         resume = cfg.resume
+    # Defaults for a fresh run, and for any checkpoint written before `phase` existed.
+    resume_phase, resume_H, resume_loss = "adam", None, None
     if resume is not None:
         rpath = os.path.join(cfg.outdir, CKPT_NAME) if resume == "auto" else resume
         if not os.path.exists(rpath):
@@ -774,6 +818,13 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         weights = ck["weights"]
         history = list(ck.get("history", []))
         resume_step = int(ck["step"])
+        # Which phase wrote this.  "adam" (or a checkpoint from before this key existed) means
+        # the Adam optimiser state is live and the Adam loop continues; "qn" means the
+        # quasi-Newton phase had started, so the Adam loop must run zero iterations and the
+        # phase is re-entered with its iteration count -- and its Hessian, when it was small
+        # enough to carry.
+        resume_phase = ck.get("phase", "adam")
+        resume_H = ck.get("qn_H")
         # Warn rather than silently change the trajectory: the Adam LR schedule and
         # the resampling/reweighting cadences are all functions of the step index.
         prev = ck.get("config", {})
@@ -787,9 +838,21 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                   f"(steps={cfg.steps}); Adam phase complete", flush=True)
         else:
             print(f"[resume] continuing from {rpath} at step {resume_step}", flush=True)
+        if resume_phase == "qn":
+            # The field IS the result of the quasi-Newton work, so the report needs a loss for
+            # it before the phase gets a chance to print a new one -- and `step` cannot supply
+            # it, because that needs an Adam optimiser state this checkpoint does not have.
+            resume_loss = float(history[-1]["loss"]) if history else None
+            carried = ("carrying its inverse Hessian" if resume_H is not None else
+                       "without the inverse Hessian, which that phase rebuilds "
+                       "(too large to write every block)")
+            print(f"[resume] checkpoint is from the QUASI-NEWTON phase at iteration "
+                  f"{max(0, resume_step - cfg.steps)}, {carried}", flush=True)
         batch = batch_for_step(cfg, max(resume_step + 1, 1))
 
-    loss = None
+    # `resume_loss` is None for a fresh run and for an Adam checkpoint, so this is the same
+    # `loss = None` as before in both of those cases.
+    loss = resume_loss
     t0 = time.time()
     adam_losses = []
     adam_outers = []
@@ -842,13 +905,18 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                 print(f"[ckpt  {it:6d}] wrote {os.path.join(cfg.outdir, CKPT_NAME)}",
                       flush=True)
 
-    if loss is None:
+    if loss is None and opt_state is not None:
         # The Adam phase ran zero iterations (--steps 0, or a resume already at the
         # end of the schedule): evaluate once so the report still carries a loss.
+        # `opt_state is None` means a `phase == "qn"` checkpoint, whose loss came with it.
         _, _, loss, parts = step(state, opt_state, batch, jnp.asarray(1.0), weights)
 
     # ------------------------------------------------------------- quasi-Newton
-    write_params(cfg.outdir, state, "params_adam.pkl")
+    if resume_phase != "qn":
+        # NOT on a quasi-Newton resume: this would overwrite the Adam warm-up's parameters
+        # with the field the quasi-Newton phase has since reached, and `params_adam.pkl` is
+        # the record of where that warm-up ended.
+        write_params(cfg.outdir, state, "params_adam.pkl")
 
     qn_stopped_at = 0
     if cfg.lbfgs_steps > 0:
@@ -857,7 +925,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         if cfg.qn_method == "ssbroyden":
             qn = ssbroyden_phase(state, batch, weights, loss_fn, cfg, verbose,
                                  gradnorms=group_gradnorms, history=history,
-                                 pde_keys=pde_keys)
+                                 pde_keys=pde_keys, start_H=resume_H,
+                                 start_total=max(0, resume_step - cfg.steps))
         if qn is not None:
             state, qn_history, weights = qn
             history.extend(qn_history)
