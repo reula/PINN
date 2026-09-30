@@ -173,6 +173,24 @@ def build(cfg: Config, init_from: str | None = None):
               f"its own residual on the exact")
         print(f"[pin]   solution is the order-1 floor (6.6e-05 in lambda at shell ratio 100, "
               f"~4e-06 at ratio 400).")
+    if cfg.pin_h_robin:
+        print(f"[pin] pinning the AVERAGED Robin condition for the METRIC at rho_out = "
+              f"{cfg.rho_out:g}   w_pin = {cfg.w_pin:g}")
+        b = cfg.h_robin_bases or {}
+        b_rr, b_g2 = b.get("h_rr", 3.0), b.get("g2", 2.0)
+        print(f"[pin]   rho d_rho <h_rr> + {b_rr:g} (<h_rr> - 1) = 0"
+              f"        <h_rr> is the chart scale")
+        print(f"[pin]   rho d_rho <g2>   + {b_g2:g} (<g2>   - 1) = 0"
+              f"        <g2> is the outer sphere's areal radius")
+        print(f"[pin]   bases in use: <h_rr> {b_rr:g}, <g2> {b_g2:g}"
+              + ("" if cfg.h_robin_bases else
+                 "   (DEFAULTS, measured on the spherical reference: rho^-3.000 and"
+                 " rho^-1.998."))
+        print(f"[pin]   That measurement is an ASSUMPTION about this problem, whose inner data"
+              f" are angular, and its multipole expansion")
+        print(f"[pin]   need not match the spherical one.  --h-robin-bases overrides it.")
+        print(f"[pin]   NO reference needed.  The MEANS are pinned; the pointwise order-3 "
+              f"condition is untouched.")
     if (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr) and exact_fields is not None:
         # Say what is being pinned, and to what.  A value pin is only meaningful if the
         # number is the one the exact solution has there, so print it and let the report
@@ -300,6 +318,8 @@ def print_config_summary(cfg: Config):
         pins = ", ".join(nm for nm, on in (
             ("lam mean (order-1 Robin combination, no reference needed)", cfg.pin_lam_robin),
             ("lam mean (value, from the reference)", cfg.pin_lam),
+            ("averaged h Robin: <h_rr> base 3, <g2> base 2 (no reference needed)",
+             cfg.pin_h_robin),
             ("h_tan", cfg.pin_h_tan), ("h_rr", cfg.pin_h_rr)) if on)
         if pins:
             print(f"  far-field   PINNED at rho_out: {pins}"
@@ -513,6 +533,8 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                   f"network, or raise the cap if the memory is really there.", flush=True)
         return None
 
+    _traces = [0]        # see the resource line: a retrace is a leaked LLVM module
+
     @jax.jit
     def fun(flat):
         """The objective handed to Crunch -- JITTED, and it has to be.
@@ -530,6 +552,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         at `bfgs_backtracking.py:108` -> `fun`.  The pool had grown and fragmented under the
         per-primitive allocations and could not serve the next graph.
         """
+        _traces[0] += 1
         value, _ = loss_fn(unflatten(flat), batch, 1.0, weights)
         return value
 
@@ -708,6 +731,26 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         losses.append(f)
         outers.append(o)
         write_progress({"step": cfg.steps + total, "loss": f, **parts_b})
+        if cfg.log_resources:
+            # `jit` is the number of compiled executables this objective holds.  It must stay
+            # at 1: it is one jitted function called with one shape, so ANY growth means a
+            # retrace, and a retrace is a new LLVM module whose section memory is never freed.
+            # `maps` is the kernel's mapping count for this process, against vm.max_map_count.
+            res = [f"traces={_traces[0]}"]
+            try:
+                with open("/proc/self/maps") as fh:
+                    res.append(f"maps={sum(1 for _ in fh)}")
+            except OSError:
+                pass
+            try:
+                with open("/proc/self/status") as fh:
+                    for ln in fh:
+                        if ln.startswith("VmRSS:"):
+                            res.append(f"rss={int(ln.split()[1]) // 1024}MB")
+                            break
+            except OSError:
+                pass
+            print(f"[qn]   resources: {'  '.join(res)}", flush=True)
         if verbose:
             # The same breakdown the Adam loop prints, for the same reason: a run that stalls
             # has to be attributed to an equation group WHILE it is running.  With `--steps 0`
@@ -1033,8 +1076,15 @@ def parse_args(argv=None):
                    help="points per half axis of the VTK grid (geometric grading)")
     p.add_argument("--vtk-physical-inner", type=float, default=None,
                    help="inner radius in the coordinates the VTK files are written in")
+    p.add_argument("--h-robin-bases", type=str, default=None, dest="h_robin_bases",
+                   help="decay powers for --pin-h-robin, e.g. h_rr=3,g2=2.  The defaults were "
+                        "measured on the SPHERICAL reference and are an assumption about this "
+                        "problem's own multipole expansion; set them to test it")
     p.add_argument("--qn-block", type=int, default=None,
                    help="iterations per quasi-Newton block (the plateau is checked between blocks)")
+    p.add_argument("--log-resources", action="store_true", dest="log_resources",
+                   help="append jit-cache size and mapped-region count to every "
+                        "per-block line, for diagnosing host allocation failures")
     p.add_argument("--plateau-tol", type=float, default=None,
                    help="relative loss improvement below which the run is said to have plateaued")
     p.add_argument("--plateau-min-iters", type=int, default=None,
@@ -1081,6 +1131,14 @@ def parse_args(argv=None):
                         "by angle (the areal-radius content)")
     p.add_argument("--pin-h-rr", action="store_true", dest="pin_h_rr",
                    help="pin h_rr at rho_out as well (the radial gauge component)")
+    p.add_argument("--pin-h-robin", action="store_true", dest="pin_h_robin",
+                   help="pin the AVERAGED Robin condition for the metric, instead of the "
+                        "value pins above: rho d_rho <h_rr> + 3(<h_rr>-1) = 0 and "
+                        "rho d_rho <g2> + 2(<g2>-1) = 0, order 1 at each quantity's own "
+                        "leading decay power (measured 3 and 2; NOT the pointwise condition's "
+                        "base 2).  Needs lam_inf and NO reference.  The means are what is "
+                        "pinned -- the pointwise order-3 condition is untouched and is what "
+                        "constrains the angular content")
     p.add_argument("--pin-far", action="store_true",
                    help="all three far-field pins (lam mean, h_tan, h_rr)")
     p.add_argument("--w-pin", type=float, default=None,
@@ -1231,6 +1289,13 @@ def parse_args(argv=None):
         cfg.pin_h_tan = True
     if a.pin_h_rr:
         cfg.pin_h_rr = True
+    if a.pin_h_robin:
+        cfg.pin_h_robin = True
+    if a.h_robin_bases is not None:
+        cfg.h_robin_bases = {k: float(v) for k, v in
+                             (kv.split("=") for kv in a.h_robin_bases.split(","))}
+    if a.log_resources:
+        cfg.log_resources = True
     if a.w_pin is not None:
         cfg.w_pin = float(a.w_pin)
     if a.w_lam_eq_radial is not None:

@@ -232,3 +232,75 @@ def test_the_two_lambda_pins_are_mutually_exclusive_and_only_one_needs_a_referen
                       ({"pin_lam": True, "pin_lam_robin": False}, "no reference")):
         with pytest.raises(ValueError, match=msg):
             robin_cfg(ref_solution=False, **over).__post_init__()
+
+
+# ------------------------------------- the averaged Robin conditions for the METRIC
+def hrobin_cfg(**over):
+    base = dict(R0=R0, rho_in=0.01, inner_radius=0.01, rho_out=4.0, lam_inf=1.0,
+                ref_asymptotic=1.0, ref_solution=True, outer_bc="robin",
+                robin_exps=dict(h=2.0, G=3.0, lam=1.0), robin_orders=dict(h=3, lam=3),
+                robin_include_G=False, pin_h_robin=True)
+    base.update(over)
+    return Config(**base)
+
+
+def _hrobin_ref():
+    cfg = hrobin_cfg()
+    return cfg, exact.reference_fields_asymptotic(
+        cfg.R0, 1.0, cfg.rho_in, r_areal=cfg.inner_radius)[0]
+
+
+def _shift(ref, c_rr=0.0, c_tan=0.0):
+    """The reference with a constant added to h_rr and/or the tangential part alone."""
+    def pf(x):
+        f = ref(x)
+        n = x / jnp.linalg.norm(x)
+        return Fields(f.h + c_rr * jnp.outer(n, n) + c_tan * (jnp.eye(3) - jnp.outer(n, n)),
+                      f.G, f.lam)
+    return pf
+
+
+def test_the_averaged_h_robin_pin_satisfies_the_exact_solution_and_needs_no_reference():
+    """The bases are 3 and 2 because the exact deviations decay as rho^-3 and rho^-2.
+
+    NOT the base 2 the POINTWISE h condition uses -- that one annihilates rho^-2, rho^-3 and
+    rho^-4 and is therefore identically satisfied by this deviation, which is exactly why the
+    value pins had to exist.  Base 3 on <h_rr> is annihilated to 5.5e-14, machine zero,
+    because the deviation is purely rho^-3 with none of the admixture that leaves the lambda
+    pin a 4.2e-06 floor.
+    """
+    cfg, ref = _hrobin_ref()
+    xs = _xs(cfg)
+    with_ref = outer_pin_terms(ref, xs, cfg, ref)
+    without = outer_pin_terms(ref, xs, cfg, None)       # the point: no reference needed
+    assert set(without) == {"h_rr", "h_tan"}
+    for k in without:
+        assert float(without[k]) == float(with_ref[k])
+        assert float(without[k]) ** 0.5 < 1e-8, (k, float(without[k]) ** 0.5)
+    assert float(without["h_rr"]) ** 0.5 < 1e-12, "h_rr must be at machine zero"
+
+
+def test_the_averaged_h_robin_pin_rejects_a_wrong_level_by_its_own_base():
+    """A constant c at rho_out moves the pin by b*c: 3c for <h_rr>, 2c for <g2>.
+
+    And each perturbation moves only its own component, which is what makes the two pins two
+    constraints rather than one stated twice.
+    """
+    cfg, ref = _hrobin_ref()
+    xs = _xs(cfg)
+    c = 1e-2
+    rr = outer_pin_terms(_shift(ref, c_rr=c), xs, cfg, None)
+    tan = outer_pin_terms(_shift(ref, c_tan=c), xs, cfg, None)
+    assert float(rr["h_rr"]) == pytest.approx((3 * c) ** 2, rel=1e-6), float(rr["h_rr"])
+    assert float(tan["h_tan"]) == pytest.approx((2 * c) ** 2, rel=1e-6), float(tan["h_tan"])
+    # cross terms: a wrong chart scale must leave the sphere-size pin alone, and vice versa
+    assert float(rr["h_tan"]) < 1e-15, float(rr["h_tan"])
+    assert float(tan["h_rr"]) < 1e-25, float(tan["h_rr"])
+
+
+def test_the_averaged_h_and_lam_pins_coexist_and_the_value_pins_are_excluded():
+    cfg = hrobin_cfg(pin_lam_robin=True)
+    cfg.__post_init__()
+    for bad in ({"pin_h_tan": True}, {"pin_h_rr": True}):
+        with pytest.raises(ValueError, match="AVERAGED"):
+            hrobin_cfg(**bad).__post_init__()

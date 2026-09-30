@@ -285,40 +285,69 @@ def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
     l >= 1 content of the combination is left free, the same deliberate blind spot as above.
     """
     robin_lam = bool(getattr(cfg, "pin_lam_robin", False))
-    if not (cfg.pin_lam or robin_lam or cfg.pin_h_tan or cfg.pin_h_rr):
+    robin_h = bool(getattr(cfg, "pin_h_robin", False))
+    if not (cfg.pin_lam or robin_lam or cfg.pin_h_tan or cfg.pin_h_rr or robin_h):
         return {}
     if exact_fields is None and (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr):
         raise ValueError(
             "the far-field value pins are differences from the exact reference at rho_out, "
             "and this run has no reference: add --ref-solution (with --ref-asymptotic k) or "
-            "drop the pin flags.  --pin-lam-robin is the exception: it needs lam_inf only.")
+            "drop the pin flags.  --pin-lam-robin and --pin-h-robin are the exceptions: the "
+            "averaged Robin conditions need lam_inf only.")
 
     lam_inf = cfg.lam_inf if getattr(cfg, "lam_inf", None) is not None else cfg.lam_inf_init
 
-    def one(x):
-        f = point_fields(x)
-        if robin_lam:
-            # the pointwise order-1 combination; its mean IS the combination of the mean
-            return jnp.array([robin_operator(lambda y: point_fields(y).lam, x, 1.0, 1, lam_inf)])
-        e = exact_fields(x)
-        rho = jnp.linalg.norm(x)
-        n = x / rho
-        h_rr = n @ f.h @ n
-        h_rr_e = n @ e.h @ n
-        g2 = (jnp.trace(f.h) - h_rr) / 2.0
-        g2_e = (jnp.trace(e.h) - h_rr_e) / 2.0
-        return jnp.array([f.lam - e.lam, g2 - g2_e, h_rr - h_rr_e])
+    def h_rr_of(y, h=None):
+        h = point_fields(y).h if h is None else h
+        n = y / jnp.linalg.norm(y)
+        return n @ h @ n
 
-    R = jax.vmap(one)(xs)
+    def g2_of(y, h=None):
+        h = point_fields(y).h if h is None else h
+        n = y / jnp.linalg.norm(y)
+        return (jnp.trace(h) - n @ h @ n) / 2.0
+
+    def one(x):
+        """One point of the outer sphere, as a dict of the pin residuals required here.
+
+        The averaged conditions evaluate the POINTWISE operator and let the reduction average
+        it, which is the same thing as the operator applied to the mean, because averaging
+        commutes with rho d_rho.  Doing it this way is what lets them reuse `robin_operator`
+        unchanged, so a pin and the pointwise boundary condition cannot drift apart.
+        """
+        f = point_fields(x)
+        v = {}
+        if robin_lam:
+            v["lam"] = robin_operator(lambda y: point_fields(y).lam, x, 1.0, 1, lam_inf)
+        elif cfg.pin_lam:
+            v["lam"] = f.lam - exact_fields(x).lam
+        if robin_h:
+            # order 1 at EACH quantity's own leading decay power: on the exact solution
+            # h_rr - 1 ~ rho^-3 and g2 - 1 ~ rho^-2 (measured; see Config.pin_h_robin).  This
+            # is not the base 2 the POINTWISE h condition uses, and it cannot be.
+            b = cfg.h_robin_bases or {}
+            v["h_rr_robin"] = robin_operator(h_rr_of, x, float(b.get("h_rr", 3.0)), 1, 1.0)
+            v["h_tan_robin"] = robin_operator(g2_of, x, float(b.get("g2", 2.0)), 1, 1.0)
+        elif exact_fields is not None:
+            e = exact_fields(x)
+            if cfg.pin_h_tan:
+                v["h_tan_value"] = g2_of(x, f.h) - g2_of(x, e.h)
+            if cfg.pin_h_rr:
+                v["h_rr_value"] = h_rr_of(x, f.h) - h_rr_of(x, e.h)
+        return v
+
+    R = jax.vmap(one)(xs)       # a dict of batched arrays
     out = {}
-    if robin_lam:
-        out["lam"] = jnp.mean(R[:, 0]) ** 2
-    elif cfg.pin_lam:
-        out["lam"] = jnp.mean(R[:, 0]) ** 2
-    if cfg.pin_h_tan:
-        out["h_tan"] = jnp.mean(R[:, 1] ** 2)
-    if cfg.pin_h_rr:
-        out["h_rr"] = jnp.mean(R[:, 2] ** 2)
+    # Two different reductions, and the difference is the whole point: an AVERAGED condition is
+    # a statement about the mean, so it squares the mean; the metric's VALUE pins are
+    # statements about every angle, so they average the squares.  `lam` is on the mean in both
+    # of its forms, which is why it appears only in the first loop.
+    for k, name in (("lam", "lam"), ("h_rr_robin", "h_rr"), ("h_tan_robin", "h_tan")):
+        if k in R:
+            out[name] = jnp.mean(R[k]) ** 2
+    for k, name in (("h_tan_value", "h_tan"), ("h_rr_value", "h_rr")):
+        if k in R:
+            out[name] = jnp.mean(R[k] ** 2)
     return out
 
 

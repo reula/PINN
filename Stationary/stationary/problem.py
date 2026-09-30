@@ -183,6 +183,47 @@ class Config:
     pin_lam_robin: bool = False
     pin_h_tan: bool = False
     pin_h_rr: bool = False
+    # The AVERAGED Robin condition for the metric -- the same construction as pin_lam_robin,
+    # applied to the two objects the value pins above act on:
+    #     <h_rr>:  rho d_rho <h_rr> + 3 (<h_rr> - 1) = 0
+    #     <g2>:    rho d_rho <g2>   + 2 (<g2>   - 1) = 0       g2 = (tr h - h_rr)/2
+    # The bases are not chosen, they are measured: the exact solution's <h_rr> - 1 decays as
+    # rho^-3.000 and its <g2> - 1 as rho^-1.998, so `rho d_rho + b` annihilates each for
+    # b = 3 and b = 2 respectively -- NOT the base 2 the POINTWISE h condition uses, which is
+    # why this cannot reuse that exponent.  Measured residuals on the exact solution at
+    # rho_out = 4: h_rr 5.5e-14 (machine zero -- the deviation is purely rho^-3, with none of
+    # the admixture that leaves the lambda pin a 4.2e-06 floor), g2 5.4e-09.
+    #
+    # What it holds, and it is exactly what the value pins held, but with no reference: a
+    # wrong level c at rho_out moves the pin by b*c, so a 1% error is 3e-02 (h_rr) or 2e-02
+    # (g2), eleven orders above the floor.  <h_rr> is the CHART scale -- the harmonic
+    # diffeomorphism freedom makes h_rr = 1/F'^2 a constant, and a constant is rejected by 3x
+    # itself -- and <g2> is the size of the outer sphere.  This is the reference-free
+    # replacement for pin_h_rr and pin_h_tan.
+    #
+    # Its blind spot is the lambda pin's: `rho d_rho + 3` annihilates a rho^-3 deviation of ANY
+    # amplitude, so it fixes the SHAPE and the level, not the size of the deviation.  And it is
+    # the averaged value only -- the pointwise order-3 condition above is untouched and is what
+    # constrains the angular content.
+    pin_h_robin: bool = False
+    # The decay powers the two averaged metric conditions use, as `{"h_rr": b, "g2": b}`.
+    # None means the measured defaults (3, 2).  THEY ARE A PARAMETER BECAUSE THEY ARE AN
+    # ASSUMPTION: those two numbers were measured on the SPHERICALLY SYMMETRIC reference, and
+    # `h_rr - 1 ~ rho^-3` comes from its chart freedom (the c2 term of F = c1 rho + c2 F2),
+    # which says nothing about a solution whose inner data are angular.  The multipole
+    # expansion of THIS problem need not match the spherical one -- taking the angular average
+    # is precisely what avoids assuming that -- so the powers have to be settable, and any run
+    # that relies on them is relying on a measurement, not on a derivation.
+    h_robin_bases: dict | None = None
+
+    # Appends `res(jit=<compiled executables> maps=</proc/self/maps lines>)` to each per-block
+    # line, so a run that dies of a host allocation failure says whether it was COMPILING
+    # itself to death.  A JIT cache that grows block after block means something in the phase
+    # retraces, and every trace leaks LLVM section memory that is never returned: two runs of
+    # this problem died at exactly block 23, at 2300 iterations, after 1.5 h, with
+    # "LLVM ERROR: Unable to allocate section memory!" -- identical failure points across
+    # different code and different thread counts, which is accumulation, not contention.
+    log_resources: bool = False
     w_pin: float = 100.0        # weight of the pin group, independent of w_outer
 
     # ------------------------------------- radial derivative of the lambda equation
@@ -305,6 +346,14 @@ class Config:
                 "--pin-lam pins the MEAN VALUE of lambda and --pin-lam-robin pins the order-1 "
                 "ROBIN COMBINATION of the mean; both act on the same monopole, so ask for one "
                 "of them.")
+        if self.pin_h_robin and (self.pin_h_tan or self.pin_h_rr):
+            # Same reason: the value pins and the averaged Robin conditions act on the same two
+            # quantities (h_rr and the tangential part), one against the reference and one
+            # against lam_inf alone.  Asking for both would weight the same constraint twice.
+            raise ValueError(
+                "--pin-h-tan / --pin-h-rr pin the metric at rho_out to the reference's VALUES, "
+                "and --pin-h-robin pins the same two quantities through their AVERAGED Robin "
+                "combinations; ask for one of them.")
         if self.pin_lam or self.pin_h_tan or self.pin_h_rr:
             # The pins are differences from the exact reference at rho_out, so that object
             # has to exist.  Fail here rather than inside the jitted loss: a missing
