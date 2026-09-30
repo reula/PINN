@@ -44,6 +44,13 @@ constant `lambda`; `lambda -> 1/lambda` is another symmetry.  The **areal**
 carrying the round metric of radius 2 sits at `rho_in = sqrt(4 + R0^2)`, and
 `lambda = lambda_0` there requires `k = lambda_0 (rho_in + R0)/(rho_in - R0)`.
 
+**Which areal radius that is depends on the 4-d reading, and the difference matters** (§11).
+`sqrt(rho^2 - R0^2)` is the areal radius of the *spatial* metric `h`, i.e. in the scalar
+reading `g = -dt^2 + h`. In the vacuum reading `g = -lambda dt^2 + lambda^-1 h` — the one in
+which this family is a black hole — the areal radius is `rho + R0` and the mass is `M = R0`,
+so `lambda = 1 - 2M/r_a` exactly. The spherical asset is therefore *Schwarzschild in
+harmonic (de Donder) coordinates*, and every closed form in §11 is textbook.
+
 The harmonic gauge leaves the residual freedom of harmonic diffeomorphisms; for
 symmetric data the harmonic radial coordinate is any
 `F(rho) = c1 rho + c2 [2 R0 + rho log((rho-R0)/(rho+R0))]`
@@ -65,12 +72,15 @@ and `tests/test_pipeline.py::test_harmonic_chart_freedom`.
     stationary/report.py       one-screen text report of a run (paste-able)
     stationary/compare.py      side-by-side table of several runs (the analysis step)
     stationary/invariants.py   chart-independent content (r_a, lambda, Ricci scalar)
+    stationary/geometry_invariants.py  curvature, Petrov type, tidal field, Hawking mass (§11)
+    stationary/geometry_figures.py  the (rho, z) geometry slice and the Hawking profile (§11.5)
     stationary/multipoles.py   spherical-harmonic decomposition and figures
     stationary/diagnostics.py  residual/error/boundary-geometry reports
     postprocess.sh             figures + lambda_vs_rho.png + report.txt of a run
     run_hub.sh                 detached run on a JupyterHub (see HUB.md)
     run_ladder.sh              the control ladder: order 1/2/4, x64, capacity, dipole
     tests/test_pipeline.py     end-to-end tests (see below)
+    tests/test_geometry_invariants.py  the geometry layer, against closed forms (§11)
     verify_exact_solution.py   standalone regression test of the exact solution
 
 ## 4. Index conventions (regression tested — do not change casually)
@@ -1087,3 +1097,208 @@ be re-run with the corrected reweighting (and, for the quadrupole, with `--robin
 h=4,lam=4`), which is what the hub runs in `HUB.md` §7 are for. Its residual diagnostics
 are quoted in §8.6 and its timing in `HUB.md` §6; its figures should not be read as
 physics.
+
+## 11. Gauge-invariant geometry (`stationary.geometry_invariants`)
+
+The harmonic gauge leaves the freedom of harmonic diffeomorphisms, so the *components* of `h`
+and `lambda` are not comparable between two runs (this is why `invariants.py` reads `r_a`,
+`lambda` and `R` instead, §8.6).  `geometry_invariants.py` extends that idea to the whole
+curvature: given any `(h, lambda)` — a trained network or an exact asset — it returns the
+scalars, the algebraic type and the global charges.  It is **additive**: nothing in training
+imports it.
+
+### 11.1 Two completions of the same `(h, lambda)`, and which one is the black hole
+
+The residual system reads, in 4-d, as static Einstein + a massless scalar field (§1):
+`g = -dt^2 + h`, `phi = log lambda`.  But the *same* pair also determines a static **vacuum**
+space-time,
+
+    g = -lambda dt^2 + lambda^-1 h ,
+
+which is what the Weyl family is (`lambda = e^{2U}`, so this is `-e^{2U}dt^2 + e^{-2U}h`).  The
+module parametrises both as `g = -lambda^a dt^2 + lambda^-a h` and takes
+`reading="vacuum"` (a = 1, the default) or `reading="scalar"` (a = 0).  **Both are exact
+solutions of their own equations whenever `(h, lambda)` solves the residual system**, so both
+are legitimate; they are different space-times built from the same data.
+
+What the vacuum reading says about the two assets (asserted in
+`tests/test_geometry_invariants.py`, not assumed):
+
+| | spherical asset `exact.exact_fields(R0, k)` | Weyl two-rod asset |
+|---|---|---|
+| space-time | **Schwarzschild, mass `M = R0`**, harmonic (de Donder) coordinates | **Israel-Khan vacuum**, total mass 1.1 |
+| areal radius | `r_a = rho + R0` (**not** `sqrt(rho^2-R0^2)`, which is the scalar reading) | `r_a = rho/sqrt(lambda)` |
+| lapse | `lambda = 1 - 2M/r_a` exactly | `lambda -> 1 - 2.2/rho` |
+| Kretschmann | `48 M^2/r_a^6` to 1e-16 | — |
+| tidal eigenvalues `E` | `(-2, 1, 1) M/r_a^3` | — |
+| `|psi_2|` | `M/r_a^3` | — |
+| speciality index | `S = 1` (type **D**) | `S != 1` (type **I**) |
+| Hawking mass | `= M` | `-> 1.1` |
+
+The `sqrt(rho^2 - R0^2)` of §2 is therefore the areal radius of the *spatial* metric `h`
+(scalar reading) while the physical black-hole areal radius is `rho + R0`.  Both statements
+are in the code and both are right; mixing them up is the trap this section exists to close.
+
+Because both assets are static, the **Pontryagin density** `C_abcd *C^abcd` and the magnetic
+part `H_ab` of the Weyl tensor vanish identically.  Those two are the gauge-invariant
+certificate of staticity, and they are also the regression baseline for the rotating
+extension: a non-zero value there will be a genuine frame-dragging signal, not a bug.
+
+In the scalar reading the same solution satisfies `R_ij = (1/2) phi_i phi_j`, so the spatial
+Ricci tensor is **rank one** with eigenvalue `R`.  Hence
+
+    rank1_defect  =  R_ij R^ij - R^2          (zero exactly on a solution)
+    K3            =  R_abcd R^abcd = 4 R_ij R^ij - R^2 = 3 R^2   (the 3-d identity)
+
+`rank1_defect` is the sharpest single-number test of the residual system that post-processing
+can make, and it needs **no reference solution** — which is what makes it useful for the
+hub runs.
+
+### 11.2 What is computed
+
+| group | quantities |
+|---|---|
+| curvature | `R`, `R_ab R^ab`, `R_abcd R^abcd`, `C_abcd C^abcd`, `C_abcd *C^abcd` |
+| algebra | electric/magnetic parts of the Weyl tensor for the static observer, their eigenvalues (the tidal field), `psi_0..psi_4`, `I`, `J`, `S = 27 J^2/I^3`, coarse Petrov type |
+| slice | `R_ij`, its eigenvalues, `R_ij R^ij`, `rank1_defect`, `K3`, the Cotton norm (0 for a conformally flat slice, and the spherical slice is) |
+| global | area and areal radius of a coordinate sphere, its mean curvature, and the Hawking mass `m_H = sqrt(A/16 pi) [1 - (1/16 pi) oint k^2 dA]` (0 in flat space, `M` for Schwarzschild, `-> 1.1` for Israel-Khan); `hawking_profile` gives the whole profile `m_H(r)` and `hawking_mass_field` puts it on a grid.  `m_lapse = r_a (1 - lambda)/2` is the same mass read off the lapse instead of the slice's mean curvature.  The mu integral is Gauss-Legendre: exact to round-off at 6 x 4 nodes (the midpoint rule was 0.2% high at 10 x 6, bigger than the errors being measured) |
+
+### 11.3 Using it
+
+    from stationary import exact, geometry_invariants as gi
+    f = exact.exact_fields(1.0, 1.0)                     # M = 1 harmonic Schwarzschild
+    h, lam = (lambda x: f(x).h), (lambda x: f(x).lam)
+    gi.curvature_at(h, lam, jnp.array([1.5, 0.0, 0.0]), "vacuum")["K"]     # 0.196608
+    gi.sphere_geometry(h, lam, 3.0, "vacuum")["hawking_mass"]             # 1.0
+    gi.hawking_profile(h, lam, [2.0, 5.0, 20.0], "vacuum")["m_h"]         # 1.0, 1.0, 1.0
+
+For a trained run, pass the network's fields the same way (`train.make_model` /
+`model.point_fields`, as `evaluate.py` does).  `geometry_report(h, lam, reference, rho_lo,
+rho_hi)` reduces all of it to robust numbers over a Fibonacci set of directions and radii
+(medians and maxima, with the points where the chart is unusable dropped), and
+`format_geometry(out)` renders them.  **`stationary.report` already prints that block**, so
+it is in every `report.txt` that `postprocess.sh` writes at the end of a run:
+
+    GEOMETRY (gauge-invariant scalars, README section 11)
+        reading vacuum: 24 of 24 sample points off the axis
+        vacuum defect |R_ab|/sqrt|K|  median 9.386e-04   max 1.095e-03      (0 for exact vacuum)
+        rank-one defect / R^2       median 6.954e-02                  (0 for a solution)
+        eigenvalue defect / |R|     median 3.805e-02                  (0 same; needs lambda too)
+        Pontryagin |C.C~| max       3.416e-16                        (0: static)
+        speciality |S-1| median     5.096e-07   type D at 100% of the points
+        Kretschmann vs reference    median 3.968e-04   max 2.360e-03   (gauge invariant error)
+             rho    m_Hawking    r_areal    M_lapse     m_H(ref)   r_a(ref)
+          0.5500  3.15223e-02    0.58208    0.03145  3.15095e-02    0.58206
+          0.9550  3.14919e-02    0.98683    0.03146  3.14710e-02    0.98679
+        inner sphere at rho = 0.1: r_areal = 0.09825 scalar reading, 0.13556 vacuum reading
+
+(that is `runs/weyl_rot45_hub`; the last line exists because the CONFIG block's
+`inner_radius` is the *scalar* reading's sphere, a different number from the vacuum reading's
+at the same `rho`).  The two defect lines are the residual system's own identities and need
+**no reference solution**, which is what makes them usable on the hub; the Kretschmann line is
+the only gauge-invariant error in the report.  The discrimination is real: the same block on
+the barely-trained `runs/_smoke` gives 5.5 and 0.45 for the two defects and 9.2e-02 for the
+Kretschmann error, against 7.0e-02 / 3.8e-02 / 4.0e-04 above.
+
+The block is kept deliberately coarse (24 points, a 10 x 6 sphere quadrature, the reference
+compared every third point and built with `n_quad=64` instead of the run's 400) so that it adds
+about a minute to a report: `h_cart` carries its quadrature *inside* the metric, so a
+twice-differentiated reference evaluation costs `n_quad` times a cheap one, and the first
+version of this block took four minutes on its own.  For precise numbers call
+`geometry_report` directly with the run's own reference and a finer grid.
+
+
+### 11.4 What the production geometry is
+
+For the quadrupole production runs (`R0 = 1/(100 sqrt3) = 5.7735e-03`, `rho_in = 0.01`) the
+vacuum reading gives `M = R0 = 5.7735e-03`, a horizon at `r_a = 2M = 0.011547`, and an inner
+sphere at `r_a = rho_in + R0 = 0.015773`.  **The inner boundary of every production run sits at
+1.37 horizon radii**: these are near-horizon solves, not far-field ones, which is worth
+remembering when reading their residuals and when choosing a Robin order.
+
+Applied to the completed rotated run `runs/weyl_rot45_hub` (HUB.md section 12), at three
+points of its chart: the trained metric is Ricci-flat in the vacuum reading to
+`|R_ab| ~ 1e-3 .. 1e-4` where `K ~ 5 .. 17` (i.e. ~1e-4 relative), its Pontryagin density is
+`~1e-18` -- the staticity certificate holds numerically, not just formally -- its Kretschmann
+scalar agrees with the exact rotated Weyl solution to `1e-3 .. 2e-4` relative, and its Hawking
+mass profile agrees with the exact one to `~1e-6` (3.157146e-02 against 3.157578e-02 at
+rho = 0.3, 3.149276e-02 against 3.146875e-02 at rho = 1.0).  Note that the rods of that run sit
+at 1/35 of their standard size, so its chart is in the weak field: the speciality index there
+is 1 to five decimals, and the type-I content appears only closer to the sources (S = 0.69 at
+(0.5, 0, 0) on the standard-size pair).
+
+### 11.5 In the VTK export, and what the axis does
+
+`stationary.vtk` now writes the geometry next to `lambda` and `lambda_err`:
+`kretschmann`, `weyl_c2`, `pontryagin`, `ricci_abs`, `speciality_dev` and `petrov_D`, so a 3-D
+picture in VisIt can be coloured by any of them (`--no-invariants` skips the extra
+second-derivative pass, `--lambda-only` the residuals too).  One field is worth reading first:
+`ricci_abs` is zero for an exact vacuum solution, so it is the map of where the run is still
+wrong, and `petrov_D` outlines the region that is Schwarzschild-like in the algebraic sense.
+
+**The symmetry axis is the one place these maps cannot be trusted, and that is a property of
+the solutions, not of the diagnostic.**  The Cartesian components of an axisymmetric metric are
+not smooth across the axis (their second derivatives carry `1/rho_cyl^2`), so a network, which
+*is* a smooth function of `(x,y,z)`, can only reproduce the solution there by developing steep
+behaviour -- measured on `runs/weyl_rot45_hub`: `K = 3.7e+04` at `rho_axis = 0.05` but
+`2.9e+08` exactly on the axis, against a true value that is finite and smooth.  The export
+therefore evaluates nodes within `1e-2 rho_in` of the run's axis at that distance instead (the
+limit from the side, error `O((rho_min/scale)^2)`), and prints both the max `|K|` and the
+off-axis max so the two are never confused.  A cylindrical-chart evaluator exists
+(`geometry_invariants.curvature_at_axisym`) and is exact off the axis, but for a network it is
+*worse* near it -- it puts the `1/rho^2` machinery on top of fields that are already smooth --
+so it is kept for chart-native metrics, not used here.
+
+**The Hawking mass is a check that uses no curvature at all.**  `hawking_mass` is now a field
+in the VTK export too (the profile interpolated onto the nodes, 12 sphere integrals), and the
+report prints it as a profile with the mass the configuration *must* have beside it:
+
+    Hawking mass profile  (m_H flat at the total mass = the source is inside; ...
+         rho    m_Hawking    r_areal    M_lapse       m_H(ref)
+      0.5500  3.14329e-02    0.58205    0.03145
+      0.7750  3.14401e-02    0.80689    0.03145
+      0.9550  3.14476e-02    0.98681    0.03146    3.14269e-02
+    expected mass 0.03142857 (sum of the rod masses): m_H +0.061%, m_lapse +0.095%   exact solution 0.03142693 (-0.005%)
+
+so the run's mass is right to 6e-4 while its Kretschmann is 4e-4 off -- two independent
+errors -- and the exact solution sits at -0.005%, which is the strut/interaction energy of
+Israel-Khan (it holds its holes apart with a conical strut) and the truncation of the box.
+
+**The figures are one command:**
+
+    python -m stationary.geometry_figures --outdir runs/<name>
+
+writes `geometry_slice.png` (six panels: `K_net`, `K_exact`, the gauge-invariant error
+`|K_net/K_exact - 1|`, the vacuum defect, the speciality, the Pontryagin density, with the two
+horizon rods marked and their exact `A = 16 pi m^2` and `kappa = 1/(4m)` in the title) and
+`hawking_profile.png` (`m_H` of the network and of the exact solution against the sum of the rod
+masses, `m_lapse`, and the relative deviations).
+
+Three things about how the slice is computed, all of them borrowed from `plane.py` -- which had
+already solved the same problem for its own panels:
+
+  * the grid is the **shell-conforming polar** one (`half_plane`): geometric radial levels so
+    both spheres are hit exactly and the inner sphere -- where the field varies fastest -- is
+    resolved, uniform theta, every node inside the shell, nothing to mask.  A uniform rectangle
+    in `(rho_cyl, z)` puts almost all its nodes in the far field and leaves the inner sphere a
+    handful of cells;
+  * **both panels are chart fields about the run's own axis**, contracted in an **orthonormal
+    frame**.  The exact solution's chart metric is written analytically
+    (`h = diag(e^{2k}, rho^2, e^{2k})`, `lambda = e^{2U}`), and the network's goes through the
+    same change of coordinates, azimuth included (`cylindrical_metric`).  This is the device
+    `weyl.curvature_invariant` uses for the exact `R_ab R^ab`, applied to the whole curvature:
+    in the chart the components are smooth where the Cartesian ones have direction-dependent
+    second derivatives, and in an orthonormal frame a four-index contraction does not have to
+    cancel `1/rho^4` factors.  The two frames are the same scalars -- verified to 1e-8 where
+    both are usable and to 12 digits on a Cartesian metric -- so `frame="orthonormal"` changes
+    nothing analytically and everything numerically;
+  * `rho` is **floored at `0.1 rho_in`**, moving along the same sphere.  Below about `1e-3` of
+    the rod scale the chart's Christoffel symbols lose precision to their own `1/rho^2` -- a
+    loss that happens *before* any frame change can help, so no frame fixes it -- and the floored
+    column is the limit from there (good to ~1%).  No node is ever evaluated exactly on the axis.
+
+Still to do in the geometry layer: Geroch-Hansen multipoles (the rod is a
+degenerate surface in these coordinates, so it needs its own treatment), Geroch-Hansen
+multipoles, geodesic observables (ISCO, photon ring, epicyclic frequencies), a `geometry.json`
+next to the run and the half-plane curvature panel of `plane.py`.  `ROTATING_PLAN.md` §P2
+tracks this.

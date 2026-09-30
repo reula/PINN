@@ -14,6 +14,8 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
 
+import pytest
+
 from stationary.vtk import half_axis, shell_cells, write_vtk
 
 
@@ -96,3 +98,89 @@ def test_the_written_file_parses_back(tmp_path):
         assert len(lines) >= i + n_pts
         i += n_pts
     assert i == len(lines)                                     # nothing left over
+
+
+# ------------------------------------------------ the geometry fields of the export
+def test_invariants_at_matches_the_closed_form():
+    """The invariants written into the VTK are the right ones: Schwarzschild, K = 48 M^2/r_a^6.
+
+    `exact.exact_fields` doubles as the `pf` here: all `invariants_at` needs is `.h` and `.lam`.
+    """
+    from stationary import exact
+    from stationary.vtk import invariants_at
+
+    M = 1.0
+    fields = exact.exact_fields(M, k=1.0)
+    # |x| > R0 = 1: inside that the asset's spatial metric is not Riemannian and the
+    # invariants are NaN by construction (see the module docstring)
+    xs = jnp.array([[1.5, 0.5, 0.7], [1.2, 0.0, 0.4], [2.0, 0.5, -0.5]])
+    out = invariants_at(fields, xs)
+    assert set(out) == {"kretschmann", "weyl_c2", "pontryagin", "ricci_abs",
+                        "speciality_dev", "petrov_D"}
+    for i, x in enumerate(xs):
+        r_a = float(jnp.linalg.norm(x)) + M
+        assert float(out["kretschmann"][i]) == pytest.approx(48.0 * M**2 / r_a**6, rel=1e-8)
+        assert float(out["weyl_c2"][i]) == pytest.approx(48.0 * M**2 / r_a**6, rel=1e-8)
+        assert abs(float(out["pontryagin"][i])) < 1e-13      # static
+        assert float(out["ricci_abs"][i]) < 1e-10            # vacuum
+        assert float(out["speciality_dev"][i]) < 1e-6        # type D
+        assert float(out["petrov_D"][i]) == 1.0
+    assert all(bool(jnp.all(jnp.isfinite(v))) for v in out.values())
+
+
+def test_axis_clamp_uses_the_limit_from_rho_min():
+    """A node on the run's axis is evaluated at rho_min instead, where the value is sane.
+
+    The metric used here is the Weyl-structure one whose CARTESIAN components have
+    1/rho_cyl^2 second derivatives: without the clamp the axis node is orders of magnitude
+    wrong, with it the value matches the node at rho_min (and the grid never notices).
+    """
+    from stationary.vtk import invariants_at
+
+    eps = 0.05
+
+    def h_of(x):
+        rho2 = x[0] ** 2 + x[1] ** 2
+        A = 1.0 + eps * jnp.exp(-(rho2 + x[2] ** 2))
+        inv = 1.0 / jnp.maximum(rho2, 1e-300)
+        hxx = A * x[0] ** 2 * inv + x[1] ** 2 * inv
+        hyy = A * x[1] ** 2 * inv + x[0] ** 2 * inv
+        return jnp.array([[hxx, (A - 1.0) * x[0] * x[1] * inv, 0.0],
+                          [(A - 1.0) * x[0] * x[1] * inv, hyy, 0.0],
+                          [0.0, 0.0, A]])
+
+    class _F:                                    # the little bit of the Fields interface used
+        def __init__(self, h):
+            self.h, self.lam = h, 1.0
+
+    pf = lambda x: _F(h_of(x))                   # noqa: E731
+    rho_min = 1e-3
+    axis = jnp.array([0.0, 0.0, 1.0])
+    xs = jnp.array([[0.0, 0.0, 0.7],                 # exactly on the axis
+                    [rho_min, 0.0, 0.7],             # at the clamp radius
+                    [0.1, 0.0, 0.7]])                # well off it
+    raw = invariants_at(pf, xs)
+    clamped = invariants_at(pf, xs, axis=axis, rho_min=rho_min)
+    # on the axis the metric's Cartesian formula is 0/0: unusable, and NaN is the honest
+    # answer.  The clamp is what turns it into the limit from rho_min.
+    assert not bool(jnp.isfinite(raw["kretschmann"][0]))
+    assert float(clamped["kretschmann"][0]) == pytest.approx(
+        float(clamped["kretschmann"][1]), rel=1e-12)  # clamped to the same value
+    # and the off-axis node is untouched by the clamp
+    assert float(clamped["kretschmann"][2]) == pytest.approx(
+        float(raw["kretschmann"][2]), rel=1e-12)
+
+
+def test_hawking_mass_field_is_written_and_correct():
+    """The Hawking field of the export: M = R0 everywhere for the spherical asset."""
+    from stationary import exact
+    from stationary.vtk import hawking_mass_field
+
+    R0 = 1.0
+    fields = exact.exact_fields(R0, k=1.0)
+    xs = jnp.array([[1.5, 0.3, 0.2], [2.5, -0.4, 0.1], [3.5, 0.0, 0.6]])
+    out = hawking_mass_field(lambda x: fields(x).h, lambda x: fields(x).lam, xs,
+                             reading="vacuum", n_radii=5, n_mu=8, n_phi=6)
+    assert "hawking_mass" in out and out["hawking_mass"].shape == (3,)
+    for v in out["hawking_mass"]:
+        assert float(v) == pytest.approx(R0, rel=1e-8)       # flat at M outside the source

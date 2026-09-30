@@ -24,9 +24,11 @@ A 20 000-step Adam phase takes **~1–2 h** here (`runs/m2R4_realrobin` = 7 435 
 > **On this hub the CUDA environment is the checkout's own `.venv`**, not a separate
 > one: `<checkout>/Stationary/.venv/bin/python -c "import jax; print(jax.devices())"`
 > reports `[cuda:0]`, while `~/venvs/pinn` was created without the CUDA jax and is
-> CPU-only. On this hub `<checkout>` is **`~/serafin/Julia/PINN`** (the JupyterHub home
-> is `/home/reula`; there is no `~/PINN`), so the interpreter is
-> `~/serafin/Julia/PINN/Stationary/.venv/bin/python`. The venv lives in the
+> CPU-only. On this hub `<checkout>` is **`~/serafin/Julia/PINN`** because the JupyterHub
+> node's `$HOME` is `/home/reula/serafin` (there is no `~/PINN`), so the interpreter is
+> `~/serafin/Julia/PINN/Stationary/.venv/bin/python`. From the `serafin.ccad.unc.edu.ar`
+> **login node** the *same* tree is `/home/reula/Julia/PINN/Stationary` (there `$HOME` is
+> `/home/reula`); only the hub node sees the extra `serafin/` level. The venv lives in the
 > **`Stationary/`** folder, next to the `stationary` package -- so every bare
 > `$PWD/.venv/bin/python` in this document assumes you are `cd`-ed there, and
 > `-m stationary.bench` / `-m stationary.train` need that working directory too. From
@@ -1259,7 +1261,8 @@ report, the figures, the `(rho_cyl, z)` slice, the VisIt mesh -- is regenerated 
 hub is needed for training only, never for post-processing.
 
 From the Mac.  Note the host is `serafin.ccad.unc.edu.ar`, not the `jupyter_ccad` alias, and the
-path is relative to the login directory, which is `/home/reula/serafin`:
+path is relative to the login node's home directory, `/home/reula` (the `serafin/` level exists
+only inside the JupyterHub node):
 
     cd /Users/reula/Julia/PINN/Stationary
     mkdir -p runs/<name>

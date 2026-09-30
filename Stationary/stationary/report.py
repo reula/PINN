@@ -34,18 +34,40 @@ from .diagnostics import inner_boundary_report
 from .evaluate import load_run
 from .invariants import family_params_from_solution
 from .geometry import pack_gamma, pack_sym, residuals_batch
+from .geometry_invariants import format_geometry, geometry_report, sphere_geometry
 from .losses import (OFFW, inner_bc_terms, outer_bc_terms, outer_pin_terms,
                      reference_consistency, robin_coefficients)
 from .model import point_fields
 from .multipoles import lambda_multipoles, multipole_radial_profile
-from .problem import lam_inner_bc, sample_shell, sample_sphere
+from .problem import (lam_inner_bc, reference_is_departure_only, sample_shell,
+                      sample_sphere)
 
 THETAS = (0.0, 0.7, 1.5707963)
 
 
 def _git(*args):
+    """Run git for the provenance block, WITHOUT ever taking the index lock.
+
+    `git status` is not read-only: it refreshes the cached stat data and writes the index
+    back, so it takes `.git/index.lock`.  On local disk that is milliseconds; on an NFS home
+    every stat is a round trip and the lock is held far longer.  This runs at the end of every
+    post-processed run -- `postprocess.sh` calls this module -- so it was one collision
+    opportunity per run against anything else touching the repo, and it surfaces as
+
+        error: Unable to create '.git/index.lock': File exists
+
+    during an otherwise ordinary `git pull`, which reads as a broken repository and is not.
+
+    GIT_OPTIONAL_LOCKS=0 is the documented remedy for exactly this: git skips optional locks,
+    so status and diff no longer write the index and can run concurrently with a pull, while
+    operations that genuinely need the lock (pull, commit, add) are unaffected.  It is set in
+    the CHILD's environment rather than assumed from the shell, because the report is normally
+    run by a detached `job.sh` that inherited no such export -- and `git status --porcelain`
+    and `git diff` still return what the provenance line wants.
+    """
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0")
     try:
-        return subprocess.run(["git", *args], capture_output=True, text=True,
+        return subprocess.run(["git", *args], capture_output=True, text=True, env=env,
                               cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                               timeout=10).stdout.strip()
     except Exception:
@@ -391,7 +413,9 @@ def main():
     # ---------------------------------------------------------------- reference
     ref = bc_exact
     if ref is not None:
-        _section("VS EXACT REFERENCE")
+        departure_only = reference_is_departure_only(cfg)
+        _section("VS SPHERICAL REFERENCE (departure only, not an error)" if departure_only
+                 else "VS EXACT REFERENCE")
         print(f"    reference lambda(rho_in) = {float(ref(cfg.rho_in * jnp.array([1.0, 0, 0])).lam):.7f}"
               f"   (run imposed {cfg.lam0:g})")
         # Over the WHOLE shell, not just the outer sphere: a run can match at rho_out and
@@ -469,6 +493,69 @@ def main():
                 (math.sqrt(ra**2 + inv["R0"]**2) + inv["R0"])
             print(f"    {ra:10.4f} {inv['lam'][i]:12.7f} {inv['R'][i]:12.4e}"
                   f" {2 * inv['R0']**2 / ra**4:12.4e}   {inv['k'] * g:12.7f}")
+    except Exception as exc:                                    # never lose the report
+        print(f"    skipped: {exc}")
+
+    # ------------------------------------------------- geometry, no symmetry assumed
+    # The block above reads the two parameters of the SPHERICAL family, so it only means
+    # something for spherically symmetric data (it says so when it does not).  This one
+    # assumes nothing: it samples directions and radii, computes gauge-invariant scalars in
+    # both 4-d readings (README section 11) and reports robust reductions.  Two of the
+    # numbers need no reference solution at all -- the rank-one and eigenvalue defects of the
+    # residual system's own identities -- and the Kretschmann difference against the exact
+    # reference is the only error measure in this report that is free of the harmonic gauge,
+    # which is what makes it worth reading even when the other errors look good.
+    _section("GEOMETRY (gauge-invariant scalars, README section 11)")
+    try:
+        from .train import exact_asset                          # local: avoids a cycle
+        # n_quad=64: this block only needs the reference for a few dozen scalar comparisons,
+        # and the Weyl metric carries a quadrature that a twice-differentiated evaluation pays
+        # for n_quad times (see train.exact_asset).  The rest of the report uses the default.
+        ref = exact_asset(cfg, n_quad=64)
+        ref_pair = None
+        if ref is not None:
+            ref_pair = ((lambda x: ref(x).h), (lambda x: ref(x).lam))
+        out = geometry_report(lambda x: pf(x).h, lambda x: pf(x).lam, ref_pair,
+                              cfg.rho_in, cfg.rho_out, reading="vacuum",
+                              n_dir=12, fractions=(0.45, 0.90), n_mu=8, n_phi=6,
+                              ref_stride=3)
+        for ln in format_geometry(out):
+            print(ln)
+        # The Hawking mass of the outermost sphere against the mass the configuration MUST
+        # have: for a Weyl run that is the sum of the rod masses, which is what the two
+        # horizons carry, so the difference is the strut/interaction energy (Israel-Khan holds
+        # its holes apart with a conical strut) plus the run's error.
+        m_exp = None
+        if getattr(cfg, "weyl", False):
+            m_exp = float(cfg.weyl_half_length
+                          + (cfg.weyl_half_length_b or cfg.weyl_half_length))
+        if m_exp:
+            m_h, m_l = out["geom_spheres"][-1][1], out["geom_spheres"][-1][3]
+            ref_txt = ""
+            if "geom_m_h_ref_outer" in out:
+                ref_txt = (f"   exact solution {out['geom_m_h_ref_outer']:.8f} "
+                           f"({100 * (out['geom_m_h_ref_outer'] / m_exp - 1):+.3f}%)")
+            print(f"    expected mass {m_exp:.8f} (sum of the rod masses): "
+                  f"m_H {100 * (m_h / m_exp - 1):+.3f}%, m_lapse {100 * (m_l / m_exp - 1):+.3f}%"
+                  f"{ref_txt}")
+        # The CONFIG block quotes `inner_radius`, which is the areal radius of the inner sphere
+        # in the SCALAR reading -- and only when the inner data ARE that spherical condition
+        # (`inner_bc = "spherical"`; a `--weyl` run takes its inner data from the exact
+        # reference instead).  The geometry block above is in the vacuum reading, where the same
+        # coordinate sphere has a different areal radius, so print both, at rho_in.
+        sc_in = sphere_geometry(lambda x: pf(x).h, lambda x: pf(x).lam, cfg.rho_in, "scalar",
+                                n_mu=16, n_phi=8)
+        sv_in = sphere_geometry(lambda x: pf(x).h, lambda x: pf(x).lam, cfg.rho_in, "vacuum",
+                                n_mu=16, n_phi=8)
+        note = ""
+        if getattr(cfg, "inner_bc", "spherical") == "spherical":
+            note = f"   (the CONFIG 'inner_radius' = {cfg.inner_radius:g} is the scalar one)"
+        print(f"    inner sphere at rho = {cfg.rho_in:g}: r_areal = "
+              f"{float(sc_in['r_areal']):.5f} scalar reading, "
+              f"{float(sv_in['r_areal']):.5f} vacuum reading{note}")
+        if ref is None:
+            print("    (no exact reference for this run: the Kretschmann error is absent,")
+            print("     the two identity defects and the Hawking mass are not)")
     except Exception as exc:                                    # never lose the report
         print(f"    skipped: {exc}")
 

@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 import math
 import os
 
@@ -64,6 +65,8 @@ import jax.numpy as jnp
 
 from .evaluate import load_run
 from .geometry import residuals_at, ricci_from_gamma
+from .geometry_invariants import (axis_frame, axis_from_config, curvature_at,
+                                  hawking_mass_field)
 from .model import point_fields
 
 
@@ -183,6 +186,59 @@ def fields_at(pf, xs, want_all: bool = True):
     return out
 
 
+def invariants_at(pf, xs, axis=None, rho_min=None):
+    """The 4-d gauge-invariant scalars of the vacuum reading, at the grid points.
+
+    These are the fields README section 11 describes, and they are what makes the file a
+    *geometric* picture rather than a picture of the chart: the Kretschmann and Weyl scalars,
+    the Pontryagin density (`C_abcd *C^abcd`, identically zero while the solution is static,
+    so a nonzero map is rotation or an error), the norm of the Ricci tensor (zero for an exact
+    vacuum solution -- this is the one that says how far from a solution the run is) and the
+    speciality index, `|S - 1|` with a flag for type D (S = 1 for Schwarzschild, so the flag
+    outlines the region that is still Schwarzschild-like).
+
+    THE AXIS.  The Cartesian components of an axisymmetric metric are *not smooth* across the
+    symmetry axis: their second derivatives carry a 1/rho^2 factor (the chart's phi direction
+    collapses there), so a node exactly on the axis can be orders of magnitude wrong --
+    measured, 2.9e+08 where the neighbouring nodes say 3.7e+04.  Passing `axis` (with `rho_min`,
+    default 1e-2 of the grid's inner radius) evaluates any node closer to that axis than
+    `rho_min` at distance `rho_min` in the SAME meridional plane: the limit from the side, whose
+    error is of order (rho_min/scale)^2, which is what the neighbouring nodes already show.
+    Evaluating in the cylindrical chart instead (`geometry_invariants.curvature_at_axisym`) is
+    exact in principle but is WORSE for a network, because it puts the 1/rho^2 machinery on top
+    of fields that are already smooth functions of (x, y, z); the chart route pays off for a
+    chart-native metric, not for a network.
+
+    All of them are second-derivative quantities and cost about as much as the residual maps
+    `fields_at` already writes, which is why `--no-invariants` exists.
+    """
+    if axis is not None:
+        n, e1, _ = axis_frame(axis)
+        n, e1 = jnp.asarray(n, jnp.float64), jnp.asarray(e1, jnp.float64)
+        z = xs @ n
+        perp = xs - z[:, None] * n
+        rho = jnp.linalg.norm(perp, axis=-1)
+        r_clamped = jnp.maximum(rho, rho_min)
+        # exactly on the axis the meridional direction is undefined; e1 supplies one
+        perp_dir = jnp.where(rho[:, None] > 0.0, perp / jnp.maximum(rho, 1e-300)[:, None],
+                             e1[None, :])
+        xs_eval = z[:, None] * n + r_clamped[:, None] * perp_dir
+    else:
+        xs_eval = xs
+
+    h = lambda y: pf(y).h                                   # noqa: E731
+    lam = lambda y: pf(y).lam                               # noqa: E731
+
+    def one(x):
+        c = curvature_at(h, lam, x, "vacuum")
+        return (c["K"], c["C2"], c["CdotC"], jnp.linalg.norm(c["Ric"]),
+                jnp.abs(c["S"] - 1.0), jnp.where(c["petrov_code"] == 1, 1.0, 0.0))
+
+    K, C2, CC, ric, sdev, isd = jax.vmap(one)(xs_eval)
+    return {"kretschmann": K, "weyl_c2": C2, "pontryagin": CC, "ricci_abs": ric,
+            "speciality_dev": sdev, "petrov_D": isd}
+
+
 def error_at(pf, ref, xs):
     """Where the run is wrong: lambda_computed - lambda_exact, and the metric error.
 
@@ -246,6 +302,14 @@ def main():
                    help="override cfg.vtk_physical_inner")
     p.add_argument("--lambda-only", action="store_true",
                    help="only the cheap fields (no second derivatives)")
+    p.add_argument("--no-hawking", action="store_true",
+                   help="skip the hawking_mass field (a dozen sphere integrals)")
+    p.add_argument("--cartesian-invariants", action="store_true",
+                   help="do not clamp the nodes on the run's symmetry axis (only for runs "
+                        "that are not axisymmetric)")
+    p.add_argument("--no-invariants", action="store_true",
+                   help="skip kretschmann / weyl_c2 / pontryagin / ricci_abs / speciality_dev "
+                        "/ petrov_D (a second-derivative pass over the whole grid)")
     p.add_argument("--grid", choices=("spherical", "cartesian"), default="spherical",
                    help="spherical: conforming to the two spheres, isotropic resolution on "
                         "the inner sphere (default); cartesian: the older graded box")
@@ -328,6 +392,39 @@ def main():
                 print(f"[vtk] WARNING: lambda_err is non-finite at {nl} nodes")
             print(f"[vtk] h_err: max {float(jnp.max(jnp.abs(data['h_err']))):.3e}")
     data.update(fields_at(pf, xs_chart, want_all=not a.lambda_only))
+    if not a.no_hawking:
+        t0 = time.time()
+        data.update(hawking_mass_field(lambda x: pf(x).h, lambda x: pf(x).lam, xs_chart,
+                                       reading="vacuum", n_radii=12, n_mu=8, n_phi=6))
+        print(f"[vtk] hawking_mass: {float(jnp.min(data['hawking_mass'])):.6e} .. "
+              f"{float(jnp.max(data['hawking_mass'])):.6e} "
+              f"(the profile of the coordinate sphere through each node; "
+              f"{time.time() - t0:.0f} s)")
+    if not a.no_invariants:
+        # the axis of an axisymmetric run -- z, or the rotated axis for --weyl -- so that the
+        # nodes on it are evaluated at a small distance instead (see invariants_at)
+        ax = axis_from_config(cfg) if (getattr(cfg, "weyl", False)
+                                       or str(cfg.arch).startswith("axisym")) else None
+        axis = ax if not a.cartesian_invariants else None
+        rho_min = 1e-2 * cfg.rho_in
+        data.update(invariants_at(pf, xs_chart, axis=axis, rho_min=rho_min))
+        if axis is not None:
+            print(f"[vtk] invariants evaluated with the axis clamp: nodes within "
+                  f"{rho_min:g} of the run's axis use their limit from that distance")
+            na = jnp.asarray(axis, jnp.float64)
+            perp = xs_chart - (xs_chart @ na)[:, None] * na
+            rr = jnp.linalg.norm(perp, axis=-1)
+            off = rr > 10.0 * rho_min
+            if bool(jnp.any(off)):
+                print(f"[vtk]   off the axis (rho_axis > {10 * rho_min:g}) max |K| = "
+                      f"{float(jnp.max(data['kretschmann'][off])):.3e}: if the max above is "
+                      f"much larger, that band is where the SOLUTION is unresolved, not the "
+                      f"diagnostic")
+        print(f"[vtk] invariants: Kretschmann {float(jnp.min(data['kretschmann'])):.3e} .. "
+              f"{float(jnp.max(data['kretschmann'])):.3e}, "
+              f"|R_ab| max {float(jnp.max(data['ricci_abs'])):.3e}, "
+              f"|Pontryagin| max {float(jnp.max(jnp.abs(data['pontryagin']))):.3e}, "
+              f"type D at {100 * float(jnp.mean(data['petrov_D'])):.0f}% of the nodes")
 
     # Nothing below should be non-finite (weyl.k_of now returns the exact axis limit rather
     # than inf).  This guard is not a blanking mechanism but a loud one: VisIt stops reading
