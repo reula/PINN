@@ -108,6 +108,12 @@ class Config:
     # ------------------------------------------------------------- sampling
     n_coll: int = 4096
     n_bnd: int = 256
+    # Points on the OUTER sphere specifically; None means `n_bnd`.  Its own knob because the
+    # outer sphere carries the Robin conditions, the averaged pins and (with --pin-far) the
+    # value pins, while the inner sphere carries only the imposed data -- so the two do not
+    # want the same resolution, and doubling both in order to double one spends boundary
+    # points on the cheaper of the two.
+    n_bnd_outer: int | None = None
     resample_every: int = 500
     radial: str = "log"              # "uniform" | "log"
 

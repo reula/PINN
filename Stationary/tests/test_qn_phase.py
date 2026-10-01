@@ -222,3 +222,62 @@ def test_the_map_budget_is_measurable_or_honestly_not():
     assert (cur is None) == (limit is None)
     if cur is not None:
         assert 0 < cur < limit
+
+
+def test_the_map_budget_is_reported_before_the_first_block(tmp_path, monkeypatch, capsys):
+    """A run that dies IN the first block's compile must still say where it stood.
+
+    `--log-resources` reported only after a completed block, so the run that died compiling
+    `jit_fun` printed no map count at all -- the one case where the number was most wanted.
+    The baseline and the delta across the first `minimize` call are now both reported, and the
+    first `minimize` compiles the objective and the line search, so that delta is the largest
+    single mapping cost in the phase.
+    """
+    import sys
+    from stationary import train
+
+    values = [(9000, 65530), (9200, 65530), (12200, 65530)]
+    state = {"i": 0}
+
+    def fake_budget():
+        v = values[min(state["i"], len(values) - 1)]
+        state["i"] += 1
+        return v
+
+    monkeypatch.setattr(train, "_map_budget", fake_budget)
+    monkeypatch.setattr(sys, "argv", [
+        "train", "--outdir", str(tmp_path), "--arch", "sym_hybrid", "--width", "8",
+        "--depth", "2", "--steps", "0", "--lbfgs-steps", "100", "--qn-block", "100",
+        "--n-coll", "512", "--n-bnd", "64", "--no-figures", "--ref-solution",
+        "--ref-asymptotic", "1.0", "--outer-bc", "robin", "--robin-exps", "2,3,1",
+        "--robin-orders", "h=3,lam=3", "--no-robin-G", "--lam-inf", "1.0"])
+    train.train(train.parse_args())
+    out = capsys.readouterr().out
+    assert "before any block: maps=9000 of 65530 (13% of the kernel's limit" in out
+    assert "entering block 1 (this is where jit_fun compiles): maps=9200" in out
+    assert "across the first minimize call" in out and "+3000" in out
+
+
+def test_the_two_boundaries_take_independent_point_counts():
+    """`n_bnd` is per sphere, and the outer one has its own knob.
+
+    The outer sphere carries the Robin conditions, the averaged pins and any value pins; the
+    inner carries only the imposed data.  Doubling both in order to double one spends boundary
+    points where they are not wanted -- and, before this, there was no way to ask for more
+    outer points at all.
+    """
+    import sys
+    from stationary.train import make_batch, parse_args
+
+    sys.argv = ["train", "--outdir", "/tmp/nbnd", "--n-coll", "1000",
+                "--n-bnd", "256", "--n-bnd-outer", "8192"]
+    cfg = parse_args()
+    b = make_batch(jax.random.PRNGKey(0), cfg)
+    assert b["coll"].shape[0] == 1000
+    assert b["inner"].shape[0] == 256, "the inner sphere must keep n_bnd"
+    assert b["outer"].shape[0] == 8192, "the outer sphere must take n_bnd_outer"
+
+    sys.argv = ["train", "--outdir", "/tmp/nbnd", "--n-coll", "1000", "--n-bnd", "300"]
+    cfg2 = parse_args()
+    assert make_batch(jax.random.PRNGKey(0), cfg2)["outer"].shape[0] == 300, \
+        "without n_bnd_outer the two must still match"

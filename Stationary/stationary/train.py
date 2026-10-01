@@ -218,7 +218,7 @@ def make_batch(key, cfg: Config):
     return {
         "coll": sample_shell(k1, cfg.n_coll, cfg),
         "inner": sample_sphere(k2, cfg.n_bnd, cfg.rho_in),
-        "outer": sample_sphere(k3, cfg.n_bnd, cfg.rho_out),
+        "outer": sample_sphere(k3, cfg.n_bnd_outer or cfg.n_bnd, cfg.rho_out),
     }
 
 
@@ -330,7 +330,7 @@ def print_config_summary(cfg: Config):
           f"   reweight every {cfg.reweight_every}   pde ramp {cfg.pde_ramp_steps}"
           + (f"   w_lam_eq_radial {cfg.w_lam_eq_radial:g}"
              if getattr(cfg, 'w_lam_eq_radial', 0.0) else ""))
-    print(f"  sampling    n_coll {cfg.n_coll}   n_bnd {cfg.n_bnd}   radial {cfg.radial}"
+    print(f"  sampling    n_coll {cfg.n_coll}   n_bnd {cfg.n_bnd} (outer {cfg.n_bnd_outer or cfg.n_bnd})   radial {cfg.radial}"
           f"   decay feature {cfg.decay_feature}")
     prec = ("float64 (x64: ~2x slower, and NOT comparable with the float32 runs)"
             if jax.config.jax_enable_x64 else "float32 (default)")
@@ -721,6 +721,15 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     H = (jnp.asarray(start_H, dtype=flat0.dtype) if start_H is not None
          else jnp.eye(n, dtype=flat0.dtype))
     maps_start, maps_limit = _map_budget()
+    if verbose and maps_start is not None:
+        # BEFORE the first block, and that is the point: the phase's first block compiles the
+        # objective (jit_fun) and the line search, and a run that dies IN that compile used to
+        # leave no resource line at all -- only the post-block one existed.  This is the
+        # baseline those compilations start from, and with `maps_limit` it says how much room
+        # there was.
+        print(f"[qn]   before any block: maps={maps_start} of {maps_limit} "
+              f"({100 * maps_start // maps_limit}% of the kernel's limit already in use)",
+              flush=True)
     x = flat0
     # ONE compiled call for the opening loss, its parts and the outer number.  This used to
     # be two eager ones (`fun(x)` and `outer_res(x)`), and at n_coll 32768 they are what
@@ -784,6 +793,10 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             reweighted = True
         if reweighted:
             H = jnp.eye(n, dtype=flat0.dtype)
+        if b == 0 and maps_start is not None:
+            maps_pre, _ = _map_budget()
+            print(f"[qn]   entering block 1 (this is where jit_fun compiles): "
+                  f"maps={maps_pre}", flush=True)
         res = minimize(fun, x, args=(), method="BFGS",
                        options={"maxiter": block, "gtol": cfg.qn_gtol,
                                 "initial_H": H,
@@ -795,6 +808,13 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                                 # nor after a reweight, where H has been reset to I.
                                 "update_method": "ssbroyden2",
                                 "initial_scale": (b == 0 or reweighted)})
+        if b == 0 and maps_start is not None:
+            m, _ = _map_budget()
+            # the delta ACROSS the first minimize call: that one call compiles jit_fun and the
+            # line search, and on this problem it is the single largest mapping cost there is
+            print(f"[qn]   block 1 compiled and ran: maps={m}  "
+                  f"(+{(m or 0) - maps_pre} across the first minimize call, which in total "
+                  f"took maps {maps_start} -> {m})", flush=True)
         x = res.x
         f = float(res.fun)
         if res.hess_inv is not None:
@@ -1194,6 +1214,10 @@ def parse_args(argv=None):
     p.add_argument("--rho-out", type=float, default=None)
     p.add_argument("--n-coll", type=int, default=None)
     p.add_argument("--n-bnd", type=int, default=None)
+    p.add_argument("--n-bnd-outer", type=int, default=None, dest="n_bnd_outer",
+                   help="points on the OUTER sphere; defaults to --n-bnd.  The outer sphere "
+                        "carries the Robin conditions and every pin, the inner only the "
+                        "imposed data, so the two do not want the same resolution")
     p.add_argument("--resample-every", type=int, default=None)
     p.add_argument("--lam-inference", type=float, default=None, dest="lam_inf")
     p.add_argument("--width", type=int, default=None)
@@ -1340,6 +1364,8 @@ def parse_args(argv=None):
         cfg.n_coll = a.n_coll
     if a.n_bnd is not None:
         cfg.n_bnd = a.n_bnd
+    if a.n_bnd_outer is not None:
+        cfg.n_bnd_outer = int(a.n_bnd_outer)
     if a.width is not None:
         cfg.width = a.width
     if a.depth is not None:
