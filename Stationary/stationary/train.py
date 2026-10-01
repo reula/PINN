@@ -455,6 +455,12 @@ def _reweight_crosses(cfg: Config, lo: int, hi: int) -> bool:
     return e > 0 and hi > 1 and hi >= e and hi // e > lo // e
 
 
+def _first_period_after(every: int, iters: int):
+    """First multiple of `every` strictly after `iters`, or None if the period is off."""
+    e = int(every or 0)
+    return None if e <= 0 else (iters // e + 1) * e
+
+
 def _first_reweight_after(cfg: Config, iters: int):
     """First reweighting point strictly after `iters` cumulative optimiser iterations.
 
@@ -462,8 +468,7 @@ def _first_reweight_after(cfg: Config, iters: int):
     `cfg.steps` skips any point Adam already consumed, so the two phases never both reweight
     at the same iteration.
     """
-    e = int(cfg.reweight_every or 0)
-    return None if e <= 0 else (iters // e + 1) * e
+    return _first_period_after(cfg.reweight_every, iters)
 
 
 def _map_budget():
@@ -609,7 +614,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     _traces = [0]        # see the resource line: a retrace is a leaked LLVM module
 
     @jax.jit
-    def fun(flat):
+    def fun(flat, batch, weights):
         """The objective handed to Crunch -- JITTED, and it has to be.
 
         Crunch evaluates it as `jax.value_and_grad(fun)(x0)` with no jit of its own
@@ -630,7 +635,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         return value
 
     @jax.jit
-    def loss_value_and_parts(flat):
+    def loss_value_and_parts(flat, batch, weights):
         """(loss, parts) at these parameters -- COMPILED, and it has to be.
 
         This has to be jitted.  Called eagerly it runs the whole loss at the collocation
@@ -671,7 +676,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         The parts come back too because the per-block checkpoint needs them: they are what
         makes a crashed run's `history.json` a real trajectory rather than a single number.
         """
-        parts = {k: float(v) for k, v in loss_value_and_parts(flat)[1].items()}
+        parts = {k: float(v) for k, v in loss_value_and_parts(flat, batch, weights)[1].items()}
         return boundary_number(parts), parts
 
     def write_progress(row):
@@ -737,7 +742,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     # gradient -- see loss_value_and_parts.  parts_start is evaluated HERE, before any
     # reweighting, so the opening row of the history is measured under the same weights as
     # `losses[0]`; it used to be recomputed at the end, after the loop had reweighted.
-    _v0, _p0 = loss_value_and_parts(x)
+    _v0, _p0 = loss_value_and_parts(x, batch, weights)
     f = float(_v0)
     parts_start = {k: float(v) for k, v in _p0.items()}
     o = boundary_number(parts_start)
@@ -774,6 +779,8 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     # phase (so a point Adam already consumed is not used twice here).  A monotone counter
     # rather than a window test: a block may stop early in its line search, and a window
     # would then re-trigger on a point it had already passed.
+    e_rs = int(cfg.resample_every or 0)
+    next_rs = _first_period_after(e_rs, cfg.steps + total)
     e_rw = int(cfg.reweight_every or 0)
     # The inverse Hessian, in bytes: n^2 float64.  Carried in the per-block checkpoint only
     # while it is small enough that writing it every block is cheaper than rebuilding it.
@@ -791,13 +798,24 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                                   verbose, pde_keys)
             next_rw += e_rw
             reweighted = True
+        # REDRAW the collocation sample, on the same cumulative counter the reweight uses.
+        # The inverse Hessian is KEPT: a reweight changes the objective function and H is then
+        # describing the old one, but a resample changes only the sample -- the function is the
+        # same one, estimated on fresh points -- so H remains a valid approximation to it.
+        while next_rs is not None and cfg.steps + total + block >= next_rs:
+            batch = make_batch(jax.random.PRNGKey(cfg.seed + 777 + next_rs), cfg)
+            next_rs += e_rs
+            if verbose:
+                print(f"[resample {cfg.steps + total + block}] new collocation sample "
+                      f"of {cfg.n_coll} points", flush=True)
         if reweighted:
             H = jnp.eye(n, dtype=flat0.dtype)
         if b == 0 and maps_start is not None:
             maps_pre, _ = _map_budget()
             print(f"[qn]   entering block 1 (this is where jit_fun compiles): "
                   f"maps={maps_pre}", flush=True)
-        res = minimize(fun, x, args=(), method="BFGS",
+        # the data-before-shape rule: same shapes, new values, no recompilation
+        res = minimize(lambda flat: fun(flat, batch, weights), x, args=(), method="BFGS",
                        options={"maxiter": block, "gtol": cfg.qn_gtol,
                                 "initial_H": H,
                                 # initial_scale engages SSBroyden's tau_k^A: without it the
@@ -1433,6 +1451,11 @@ def parse_args(argv=None):
         cfg.arch = a.arch
     if a.reweight_every is not None:
         cfg.reweight_every = a.reweight_every
+    if a.resample_every is not None:
+        # This was MISSING: the flag existed, the Config field existed, and nothing ever set
+        # one from the other -- so --resample-every was inert in BOTH phases, and the Adam
+        # phase's resampling never fired either.
+        cfg.resample_every = a.resample_every
     if a.reweight_band is not None:
         cfg.reweight_band = a.reweight_band
     if a.scale_ref is not None:
