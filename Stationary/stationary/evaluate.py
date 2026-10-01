@@ -110,9 +110,26 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
     labels = {"loss": "total", "pde_compat": "compatibility $\\partial h=\\Gamma h$",
               "pde_ricci": "Ricci", "pde_gauge": "harmonic gauge",
               "pde_lam_eq": "$\\lambda$ equation"}
+    hist, hist_src = None, None
     if os.path.exists(hist_path):
         with open(hist_path) as fh:
             hist = json.load(fh)
+        hist_src = "history.json"
+    else:
+        # The CHECKPOINT carries the SAME trajectory: `save_checkpoint(..., history, ...)`
+        # stores exactly what `write_progress` appends.  A run whose history.json is missing --
+        # killed before its first quasi-Newton block, or a directory rebuilt around a surviving
+        # checkpoint -- therefore still has its loss history on disk, and this panel used to
+        # print "no history.json" and stop, which reads as "no loss history was recorded".
+        _ck = os.path.join(run_dir, "ckpt.pkl")
+        if os.path.exists(_ck):
+            try:
+                with open(_ck, "rb") as fh:
+                    _h = pickle.load(fh).get("history")
+                if _h:
+                    hist, hist_src = _h, "ckpt.pkl"
+            except Exception:
+                pass
         # Not every row carries every group: the quasi-Newton phase logs its first row with
         # `loss` only, so requiring the key in hist[0] is not enough (it used to raise
         # KeyError: 'pde_compat' on every run that went through SSBroyden).  Plot the rows
@@ -122,11 +139,17 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
             ys = [h[key] for h in hist if key in h]
             if len(xs) > 1:
                 ax[0, 0].semilogy(xs, ys, label=labels[key], lw=2 if key == "loss" else 1)
+            elif len(xs) == 1:
+                # ONE row is still information; dropping it silently is what made an empty
+                # frame possible in the first place.
+                ax[0, 0].semilogy(xs, ys, "o", label=labels[key], ms=4)
         ax[0, 0].legend(fontsize=8)
+    if hist:
+        ax[0, 0].set_title(f"loss history (weighted)   "
+                           f"[{len(hist)} rows from {hist_src}]")
     else:
-        ax[0, 0].text(0.5, 0.5, "no history.json", ha="center", va="center",
-                      transform=ax[0, 0].transAxes)
-    ax[0, 0].set_title("loss history (weighted)")
+        ax[0, 0].text(0.5, 0.5, "no history: neither history.json\nnor a checkpoint with one",
+                      ha="center", va="center", transform=ax[0, 0].transAxes)
     ax[0, 0].set_xlabel("step")
     ax[0, 0].set_ylabel("loss group (mean square)")
 
