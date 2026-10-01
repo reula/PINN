@@ -241,30 +241,18 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
     ax[1, 2].set_ylabel("residual")
     ax[1, 2].legend(fontsize=8)
 
-    # ------------------------------------------------- inner region, where the action is
-    # The shell spans rho_out/rho_in, a factor of hundreds for these runs, so on a linear
-    # axis the first decade -- where the field varies fastest and where the inner data are
-    # imposed -- is a sliver a few pixels wide, and the eye cannot see whether the boundary
-    # condition is met or how the solution leaves it.  Log axes on the radial panels, plus an
-    # inset on the lambda profile zoomed to the inner decade.
+    # ------------------------------------------------- radial axes, where the action is
+    # The shell spans rho_out/rho_in, a factor of hundreds, so on a linear axis the first
+    # decade -- where the field varies fastest and where the inner data are imposed -- is a
+    # sliver a few pixels wide.  Log axes are the whole fix.
+    #
+    # There WAS an inset on the lambda profile zoomed to that decade, and it is gone.  It sat
+    # in the upper right of the panel, which is exactly where a lambda profile that has risen
+    # off its inner value passes as rho grows, so it covered the curves it was there to show:
+    # an inset that hides the plot it is inset into.  The log axis already resolves the region
+    # and a reader can zoom.
     for a in (ax[0, 1], ax[0, 2], ax[1, 0]):
         a.set_xscale("log")
-    inner_hi = min(cfg.rho_in * 10.0, cfg.rho_out)
-    if inner_hi > cfg.rho_in:
-        ins = ax[0, 1].inset_axes([0.46, 0.44, 0.51, 0.53])
-        ins.plot(rhos, f.lam, "C0-", lw=2)
-        if has_ref:
-            ins.plot(rhos, ref.lam, "k--", lw=1)
-        ins.axhline(cfg.lam0, color="grey", ls="-.", alpha=0.6)
-        ins.set_xscale("log")
-        ins.set_xlim(cfg.rho_in, inner_hi)
-        # a decade of ticks in a 2-inch inset collides; four is what fits legibly
-        ins.xaxis.set_major_locator(mticker.LogLocator(numticks=4))
-        ins.xaxis.set_minor_locator(mticker.NullLocator())
-        ins.tick_params(labelsize=6)
-        ins.set_title(f"inner region  "
-                      fr"$\rho\in[{cfg.rho_in:g},{inner_hi:g}]$", fontsize=7)
-        ins.grid(alpha=0.3)
 
     for a in ax.ravel():
         a.grid(alpha=0.3)
