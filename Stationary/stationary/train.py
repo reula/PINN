@@ -800,7 +800,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     _fp0, _ = loss_value_and_parts(x, plateau_batch, weights)
     _op0, _ = outer_res(x, plateau_batch)
     plosses, pouters = [float(_fp0)], [float(_op0)]
-    best_f, best_o, best_at = _fp0, _op0, 0
+    best_f, best_o, best_at, best_x = _fp0, _op0, 0, None
     total = start_total
     status = -1
     t0 = time.time()
@@ -951,7 +951,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         # loss fell to 4.21e-06, and the run stopped at 14000 of 30000 on that first rise.  A
         # new best resets the counter; only `pat` blocks without one is a plateau.
         if fp < best_f - cfg.plateau_tol * abs(best_f):
-            best_f, best_at = fp, len(plosses)
+            best_f, best_at, best_x = fp, len(plosses), x
         if op < best_o - cfg.plateau_tol * abs(best_o):
             best_o = op
         if total >= cfg.plateau_min_iters and len(plosses) - 1 - best_at > pat:
@@ -963,6 +963,16 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                           f"iterations", flush=True)
                 break
 
+    # RESTORE THE BEST FIELD.  A plateau stop otherwise discards the best parameters the run
+    # ever found: measured on pq_u100_s2_12, it stopped with a training loss of 4.419711e-06
+    # when block 1 had reached 3.986826e-06, and with pin_h_rr 6.53e-06 against 9.64e-07 at the
+    # previous stop.  `best_x` is the field that set the fixed-sample best whose absence the
+    # plateau rule detected, so it is the field that rule is about.
+    if best_x is not None:
+        x = best_x
+        if verbose:
+            print(f"[qn] restored the best field seen (fixed-sample loss {best_f:.6e}); "
+                  f"the last block's was {f:.6e}", flush=True)
     state = unflatten(x)
     # The per-block rows already are the trajectory, and the last of them is the final
     # state; `write_progress` has been putting them on disk as they happened.  One row per

@@ -94,7 +94,7 @@ def ricci_from_gamma(G, dG):
 
 # ------------------------------------------------------------------- residuals
 def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
-                 gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None) -> dict:
+                 gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None, want_compat: bool = True) -> dict:
     """All four residual groups at a single point x (no scaling applied).
 
     `fields` maps a point to (h, G, lam); the same code path is used by the
@@ -112,9 +112,12 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
     d2lam = jax.hessian(lambda y: fields(y)[2])(x)
     Hinv = jnp.linalg.inv(h)
 
-    compat = (dh.transpose(2, 0, 1)
-              - jnp.einsum("dab,dc->abc", G, h)
-              - jnp.einsum("dac,bd->abc", G, h))
+    # `compat` is NOT formed when the caller does not need it.  For a model that derives Gamma
+    # from h it holds identically and is not in the loss, so computing it is pure cost; it is
+    # kept for the first-order formulation, where it is a real equation.
+    compat = ((dh.transpose(2, 0, 1)
+               - jnp.einsum("dab,dc->abc", G, h)
+               - jnp.einsum("dac,bd->abc", G, h)) if want_compat else None)
     ric = ricci_from_gamma(G, dG) - (1.0 / (2.0 * lam**2)) * jnp.outer(dlam, dlam)
     gauge = jnp.einsum("ijk,jk->i", G, Hinv)
     if gauge_src is not None:
@@ -123,7 +126,10 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
     lam_eq = (jnp.einsum("ij,ij->", Hinv, hess)
               - (1.0 / lam) * jnp.einsum("ij,i,j->", Hinv, dlam, dlam))
 
-    return dict(compat=compat, ricci=ric, gauge=gauge, lam_eq=lam_eq)
+    out = dict(ricci=ric, gauge=gauge, lam_eq=lam_eq)
+    if want_compat:
+        out["compat"] = compat
+    return out
 
 
 def residuals_batch(fields: Callable, xs: jnp.ndarray,

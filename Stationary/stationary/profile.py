@@ -36,13 +36,26 @@ def directions(theta, n_phi=1):
 
 
 def profile(point_fields_fn, cfg, n_rho=240, thetas=(0.0,)):
+    """lambda and h_rr along each polar angle.
+
+    Returns (rhos, lam, h_rr).  The h_rr key was added because lambda alone cannot show the
+    metric: `far-field VALUES` reports h_rr at rho_out as an rms over the sphere, and the
+    averaged pins hold only its MEAN, so whether the pointwise value approaches 1 -- and at
+    which angles it does not -- was not visible anywhere in the outputs.
+
+    h_rr = n^T h n with n the radial unit vector at that point, the same projection the metric
+    pins use.  h_rr_of in losses.py is a closure and cannot be imported, so it is written out.
+    """
     rhos = jnp.geomspace(cfg.rho_in, cfg.rho_out, n_rho)
-    out = {}
+    out, hrr = {}, {}
     for th in thetas:
         n = directions(th)
         xs = rhos[:, None] * n[None, :]
-        out[float(th)] = jax.vmap(lambda y: point_fields_fn(y).lam)(xs)
-    return rhos, out
+        f = jax.vmap(point_fields_fn)(xs)
+        out[float(th)] = f.lam
+        hrr[float(th)] = jax.vmap(lambda m, y: m.T @ y @ y)(
+            f.h, xs / jnp.linalg.norm(xs, axis=-1, keepdims=True))
+    return rhos, out, hrr
 
 
 def main():
@@ -62,7 +75,7 @@ def main():
     cfg, model, state = load_run(run_dir, a.params_file)
     pf = point_fields(model, state["net"])
     thetas = tuple(float(t) for t in a.thetas.split(","))
-    rhos, curves = profile(pf, cfg, a.n_rho, thetas)
+    rhos, curves, hrr_curves = profile(pf, cfg, a.n_rho, thetas)
 
     # reference, when the run is one that has one
     ref = None
@@ -135,6 +148,25 @@ def main():
     out = os.path.join(run_dir, "lambda_vs_rho.png")
     fig.savefig(out, dpi=120)
     print(f"[profile] wrote {out}")
+
+    # the metric, at the same angles: h_rr must approach 1 at rho_out, and the averaged pin
+    # holds only its mean, so any angular departure shows here
+    fig3, ax3 = plt.subplots(figsize=(7, 5))
+    for th in thetas:
+        ax3.semilogx(rhos, hrr_curves[th], label=fr"$h_{{\rho\rho}}(\theta={th:.2f})$")
+    ax3.axhline(1.0, color="grey", ls=":", lw=1)
+    ax3.set_xlabel(r"$\rho$")
+    ax3.set_ylabel(r"$h_{\rho\rho}$")
+    ax3.set_title("h_rr against rho at the chosen angles")
+    ax3.legend(fontsize=8); ax3.grid(alpha=0.3)
+    out3 = os.path.join(run_dir, "h_rr_vs_rho.png")
+    fig3.tight_layout(); fig3.savefig(out3, dpi=120)
+    print(f"[profile] wrote {out3}")
+    print(f"\n{'rho':>10} " + " ".join(f"{'h_rr(th=%.2f)' % th:>15}" for th in thetas))
+    step3 = max(1, len(rhos) // 12)
+    for i in range(0, len(rhos), step3):
+        print(f"{float(rhos[i]):10.4f} " +
+              " ".join(f"{float(hrr_curves[th][i]):15.7f}" for th in thetas))
 
     if not a.no_table:
         print(f"\n{'rho':>10} " + " ".join(f"{'lam(th=%.2f)' % th:>14}" for th in curves))
