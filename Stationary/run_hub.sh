@@ -285,7 +285,7 @@ JOB_SH="$OUTDIR/job.sh"
     echo 'STATUS=$?'
     echo 'echo'
     echo 'echo "== training finished with status $STATUS =="'
-    echo "bash $(printf '%q' "$POST") $(printf '%q' "$OUTDIR") $(printf '%q' "$PY")" > $(printf '%q' "$POSTLOG") 2>&1
+    echo "bash $(printf '%q' "$POST") $(printf '%q' "$OUTDIR") $(printf '%q' "$PY") > $(printf '%q' "$POSTLOG") 2>&1"
     echo "echo \"== post-processing -> $POSTLOG ==\""
     echo 'exit $STATUS'
 } > "$JOB_SH"
