@@ -283,6 +283,12 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
 
 
 def main():
+    # The STRUCTURAL check lives here, not in the algorithm: a model that derives Gamma
+    # from h holds compatibility identically and the training path does not form it, but
+    # these diagnostics report it by design.  Ask for it explicitly, or every reader of
+    # the residual dict fails with KeyError on those models.
+    from .geometry import set_want_compat
+    set_want_compat(True)
     p = argparse.ArgumentParser(description="Diagnostics and figures for a finished run.")
     p.add_argument("run_dir", nargs="?", default=None,
                    help="run directory (same as --outdir)")

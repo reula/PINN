@@ -235,6 +235,12 @@ def verdicts(ms: list[dict], lam_tol: float, bc_tol: float):
 
 
 def main():
+    # The STRUCTURAL check lives here, not in the algorithm: a model that derives Gamma
+    # from h holds compatibility identically and the training path does not form it, but
+    # these diagnostics report it by design.  Ask for it explicitly, or every reader of
+    # the residual dict fails with KeyError on those models.
+    from .geometry import set_want_compat
+    set_want_compat(True)
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("runs", nargs="+", help="run directories (globs are expanded by the shell)")
     p.add_argument("--params-file", default="params.pkl")

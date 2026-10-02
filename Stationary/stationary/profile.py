@@ -151,15 +151,19 @@ def main():
 
     # the metric, at the same angles: h_rr must approach 1 at rho_out, and the averaged pin
     # holds only its mean, so any angular departure shows here
-    fig3, ax3 = plt.subplots(figsize=(7, 5))
+    # ONE figure, two panels: lambda and h_rr are the same structure over the same angles, and
+    # two files for them was duplication -- the same objection applies to lambda_vs_rho.png
+    # below, which shows the left panel alone and predates this.
+    fig3, ax3 = plt.subplots(1, 2, figsize=(12, 4.6))
     for th in thetas:
-        ax3.semilogx(rhos, hrr_curves[th], label=fr"$h_{{\rho\rho}}(\theta={th:.2f})$")
-    ax3.axhline(1.0, color="grey", ls=":", lw=1)
-    ax3.set_xlabel(r"$\rho$")
-    ax3.set_ylabel(r"$h_{\rho\rho}$")
-    ax3.set_title("h_rr against rho at the chosen angles")
-    ax3.legend(fontsize=8); ax3.grid(alpha=0.3)
-    out3 = os.path.join(run_dir, "h_rr_vs_rho.png")
+        ax3[0].semilogx(rhos, curves[th], label=fr"$\lambda(\theta={th:.2f})$")
+        ax3[1].semilogx(rhos, hrr_curves[th], label=fr"$h_{{\rho\rho}}(\theta={th:.2f})$")
+    ax3[1].axhline(1.0, color="grey", ls=":", lw=1)
+    ax3[0].set_ylabel(r"$\lambda$"); ax3[1].set_ylabel(r"$h_{\rho\rho}$")
+    ax3[0].set_title("lambda against rho"); ax3[1].set_title("h_rr against rho")
+    for a in ax3:
+        a.set_xlabel(r"$\rho$"); a.legend(fontsize=8); a.grid(alpha=0.3)
+    out3 = os.path.join(run_dir, "profiles_vs_rho.png")
     fig3.tight_layout(); fig3.savefig(out3, dpi=120)
     print(f"[profile] wrote {out3}")
     print(f"\n{'rho':>10} " + " ".join(f"{'h_rr(th=%.2f)' % th:>15}" for th in thetas))

@@ -93,8 +93,21 @@ def ricci_from_gamma(G, dG):
 
 
 # ------------------------------------------------------------------- residuals
+# Whether the compatibility residual is FORMED at all.  None means "follow this default",
+# which the program sets once from the model it built: a model that derives Gamma from h does
+# not need it.  A module-level default rather than an argument at five call sites because the
+# callers hold closures over the model, not the model -- and getting one of them wrong would
+# silently drop the residual where it IS an equation.
+_WANT_COMPAT = True
+
+
+def set_want_compat(flag: bool) -> None:
+    global _WANT_COMPAT
+    _WANT_COMPAT = bool(flag)
+
+
 def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
-                 gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None, want_compat: bool = True) -> dict:
+                 gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None, want_compat: bool | None = None) -> dict:
     """All four residual groups at a single point x (no scaling applied).
 
     `fields` maps a point to (h, G, lam); the same code path is used by the
@@ -112,6 +125,8 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
     d2lam = jax.hessian(lambda y: fields(y)[2])(x)
     Hinv = jnp.linalg.inv(h)
 
+    if want_compat is None:
+        want_compat = _WANT_COMPAT
     # `compat` is NOT formed when the caller does not need it.  For a model that derives Gamma
     # from h it holds identically and is not in the loss, so computing it is pure cost; it is
     # kept for the first-order formulation, where it is a real equation.

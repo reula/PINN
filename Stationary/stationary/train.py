@@ -959,7 +959,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                     print(f"[qn] plateaued: no new best for {pat} blocks"
                           f" (best loss {best_f:.6e} at block {best_at}, "
                           f"best outer Robin {best_o:.6e}); "
-                          f"{cfg.plateau_tol:g} relative); stopping after {total} "
+                          f"tol {cfg.plateau_tol:g} of the best); stopping after {total} "
                           f"iterations", flush=True)
                 break
 
@@ -1016,6 +1016,12 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     if verbose:
         print_config_summary(cfg)
     model, state, exact_fields = build(cfg, init_from)
+    # The residual groups follow the formulation: a model that derives Gamma from h
+    # holds compatibility identically, so forming it every iteration is cost for
+    # nothing.  Set once here; the diagnostic scripts still default to forming it
+    # until they are wired the same way.
+    from .geometry import set_want_compat
+    set_want_compat(not model.derives_gamma)
     if verbose and exact_fields is not None:
         print_reference_summary(cfg, exact_fields)
     loss_fn = lambda st, batch, sc: total_loss(st, batch, cfg, model, exact_fields, pde_scale=sc)
