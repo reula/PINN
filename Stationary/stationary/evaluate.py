@@ -137,6 +137,14 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
         for key in ("loss",) + pde_keys:
             xs = [h["step"] for h in hist if key in h]
             ys = [h[key] for h in hist if key in h]
+            # A group that is identically machine-zero must NOT be drawn on the same log axis.
+            # `pde_compat` is exactly that for every architecture whose Gamma is derived from h,
+            # and history.json's first row carries 7.77e-37: the axis then spans 37 decades and
+            # every other curve lies flat against the top edge.  The panel LOOKED empty while
+            # plotting 17 rows with every key present.  A group that is zero is reported as
+            # zero, not scaled into the picture.
+            if ys and max(abs(v) for v in ys) < 1e-25:
+                continue
             if len(xs) > 1:
                 ax[0, 0].semilogy(xs, ys, label=labels[key], lw=2 if key == "loss" else 1)
             elif len(xs) == 1:
