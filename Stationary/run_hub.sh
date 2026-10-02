@@ -186,7 +186,8 @@ if [ "${1:-}" = "--post" ]; then
     echo "== post-processing $OUTDIR =="
     mkdir -p "$LOGDIR"
     t0=$SECONDS
-    bash "$POST" "$OUTDIR" "$PY" "$ONLY"
+    # tee: still visible here, but recorded apart from the training log
+    bash "$POST" "$OUTDIR" "$PY" "$ONLY" 2>&1 | tee "$POSTLOG"
     echo
     echo "[post] total $((SECONDS - t0))s"
     echo "report    $OUTDIR/report.txt"
@@ -229,6 +230,12 @@ fi
 mkdir -p "$OUTDIR" "$LOGDIR"
 NAME="$(basename "$OUTDIR")"
 LOG="$LOGDIR/$NAME.log"
+
+# Post-processing gets its OWN log.  It used to run into $LOG, so `tail -f $LOG` -- the command
+# this script prints under "watch" -- showed a report written by a different process from a
+# different field, burying the training output it was meant to show (31742 lines in one case, of
+# which the training was about a hundred).  The training log now holds training only.
+POSTLOG="$LOGDIR/$NAME.post.log"
 PIDFILE="$OUTDIR/run.pid"
 RESUME_SH="$OUTDIR/resume.sh"
 
@@ -274,7 +281,8 @@ JOB_SH="$OUTDIR/job.sh"
     echo 'STATUS=$?'
     echo 'echo'
     echo 'echo "== training finished with status $STATUS =="'
-    echo "bash $(printf '%q' "$POST") $(printf '%q' "$OUTDIR") $(printf '%q' "$PY")"
+    echo "bash $(printf '%q' "$POST") $(printf '%q' "$OUTDIR") $(printf '%q' "$PY")" > $(printf '%q' "$POSTLOG") 2>&1
+    echo "echo \"== post-processing -> $POSTLOG ==\""
     echo 'exit $STATUS'
 } > "$JOB_SH"
 chmod +x "$JOB_SH"
@@ -298,6 +306,7 @@ cat <<EOF
 
 outdir    $OUTDIR
 log       $LOG
+post log  $POSTLOG
 pid file  $PIDFILE
 job       $JOB_SH          (training + post-processing, re-runnable)
 status    $STATUS
