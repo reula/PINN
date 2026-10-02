@@ -801,6 +801,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     _op0, _ = outer_res(x, plateau_batch)
     plosses, pouters = [float(_fp0)], [float(_op0)]
     best_f, best_o, best_at, best_x = _fp0, _op0, 0, None
+    stopped_on_plateau = False
     total = start_total
     status = -1
     t0 = time.time()
@@ -955,6 +956,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         if op < best_o - cfg.plateau_tol * abs(best_o):
             best_o = op
         if total >= cfg.plateau_min_iters and len(plosses) - 1 - best_at > pat:
+                stopped_on_plateau = True
                 if verbose:
                     print(f"[qn] plateaued: no new best for {pat} blocks"
                           f" (best loss {best_f:.6e} at block {best_at}, "
@@ -968,8 +970,9 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     # when block 1 had reached 3.986826e-06, and with pin_h_rr 6.53e-06 against 9.64e-07 at the
     # previous stop.  `best_x` is the field that set the fixed-sample best whose absence the
     # plateau rule detected, so it is the field that rule is about.
-    if best_x is not None:
-        x = best_x
+    # ONLY on a plateau stop.  At the iteration cap the restoration is actively wrong: at
+    # ratio 200 it kept block 10 (training loss 1.49e-05) over the cap's 7.45e-06.
+    if best_x is not None and stopped_on_plateau:
         if verbose:
             print(f"[qn] restored the best field seen (fixed-sample loss {best_f:.6e}); "
                   f"the last block's was {f:.6e}", flush=True)
