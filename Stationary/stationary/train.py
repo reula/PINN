@@ -471,6 +471,32 @@ def _first_reweight_after(cfg: Config, iters: int):
     return _first_period_after(cfg.reweight_every, iters)
 
 
+def _device_memory():
+    """(bytes in use, bytes limit) for the default device, or (None, None).
+
+    The companion to `_map_budget` and NOT the same thing: mappings count address-space regions
+    (what the CPU backend exhausts), while these are the allocator's own bytes, which is what
+    the GPU backend exhausts.  A run that died with every request from 2.00 GiB down to 342 MiB
+    refused for `jit_while` needed this number and there was no way to get it after the fact --
+    the process is gone and `memory_stats` is not recoverable.
+    """
+    try:
+        st = jax.devices()[0].memory_stats()
+        if not st:
+            return None, None
+        return st.get("bytes_in_use"), st.get("bytes_limit")
+    except Exception:
+        return None, None
+
+
+def _dev_str() -> str:
+    """`dev=in/limit GiB` for a log line, or "" where the backend does not report it."""
+    u, lim = _device_memory()
+    if u is None or lim is None:
+        return ""
+    return f"  dev={u / 2**30:.2f}/{lim / 2**30:.2f}GiB"
+
+
 def _map_budget():
     """(mapped regions this process holds, the kernel's limit for it), or (None, None).
 
@@ -813,7 +839,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         if b == 0 and maps_start is not None:
             maps_pre, _ = _map_budget()
             print(f"[qn]   entering block 1 (this is where jit_fun compiles): "
-                  f"maps={maps_pre}", flush=True)
+                  f"maps={maps_pre}" + _dev_str(), flush=True)
         # the data-before-shape rule: same shapes, new values, no recompilation
         res = minimize(lambda flat: fun(flat, batch, weights), x, args=(), method="BFGS",
                        options={"maxiter": block, "gtol": cfg.qn_gtol,
@@ -832,7 +858,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             # line search, and on this problem it is the single largest mapping cost there is
             print(f"[qn]   block 1 compiled and ran: maps={m}  "
                   f"(+{(m or 0) - maps_pre} across the first minimize call, which in total "
-                  f"took maps {maps_start} -> {m})", flush=True)
+                  f"took maps {maps_start} -> {m})" + _dev_str(), flush=True)
         x = res.x
         f = float(res.fun)
         if res.hess_inv is not None:
@@ -881,6 +907,8 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                             break
             except OSError:
                 pass
+            if (d := _dev_str()):
+                res.append(d.strip())
             print(f"[qn]   resources: {'  '.join(res)}", flush=True)
         if verbose:
             # The same breakdown the Adam loop prints, for the same reason: a run that stalls
