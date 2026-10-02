@@ -935,8 +935,23 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     # phase -- which has no checkpoint of its own, and with `--steps 0` no ckpt.pkl either --
     # could not be post-processed AT ALL, whatever had survived in it.  Nothing mutates cfg
     # after this point.
-    with open(os.path.join(cfg.outdir, "config.json"), "w") as fh:
+    # NEVER clobber the configuration of a run we are resuming into.  This write happens
+    # before `build()`, so a launch whose flags are wrong dies AFTER replacing the run's own
+    # config with its own -- and every later post-process then rebuilds the model from the
+    # wrong architecture and dies too.  Measured: an attempt with an empty $COMMON left
+    # `config.json` saying `arch sym, rho in [2.236, 20], R0 = 1, dirichlet_exact, n_coll 4096`
+    # while the checkpoint was `axisym_hybrid, rho in [1, 100], R0 = 0.5773, robin, 32768`, and
+    # the run's own report, figures and report.json were all produced against the wrong model.
+    # The incoming flags still get recorded, under a name post-processing does not read.
+    _res = resume if resume is not None else cfg.resume
+    _cfg_path = os.path.join(cfg.outdir, "config.json")
+    _keep = _res is not None and os.path.exists(_cfg_path)
+    with open(os.path.join(cfg.outdir, "config.resume.json" if _keep else "config.json"),
+              "w") as fh:
         json.dump(asdict(cfg), fh, indent=2)
+    if _keep:
+        print(f"[config] resuming: keeping {_cfg_path} and writing these launch flags to "
+              f"config.resume.json instead", flush=True)
     if verbose:
         print_config_summary(cfg)
     model, state, exact_fields = build(cfg, init_from)
