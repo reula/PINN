@@ -185,6 +185,10 @@ if [ "${1:-}" = "--post" ]; then
     fi
     echo "== post-processing $OUTDIR =="
     mkdir -p "$LOGDIR"
+    # defined HERE and not only beside the training $LOG: this branch exits before that
+    # definition is reached, and under `set -u` an unbound POSTLOG aborts --post
+    # outright (`line 190: POSTLOG: unbound variable`).
+    POSTLOG="$LOGDIR/$(basename "$OUTDIR").post.log"
     t0=$SECONDS
     # tee: still visible here, but recorded apart from the training log
     bash "$POST" "$OUTDIR" "$PY" "$ONLY" 2>&1 | tee "$POSTLOG"
