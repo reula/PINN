@@ -684,7 +684,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         """
         return loss_fn(unflatten(flat), batch, 1.0, weights)
 
-    def outer_res(flat):
+    def outer_res(flat, b=None):
         """(unweighted boundary contribution from BOTH spheres, all loss parts) here.
 
         The plateau test looks at the boundary terms as well as at the total loss: one group
@@ -702,7 +702,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         The parts come back too because the per-block checkpoint needs them: they are what
         makes a crashed run's `history.json` a real trajectory rather than a single number.
         """
-        parts = {k: float(v) for k, v in loss_value_and_parts(flat, batch, weights)[1].items()}
+        parts = {k: float(v) for k, v in loss_value_and_parts(flat, b if b is not None else batch, weights)[1].items()}
         return boundary_number(parts), parts
 
     def write_progress(row):
@@ -788,6 +788,18 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     rows_so_far = [{"step": step0, "loss": f, **parts_start}]
     losses = [f]
     outers = [o]
+    # The plateau DECISION uses a batch that NEVER changes, so consecutive blocks are
+    # comparable.  With --resample-every the training loss is measured on a different sample
+    # every cadence, so its block-to-block difference is sampling noise -- and the test asks
+    # whether the value stopped IMPROVING, so any upward jitter reads as a plateau.  Measured
+    # on pq_u100_s2_12: it stopped at 13000 of 30000 with the loss going 3.881211e-06 ->
+    # 4.608388e-06 and the outer Robin 7.36e-10 -> 1.47e-09, both RISES produced by the
+    # resample and not by the optimiser.  Seeded like `losses`/`outers` above, so that the
+    # `[-1 - pat]` indices refer to the same blocks.
+    plateau_batch = make_batch(jax.random.PRNGKey(cfg.seed + 31337), cfg)
+    _fp0, _ = loss_value_and_parts(x, plateau_batch, weights)
+    _op0, _ = outer_res(x, plateau_batch)
+    plosses, pouters = [float(_fp0)], [float(_op0)]
     total = start_total
     status = -1
     t0 = time.time()
@@ -868,6 +880,10 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         o, parts_b = outer_res(x)
         losses.append(f)
         outers.append(o)
+        fp, _ = loss_value_and_parts(x, plateau_batch, weights)
+        op, _ = outer_res(x, plateau_batch)
+        plosses.append(float(fp))
+        pouters.append(float(op))
         write_progress({"step": cfg.steps + total, "loss": f, **parts_b})
         if b == 0 and maps_start is not None:
             # Self-calibrating: the cost depends on the size of the compiled line search, so
@@ -928,14 +944,14 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         pat = int(cfg.plateau_patience)
         if status == 0:
             break
-        if total >= cfg.plateau_min_iters and len(losses) > pat:
-            old_f, old_o = losses[-1 - pat], outers[-1 - pat]
-            loss_flat = (old_f - f) < cfg.plateau_tol * max(abs(old_f), 1e-300)
-            outer_flat = (old_o - o) < cfg.plateau_tol * max(abs(old_o), 1e-300)
+        if total >= cfg.plateau_min_iters and len(plosses) > pat:
+            old_f, old_o = plosses[-1 - pat], pouters[-1 - pat]
+            loss_flat = (old_f - fp) < cfg.plateau_tol * max(abs(old_f), 1e-300)
+            outer_flat = (old_o - op) < cfg.plateau_tol * max(abs(old_o), 1e-300)
             if loss_flat and outer_flat:
                 if verbose:
-                    print(f"[qn] plateaued over {pat} blocks: loss {old_f:.6e} -> {f:.6e}, "
-                          f"outer Robin {old_o:.6e} -> {o:.6e} (both < "
+                    print(f"[qn] plateaued over {pat} blocks: loss {old_f:.6e} -> {fp:.6e}, "
+                          f"outer Robin {old_o:.6e} -> {op:.6e} (both < "
                           f"{cfg.plateau_tol:g} relative); stopping after {total} "
                           f"iterations", flush=True)
                 break
