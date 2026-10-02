@@ -161,8 +161,11 @@ def main():
     ax3[1].axhline(1.0, color="grey", ls=":", lw=1)
     ax3[0].set_ylabel(r"$\lambda$"); ax3[1].set_ylabel(r"$h_{\rho\rho}$")
     ax3[0].set_title("lambda against rho"); ax3[1].set_title("h_rr against rho")
-    for a in ax3:
-        a.set_xlabel(r"$\rho$"); a.legend(fontsize=8); a.grid(alpha=0.3)
+    # `axp`, NOT `a`: `a` is the argparse Namespace, and rebinding it here made every later
+    # `a.no_table` an AttributeError on an Axes object -- masked in every check I ran because
+    # `... | tail` reports tail's exit status, not python's.
+    for axp in ax3:
+        axp.set_xlabel(r"$\rho$"); axp.legend(fontsize=8); axp.grid(alpha=0.3)
     out3 = os.path.join(run_dir, "profiles_vs_rho.png")
     fig3.tight_layout(); fig3.savefig(out3, dpi=120)
     print(f"[profile] wrote {out3}")
