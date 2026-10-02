@@ -1007,6 +1007,27 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                 print(f"[resume] WARNING: {key}={getattr(cfg, key)!r} differs from the "
                       f"checkpoint's {prev[key]!r}; this will not reproduce the original "
                       f"run", flush=True)
+        # The SHAPE keys are a refusal, not a warning: arch/width/depth/fourier decide the
+        # parameter pytree, so `model.apply` cannot consume the checkpoint at all -- and
+        # without this the failure is a Flax ScopeParamShapeError raised from inside the
+        # network ("initializer expected (1, 20), existing parameter has shape (3, 20)"),
+        # which names neither the flag nor either architecture, and it arrives only after the
+        # run has loaded everything.  Measured: an attempt launched with an empty $COMMON fell
+        # back to the default `arch = sym` (one input feature) against a checkpoint written by
+        # `axisym_hybrid` (three), and died exactly that way.
+        _shape_keys = ("arch", "width", "depth", "fourier")
+        _bad = {k: (prev.get(k), getattr(cfg, k)) for k in _shape_keys
+                if k in prev and prev[k] != getattr(cfg, k)}
+        if _bad:
+            raise ValueError(
+                f"--resume {resume!r}: the checkpoint was written by a different NETWORK. "
+                + "; ".join(f"{k}: checkpoint {a!r}, this run {b!r}"
+                            for k, (a, b) in _bad.items())
+                + "\n  These decide the parameter shapes, so the checkpoint cannot be loaded "
+                  "at all.  Pass the flags that built it -- at least"
+                  " --arch/--width/--depth/--fourier -- or start a fresh run in a new"
+                  " --outdir.  An empty shell variable in the launch command is the usual"
+                  " reason this happens.")
         if resume_step >= cfg.steps:
             print(f"[resume] {rpath} is already at step {resume_step} "
                   f"(steps={cfg.steps}); Adam phase complete", flush=True)
