@@ -107,8 +107,10 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
 
     # ---------------------------------------------------------------- 1. loss history
     hist_path = os.path.join(run_dir, "history.json")
-    labels = {"loss": "total", "pde_compat": "compatibility $\\partial h=\\Gamma h$",
-              "pde_ricci": "Ricci", "pde_gauge": "harmonic gauge",
+    # NO "pde_compat" entry: the user asked for it not to be plotted, and for a model that
+    # derives Gamma from h it is not in the loss either.  Keeping a label for a group that is
+    # deliberately absent only invites it back into the panel.
+    labels = {"loss": "total", "pde_ricci": "Ricci", "pde_gauge": "harmonic gauge",
               "pde_lam_eq": "$\\lambda$ equation"}
     hist, hist_src = None, None
     if os.path.exists(hist_path):
