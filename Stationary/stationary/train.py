@@ -1016,12 +1016,14 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     if verbose:
         print_config_summary(cfg)
     model, state, exact_fields = build(cfg, init_from)
-    # The residual groups follow the formulation: a model that derives Gamma from h
-    # holds compatibility identically, so forming it every iteration is cost for
-    # nothing.  Set once here; the diagnostic scripts still default to forming it
-    # until they are wired the same way.
-    from .geometry import set_want_compat
-    set_want_compat(not model.derives_gamma)
+    # NOT wired here yet.  Turning compat off in the training path broke the Adam phase's
+    # gradient-norm loop, which indexes group_terms(...)[k] for every k in GROUP_KEYS and
+    # raises KeyError: 'compat' at train.py:1053.  This was missed because the tests used
+    # --steps 0, which skips Adam altogether.  The proper fix is for that loop to iterate the
+    # keys the formulation imposes (losses.equation_keys(model)) rather than GROUP_KEYS; until
+    # then the residual is formed everywhere, as it was before.
+    # from .geometry import set_want_compat
+    # set_want_compat(not model.derives_gamma)
     if verbose and exact_fields is not None:
         print_reference_summary(cfg, exact_fields)
     loss_fn = lambda st, batch, sc: total_loss(st, batch, cfg, model, exact_fields, pde_scale=sc)
