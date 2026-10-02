@@ -800,6 +800,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     _fp0, _ = loss_value_and_parts(x, plateau_batch, weights)
     _op0, _ = outer_res(x, plateau_batch)
     plosses, pouters = [float(_fp0)], [float(_op0)]
+    best_f, best_o, best_at = _fp0, _op0, 0
     total = start_total
     status = -1
     t0 = time.time()
@@ -944,14 +945,20 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         pat = int(cfg.plateau_patience)
         if status == 0:
             break
-        if total >= cfg.plateau_min_iters and len(plosses) > pat:
-            old_f, old_o = plosses[-1 - pat], pouters[-1 - pat]
-            loss_flat = (old_f - fp) < cfg.plateau_tol * max(abs(old_f), 1e-300)
-            outer_flat = (old_o - op) < cfg.plateau_tol * max(abs(old_o), 1e-300)
-            if loss_flat and outer_flat:
+        # BEST SO FAR, not "better than `pat` blocks ago".  On a FIXED sample a transient rise
+        # is not a plateau, and the previous form stopped on the first one: measured on
+        # pq_u100_s2_12 the fixed-sample value went 8.38e-06 -> 1.58e-04 while the training
+        # loss fell to 4.21e-06, and the run stopped at 14000 of 30000 on that first rise.  A
+        # new best resets the counter; only `pat` blocks without one is a plateau.
+        if fp < best_f - cfg.plateau_tol * abs(best_f):
+            best_f, best_at = fp, len(plosses)
+        if op < best_o - cfg.plateau_tol * abs(best_o):
+            best_o = op
+        if total >= cfg.plateau_min_iters and len(plosses) - 1 - best_at > pat:
                 if verbose:
-                    print(f"[qn] plateaued over {pat} blocks: loss {old_f:.6e} -> {fp:.6e}, "
-                          f"outer Robin {old_o:.6e} -> {op:.6e} (both < "
+                    print(f"[qn] plateaued: no new best for {pat} blocks"
+                          f" (best loss {best_f:.6e} at block {best_at}, "
+                          f"best outer Robin {best_o:.6e}); "
                           f"{cfg.plateau_tol:g} relative); stopping after {total} "
                           f"iterations", flush=True)
                 break
