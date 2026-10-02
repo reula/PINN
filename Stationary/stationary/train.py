@@ -951,9 +951,14 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         # pq_u100_s2_12 the fixed-sample value went 8.38e-06 -> 1.58e-04 while the training
         # loss fell to 4.21e-06, and the run stopped at 14000 of 30000 on that first rise.  A
         # new best resets the counter; only `pat` blocks without one is a plateau.
-        if fp < best_f - cfg.plateau_tol * abs(best_f):
+        # 1% improvement is a new best.  This USED to be cfg.plateau_tol -- the same value that
+        # decides the stop -- and the two pull opposite ways: a tolerance large enough to force
+        # a plateau is large enough that no block ever beats the best, so best_x stayed None and
+        # the restoration could never fire at all.  Verified by a plateau run printing the
+        # restoration line for the first time.
+        if fp < best_f - 0.01 * abs(best_f):
             best_f, best_at, best_x = fp, len(plosses), x
-        if op < best_o - cfg.plateau_tol * abs(best_o):
+        if op < best_o - 0.01 * abs(best_o):
             best_o = op
         if total >= cfg.plateau_min_iters and len(plosses) - 1 - best_at > pat:
                 stopped_on_plateau = True
