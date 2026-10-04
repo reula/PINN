@@ -582,7 +582,7 @@ def _reweighted(cfg: Config, weights, g, when: int, verbose: bool = True, pde_ke
     target = jnp.mean(jnp.stack([g[GROUP_KEYS.index(k)] for k in live]))
     w0 = {k: v for k, v in default_weights(cfg).items()}
     new = {}
-    for i, k in enumerate(GROUP_KEYS):
+    for i, k in enumerate(equation_keys(model)):
         if k not in live:
             new[k] = weights[k]        # boundary data, or nothing to balance
             continue
@@ -1024,14 +1024,10 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     if verbose:
         print_config_summary(cfg)
     model, state, exact_fields = build(cfg, init_from)
-    # NOT wired here yet.  Turning compat off in the training path broke the Adam phase's
-    # gradient-norm loop, which indexes group_terms(...)[k] for every k in GROUP_KEYS and
-    # raises KeyError: 'compat' at train.py:1053.  This was missed because the tests used
-    # --steps 0, which skips Adam altogether.  The proper fix is for that loop to iterate the
-    # keys the formulation imposes (losses.equation_keys(model)) rather than GROUP_KEYS; until
-    # then the residual is formed everywhere, as it was before.
-    # from .geometry import set_want_compat
-    # set_want_compat(not model.derives_gamma)
+    # The gradient-norm loop above now iterates the groups the formulation imposes, so this is
+    # safe: it was the loop's GROUP_KEYS that raised KeyError: 'compat' when the key was gone.
+    from .geometry import set_want_compat
+    set_want_compat(not model.derives_gamma)
     if verbose and exact_fields is not None:
         print_reference_summary(cfg, exact_fields)
     loss_fn = lambda st, batch, sc: total_loss(st, batch, cfg, model, exact_fields, pde_scale=sc)
