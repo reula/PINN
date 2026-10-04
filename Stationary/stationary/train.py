@@ -1429,6 +1429,11 @@ def parse_args(argv=None):
     p.add_argument("--reweight-band", type=float, default=None,
                    help="how far a PDE weight may drift from its configured value")
     p.add_argument("--w-outer", type=float, default=None)
+    p.add_argument("--eq-weights", type=str, default=None,
+                   help="per-equation loss weights, e.g. compat=0,ricci=0,gauge=0,lam_eq=1.  "
+                        "The metric equations have no other switch: they are set in problem.py "
+                        "and adjusted only by the reweighting, so an experiment that needs the "
+                        "metric undriven could not be expressed before this flag.")
     p.add_argument("--w-inner", type=float, default=None)
     p.add_argument("--inner-bc", type=str, default=None, choices=("spherical", "reference"),
                    help="inner data: the round sphere + polynomial lambda, or the exact "
@@ -1564,6 +1569,13 @@ def parse_args(argv=None):
         cfg.arch = a.arch
     if a.reweight_every is not None:
         cfg.reweight_every = a.reweight_every
+    if a.eq_weights is not None:
+        try:
+            cfg.eq_weights = {k: float(v) for k, v in
+                              (kv.split("=") for kv in a.eq_weights.split(","))}
+        except ValueError as exc:
+            raise SystemExit(f"--eq-weights must be key=value pairs separated by commas, "
+                             f"e.g. ricci=0,lam_eq=1 (got {a.eq_weights!r})") from exc
     if a.resample_every is not None:
         # This was MISSING: the flag existed, the Config field existed, and nothing ever set
         # one from the other -- so --resample-every was inert in BOTH phases, and the Adam
