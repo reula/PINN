@@ -1567,8 +1567,12 @@ def parse_args(argv=None):
         cfg.reweight_every = a.reweight_every
     if a.eq_weights is not None:
         try:
-            cfg.eq_weights = {k: float(v) for k, v in
-                              (kv.split("=") for kv in a.eq_weights.split(","))}
+            # UPDATE, not replace: `--eq-weights inner_h=0` must leave the four equation
+            # weights alone.  Replacing them removed compat/ricci/gauge/lam_eq, and
+            # default_weights indexes them directly, so the run died with KeyError -- which the
+            # first test missed only because it happened to pass all four keys.
+            cfg.eq_weights.update({k: float(v) for k, v in
+                                   (kv.split("=") for kv in a.eq_weights.split(","))})
         except ValueError as exc:
             raise SystemExit(f"--eq-weights must be key=value pairs separated by commas, "
                              f"e.g. ricci=0,lam_eq=1 (got {a.eq_weights!r})") from exc

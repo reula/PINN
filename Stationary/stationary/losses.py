@@ -380,6 +380,14 @@ def default_weights(cfg):
     w = {k: jnp.asarray(cfg.eq_weights[k]) for k in ("compat", "ricci", "gauge", "lam_eq")}
     w["inner"] = jnp.asarray(cfg.w_inner)
     w["outer"] = jnp.asarray(cfg.w_outer)
+    # PER-FIELD boundary weights, taken from the same eq_weights dict.  `inner`/`outer` are one
+    # weight per boundary and carry lambda and the metric together, so a run that needs the
+    # metric undriven while lambda's data stays imposed could not be expressed.  A key like
+    # `inner_h` or `outer_lam` overrides the group weight for that field alone:
+    #     --eq-weights compat=0,ricci=0,gauge=0,lam_eq=1,inner_h=0,outer_h=0
+    for _k, _v in dict(cfg.eq_weights).items():
+        if _k.startswith(("inner_", "outer_")):
+            w[_k] = jnp.asarray(_v)
     return w
 
 
@@ -450,8 +458,10 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     # equation, not a boundary datum, so it should not dominate before the ramp finishes
     for k, v in rad.items():
         loss = loss + pde_scale * jnp.asarray(cfg.w_lam_eq_radial) * v
-    loss = loss + weights["inner"] * sum(inner.values())
-    loss = loss + weights["outer"] * sum(outer.values())
+    # per-field override where --eq-weights set one, group weight otherwise
+    loss = loss + sum(v * weights.get(f"inner_{k}", weights["inner"]) for k, v in inner.items())
+    # per-field override where --eq-weights set one, group weight otherwise
+    loss = loss + sum(v * weights.get(f"outer_{k}", weights["outer"]) for k, v in outer.items())
     if pin:
         # its own weight: the pins are data, not a decay condition, and the run that needs
         # them is exactly the one where w_outer could not see the level at all
