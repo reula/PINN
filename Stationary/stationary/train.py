@@ -1048,15 +1048,22 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             best_f, best_at, best_x = fp, len(plosses), x
         if op < best_o - 0.01 * abs(best_o):
             best_o = op
-        if total >= cfg.plateau_min_iters and len(plosses) - 1 - best_at > pat:
+        # `--plateau-min-iters -1` (or any negative) DISABLES the stop.  Before this the only
+        # way to run to the cap was to pass a value larger than it -- 30001 for a 30000 run --
+        # which is a footgun with the opposite failure: pass 30000 and the run stops one
+        # iteration short, at the cap's own edge, looking like a plateau.
+        if (cfg.plateau_min_iters >= 0 and total >= cfg.plateau_min_iters
+                and len(plosses) - 1 - best_at > pat):
                 stopped_on_plateau = True
                 stop_reason = "plateau"
                 if verbose:
+                    # The rule needs a 1% improvement to count as a new best -- NOT
+                    # cfg.plateau_tol, which this message kept claiming long after 293f328
+                    # changed it, and whose clause left an unbalanced ")" behind.
                     print(f"[qn] plateaued: no new best for {pat} blocks"
-                          f" (best loss {best_f:.6e} at block {best_at}, "
-                          f"best outer Robin {best_o:.6e}); "
-                          f"tol {cfg.plateau_tol:g} of the best); stopping after {total} "
-                          f"iterations", flush=True)
+                          f" (best loss {best_f:.6e} at block {best_at}, best outer Robin "
+                          f"{best_o:.6e}; a new best needs a 1% improvement); stopping after "
+                          f"{total} iterations", flush=True)
                 break
 
     # RESTORE THE BEST FIELD.  A plateau stop otherwise discards the best parameters the run
@@ -1250,7 +1257,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
             adam_losses.append(float(loss))
             adam_outers.append(cur_outer)
             pat = int(cfg.plateau_patience)
-            if it >= cfg.plateau_min_iters and len(adam_losses) > pat:
+            if (cfg.plateau_min_iters >= 0 and it >= cfg.plateau_min_iters
+                    and len(adam_losses) > pat):
                 old_f, old_o = adam_losses[-1 - pat], adam_outers[-1 - pat]
                 if ((old_f - float(loss)) < cfg.plateau_tol * max(abs(old_f), 1e-300)
                         and (old_o - cur_outer) < cfg.plateau_tol * max(abs(old_o), 1e-300)):
@@ -1423,7 +1431,10 @@ def parse_args(argv=None):
     p.add_argument("--plateau-tol", type=float, default=None,
                    help="relative loss improvement below which the run is said to have plateaued")
     p.add_argument("--plateau-min-iters", type=int, default=None,
-                   help="never stop before this many iterations, however flat the loss looks")
+                   help="never stop before this many iterations, however flat the loss looks; "
+                        "a NEGATIVE value disables the plateau stop entirely, which is the only "
+                        "way to run to --lbfgs-steps -- passing a value above the cap also "
+                        "works, but passing exactly the cap stops one iteration short")
     p.add_argument("--qn-gtol", type=float, default=None,
                    help="quasi-Newton stop on ||grad||_inf")
     p.add_argument("--plateau-patience", type=int, default=None,

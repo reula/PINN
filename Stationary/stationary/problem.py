@@ -291,7 +291,8 @@ class Config:
     qn_gtol: float = 1e-9
     plateau_tol: float = 1e-4
     plateau_patience: int = 3
-    plateau_min_iters: int = 100
+    plateau_min_iters: int = 100   # negative DISABLES the plateau stop (train.py);
+                                    # a value above the cap runs to it instead
     log_every: int = 200
     seed: int = 0
     outdir: str = "runs/m1"

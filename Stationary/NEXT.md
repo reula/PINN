@@ -10,8 +10,12 @@ can be obtained by re-running the post-processing, which needs no training:
 
     git pull
     JAX_PLATFORMS=cpu POST_THREADS=16 JAX_CACHE=0 PY=$PWD/.venv/bin/python \
-      ./run_hub.sh --post --outdir runs/pq_c200_vac
+      ./run_hub.sh --post --outdir runs/pq_c200_vac \
+                    --only evaluate,profile,report,vtk,plane
     grep -c 'finished in' logs/pq_c200_vac.post.log      # want 5
+
+`--only` is not optional here: `run_hub.sh --post` defaults to
+`ONLY="evaluate,profile,report"`, so without it the count is 3 and there is no plane/.""
 
 **It has to run ON THE HUB NODE, in the JupyterLab terminal.**  From the login node
 (`serafin`) the venv has no interpreter: `.venv/bin/python -> python3.13` is a DANGLING
@@ -110,17 +114,26 @@ NOT verified, and worth one look each:
 
 ## Known defects not fixed
 
-* the plateau message still prints a stray `)` -- `tol 0.0001 of the best);`
-* `--plateau-min-iters N` delays the plateau to N but does not disable it; to run to the cap
-  without any stop, N must EXCEED the cap (30001 for a 30000 run).
+* FIXED: the plateau message's stray `)` -- and the clause it came from, which claimed the rule
+  used `plateau_tol`.  It has used a 1% improvement since 293f328; the message says so now.
+* FIXED: `--plateau-min-iters` can DISABLE the stop with a NEGATIVE value, in both the
+  quasi-Newton and the Adam rule.  Before, the only way to reach the cap was a value above it
+  (30001 for a 30000 run), and passing exactly the cap stopped one iteration short -- a plateau
+  and an edge artefact looking the same in the log.
 
 ## Still open
 
 * the `)` that the plateau message prints stray (`tol 0.0001 of the best);`)
-* `--plateau-min-iters N` delays the plateau rather than disabling it
 * `vtk.py` converts the COORDINATES to physical units but leaves the curvature FIELDS (which
   have units of length^-4) in chart units, while `plane.py` divides them by factor^4.  One of the
   two is wrong; the fields written by the geometry layer are the ones that would move.
+* `report.py`'s geometry block still samples through the CARTESIAN route with an axis clamp,
+  while the figures use the chart route with an orthonormal frame.  The two agree off axis; near
+  it the report keeps the clamped values, so the report and the picture are not the same numbers.
+* the twin is PREPARED but not relaunched, and its warm-up question is open (see the section
+  above): the stalled directory `runs/pq_c100_vac` should not be reused -- a fresh `--outdir`.
+* nothing on the hub has been post-processed with the new code: the `--only` command above is
+  still to run, for pq_c200_vac's five steps.
 
 ## Prepared: the same problem at rho in [1, 100]
 

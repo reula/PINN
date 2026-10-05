@@ -100,3 +100,46 @@ def test_a_healthy_phase_is_not_stopped_by_the_guard(tmp_path, monkeypatch):
     T.train(cfg, verbose=False)
     # four blocks planned; all four must run, because none of them stalled
     assert len(calls) == 4, f"the stall guard stopped a phase that was still improving ({len(calls)})"
+
+
+def _plateau_run(tmp_path, monkeypatch, min_iters, patience=3, nblocks=10):
+    """Blocks that improve by 0.1% each: never a NEW BEST (that needs 1%), never a stall.
+
+    This is the state pq_c200_vac ended in -- a line search that cannot improve a loss already at
+    the floor, so every block reports status 3 with a tiny gain -- and it is the case the plateau
+    rule exists for, and the one the stall guard must NOT claim.
+    """
+    calls = []
+    # A DECREASING reported loss with a field that hardly moves: that is what pq_c200_vac's last
+    # blocks looked like (status 3, a line search that cannot do better, a tiny gain).  The loss
+    # must actually fall -- a constant one IS a stall and the guard is right to stop it.
+    state = {"f": None}
+
+    def fake_minimize(fun, x0, args=(), method=None, options=None):
+        calls.append(1)
+        v = fun(x0)
+        base = float(v[0]) if isinstance(v, (tuple, list)) else float(v)
+        state["f"] = base if state["f"] is None else state["f"] * 0.999
+        return types.SimpleNamespace(x=x0, fun=state["f"], nit=5, status=3, hess_inv=None)
+
+    monkeypatch.setattr(T, "_crunch_minimize", lambda *a, **k: (fake_minimize, "test-fake"))
+    cfg = parse_args(TINY + ["--outdir", str(tmp_path / f"run{min_iters}"), "--steps", "0",
+                            "--lbfgs-steps", str(nblocks * 10), "--qn-block", "10",
+                            "--plateau-patience", str(patience),
+                            "--plateau-min-iters", str(min_iters)])
+    T.train(cfg, verbose=False)
+    return calls
+
+
+def test_a_negative_plateau_min_iters_disables_the_stop(tmp_path, monkeypatch):
+    """0 means "may plateau from the first block"; a negative value means "never plateau".
+
+    Without the switch the only way to reach --lbfgs-steps was to pass a minimum ABOVE the cap,
+    and passing exactly the cap stops one iteration short -- the defect NEXT.md recorded.
+    """
+    stopped_early = _plateau_run(tmp_path / "a", monkeypatch, min_iters=0)
+    assert len(stopped_early) < 10, \
+        f"the plateau rule should have stopped this after {3} blocks, not run {len(stopped_early)}"
+    to_the_cap = _plateau_run(tmp_path / "b", monkeypatch, min_iters=-1)
+    assert len(to_the_cap) == 10, \
+        f"a negative --plateau-min-iters must run all 10 planned blocks, ran {len(to_the_cap)}"
