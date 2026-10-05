@@ -118,6 +118,7 @@ class Config:
     radial: str = "log"              # "uniform" | "log"
 
     # --------------------------------------------------- weights / scaling
+    ricci_lam_source: float = 1.0     # 0 -> solve Ricci = 0, dropping only lambda's source
     eq_weights: dict = field(default_factory=lambda: dict(
         compat=1.0, ricci=1.0, gauge=1.0, lam_eq=1.0))
     scale_exps: dict = field(default_factory=lambda: dict(

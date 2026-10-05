@@ -1028,6 +1028,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     # safe: it was the loop's GROUP_KEYS that raised KeyError: 'compat' when the key was gone.
     from .geometry import set_want_compat
     set_want_compat(not model.derives_gamma)
+    from .geometry import set_ricci_lam_source
+    set_ricci_lam_source(cfg.ricci_lam_source)
     if verbose and exact_fields is not None:
         print_reference_summary(cfg, exact_fields)
     loss_fn = lambda st, batch, sc: total_loss(st, batch, cfg, model, exact_fields, pde_scale=sc)
@@ -1425,6 +1427,9 @@ def parse_args(argv=None):
     p.add_argument("--reweight-band", type=float, default=None,
                    help="how far a PDE weight may drift from its configured value")
     p.add_argument("--w-outer", type=float, default=None)
+    p.add_argument("--ricci-lam-source", type=float, default=None, dest="ricci_lam_source",
+                   help="0 removes lambda's source from the Ricci equation, leaving Ricci = 0 "
+                        "with the lambda equation and data untouched")
     p.add_argument("--eq-weights", type=str, default=None,
                    help="per-equation loss weights, e.g. compat=0,ricci=0,gauge=0,lam_eq=1.  "
                         "The metric equations have no other switch: they are set in problem.py "
@@ -1576,6 +1581,8 @@ def parse_args(argv=None):
         except ValueError as exc:
             raise SystemExit(f"--eq-weights must be key=value pairs separated by commas, "
                              f"e.g. ricci=0,lam_eq=1 (got {a.eq_weights!r})") from exc
+    if a.ricci_lam_source is not None:
+        cfg.ricci_lam_source = a.ricci_lam_source
     if a.resample_every is not None:
         # This was MISSING: the flag existed, the Config field existed, and nothing ever set
         # one from the other -- so --resample-every was inert in BOTH phases, and the Adam

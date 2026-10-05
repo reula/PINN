@@ -100,6 +100,16 @@ def ricci_from_gamma(G, dG):
 # silently drop the residual where it IS an equation.
 _WANT_COMPAT = True
 
+# The lambda source in the Ricci equation: Ricci_ab = (1/2 lambda^2) d_a lambda d_b lambda.  Set
+# to 0 to solve Ricci(h) = 0 with the lambda data and equation otherwise untouched, so the metric
+# relaxes to the VACUUM metric of the imposed data while the gauge still fixes the chart.
+_RICCI_LAM_SOURCE = 1.0
+
+
+def set_ricci_lam_source(v: float) -> None:
+    global _RICCI_LAM_SOURCE
+    _RICCI_LAM_SOURCE = float(v)
+
 
 def set_want_compat(flag: bool) -> None:
     global _WANT_COMPAT
@@ -133,7 +143,7 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
     compat = ((dh.transpose(2, 0, 1)
                - jnp.einsum("dab,dc->abc", G, h)
                - jnp.einsum("dac,bd->abc", G, h)) if want_compat else None)
-    ric = ricci_from_gamma(G, dG) - (1.0 / (2.0 * lam**2)) * jnp.outer(dlam, dlam)
+    ric = ricci_from_gamma(G, dG) - _RICCI_LAM_SOURCE * (1.0 / (2.0 * lam**2)) * jnp.outer(dlam, dlam)
     gauge = jnp.einsum("ijk,jk->i", G, Hinv)
     if gauge_src is not None:
         gauge = gauge - gauge_src(x)
