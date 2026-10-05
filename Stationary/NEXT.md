@@ -122,6 +122,66 @@ NOT verified, and worth one look each:
   have units of length^-4) in chart units, while `plane.py` divides them by factor^4.  One of the
   two is wrong; the fields written by the geometry layer are the ones that would move.
 
+## Prepared: the same problem at rho in [1, 100]
+
+The twin of pq_c200_vac in the physical chart, one outer radius closer in.  Every flag below was
+derived from `runs/pq_c200_vac/config.json` -- the 28 fields that run changed from `Config()`
+defaults -- and then checked by building the Config and diffing it against that config with only
+the geometry rescaled: **zero fields differ** except `lam0_auto` (see below).
+
+    # ON THE HUB NODE, in the JupyterLab terminal
+    cd ~/serafin/Julia/PINN/Stationary
+    git pull
+    nvidia-smi --query-gpu=memory.total,memory.used --format=csv,noheader    # want 12288 MiB
+
+    export JAX_COMPILATION_CACHE_DIR=/tmp/jaxcache-$USER
+    JAX_ENABLE_X64=1 XLA_PYTHON_CLIENT_PREALLOCATE=false PY=$PWD/.venv/bin/python \
+      ./run_hub.sh --outdir runs/pq_c100_vac \
+        --arch axisym_hybrid --steps 500 --lbfgs-steps 30000 --qn-block 250 \
+        --n-coll 32768 --n-bnd 2048 --n-bnd-outer 2048 --ckpt-every 500 \
+        --R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0 \
+        --vtk-physical-inner 1.0 \
+        --lam0 0.33333333333333337 --lam-inf 1.0 --lam-bc-S2 -0.08333333333333333 \
+        --outer-bc robin --robin-orders h=3,lam=3 --no-robin-G \
+        --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1,inner_h=0,outer_h=0 \
+        --ricci-lam-source 0 --pin-lam-robin --ref-solution --ref-asymptotic 1.0 \
+        --reweight-every 0 --decay-feature --log-resources --vtk
+
+IDENTICAL means: the same INNER boundary conditions -- lambda_0 = 1/3, S_1 = 0, S_2 = -1/12 on
+the same physical inner sphere, the same R0-relative geometry, the same exact reference, the same
+Robin orders and exponents -- and the ONLY physical change is the outer boundary, at physical
+rho = 100 instead of 200.  Everything else in the flag list is pq_c200_vac's own configuration.
+
+Equivalently, in pq_c200_vac's own chart: rho_out = 0.5 with every other number untouched.  That
+is what was checked -- two Configs, the old chart with rho_out = 0.5 and the physical chart
+[1, 100], agree in EVERY field to 1e-12 once the 200x relabelling of the four length fields
+(R0, rho_in, rho_out, inner_radius) is undone.  The flags exist because the outputs are drawn in
+the chart: the old run was chart [0.005, 1] with R0 = 0.002886751345948129, and that chart is
+200x the units its figures are in, so R0 becomes 1/sqrt(3) = 0.5773502691896258 and the inner
+sphere becomes 1.
+
+`--lam0` is pinned to the old run's value because the auto value at these scales comes out
+0.3333333253563414, i.e. 1/3 to 8e-9: the imposed inner data are the thing being compared
+between the two runs, so they are made equal.  The pin only sticks because the CLI clears
+`lam0_auto` when `--lam0` is given (train.py, the block at `if a.lam0 is not None`) -- a Config
+built with `lam0` but `lam0_auto` left true has it recomputed and the pin is silently lost, which
+is what a check that went through `Config(**cfg)` rather than the CLI does.  The only
+consequence is `lam0_auto = False` in the new config, which records provenance rather than data;
+drop the flag if the auto path is preferred.
+
+Run it on the GPU: `--qn-block 250` is the GPU choice (COMMANDS.md section 5 -- CPU costs +2534
+mapped regions per block, so ~28 blocks of this size would exceed the 65530 limit and die of it,
+which is also the evidence that pq_c200_vac itself was a GPU run).
+
+Post-process it exactly as the other one:
+
+    JAX_PLATFORMS=cpu POST_THREADS=16 JAX_CACHE=0 PY=$PWD/.venv/bin/python \
+      ./run_hub.sh --post --outdir runs/pq_c100_vac --only evaluate,profile,report,vtk,plane
+
+With rho_in = 1 and vtk_physical_inner = 1 the factor is 1, so the figures and the S_lm table
+come out in [1, 100] directly, needing no rescaling -- and S_20's inner-data value to compare
+against is the SAME -0.1321 as before, since the imposed angular data are unchanged.
+
 ## What the experiment found
 
 `pq_c200_vac` (`--ricci-lam-source 0`, metric boundary data off) relaxed to a near-vacuum metric --
