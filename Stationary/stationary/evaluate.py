@@ -155,6 +155,13 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
                 ax[0, 0].semilogy(xs, ys, "o", label=labels[key], ms=4)
         ax[0, 0].legend(fontsize=8)
     if hist:
+        # FIXED Y-LIMITS from the loss's own range.  pq_c200_vac converged to 2.1e-14 with groups
+        # at 1e-16..1e-21, so auto-scaling spanned twenty-one decades and every curve collapsed
+        # into a near-vertical line at the left edge: a frame, a title, and an empty interior.
+        # The groups are still drawn; they are simply not allowed to set the range.
+        _ls = [h["loss"] for h in hist if "loss" in h and h["loss"] > 0]
+        if _ls:
+            ax[0, 0].set_ylim(min(_ls) * 0.5, max(_ls) * 2.0)
         ax[0, 0].set_title(f"loss history (weighted)   "
                            f"[{len(hist)} rows from {hist_src}]")
     else:
