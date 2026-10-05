@@ -94,6 +94,54 @@ def pde_plot_keys(model) -> tuple:
     return tuple(f"pde_{k}" for k in equation_keys(model))
 
 
+def _draw_loss_history(ax0, hist, hist_src, pde_keys, labels):
+    """The loss-history panel: one curve per group present in `hist`.
+
+    A FUNCTION so that it can be tested, because the indentation is exactly what was wrong:
+    the plotting loop and the legend sat inside the `else:` branch of the history loader (the
+    checkpoint fallback), so for every run that HAD a history.json the panel drew no curve at
+    all -- pq_c200_vac came out as a titled frame reading "37 rows from history.json" over an
+    empty interior.  tests/test_loss_history_panel.py fails if that returns.
+    """
+    if hist:
+        # Not every row carries every group: the quasi-Newton phase logs its first row with
+        # `loss` only, so requiring the key in hist[0] is not enough (it used to raise
+        # KeyError: 'pde_compat' on every run that went through SSBroyden).  Plot the rows
+        # that have the key, and keep the run's own numbering on the x axis.
+        for key in ("loss",) + pde_keys:
+            xs = [h["step"] for h in hist if key in h]
+            ys = [h[key] for h in hist if key in h]
+            # A group that is identically machine-zero must NOT be drawn on the same log axis.
+            # `pde_compat` is exactly that for every architecture whose Gamma is derived from h,
+            # and history.json's first row carries 7.77e-37: the axis then spans 37 decades and
+            # every other curve lies flat against the top edge.  The panel LOOKED empty while
+            # plotting 17 rows with every key present.  A group that is zero is reported as
+            # zero, not scaled into the picture.
+            if ys and max(abs(v) for v in ys) < 1e-25:
+                continue
+            if len(xs) > 1:
+                ax0.semilogy(xs, ys, label=labels[key], lw=2 if key == "loss" else 1)
+            elif len(xs) == 1:
+                # ONE row is still information; dropping it silently is what made an empty
+                # frame possible in the first place.
+                ax0.semilogy(xs, ys, "o", label=labels[key], ms=4)
+        ax0.legend(fontsize=8)
+        # FIXED Y-LIMITS from the loss's own range.  pq_c200_vac converged to 2.1e-14 with groups
+        # at 1e-16..1e-21, so auto-scaling spanned twenty-one decades and every curve collapsed
+        # into a near-vertical line at the left edge: a frame, a title, and an empty interior.
+        # The groups are still drawn; they are simply not allowed to set the range.
+        _ls = [h["loss"] for h in hist if "loss" in h and h["loss"] > 0]
+        if _ls:
+            ax0.set_ylim(min(_ls) * 0.5, max(_ls) * 2.0)
+        ax0.set_title(f"loss history (weighted)   "
+                           f"[{len(hist)} rows from {hist_src}]")
+    else:
+        ax0.text(0.5, 0.5, "no history: neither history.json\nnor a checkpoint with one",
+                      ha="center", va="center", transform=ax0.transAxes)
+    ax0.set_xlabel("step")
+    ax0.set_ylabel("loss group (mean square)")
+
+
 def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
     """Six self-describing panels; every axis is labelled and every curve is in a legend."""
     import matplotlib.pyplot as plt
@@ -132,43 +180,7 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
                     hist, hist_src = _h, "ckpt.pkl"
             except Exception:
                 pass
-        # Not every row carries every group: the quasi-Newton phase logs its first row with
-        # `loss` only, so requiring the key in hist[0] is not enough (it used to raise
-        # KeyError: 'pde_compat' on every run that went through SSBroyden).  Plot the rows
-        # that have the key, and keep the run's own numbering on the x axis.
-        for key in ("loss",) + pde_keys:
-            xs = [h["step"] for h in hist if key in h]
-            ys = [h[key] for h in hist if key in h]
-            # A group that is identically machine-zero must NOT be drawn on the same log axis.
-            # `pde_compat` is exactly that for every architecture whose Gamma is derived from h,
-            # and history.json's first row carries 7.77e-37: the axis then spans 37 decades and
-            # every other curve lies flat against the top edge.  The panel LOOKED empty while
-            # plotting 17 rows with every key present.  A group that is zero is reported as
-            # zero, not scaled into the picture.
-            if ys and max(abs(v) for v in ys) < 1e-25:
-                continue
-            if len(xs) > 1:
-                ax[0, 0].semilogy(xs, ys, label=labels[key], lw=2 if key == "loss" else 1)
-            elif len(xs) == 1:
-                # ONE row is still information; dropping it silently is what made an empty
-                # frame possible in the first place.
-                ax[0, 0].semilogy(xs, ys, "o", label=labels[key], ms=4)
-        ax[0, 0].legend(fontsize=8)
-    if hist:
-        # FIXED Y-LIMITS from the loss's own range.  pq_c200_vac converged to 2.1e-14 with groups
-        # at 1e-16..1e-21, so auto-scaling spanned twenty-one decades and every curve collapsed
-        # into a near-vertical line at the left edge: a frame, a title, and an empty interior.
-        # The groups are still drawn; they are simply not allowed to set the range.
-        _ls = [h["loss"] for h in hist if "loss" in h and h["loss"] > 0]
-        if _ls:
-            ax[0, 0].set_ylim(min(_ls) * 0.5, max(_ls) * 2.0)
-        ax[0, 0].set_title(f"loss history (weighted)   "
-                           f"[{len(hist)} rows from {hist_src}]")
-    else:
-        ax[0, 0].text(0.5, 0.5, "no history: neither history.json\nnor a checkpoint with one",
-                      ha="center", va="center", transform=ax[0, 0].transAxes)
-    ax[0, 0].set_xlabel("step")
-    ax[0, 0].set_ylabel("loss group (mean square)")
+    _draw_loss_history(ax[0, 0], hist, hist_src, pde_keys, labels)
 
     # ------------------------------------------------------------- radial profiles
     rhos = jnp.geomspace(cfg.rho_in, cfg.rho_out, 80)
@@ -177,6 +189,19 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
     f = jax.vmap(pf)(xs)
     h_rr = jnp.einsum("nij,ni,nj->n", f.h, nn, nn)
     tang = (jnp.einsum("nii->n", f.h) - h_rr) / 2.0 / rhos**2      # areal radius^2 / rho^2
+
+    # ---------------------------------------------------------------- plot units
+    # PLOTS ARE IN THE PHYSICAL CHART (COMMANDS.md's units convention, recorded in
+    # cfg.vtk_physical_inner): RHO ONLY is converted, rho_phys = factor*rho_chart.  The fields
+    # are left as the run computed them, because they are dimensionless metrics and scalars and
+    # the rescaled run is the SAME COMPUTATION -- this is exactly what vtk.py does
+    # (`xs_chart = xs_phys / factor` with the fields untouched), so the two cannot disagree.
+    # Dividing h_rr by factor^2 here was wrong and made the h_rr panel read ~1e-5 against its
+    # own asymptote of 1.0: h is not a length^2 in this formulation, it is the metric.
+    # Curvatures DO have units (K has length^-4) and only plane.py converts those.
+    from .problem import physical_factor
+    factor = physical_factor(cfg)
+    rho_plot = rhos * factor
 
     has_ref = exact_fields is not None
     ref = jax.vmap(exact_fields)(xs) if has_ref else None
@@ -192,58 +217,58 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
                 "spherical reference (departure, not a target)") if has_ref else \
                "reference (none for this run)"
 
-    ax[0, 1].plot(rhos, f.lam, "C0-", lw=2, label="PINN")
+    ax[0, 1].plot(rho_plot, f.lam, "C0-", lw=2, label="PINN")
     if has_ref:
-        ax[0, 1].plot(rhos, ref.lam, "k--", label=ref_name)
+        ax[0, 1].plot(rho_plot, ref.lam, "k--", label=ref_name)
     ax[0, 1].axhline(lam_inf, color="grey", ls=":", label=fr"$\lambda_\infty={lam_inf:g}$")
     ax[0, 1].axhline(cfg.lam0, color="grey", ls="-.", alpha=0.6, label=fr"$\lambda_0={cfg.lam0:g}$")
     ax[0, 1].set_title(r"$\lambda$ along $\theta=0$")
-    ax[0, 1].set_xlabel(r"$\rho$")
+    ax[0, 1].set_xlabel(r"$\rho$ (physical)")
     ax[0, 1].set_ylabel(r"$\lambda$")
     ax[0, 1].legend(fontsize=8)
 
-    ax[0, 2].plot(rhos, h_rr, "C0-", lw=2, label="PINN")
+    ax[0, 2].plot(rho_plot, h_rr, "C0-", lw=2, label="PINN")
     if has_ref:
-        ax[0, 2].plot(rhos, r_hrr, "k--", label=ref_name)
+        ax[0, 2].plot(rho_plot, r_hrr, "k--", label=ref_name)
     ax[0, 2].set_title(r"$h_{\rho\rho}=\lambda$-independent normal component")
-    ax[0, 2].set_xlabel(r"$\rho$")
+    ax[0, 2].set_xlabel(r"$\rho$ (physical)")
     ax[0, 2].set_ylabel(r"$h_{rr}$")
     ax[0, 2].legend(fontsize=8)
 
-    ax[1, 0].plot(rhos, tang, "C0-", lw=2, label="PINN")
+    ax[1, 0].plot(rho_plot, tang, "C0-", lw=2, label="PINN")
     if has_ref:
-        ax[1, 0].plot(rhos, r_tang, "k--", label=ref_name)
-    ax[1, 0].axvline(cfg.rho_in, color="grey", alpha=0.4)
+        ax[1, 0].plot(rho_plot, r_tang, "k--", label=ref_name)
+    ax[1, 0].axvline(cfg.rho_in * factor, color="grey", alpha=0.4)
     ax[1, 0].set_title(r"tangential metric: (areal radius)$^2/\rho^2$")
-    ax[1, 0].set_xlabel(r"$\rho$")
+    ax[1, 0].set_xlabel(r"$\rho$ (physical)")
     ax[1, 0].set_ylabel(r"$\alpha$  (1 = flat, $\rho_{in}^2$ at the inner sphere)")
     ax[1, 0].legend(fontsize=8)
 
     # ------------------------------------------------------------ 5. error vs rho
     if has_ref and not departure_only:
-        ax[1, 1].loglog(rhos, jnp.abs(f.lam - ref.lam) + 1e-18, label=r"$|\Delta\lambda|$")
-        ax[1, 1].loglog(rhos, jnp.abs(h_rr - r_hrr) + 1e-18, label=r"$|\Delta h_{rr}|$")
-        ax[1, 1].loglog(rhos, jnp.abs(tang - r_tang) + 1e-18, label=r"$|\Delta\alpha|$")
+        ax[1, 1].loglog(rho_plot, jnp.abs(f.lam - ref.lam) + 1e-18, label=r"$|\Delta\lambda|$")
+        ax[1, 1].loglog(rho_plot, jnp.abs(h_rr - r_hrr) + 1e-18, label=r"$|\Delta h_{rr}|$")
+        ax[1, 1].loglog(rho_plot, jnp.abs(tang - r_tang) + 1e-18, label=r"$|\Delta\alpha|$")
         ax[1, 1].set_title("pointwise error against the exact reference")
     elif has_ref:
         # Not an error panel.  This run's inner data are angular and the reference is
         # symmetric, so it is not a solution of this problem: the curves say how far the
         # solution has left the spherical one, and a reader must not take them for accuracy.
-        ax[1, 1].loglog(rhos, jnp.abs(f.lam - ref.lam) + 1e-18,
+        ax[1, 1].loglog(rho_plot, jnp.abs(f.lam - ref.lam) + 1e-18,
                         label=r"departure $|\lambda-\lambda_{sph}|$")
-        ax[1, 1].loglog(rhos, jnp.abs(h_rr - r_hrr) + 1e-18,
+        ax[1, 1].loglog(rho_plot, jnp.abs(h_rr - r_hrr) + 1e-18,
                         label=r"departure $|\Delta h_{rr}|$")
-        ax[1, 1].loglog(rhos, jnp.abs(tang - r_tang) + 1e-18,
+        ax[1, 1].loglog(rho_plot, jnp.abs(tang - r_tang) + 1e-18,
                         label=r"departure $|\Delta\alpha|$")
-        ax[1, 1].loglog(rhos, jnp.abs(f.lam - lam_inf) + 1e-18,
+        ax[1, 1].loglog(rho_plot, jnp.abs(f.lam - lam_inf) + 1e-18,
                         label=r"$|\lambda-\lambda_\infty|$")
         ax[1, 1].set_title("DEPARTURE from the spherical reference, not error\n"
                            "(no exact solution exists for angular inner data)")
     else:
-        ax[1, 1].loglog(rhos, jnp.abs(f.lam - lam_inf) + 1e-18,
+        ax[1, 1].loglog(rho_plot, jnp.abs(f.lam - lam_inf) + 1e-18,
                         label=fr"$|\lambda-\lambda_\infty|$")
         ax[1, 1].set_title(r"distance from $\lambda_\infty$ (no reference for this run)")
-    ax[1, 1].set_xlabel(r"$\rho$")
+    ax[1, 1].set_xlabel(r"$\rho$ (physical)")
     ax[1, 1].set_ylabel("absolute difference")
     ax[1, 1].legend(fontsize=8)
 
@@ -251,10 +276,10 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
     res = jax.vmap(lambda x: residuals_batch(pf, x[None, :]))(xs)
     res = jax.tree.map(lambda a: a[:, 0], res)
     for key, lab in ((k[4:], labels.get(k, k[4:])) for k in pde_keys):
-        ax[1, 2].loglog(rhos, jnp.max(jnp.abs(res[key]), axis=tuple(range(1, res[key].ndim)))
+        ax[1, 2].loglog(rho_plot, jnp.max(jnp.abs(res[key]), axis=tuple(range(1, res[key].ndim)))
                         + 1e-18, label=lab)
     ax[1, 2].set_title("PDE residuals (max over components), raw units")
-    ax[1, 2].set_xlabel(r"$\rho$")
+    ax[1, 2].set_xlabel(r"$\rho$ (physical)")
     ax[1, 2].set_ylabel("residual")
     ax[1, 2].legend(fontsize=8)
 
@@ -274,7 +299,8 @@ def _plots(run_dir, cfg, pf, exact_fields, report, model=None):
     for a in ax.ravel():
         a.grid(alpha=0.3)
     fig.suptitle(f"{name}   (arch={cfg.arch}, "
-                 fr"$\rho\in[{cfg.rho_in:g},{cfg.rho_out:g}]$, "
+                 fr"$\rho\in[{cfg.rho_in * factor:g},{cfg.rho_out * factor:g}]$ physical"
+                 + ("" if factor == 1.0 else f" (chart x {factor:g})") + ", "
                  fr"$\lambda_0={cfg.lam0:g}$, $\lambda_\infty={lam_inf:g}$, "
                  fr"$\bf S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
                  f"Robin order {cfg.robin_orders or cfg.robin_order})"

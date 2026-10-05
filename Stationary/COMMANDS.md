@@ -126,3 +126,11 @@ by 100 -- the fields, the multipoles and the residuals are unchanged, only the a
 The one thing that must agree is `--vtk-physical-inner` with `--rho-in`: equal when the chart IS
 physical, the physical value otherwise.  Getting it wrong mislabels the VTK and plane axes and
 nothing else, which is what makes it easy to miss.
+
+**The figures follow the same rule: rho is converted, the fields are not.**  `evaluate.py` and
+`profile.py` draw rho as `factor * rho_chart` (factor = `vtk_physical_inner/rho_in`, 200 for
+pq_c200_vac, so its panels read rho in [1, 200]) and leave lambda and h exactly as the run
+computed them, which is what `vtk.py` does (`xs_chart = xs_phys / factor`).  They must not be
+rescaled: h is a dimensionless metric in this formulation, not a length^2, and dividing it by
+factor^2 made the h_rr panel read 1e-5 against its own asymptote of 1.0.  Curvature is the
+exception, because it does carry units: `plane.py` divides it by factor^4.

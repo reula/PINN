@@ -403,6 +403,20 @@ def reference_is_departure_only(cfg) -> bool:
     return bool(getattr(cfg, "lam_bc_S1", 0.0) or getattr(cfg, "lam_bc_S2", 0.0))
 
 
+def physical_factor(cfg, override=None):
+    """Chart units per physical unit: rho_phys = factor * rho_chart.
+
+    The problem is scale invariant at a fixed shell ratio, so a run may be done in any chart;
+    `cfg.vtk_physical_inner` records the inner radius in the units the OUTPUT is drawn in
+    (`--vtk-physical-inner`, default 1.0 = the COMMANDS.md convention).  Everything that
+    converts a chart number to a physical one goes through here, so the figures, the tables and
+    the VTK cannot disagree about which chart they are in.  pq_c200_vac has rho_in = 0.005 and
+    vtk_physical_inner = 1.0, so its plots belong in rho in [1, 200], a factor of 200.
+    """
+    r_in = float(cfg.vtk_physical_inner if override is None else override)
+    return r_in / float(cfg.rho_in)
+
+
 def lam_inner_bc(x, cfg):
     """lambda prescribed on the inner sphere:
 

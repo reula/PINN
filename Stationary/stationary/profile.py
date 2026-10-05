@@ -77,6 +77,16 @@ def main():
     thetas = tuple(float(t) for t in a.thetas.split(","))
     rhos, curves, hrr_curves = profile(pf, cfg, a.n_rho, thetas)
 
+    # ---------------------------------------------------------------- plot units
+    # FIGURES AND TABLES ARE IN THE PHYSICAL CHART (COMMANDS.md's units convention, recorded in
+    # cfg.vtk_physical_inner): RHO ONLY, rho_phys = factor*rho_chart.  The fields stay as the
+    # run computed them -- lambda and h are dimensionless and the rescaled run is the same
+    # computation (vtk.py does exactly this) -- so h_rr still approaches its asymptote 1.0.
+    from .problem import physical_factor
+    factor = physical_factor(cfg)
+    rho_plot = rhos * factor
+    hrr_plot = {th: hrr_curves[th] for th in hrr_curves}
+
     # reference, when the run is one that has one
     ref = None
     if getattr(cfg, "ref_asymptotic", None) is not None:
@@ -94,10 +104,10 @@ def main():
     ref_label = ("spherical reference (departure, not a target)" if departure_only
                  else "exact reference")
     for th, lam in curves.items():
-        ax[0].plot(rhos, lam, label=fr"$\theta={th:.2f}$")
+        ax[0].plot(rho_plot, lam, label=fr"$\theta={th:.2f}$")
     if ref is not None:
         lam_ref = profile(ref, cfg, a.n_rho, (thetas[0],))[1][thetas[0]]
-        ax[0].plot(rhos, lam_ref, "k--", lw=1.5, label=ref_label)
+        ax[0].plot(rho_plot, lam_ref, "k--", lw=1.5, label=ref_label)
     if ref is not None:
         # The reference is rebuilt from cfg.R0; if that R0 is not the one the run was
         # actually built with, its lambda on the inner sphere will not match lam0 and
@@ -114,9 +124,9 @@ def main():
     ax[0].axhline(lam_inf, color="grey", ls=":", label=fr"$\lambda_\infty={lam_inf:g}$")
     ax[0].axhline(cfg.lam0, color="grey", ls="-.", alpha=0.6, label=fr"$\lambda_0={cfg.lam0:g}$")
     ax[0].set_xscale("log")
-    ax[0].set_xlabel(r"$\rho$")
+    ax[0].set_xlabel(r"$\rho$ (physical)")
     ax[0].set_ylabel(r"$\lambda(\rho)$")
-    ax[0].set_title(f"$\\lambda$ vs $\\rho$   ({os.path.basename(os.path.normpath(run_dir))})   "
+    ax[0].set_title(f"$\\lambda$ vs $\\rho$ (physical, chart x {factor:g})   ({os.path.basename(os.path.normpath(run_dir))})   "
                     f"$\\lambda_0={cfg.lam0:g}$, $S_1={cfg.lam_bc_S1:g}$, "
                     f"$S_2={cfg.lam_bc_S2:g}$")
     ax[0].legend(fontsize=8)
@@ -125,12 +135,12 @@ def main():
     for th, lam in curves.items():
         if ref is not None:
             lam_ref = profile(ref, cfg, a.n_rho, (th,))[1][th]
-            ax[1].semilogy(rhos, jnp.abs(lam - lam_ref) + 1e-18, label=fr"$\theta={th:.2f}$")
+            ax[1].semilogy(rho_plot, jnp.abs(lam - lam_ref) + 1e-18, label=fr"$\theta={th:.2f}$")
     if ref is None:
-        ax[1].semilogy(rhos, jnp.abs(profile(pf, cfg, a.n_rho, (thetas[0],))[1][thetas[0]] - lam_inf),
+        ax[1].semilogy(rho_plot, jnp.abs(profile(pf, cfg, a.n_rho, (thetas[0],))[1][thetas[0]] - lam_inf),
                        label=fr"$|\lambda-\lambda_\infty|$")
     ax[1].set_xscale("log")
-    ax[1].set_xlabel(r"$\rho$")
+    ax[1].set_xlabel(r"$\rho$ (physical)")
     ax[1].set_ylabel(r"$|\lambda-\lambda_{\rm sph}|$ (departure)" if departure_only
                      else r"$|\lambda-\lambda_{\rm ref}|$")
     if ref is None:
@@ -156,30 +166,31 @@ def main():
     # below, which shows the left panel alone and predates this.
     fig3, ax3 = plt.subplots(1, 2, figsize=(12, 4.6))
     for th in thetas:
-        ax3[0].semilogx(rhos, curves[th], label=fr"$\lambda(\theta={th:.2f})$")
-        ax3[1].semilogx(rhos, hrr_curves[th], label=fr"$h_{{\rho\rho}}(\theta={th:.2f})$")
+        ax3[0].semilogx(rho_plot, curves[th], label=fr"$\lambda(\theta={th:.2f})$")
+        ax3[1].semilogx(rho_plot, hrr_plot[th], label=fr"$h_{{\rho\rho}}(\theta={th:.2f})$")
     ax3[1].axhline(1.0, color="grey", ls=":", lw=1)
     ax3[0].set_ylabel(r"$\lambda$"); ax3[1].set_ylabel(r"$h_{\rho\rho}$")
-    ax3[0].set_title("lambda against rho"); ax3[1].set_title("h_rr against rho")
+    ax3[0].set_title(f"lambda against rho (physical, chart x {factor:g})")
+    ax3[1].set_title(f"h_rr against rho (physical rho, chart x {factor:g})")
     # `axp`, NOT `a`: `a` is the argparse Namespace, and rebinding it here made every later
     # `a.no_table` an AttributeError on an Axes object -- masked in every check I ran because
     # `... | tail` reports tail's exit status, not python's.
     for axp in ax3:
-        axp.set_xlabel(r"$\rho$"); axp.legend(fontsize=8); axp.grid(alpha=0.3)
+        axp.set_xlabel(r"$\rho$ (physical)"); axp.legend(fontsize=8); axp.grid(alpha=0.3)
     out3 = os.path.join(run_dir, "profiles_vs_rho.png")
     fig3.tight_layout(); fig3.savefig(out3, dpi=120)
     print(f"[profile] wrote {out3}")
-    print(f"\n{'rho':>10} " + " ".join(f"{'h_rr(th=%.2f)' % th:>15}" for th in thetas))
+    print(f"\n{'rho(phys)':>10} " + " ".join(f"{'h_rr(th=%.2f)' % th:>15}" for th in thetas))
     step3 = max(1, len(rhos) // 12)
     for i in range(0, len(rhos), step3):
-        print(f"{float(rhos[i]):10.4f} " +
-              " ".join(f"{float(hrr_curves[th][i]):15.7f}" for th in thetas))
+        print(f"{float(rho_plot[i]):10.4f} " +
+              " ".join(f"{float(hrr_plot[th][i]):15.7f}" for th in thetas))
 
     if not a.no_table:
-        print(f"\n{'rho':>10} " + " ".join(f"{'lam(th=%.2f)' % th:>14}" for th in curves))
+        print(f"\n{'rho(phys)':>10} " + " ".join(f"{'lam(th=%.2f)' % th:>14}" for th in curves))
         step = max(1, len(rhos) // 18)
         for i in range(0, len(rhos), step):
-            print(f"{float(rhos[i]):10.4f} " +
+            print(f"{float(rho_plot[i]):10.4f} " +
                   " ".join(f"{float(curves[th][i]):14.7f}" for th in curves))
 
 

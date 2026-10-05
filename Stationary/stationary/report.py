@@ -32,6 +32,7 @@ import jax.numpy as jnp
 from . import exact
 from .diagnostics import inner_boundary_report
 from .evaluate import load_run
+from .multipoles import inner_constants, multipole_constants, multipole_table
 from .invariants import family_params_from_solution
 from .geometry import pack_gamma, pack_sym, residuals_batch
 from .geometry_invariants import format_geometry, geometry_report, sphere_geometry
@@ -375,7 +376,7 @@ def main():
         print(f"{rho:>10.4f} {vals[0]:>14.7f} {vals[1]:>12.7f}")
 
     # ---------------------------------------------------------------- multipoles
-    _section(f"MULTIPOLES OF lambda AT rho = {cfg.rho_out:g}")
+    _section(f"MULTIPOLES OF lambda AT rho = {cfg.rho_out * (float(getattr(cfg, 'vtk_physical_inner', 1.0)) / float(cfg.rho_in)):g} (physical)")
     coef, power, _ = lambda_multipoles(pf, cfg.rho_out, lmax=3)
     # coefficients are in the real-SH basis with Y_00 = 1/sqrt(4 pi), so a_00 is the mean
     # of lambda only up to that factor; print the mean itself, it is the readable number.
@@ -399,6 +400,39 @@ def main():
                 print(f"      l={l}: fitted {f: .3f}   expected {prof[l]['expected_power']}")
     except Exception as exc:
         print(f"    decay fit skipped: {exc}")
+
+    # ------------------------------------------------- the radius-independent coefficient
+    # The amplitude above is NOT comparable with the inner data: it carries the rho^-(l+1) of
+    # the radius it was measured at, while the data are imposed with the power 1/rho^l.  The
+    # comparable object is the CONSTANT in front of the exact multipole,
+    #
+    #     lambda - lambda_inf = sum_lm S_lm Y_lm / rho^(l+1),        S_lm constant,
+    #
+    # with the same formula applied to the imposed inner data at rho_in (see
+    # multipoles.inner_constants).  A correct tail keeps it flat AND equal to the inner value;
+    # pq_c200_vac does neither, which is how a quadrupole 12x the physical one was visible only
+    # through a fitted power before.
+    try:
+        factor = float(getattr(cfg, "vtk_physical_inner", 1.0)) / float(cfg.rho_in)
+        rhos = [float(cfg.rho_in) * (float(cfg.rho_out) / float(cfg.rho_in)) ** (i / 5.0)
+                for i in range(6)]
+        const = multipole_constants(pf, rhos, lmax=3, lam_inf=lam_inf, factor=factor)
+        inner = inner_constants(cfg, lmax=3, factor=factor)
+        r_phys = const["r_phys"]
+        print(f"    as constants in front of Y_lm/rho^(l+1), rho PHYSICAL "
+              f"(chart x {factor:g}, rho_in_phys = {cfg.rho_in * factor:g}); rho = "
+              + " ".join(f"{r:.4g}" for r in r_phys))
+        # The exact reference through the SAME estimator, so a drift can be read rather than
+        # guessed: it is a departure baseline when the run's inner data are angular (the
+        # spherical solution is not a solution of that problem) and the honest comparison for
+        # the monopole either way.
+        exact_const = (multipole_constants(lambda q: bc_exact(jnp.asarray(q)), rhos,
+                                           lmax=3, lam_inf=lam_inf, factor=factor)
+                       if bc_exact is not None else None)
+        for line in multipole_table(const, inner, exact_const, lmax=3):
+            print(line)
+    except Exception as exc:
+        print(f"    S_lm table skipped: {exc}")
 
     # ---------------------------------------------------------------- residuals
     _section("PDE RESIDUALS (raw units)")
