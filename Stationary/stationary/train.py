@@ -489,6 +489,37 @@ def _device_memory():
         return None, None
 
 
+def _rss_mb():
+    """This process's resident set in MiB, or None where /proc is not readable.
+
+    The companion to `_map_budget`, and the one that actually kills a long quasi-Newton phase
+    on the GPU: every block costs ~1 mapping but ~280 MB of RSS (COMMANDS.md section 5), so a
+    run that leaks per block fills the NODE long before it fills the kernel's mapping budget.
+    pq_c100_vac reached 32 GB that way while its maps stayed at 3556 of 65530, and the
+    first-block warning -- which watched maps only -- never spoke.
+    """
+    try:
+        with open("/proc/self/status") as fh:
+            for ln in fh:
+                if ln.startswith("VmRSS:"):
+                    return int(ln.split()[1]) // 1024
+    except OSError:
+        pass
+    return None
+
+
+def _mem_total_mb():
+    """MemTotal in MiB, or None: the headroom an RSS leak is spending."""
+    try:
+        with open("/proc/meminfo") as fh:
+            for ln in fh:
+                if ln.startswith("MemTotal:"):
+                    return int(ln.split()[1]) // 1024
+    except OSError:
+        pass
+    return None
+
+
 def _dev_str() -> str:
     """`dev=in/limit GiB` for a log line, or "" where the backend does not report it."""
     u, lim = _device_memory()
@@ -752,6 +783,14 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     H = (jnp.asarray(start_H, dtype=flat0.dtype) if start_H is not None
          else jnp.eye(n, dtype=flat0.dtype))
     maps_start, maps_limit = _map_budget()
+    # Blocks that FAILED the line search and returned the loss unchanged.  Crunch returns the
+    # input state on a failed search, so such a block is not slow progress, it is NO progress;
+    # a few in a row mean the phase cannot move and should say so instead of grinding out
+    # n_blocks (pq_c100_vac: 120 blocks, every one status 3, the loss bit-identical at
+    # 2.213840e-02, RSS +268 MB per block to 32 GB).
+    fail_streak = 0
+    stop_reason = "cap"
+    stopped_on_stall = False
     if verbose and maps_start is not None:
         # BEFORE the first block, and that is the point: the phase's first block compiles the
         # objective (jit_fun) and the line search, and a run that dies IN that compile used to
@@ -779,6 +818,10 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     # It ran eight before this: the cap was recomputed from zero, so every resume bought
     # another full budget and a resumed run overran by exactly what it had already done.
     n_blocks = int(_math.ceil(max(0, int(cfg.lbfgs_steps) - start_total) / block))
+    # `--lbfgs-steps 0` (or a resume that owes nothing) leaves the loop with no iterations at
+    # all, and the summary after it refers to `b`: bind it here so the phase still REPORTS
+    # rather than dying with NameError on the one path that has no blocks to report on.
+    b = -1
     # The opening row MEASURES the state the phase starts from.  On a fresh start that is the
     # state after Adam, i.e. step cfg.steps + 1; on a resume it is the state at the iteration
     # the checkpoint carries, so it takes that step rather than one past it -- otherwise a
@@ -852,10 +895,18 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             H = jnp.eye(n, dtype=flat0.dtype)
         if b == 0 and maps_start is not None:
             maps_pre, _ = _map_budget()
+            rss_pre = _rss_mb()
             print(f"[qn]   entering block 1 (this is where jit_fun compiles): "
-                  f"maps={maps_pre}" + _dev_str(), flush=True)
+                  f"maps={maps_pre}  rss={rss_pre}MB" + _dev_str(), flush=True)
         # the data-before-shape rule: same shapes, new values, no recompilation
-        res = minimize(lambda flat: fun(flat, batch, weights), x, args=(), method="BFGS",
+        f_before = f
+        # The objective HANDED TO CRUNCH is jitted, not only the one inside it: Crunch calls
+        # `jax.value_and_grad(fun)(x0)` itself, and a plain lambda there leaves that
+        # unjitted from its point of view -- which is the 56x and the fragmented allocator
+        # that test_qn_phase.py::test_the_objective_handed_to_crunch_is_jitted is about.
+        # It was failing on HEAD for exactly this: the inner objective carried @jax.jit,
+        # the wrapper did not, so the property the test asserts did not hold.
+        res = minimize(jax.jit(lambda flat: fun(flat, batch, weights)), x, args=(), method="BFGS",
                        options={"maxiter": block, "gtol": cfg.qn_gtol,
                                 "initial_H": H,
                                 # initial_scale engages SSBroyden's tau_k^A: without it the
@@ -863,9 +914,13 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                                 # cannot bracket when the Adam warm-up has left the gradient
                                 # large (measured: zero iterations, status 3 "zoom failed").
                                 # Later blocks carry a real H, so it is not needed there --
-                                # nor after a reweight, where H has been reset to I.
+                                # nor after a reweight, where H has been reset to I.  It IS needed again after a FAILED
+                                # block: that is the one case where H is known to be
+                                # useless (the guard below refuses the failed call's
+                                # estimate), so the phase would otherwise retry with the
+                                # same I and the same unscaled first step that failed.
                                 "update_method": "ssbroyden2",
-                                "initial_scale": (b == 0 or reweighted)})
+                                "initial_scale": (b == 0 or reweighted or fail_streak > 0)})
         if b == 0 and maps_start is not None:
             m, _ = _map_budget()
             # the delta ACROSS the first minimize call: that one call compiles jit_fun and the
@@ -875,10 +930,15 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                   f"took maps {maps_start} -> {m})" + _dev_str(), flush=True)
         x = res.x
         f = float(res.fun)
-        if res.hess_inv is not None:
-            H = res.hess_inv
         total += int(res.nit)
         status = int(res.status)
+        # A FAILED BLOCK'S HESSIAN IS NOT INFORMATION.  Crunch returns the state unchanged on a
+        # failed line search and hands back a hess_inv with it; accepting that estimate is how
+        # pq_c100_vac turned ONE bad block into 120.  Every later block then started from the
+        # failed call's H, took ZERO iterations and failed again -- the "49 iterations" on 109
+        # consecutive lines is the cumulative counter, frozen at 500 Adam + 49.
+        if status == 0 and res.hess_inv is not None:
+            H = res.hess_inv
         o, parts_b = outer_res(x)
         losses.append(f)
         outers.append(o)
@@ -892,6 +952,19 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             # it is MEASURED on this run's first block rather than assumed.  Said once, before
             # the run wastes an hour dying at block 23 for the fourth time.
             maps_now, _ = _map_budget()
+            rss_now, mem_total = _rss_mb(), _mem_total_mb()
+            if rss_now is not None and rss_pre is not None and mem_total:
+                rss_cost = rss_now - rss_pre
+                if rss_cost > 0 and rss_now + rss_cost * (n_blocks - 1) > 0.9 * mem_total:
+                    print(f"[qn] WARNING: RSS grew {rss_cost} MB in this block and is "
+                          f"{rss_now} MB of {mem_total} MB; the {n_blocks - 1} blocks still "
+                          f"planned project to {rss_now + rss_cost * (n_blocks - 1)} MB.",
+                          flush=True)
+                    print(f"[qn]   The NODE, not the kernel, is what runs out: the mapping "
+                          f"budget is a separate limit and may be nowhere near full.  Fewer, "
+                          f"larger blocks do not help RSS the way they help maps -- what helps "
+                          f"is fewer blocks: a longer Adam phase, or a larger --qn-block with "
+                          f"a smaller --lbfgs-steps.", flush=True)
             cost = (maps_now or 0) - maps_start
             if cost > 0:
                 room = (maps_limit - maps_now) // cost
@@ -917,14 +990,9 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                     res.append(f"maps={sum(1 for _ in fh)}")
             except OSError:
                 pass
-            try:
-                with open("/proc/self/status") as fh:
-                    for ln in fh:
-                        if ln.startswith("VmRSS:"):
-                            res.append(f"rss={int(ln.split()[1]) // 1024}MB")
-                            break
-            except OSError:
-                pass
+            _r = _rss_mb()
+            if _r is not None:
+                res.append(f"rss={_r}MB")
             if (d := _dev_str()):
                 res.append(d.strip())
             print(f"[qn]   resources: {'  '.join(res)}", flush=True)
@@ -944,7 +1012,27 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                   + (f"  pin={pins:.2e}" if pins else "")
                   + f"  (status {status})", flush=True)
         pat = int(cfg.plateau_patience)
+        # A PHASE THAT CANNOT MOVE MUST SAY SO AND STOP, and this is NOT gated by
+        # `plateau_min_iters`: a stalled phase is not warm-up.  The plateau rule below misses
+        # exactly this case -- it needs `total >= plateau_min_iters`, and `total` is the very
+        # counter a failed block does not advance (frozen at 49 of 100 for pq_c100_vac), and it
+        # asks for a 1% improvement on a best that a no-op block cannot beat.  So count the
+        # blocks that failed AND changed nothing, and stop on those.
+        fail_streak = fail_streak + 1 if (status != 0 and f >= f_before) else 0
+        if fail_streak >= pat:
+            stop_reason = "stall"
+            stopped_on_stall = True
+            print(f"[qn] STOPPING: {fail_streak} consecutive blocks failed the line search "
+                  f"(status {status}) and returned the loss unchanged ({f:.6e}) after {total} "
+                  f"iterations in total: this phase cannot move from here.", flush=True)
+            print(f"[qn]   Look at the block lines above for the group that dominates the loss "
+                  f"-- one boundary group far above the others is what a line search cannot "
+                  f"bracket.  More Adam before the phase, a larger --qn-block, or relaxing that "
+                  f"group's weight are the levers; relaunching identically reproduces this.",
+                  flush=True)
+            break
         if status == 0:
+            stop_reason = "converged"
             break
         # BEST SO FAR, not "better than `pat` blocks ago".  On a FIXED sample a transient rise
         # is not a plateau, and the previous form stopped on the first one: measured on
@@ -962,6 +1050,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             best_o = op
         if total >= cfg.plateau_min_iters and len(plosses) - 1 - best_at > pat:
                 stopped_on_plateau = True
+                stop_reason = "plateau"
                 if verbose:
                     print(f"[qn] plateaued: no new best for {pat} blocks"
                           f" (best loss {best_f:.6e} at block {best_at}, "
@@ -975,9 +1064,12 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     # when block 1 had reached 3.986826e-06, and with pin_h_rr 6.53e-06 against 9.64e-07 at the
     # previous stop.  `best_x` is the field that set the fixed-sample best whose absence the
     # plateau rule detected, so it is the field that rule is about.
-    # ONLY on a plateau stop.  At the iteration cap the restoration is actively wrong: at
-    # ratio 200 it kept block 10 (training loss 1.49e-05) over the cap's 7.45e-06.
-    if best_x is not None and stopped_on_plateau:
+    # On a plateau stop AND on a stall: both mean the phase could not improve any further, so
+    # the best field it saw is the one to keep -- and in the stalled case (pq_c100_vac) the best
+    # field and the frozen one are the same, so this is a no-op there.  NOT at the iteration cap,
+    # where the restoration is actively wrong: at ratio 200 it kept block 10 (training loss
+    # 1.49e-05) over the cap's 7.45e-06.
+    if best_x is not None and (stopped_on_plateau or stopped_on_stall):
         if verbose:
             print(f"[qn] restored the best field seen (fixed-sample loss {best_f:.6e}); "
                   f"the last block's was {f:.6e}", flush=True)
@@ -991,7 +1083,8 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     if verbose:
         print(f"[qn] SSBroyden: loss {losses[0]:.6e} -> {f:.6e} in {total} iterations "
               f"({time.time() - t0:.1f}s, status {status}, "
-              f"converged={status == 0}, stopped={total < cfg.lbfgs_steps})", flush=True)
+              f"converged={status == 0}, stopped={b + 1 < n_blocks}, "
+              f"stop={stop_reason})", flush=True)
     return state, history, weights
 
 

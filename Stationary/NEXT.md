@@ -215,11 +215,16 @@ The phase's own failure mode is what turned one bad state into 120 wasted blocks
   RSS, +268 MB per block, the GPU figure in COMMANDS.md section 5.  A stalled phase therefore eats
   the node before the warning speaks.
 
-Fix worth making before the next long run: do not accept `hess_inv` when `status != 0`, re-engage
-`initial_scale` after a failed block, and STOP with a message after a few consecutive status-3
-blocks with no loss change.  Separately: the warm-up needs looking at for this chart -- the same
-500 Adam steps left the twin's metric 27x better, so what changed is the loss balance the Adam
-phase sees, not the condition it is aiming at.
+FIXED (train.py, tests/test_qn_stall.py): `hess_inv` is refused when `status != 0`, `initial_scale`
+is re-engaged after a failed block, a stall stops the phase after `plateau_patience` blocks that
+failed AND changed nothing (ungated -- a stalled phase is not warm-up), the best field is restored
+on that stop as on a plateau one, the summary prints `stop=cap|plateau|converged|stall` and a
+block-based `stopped=` instead of the `total < lbfgs_steps` that lies when blocks return nit = 0,
+and the first-block warning projects RSS against MemTotal as well as maps against the kernel's
+limit.  Still open for this chart: WHY the same 500 Adam steps leave the metric 27x worse -- the
+loss balance the Adam phase sees, not the condition it aims at.  A warm-up-only run measures it:
+`--steps 5000 --lbfgs-steps 0` on the same flags (that path is exercised now, see the `b = -1`
+guard) and compare `outer_h` with the 4.07e+02 left at 500 steps.
 
 ## What the experiment found
 
