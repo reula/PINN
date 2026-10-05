@@ -182,6 +182,45 @@ With rho_in = 1 and vtk_physical_inner = 1 the factor is 1, so the figures and t
 come out in [1, 100] directly, needing no rescaling -- and S_20's inner-data value to compare
 against is the SAME -0.1321 as before, since the imposed angular data are unchanged.
 
+## pq_c100_vac stalled in its quasi-Newton phase: where it is NOT
+
+The twin was launched and its quasi-Newton phase did nothing: 109+ blocks, every one `status 3`,
+TWO distinct loss values in the whole log, the recorded step frozen at 549 (500 Adam + 49) so the
+plateau gate could never fire, and RSS climbing +268 MB per block to 32 GB.  Bisected before
+blaming the new geometry -- the outer Robin residual, split into its two terms, on four states:
+
+| state | rho_phys | h term | lam term |
+|---|---|---|---|
+| stalled pq_c100_vac | 100 | 4.071e+02 | 9.7e-06 |
+| its exact reference | 100 | 4.3e-21 | 6.0e-16 |
+| converged pq_c200_vac, at its own rho_out | 200 | 9.7e-10 | 1.0e-17 |
+| converged pq_c200_vac, at physical rho = 100 | 100 | 7.0e-10 | 8.7e-09 |
+
+So the condition is FINE at rho_out = 100: the exact solution satisfies it to 6e-16 and a
+converged network of the same problem satisfies it at that radius to 9e-9.  The whole 4.07e2 is
+the metric term, and it is a property of the post-Adam STATE -- 27x worse than the twin's at the
+same stage.  Nothing about the chart, the Robin orders or the outer radius is implicated.
+
+The phase's own failure mode is what turned one bad state into 120 wasted blocks:
+
+* block 1 runs 49 iterations, the line search fails (`status 3`) and Crunch returns the INPUT
+  state, so the loss is bit-identical from then on;
+* `if res.hess_inv is not None: H = res.hess_inv` then accepts the FAILED call's Hessian with no
+  status guard, and `initial_scale` is engaged only for `b == 0`, so every later block takes ZERO
+  iterations (the "49 iterations" printed on each line is the cumulative counter, which is why it
+  never moves);
+* the plateau test compares the loss, which cannot change, behind a `plateau_min_iters` gate that
+  the frozen counter never passes -- so the run grinds out all ceil(30000/250) = 120 blocks;
+* the first-block warning watches the MAPS budget (never at risk: 3556/65530) while what grows is
+  RSS, +268 MB per block, the GPU figure in COMMANDS.md section 5.  A stalled phase therefore eats
+  the node before the warning speaks.
+
+Fix worth making before the next long run: do not accept `hess_inv` when `status != 0`, re-engage
+`initial_scale` after a failed block, and STOP with a message after a few consecutive status-3
+blocks with no loss change.  Separately: the warm-up needs looking at for this chart -- the same
+500 Adam steps left the twin's metric 27x better, so what changed is the loss balance the Adam
+phase sees, not the condition it is aiming at.
+
 ## What the experiment found
 
 `pq_c200_vac` (`--ricci-lam-source 0`, metric boundary data off) relaxed to a near-vacuum metric --
