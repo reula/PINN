@@ -96,6 +96,61 @@ class _Tee:
         self.fh.flush()
 
 
+def unfinished(run_dir):
+    """A banner when the TRAINING that produced this run did not exit 0.
+
+    run_hub.sh writes `<run>/run.status` before post-processing, and it post-processes a crashed
+    training ON PURPOSE -- a run that dies in its first quasi-Newton block still has a
+    checkpoint and a trajectory worth reading.  What must not happen is that its report reads
+    like a finished one: pq_c100_vac3 died of a device OOM inside block 1 and its report.txt was
+    written from the Adam-only state with nothing to say so.
+    """
+    code, where = None, ""
+    status = os.path.join(run_dir, "run.status")
+    if os.path.exists(status):
+        try:
+            with open(status) as fh:
+                st = json.load(fh)
+            code, where = st.get("train_exit"), (f" at {st['at']}" if st.get("at") else "")
+        except Exception:
+            pass
+    exit_code = os.path.join(run_dir, "train.exit")     # run_hub.sh's simpler marker
+    if code is None and os.path.exists(exit_code):
+        try:
+            code = int(open(exit_code).read().strip())
+        except Exception:
+            code = None
+    if code in (None, 0):
+        return None
+    return (f"TRAINING DID NOT FINISH: train exited {code}{where} -- every number below is "
+            f"from an INCOMPLETE run.")
+
+
+def sampling_lines(cfg, log_path=None):
+    """How many points, and how long one batch is used -- the sampling provenance.
+
+    It was in the report only as `n_coll ..., n_bnd ...`: no outer sphere, and nothing at all
+    about the refresh cadence, which is how many iterations share a batch.  Both matter for
+    reproducibility and for reading an error, and the OBSERVED counts come from the log, because
+    a cadence that never fired and one that fired two hundred times look the same in the config.
+    """
+    inner, outer = cfg.n_bnd, (cfg.n_bnd_outer or cfg.n_bnd)
+    lines = [f"sampling       : n_coll {cfg.n_coll} interior (log-radial shell), "
+             f"n_bnd {inner} inner + {outer} outer, scale_ref {cfg.scale_ref}"]
+    res_every = int(getattr(cfg, "resample_every", 0) or 0)
+    tail = (f"one batch for every {res_every} iterations" if res_every > 0
+            else "one batch for the whole phase (no refresh)")
+    if log_path and os.path.exists(log_path):
+        n_res = sum(1 for ln in open(log_path) if ln.startswith("[resample"))
+        n_rw = sum(1 for ln in open(log_path) if ln.startswith("[reweight"))
+        tail += f"; the log shows {n_res} resample line(s) and {n_rw} reweight line(s)"
+    lines.append(f"batch refresh  : resample_every = {res_every} ({tail})")
+    rw = getattr(cfg, "reweight_every", 0)
+    lines.append(f"                 reweight_every = {rw}"
+                 + ("   (off: fixed weights)" if not rw else ""))
+    return lines
+
+
 def _section(title):
     print()
     _line()
@@ -123,6 +178,13 @@ def main():
         p.error("give the run directory, as `--outdir RUN` or as the first argument")
     if a.out:
         sys.stdout = _Tee(a.out)
+    log = a.log or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "logs", os.path.basename(os.path.normpath(run_dir)) + ".log")
+    banner = unfinished(run_dir)
+    if banner:
+        print("!" * 78)
+        print("!! " + banner)
+        print("!" * 78)
 
     cfg, model, state = load_run(run_dir, a.params_file)
     pf = point_fields(model, state["net"])
@@ -212,7 +274,8 @@ def main():
         print(f"radial eq term : w_lam_eq_radial = {cfg.w_lam_eq_radial:g}"
               f"   (rho^3 d/drho of the lambda equation; the run's report.json carries its"
               f" final value as pde_lam_eq_radial)")
-    print(f"sampling       : n_coll {cfg.n_coll}, n_bnd {cfg.n_bnd}, scale_ref {cfg.scale_ref}")
+    for _ln in sampling_lines(cfg, log):
+        print(_ln)
     if qn_known:
         print(f"optimiser      : Adam then {qn_method}"
               f"   blocks of {raw_cfg.get('qn_block', '-')}"
@@ -600,8 +663,6 @@ def main():
         print(f"    skipped: {exc}")
 
     # --------------------------------------------------------------------- log
-    log = a.log or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "logs", os.path.basename(os.path.normpath(run_dir)) + ".log")
     _section("REWEIGHTING HISTORY (from the log, if found)")
     if os.path.exists(log):
         lines = [ln for ln in open(log) if ln.startswith("[reweight")]

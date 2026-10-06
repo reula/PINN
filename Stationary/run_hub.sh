@@ -285,6 +285,14 @@ JOB_SH="$OUTDIR/job.sh"
     echo 'STATUS=$?'
     echo 'echo'
     echo 'echo "== training finished with status $STATUS =="'
+    # RECORD IT.  The post-processing below runs even when the training crashed (on purpose: a
+    # run that died still has a trajectory worth reading), so report.py has to be able to say
+    # that the numbers came from an incomplete one -- pq_c100_vac3 died of a device OOM inside
+    # block 1 and its report read exactly like a finished run's.  The printf's format is
+    # single-quoted so the generator does not expand $STATUS: only the path is substituted.
+    printf 'echo $STATUS > %s\n' "$(printf '%q' "$OUTDIR/train.exit")"
+    printf 'echo "== training exit $STATUS recorded in %s =="\n' "$(printf '%q' "$OUTDIR/train.exit")"
+
     echo "bash $(printf '%q' "$POST") $(printf '%q' "$OUTDIR") $(printf '%q' "$PY") > $(printf '%q' "$POSTLOG") 2>&1"
     echo "echo \"== post-processing -> $POSTLOG ==\""
     echo 'exit $STATUS'

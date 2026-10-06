@@ -174,5 +174,36 @@ Notice that for systems where the energy is conserved ($C=0$) we have linear gro
 What happens now if we impose a growth for $f$ which depends on time? 
 
 
+
+\section{Numerical setup.}
+
+The approximations reported here were obtained with a fully connected network of width 20 and
+depth 6 with $\tanh$ activations whose output is a correction to flat space,
+$h = I + \mathrm{sym}(\cdot)$: the final layer is initialised with standard deviation $10^{-2}$
+and zero bias, so the initial metric is flat to one percent.  The residual is sampled at
+$n_{\mathrm{coll}}$ points in the shell (logarithmically in $\rho$) and $n_{\mathrm{bnd}}$
+points on each of the two coordinate spheres.  The batch is held for
+\texttt{resample\_every} iterations before it is redrawn, and the equation weights are either
+fixed or refreshed every \texttt{reweight\_every} iterations; both numbers matter for reading an
+error, since a residual measured on one batch and one measured on a thousand are not the same
+statement.
+
+\begin{center}
+\begin{tabular}{lcccc}
+run & domain & $n_{\mathrm{coll}}$ & $n_{\mathrm{bnd}}$ (inner/outer) & batch refresh \\
+\hline
+\texttt{pq\_c200\_vac}  & $[1,200]$ & 32768 & 2048 / 2048 & 500 \\
+\texttt{pq\_c100\_vac2} & $[1,100]$ & 32768 & 2048 / 2048 & 500 \\
+\end{tabular}
+\end{center}
+
+Both used fixed weights (no reweighting) and imposed the inner data
+$\lambda = \lambda_0 + S_1 n_z + S_2 (3 n_z^2 - 1)/2$ with $\lambda_0 = 1/3$, $S_1 = 0$ and
+$S_2 = -1/12$ on the sphere of areal radius one.  Each run's \texttt{report.txt} prints all of
+this --- the point counts, the cadence and the number of refreshes the log actually shows --- so
+that a figure can be traced back to the sampling that produced it.  The boundary point count is
+limited by the device: raising it from 2048 to 4548 per sphere made the compiled objective
+require $8.98$~GiB on a $9$~GiB device, which is why the runs above keep 2048.
+
 \end{document}
 
