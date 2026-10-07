@@ -1130,6 +1130,10 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     set_want_compat(not model.derives_gamma)
     from .geometry import set_ricci_lam_source
     set_ricci_lam_source(cfg.ricci_lam_source)
+    from .geometry import set_lam_eq_form
+    set_lam_eq_form(cfg.lam_eq_form)
+    from .geometry import set_relative_terms
+    set_relative_terms(cfg.relative_terms)
     if verbose and exact_fields is not None:
         print_reference_summary(cfg, exact_fields)
     loss_fn = lambda st, batch, sc: total_loss(st, batch, cfg, model, exact_fields, pde_scale=sc)
@@ -1534,6 +1538,17 @@ def parse_args(argv=None):
     p.add_argument("--ricci-lam-source", type=float, default=None, dest="ricci_lam_source",
                    help="0 removes lambda's source from the Ricci equation, leaving Ricci = 0 "
                         "with the lambda equation and data untouched")
+    p.add_argument("--lam-eq-form", type=str, default=None, choices=("lambda", "log"),
+                   help="which lambda equation to impose: 'lambda' (default) is "
+                        "Delta_h lam - |d lam|^2/lam, 'log' is the same equation written for "
+                        "phi = log lam, i.e. Delta_h phi.  Same zeros, different loss: the "
+                        "'lambda' residual is homogeneous in lam, so lam -> 0 makes it vanish, "
+                        "while the 'log' form divides by lam and charges for that collapse")
+    p.add_argument("--relative-terms", action="store_true", dest="relative_terms",
+                   help="divide each group's residual by the sum of the absolute values of the "
+                        "terms it is made of: dimensionless, in [-1, 1], no rho^d weight applied "
+                        "(the exponents are ignored in this mode), and a residual that is small "
+                        "only because its terms are small is charged at its true relative size")
     p.add_argument("--eq-weights", type=str, default=None,
                    help="per-equation loss weights, e.g. compat=0,ricci=0,gauge=0,lam_eq=1.  "
                         "The metric equations have no other switch: they are set in problem.py "
@@ -1687,6 +1702,10 @@ def parse_args(argv=None):
                              f"e.g. ricci=0,lam_eq=1 (got {a.eq_weights!r})") from exc
     if a.ricci_lam_source is not None:
         cfg.ricci_lam_source = a.ricci_lam_source
+    if a.lam_eq_form is not None:
+        cfg.lam_eq_form = a.lam_eq_form
+    if a.relative_terms:
+        cfg.relative_terms = True
     if a.resample_every is not None:
         # This was MISSING: the flag existed, the Config field existed, and nothing ever set
         # one from the other -- so --resample-every was inert in BOTH phases, and the Adam
@@ -1768,6 +1787,15 @@ def parse_args(argv=None):
     cfg.__post_init__()
     if a.scale_ref_rho_in:
         cfg.scale_ref = cfg.rho_in
+    if cfg.relative_terms and cfg.lam_eq_form != "lambda":
+        raise SystemExit(
+            "--relative-terms and --lam-eq-form log are alternatives, not composable: "
+            "Delta_h(log lam) is a single term, so its relative form is a sign, not a size. "
+            "Both charge the lambda -> 0 collapse; pick one.")
+    if cfg.relative_terms and (a.scale_exps is not None or a.scale_ref is not None
+                               or a.scale_ref_rho_in):
+        print("[config] note: --relative-terms makes the residuals dimensionless, so "
+              "--scale-exps/--scale-ref are ignored (no rho^d factor is applied).", flush=True)
     return cfg
 
 

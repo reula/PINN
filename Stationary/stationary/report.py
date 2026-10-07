@@ -135,8 +135,10 @@ def sampling_lines(cfg, log_path=None):
     a cadence that never fired and one that fired two hundred times look the same in the config.
     """
     inner, outer = cfg.n_bnd, (cfg.n_bnd_outer or cfg.n_bnd)
-    lines = [f"sampling       : n_coll {cfg.n_coll} interior (log-radial shell), "
-             f"n_bnd {inner} inner + {outer} outer, scale_ref {cfg.scale_ref}"]
+    form = ("relative residuals (no rho^d)" if getattr(cfg, "relative_terms", False)
+            else f"scale_ref {cfg.scale_ref}")
+    lines = [f"sampling       : n_coll {cfg.n_coll} interior ({cfg.radial}-radial shell), "
+             f"n_bnd {inner} inner + {outer} outer, {form}"]
     res_every = int(getattr(cfg, "resample_every", 0) or 0)
     tail = (f"one batch for every {res_every} iterations" if res_every > 0
             else "one batch for the whole phase (no refresh)")
@@ -245,6 +247,12 @@ def main():
     print(f"arch           : {cfg.arch}   width {cfg.width} x depth {cfg.depth}, fourier {cfg.fourier}")
     print(f"domain         : rho in [{cfg.rho_in:g}, {cfg.rho_out:g}]   "
           f"inner sphere areal radius {cfg.inner_radius:g}   radial sampling {cfg.radial}")
+    _form = ("relative (each residual / sum of |its terms|, no rho^d weight)"
+             if getattr(cfg, "relative_terms", False)
+             else f"scaled by rho^exp, scale_ref {cfg.scale_ref}"
+                  f"{' (local rho)' if cfg.scale_ref is None else ''}"
+                  f"; lambda equation form '{getattr(cfg, 'lam_eq_form', 'lambda')}'")
+    print(f"loss form      : {_form}")
     print(f"exact solution : R0 = {cfg.R0:g}   ref_solution {cfg.ref_solution}   "
           f"ref_asymptotic {getattr(cfg, 'ref_asymptotic', None)}   "
           f"robin_source {cfg.robin_source}")

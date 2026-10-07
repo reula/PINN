@@ -115,10 +115,26 @@ class Config:
     # points on the cheaper of the two.
     n_bnd_outer: int | None = None
     resample_every: int = 500
-    radial: str = "log"              # "uniform" | "log"
+    radial: str = "log"              # "uniform" | "log" | "volume"
 
     # --------------------------------------------------- weights / scaling
     ricci_lam_source: float = 1.0     # 0 -> solve Ricci = 0, dropping only lambda's source
+    # Which form of the lambda equation is imposed (see geometry.set_lam_eq_form):
+    #   "lambda"  Delta_h lam - (1/lam) |d lam|^2_h = 0
+    #   "log"     the same equation for phi = log lam, Delta_h phi = 0
+    # Identical solution sets -- Delta_h phi = (1/lam)[Delta_h lam - (1/lam)|d lam|^2_h] --
+    # but not identical losses: the "lambda" residual is homogeneous of degree one in lam, so
+    # driving lam to zero makes it vanish (measured on runs/pq_c100_vac6_fixref: lambda
+    # collapsed 0.25 -> 1e-7 within rho = 1.8 and the loss still read 2.8e-13), while the
+    # "log" form divides by lam and therefore charges for exactly that collapse.
+    lam_eq_form: str = "lambda"       # "lambda" | "log"
+    # Relative residuals: divide each group's residual by the sum of the absolute values of the
+    # terms it is made of (`geometry.set_relative_terms`).  The result is dimensionless and in
+    # [-1, 1], so no rho^d weight is applied in this mode and a residual that is small only
+    # because its terms are small (the lambda equation is homogeneous in lambda) is charged at
+    # its true relative size instead of vanishing.  Alternative to lam_eq_form="log"; asking for
+    # both is rejected, because Delta_h(log lam) is a single term.
+    relative_terms: bool = False
     eq_weights: dict = field(default_factory=lambda: dict(
         compat=1.0, ricci=1.0, gauge=1.0, lam_eq=1.0))
     scale_exps: dict = field(default_factory=lambda: dict(
@@ -439,11 +455,25 @@ def sphere_directions(key, n: int) -> jnp.ndarray:
 
 
 def sample_shell(key, n: int, cfg: Config) -> jnp.ndarray:
-    """Collocation points in the shell (uniform in rho or in log rho)."""
+    """Collocation points in the shell (uniform in rho, in log rho, or in volume).
+
+    `radial="volume"` draws rho^3 uniformly on [rho_in^3, rho_out^3], so the expected number
+    of points per sphere grows like rho^2: the points are equally dense per unit VOLUME, and
+    the far field is sampled as well as the near field.  With `radial="log"` (the default) the
+    count per sphere is constant, so the density per unit volume falls like rho^-3; with
+    `radial="uniform"` it falls like rho^-2.  The choice matters when the residuals are
+    weighted by rho^d: the loss estimates the integral of (weight x residual)^2 against the
+    sampling density, so a weight that grows with rho together with a density that thins with
+    rho gives a few far points a very large say (and a high-variance loss).
+    """
     k1, k2 = jax.random.split(key)
     if cfg.radial == "log":
         rho = jnp.exp(jax.random.uniform(k1, (n,), minval=math.log(cfg.rho_in),
                                          maxval=math.log(cfg.rho_out)))
+    elif cfg.radial == "volume":
+        lo = float(cfg.rho_in) ** 3
+        hi = float(cfg.rho_out) ** 3
+        rho = (lo + (hi - lo) * jax.random.uniform(k1, (n,))) ** (1.0 / 3.0)
     else:
         rho = jax.random.uniform(k1, (n,), minval=cfg.rho_in, maxval=cfg.rho_out)
     return rho[:, None] * sphere_directions(k2, n)

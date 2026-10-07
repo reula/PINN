@@ -105,6 +105,60 @@ _WANT_COMPAT = True
 # relaxes to the VACUUM metric of the imposed data while the gauge still fixes the chart.
 _RICCI_LAM_SOURCE = 1.0
 
+# Which form of the lambda equation is imposed (Config.lam_eq_form, set once by the program):
+#
+#   "lambda"   Delta_h lam - (1/lam) |d lam|^2_h
+#   "log"      the same equation written for phi = log lam,  Delta_h phi,
+#
+# related by Delta_h phi = (1/lam) [Delta_h lam - (1/lam)|d lam|^2_h].  The zeros are the same
+# set, but the "lambda" residual is HOMOGENEOUS OF DEGREE ONE in lam: lam -> c lam scales it by
+# c, so lam -> 0 is a free direction -- it costs nothing in the loss and solves nothing.  That
+# is not academic: runs/pq_c100_vac6_fixref (fixed scale_ref = rho_in, i.e. the rho^d weights
+# replaced by constants) collapsed lam from 0.25 at the inner sphere to 1e-7 by rho = 1.8 and
+# still finished with a loss of 2.8e-13, because the residual it was minimising is that
+# homogeneous one.  The "log" form divides by lam and charges for exactly that collapse; it is
+# the same equation, differently weighted, not a different equation.  The division is guarded at
+# the single point lam = 0 and the ratio is capped, so a network crossing zero gives a large but
+# finite residual instead of inf/NaN.  What the guard must NOT do is clamp |lam| up to a floor:
+# that would send base/lam -> base/floor, and since base is proportional to lam for a uniformly
+# small field, the charged collapse would become CHEAP again below the floor -- the degenerate
+# direction would just move.  Only an exact zero needs the guard.
+_LAM_EQ_FORM = "lambda"
+_LAM_EQ_FLOOR = 1e-12
+_LAM_EQ_CAP = 1e12
+
+
+def set_lam_eq_form(form: str, floor: float | None = None) -> None:
+    global _LAM_EQ_FORM, _LAM_EQ_FLOOR
+    if form not in ("lambda", "log"):
+        raise ValueError(f"lam_eq_form must be 'lambda' or 'log', got {form!r}")
+    if form == "log" and _RELATIVE_TERMS:
+        raise ValueError(
+            "lam_eq_form='log' and relative_terms are alternatives, not composable: "
+            "Delta_h(log lam) is a single term, so its relative form is a sign")
+    _LAM_EQ_FORM = form
+    if floor is not None:
+        _LAM_EQ_FLOOR = float(floor)
+
+
+def lam_eq_of(Hinv, hess, dlam, lam):
+    """The lambda-equation residual in the form `_LAM_EQ_FORM` selects.
+
+    `hess[i,j] = d_i d_j lam - Gamma^k_{ij} d_k lam` is the covariant Hessian of lam, computed
+    by the caller; the second term of the equation is |d lam|^2_h / lam.  The "log" form is
+    `base / lam`, which is exactly Delta_h(log lam); it is invariant under lam -> c lam and
+    therefore does not vanish as the field shrinks.
+    """
+    lam_safe = jnp.where(lam == 0.0, _LAM_EQ_FLOOR, lam)
+    lap = jnp.einsum("ij,ij->", Hinv, hess)
+    src = jnp.einsum("ij,i,j->", Hinv, dlam, dlam) / lam_safe
+    base = lap - src
+    if _RELATIVE_TERMS:
+        return base / (jnp.abs(lap) + jnp.abs(src) + _REL_EPS)
+    if _LAM_EQ_FORM == "lambda":
+        return base
+    return jnp.clip(base / lam_safe, -_LAM_EQ_CAP, _LAM_EQ_CAP)
+
 
 def set_ricci_lam_source(v: float) -> None:
     global _RICCI_LAM_SOURCE
@@ -114,6 +168,46 @@ def set_ricci_lam_source(v: float) -> None:
 def set_want_compat(flag: bool) -> None:
     global _WANT_COMPAT
     _WANT_COMPAT = bool(flag)
+
+
+# RELATIVE residuals (Config.relative_terms / --relative-terms).  Each group's residual is a
+# signed sum of terms of the same dimension, so dividing the sum by the sum of the ABSOLUTE
+# VALUES of those terms gives a dimensionless number in [-1, 1] that measures how much of the
+# equation failed to cancel -- the local relative error, independent of the local scale.  Two
+# consequences, both of which are the point:
+#
+#   * no length scale has to be chosen, and no rho^d weight is needed: the residual is already
+#     dimensionless, so `scaled_residuals_batch` becomes a no-op in this mode.  In particular
+#     the far field is not silently de-emphasised, which is what killed runs/pq_c100_vac6_fixref;
+#   * a residual that is small only because ITS TERMS are small (the lambda equation is
+#     homogeneous of degree one in lambda, so lambda -> 0 does that) is divided by those same
+#     small terms and comes back O(1): the collapse direction is charged.
+#
+# The elementary terms are formed explicitly in `residuals_at` (they were already computed
+# there, combined), so the denominator is the size of exactly what cancelled.
+_RELATIVE_TERMS = False
+_REL_EPS = 1e-300          # only guards 0/0; the ratio is bounded by construction
+
+
+def set_relative_terms(flag: bool) -> None:
+    """Turn the relative-residual losses on or off.
+
+    Not composable with the log form of the lambda equation: Delta_h(log lam) is a SINGLE term,
+    so its relative form would be a sign, not a size.  `--relative-terms` already charges the
+    lambda -> 0 collapse by itself, so the two are alternatives; asking for both is a mistake
+    and is rejected here rather than silently resolved.
+    """
+    global _RELATIVE_TERMS
+    if flag and _LAM_EQ_FORM != "lambda":
+        raise ValueError(
+            "relative_terms and lam_eq_form='log' are alternatives, not composable: "
+            "Delta_h(log lam) has one term, so its relative form is a sign")
+    _RELATIVE_TERMS = bool(flag)
+
+
+def _norm(t):
+    """Frobenius norm of a term tensor (a scalar for a rank-0 term)."""
+    return jnp.sqrt(jnp.sum(t * t))
 
 
 def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
@@ -140,16 +234,43 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
     # `compat` is NOT formed when the caller does not need it.  For a model that derives Gamma
     # from h it holds identically and is not in the loss, so computing it is pure cost; it is
     # kept for the first-order formulation, where it is a real equation.
-    compat = ((dh.transpose(2, 0, 1)
-               - jnp.einsum("dab,dc->abc", G, h)
-               - jnp.einsum("dac,bd->abc", G, h)) if want_compat else None)
-    ric = ricci_from_gamma(G, dG) - _RICCI_LAM_SOURCE * (1.0 / (2.0 * lam**2)) * jnp.outer(dlam, dlam)
-    gauge = jnp.einsum("ijk,jk->i", G, Hinv)
-    if gauge_src is not None:
-        gauge = gauge - gauge_src(x)
+    compat = None
+    if want_compat:
+        t1 = dh.transpose(2, 0, 1)                      # d_a h_bc
+        t2 = jnp.einsum("dab,dc->abc", G, h)            # Gamma^d_{ab} h_dc
+        t3 = jnp.einsum("dac,bd->abc", G, h)            # Gamma^d_{ac} h_bd
+        compat = t1 - t2 - t3
+        if _RELATIVE_TERMS:
+            compat = compat / (_norm(t1) + _norm(t2) + _norm(t3) + _REL_EPS)
+
+    if _RELATIVE_TERMS:
+        # The four elementary pieces of R_ij, kept apart so their sizes are known.
+        r1 = jnp.einsum("kijk->ij", dG)
+        r2 = jnp.einsum("kkji->ij", dG)
+        r3 = jnp.einsum("kkl,lij->ij", G, G)
+        r4 = jnp.einsum("kil,lkj->ij", G, G)
+        r5 = _RICCI_LAM_SOURCE * (1.0 / (2.0 * lam**2)) * jnp.outer(dlam, dlam)
+        ric = (r1 - r2 + r3 - r4 - r5) / (_norm(r1) + _norm(r2) + _norm(r3) + _norm(r4)
+                                          + _norm(r5) + _REL_EPS)
+    else:
+        ric = (ricci_from_gamma(G, dG)
+               - _RICCI_LAM_SOURCE * (1.0 / (2.0 * lam**2)) * jnp.outer(dlam, dlam))
+
+    # Gamma^i_{jk} h^{jk}: the elementary contributions are the nine products, so the
+    # relative denominator is their absolute sum (per i).
+    contrib = G * Hinv[None, :, :]
+    gauge = jnp.sum(contrib, axis=(1, 2))
+    gsrc = gauge_src(x) if gauge_src is not None else None
+    if gsrc is not None:
+        gauge = gauge - gsrc
+    if _RELATIVE_TERMS:
+        den = jnp.sum(jnp.abs(contrib), axis=(1, 2))
+        if gsrc is not None:
+            den = den + jnp.abs(gsrc)
+        gauge = gauge / (den + _REL_EPS)
+
     hess = d2lam - jnp.einsum("cij,c->ij", G, dlam)
-    lam_eq = (jnp.einsum("ij,ij->", Hinv, hess)
-              - (1.0 / lam) * jnp.einsum("ij,i,j->", Hinv, dlam, dlam))
+    lam_eq = lam_eq_of(Hinv, hess, dlam, lam)
 
     out = dict(ricci=ric, gauge=gauge, lam_eq=lam_eq)
     if want_compat:
@@ -173,8 +294,15 @@ def scaled_residuals_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
     units of the reference scale (well conditioned).  With ref=None the local rho
     is used instead, which measures every residual relative to the size of its own
     terms but makes the far field dominate the loss by many orders of magnitude.
+
+    In relative mode (`set_relative_terms(True)`) the residuals are already dimensionless
+    ratios -- each one divided by the size of its own terms -- so no length is applied and the
+    exponents are ignored.  Multiplying them by rho^p as well would double-count the
+    dimensions and undo the point of the mode.
     """
     r = residuals_batch(fields, xs, gauge_src)
+    if _RELATIVE_TERMS:
+        return r
     if ref is None:
         base = jnp.linalg.norm(xs, axis=-1)
     else:
@@ -199,8 +327,7 @@ def lam_eq_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray) -> jnp.nd
     d2lam = jax.hessian(lambda y: fields(y)[2])(x)
     Hinv = jnp.linalg.inv(h)
     hess = d2lam - jnp.einsum("cij,c->ij", G, dlam)
-    return (jnp.einsum("ij,ij->", Hinv, hess)
-            - (1.0 / lam) * jnp.einsum("ij,i,j->", Hinv, dlam, dlam))
+    return lam_eq_of(Hinv, hess, dlam, lam)
 
 
 def radial_derivative_residual_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
@@ -217,8 +344,11 @@ def radial_derivative_residual_batch(fields: Callable, xs: jnp.ndarray, exps: di
     `scaled_residuals_batch` does for the groups themselves: the residual carries
     length^-exps['lam_eq'] = length^-2 and its radial derivative length^-3, so the product
     rho^3 d(rho)/d rho is invariant under rho -> rho/s with the fields relabelled.
+
+    In relative mode the residual itself is dimensionless (a ratio), so its radial derivative
+    carries length^-1 and the factor is rho^1, not rho^3.
     """
-    p = float(exps.get("lam_eq", 2.0)) + 1.0
+    p = (0.0 if _RELATIVE_TERMS else float(exps.get("lam_eq", 2.0))) + 1.0
 
     def one(x):
         rho = jnp.linalg.norm(x)
