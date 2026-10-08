@@ -162,3 +162,28 @@ def test_the_chunked_sketch_is_the_unchunked_sketch(tmp_path):
         got = jvp_columns(res, flat, basis, chunk)
         assert got.shape == want.shape == (s, m)
         assert jnp.allclose(got, want, rtol=1e-12, atol=1e-14), (s, chunk)
+
+
+def test_the_row_chunked_sketch_is_the_same_sketch():
+    """`--dsgnar-row-chunk` changes the workspace, not the result.
+
+    CountSketch builds an `rows x s x K` temporary.  At rows ~ 4e5 and s = 128 that is several
+    GiB and the GPU refused it (runs/pq_c100_vacF_dsgnar_probe_s128: 8.87 GiB, `jit__where`),
+    so the rows are summed in blocks.  Blocking must be exactly transparent: the hash draws are
+    untouched and a sum over rows does not care how it is bracketed.
+    """
+    from stationary.dsgnar import count_sketch
+
+    rows, s, k = 24, 5, 4
+    key = jax.random.PRNGKey(0)
+    mat = jax.random.normal(jax.random.PRNGKey(1), (rows, 7))
+    vec = jax.random.normal(jax.random.PRNGKey(2), (rows,))
+    want_m, want_v = count_sketch(mat, vec, key, s, k_hashes=k, row_chunk=0)
+    for chunk in (2, 3, 4, 6, 12):
+        got_m, got_v = count_sketch(mat, vec, key, s, k_hashes=k, row_chunk=chunk)
+        assert jnp.allclose(got_m, want_m, rtol=1e-12, atol=1e-14), chunk
+        assert jnp.allclose(got_v, want_v, rtol=1e-12, atol=1e-14), chunk
+    # a vector-only sketch (mat=None) takes the same path
+    _, v0 = count_sketch(None, vec, key, s, k_hashes=k, row_chunk=0)
+    _, v1 = count_sketch(None, vec, key, s, k_hashes=k, row_chunk=4)
+    assert jnp.allclose(v0, v1, rtol=1e-12, atol=1e-14)

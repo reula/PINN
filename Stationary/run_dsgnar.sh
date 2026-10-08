@@ -11,10 +11,12 @@
 # built for.  Starting from an existing run removes the Adam warm-up from the experiment: the
 # only question is whether the same loss can be pushed lower from the same point.
 #
-# Cost.  One iteration costs `--dsgnar-sketch` JVPs over the whole residual vector plus one SVD
-# of that size.  The JVPs are pushed through in blocks of CHUNK tangents, because materialising
-# all s at once is what the GPU refused: at s=128 it asked for a single 4.78 GiB allocation
-# (runs/pq_c100_vacF_dsgnar_probe_s128).  Peak memory is set by CHUNK; the timings are printed.
+# Cost.  One iteration costs `--dsgnar-sketch` JVPs over the whole residual vector, a CountSketch
+# of the resulting rows, and one SVD of the sketch.  Three allocations have to fit, and each one
+# is what the GPU refused in turn at s = 128: the JVP tangents (4.78 GiB, fixed by CHUNK), the
+# CountSketch workspace (8.87 GiB, fixed by ROWCHUNK) and the M x s column matrix itself
+# (~0.4 GiB here, which is why s cannot be raised indefinitely).  All three knobs change the
+# grouping of sums only -- the numbers are identical (tests/test_dsgnar.py).
 #
 # Usage, on the hub node (see HUB.md):
 #
@@ -25,7 +27,8 @@
 #     INIT=runs/pq_c100_vacB_logphi/params.pkl OUT=runs/pq_c100_vacG_dsgnar_B bash run_dsgnar.sh
 #     DRY=1 bash run_dsgnar.sh                               # print, launch nothing
 #
-# Env: INIT (default runs/pq_c100_vac3/params.pkl), OUT, SKETCH (128), CHUNK (16), STEPS (60),
+# Env: INIT (default runs/pq_c100_vac3/params.pkl), OUT, SKETCH (128), CHUNK (16),
+#      ROWCHUNK (4096), STEPS (60),
 #      PROBE (0), TAG (suffix for OUT), plus any extra arguments forwarded to run_hub.sh.
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -46,6 +49,7 @@ PROBE="${PROBE:-0}"
 TAG="${TAG:-}"
 SKETCH_STR="${SKETCH}"
 CHUNK="${CHUNK:-16}"
+ROWCHUNK="${ROWCHUNK:-4096}"
 
 if [ "$PROBE" = "1" ]; then
     STEPS="${STEPS:-5}"
@@ -75,6 +79,7 @@ ARGS=(
     --dsgnar-steps "$STEPS"
     --dsgnar-sketch "$SKETCH_STR"
     --dsgnar-chunk "$CHUNK"
+    --dsgnar-row-chunk "$ROWCHUNK"
     --init-from "$INIT"
     --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
     --R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0
@@ -88,8 +93,8 @@ ARGS=(
 
 echo "DSGNAR polish:  init $INIT"
 echo "                out  $OUT"
-echo "                $STEPS iteration(s), sketch s = $SKETCH_STR, chunk $CHUNK"
-echo "                (each iteration = $SKETCH_STR JVPs in blocks of $CHUNK + one ${SKETCH_STR}x${SKETCH_STR} SVD; peak memory ~ chunk, not s)"
+echo "                $STEPS iteration(s), sketch s = $SKETCH_STR, JVP chunk $CHUNK, CountSketch rows/block $ROWCHUNK"
+echo "                (each iteration = $SKETCH_STR JVPs in blocks of $CHUNK + one ${SKETCH_STR}x${SKETCH_STR} SVD)"
 
 if [ "$DRY" = "1" ]; then
     printf 'DRY  %s run_hub.sh' "$PY"

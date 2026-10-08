@@ -115,7 +115,7 @@ _LAM_STEP_CLIP: float = 1.0e6  # guard against a Newton step dividing by an unde
 # --------------------------------------------------------------------------
 # CountSketch: C J and C r   (paper Eq. 16, reference `_count_sketch`)
 # --------------------------------------------------------------------------
-def count_sketch(mat, vec, key, s: int, k_hashes: int = N_HASHES):
+def count_sketch(mat, vec, key, s: int, k_hashes: int = N_HASHES, row_chunk: int = 0):
     """Apply the CountSketch ``C`` to the rows of ``mat`` and to ``vec``.
 
     ``C`` has exactly ``K`` non-zeros per column, at ``(h_k(j), j)`` with value
@@ -132,14 +132,41 @@ def count_sketch(mat, vec, key, s: int, k_hashes: int = N_HASHES):
     rows = vec.shape[0]
     acc_mat = None if mat is None else jnp.zeros((s,) + mat.shape[1:], dtype=mat.dtype)
     acc_vec = jnp.zeros((s,), dtype=vec.dtype)
+    # `row_chunk` splits the rows into blocks and sums the partial bucket sums.  Exactly the same
+    # number -- segment_sum is a sum over rows and the hash draws are untouched -- but the
+    # temporary `mat * signs` and the segment_sum workspace are `row_chunk x s` instead of
+    # `rows x s`.  THIS is what the GPU refused next, after the JVP was chunked: at rows ~ 4e5
+    # and s = 128 the temporaries are several GiB (measured: `Out of memory while trying to
+    # allocate 8.87GiB`, executable `jit__where`, runs/pq_c100_vacF_dsgnar_probe_s128).
+    block = int(row_chunk or 0)
+    use_blocks = block > 0 and rows % block == 0 and block < rows
     for _ in range(k_hashes):
         key, k_sign, k_bucket = jax.random.split(key, 3)
         signs = jax.random.rademacher(k_sign, (rows,), dtype=vec.dtype) / jnp.sqrt(k_hashes)
         buckets = jax.random.randint(k_bucket, (rows,), 0, s)
+        if not use_blocks:
+            if mat is not None:
+                acc_mat = acc_mat + jax.ops.segment_sum(
+                    mat * signs.reshape((-1,) + (1,) * (mat.ndim - 1)), buckets, num_segments=s)
+            acc_vec = acc_vec + jax.ops.segment_sum(vec * signs, buckets, num_segments=s)
+            continue
+        nb = rows // block
+        sc = signs.reshape(nb, block)
+        bc = buckets.reshape(nb, block)
+        vc = vec.reshape(nb, block)
         if mat is not None:
-            acc_mat = acc_mat + jax.ops.segment_sum(
-                mat * signs.reshape((-1,) + (1,) * (mat.ndim - 1)), buckets, num_segments=s)
-        acc_vec = acc_vec + jax.ops.segment_sum(vec * signs, buckets, num_segments=s)
+            mc = mat.reshape((nb, block) + mat.shape[1:])
+            scm = sc.reshape((nb, block) + (1,) * (mat.ndim - 1))
+
+            def one_mat(i):
+                return jax.ops.segment_sum(mc[i] * scm[i], bc[i], num_segments=s)
+
+            acc_mat = acc_mat + jax.lax.map(one_mat, jnp.arange(nb)).sum(0)
+
+        def one_vec(i):
+            return jax.ops.segment_sum(vc[i] * sc[i], bc[i], num_segments=s)
+
+        acc_vec = acc_vec + jax.lax.map(one_vec, jnp.arange(nb)).sum(0)
     return acc_mat, acc_vec
 
 
@@ -505,6 +532,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     dct = _dct_matrix(n, dtype)                       # constant: built once, not per iteration
     loss_batch = jax.jit(jax.vmap(loss_fn))
     chunk = int(getattr(cfg, "dsgnar_chunk", 0) or 0)
+    row_chunk = int(getattr(cfg, "dsgnar_row_chunk", 0) or 0)
     sketched_jacobian = jax.jit(lambda flat_now, basis: jvp_columns(res_fn, flat_now, basis,
                                                                     chunk))
 
@@ -567,7 +595,8 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         # same hash draws then give r~ as well, keeping the two sketches identical.
         tic = time.time()
         j_cols = sketched_jacobian(flat, B).T         # (M, s) = J (Omega S)
-        j_sketch, r_tilde = count_sketch(j_cols, residual, k_ck, s, k_hashes=N_HASHES)
+        j_sketch, r_tilde = count_sketch(j_cols, residual, k_ck, s, k_hashes=N_HASHES,
+                                        row_chunk=row_chunk)
         t_jvp += time.time() - tic
 
         # --- Algorithm 1 line 4: one SVD serves every lambda ------------------
@@ -661,6 +690,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     info = {
         "optimizer": "dsgnar",
         "chunk": chunk,
+        "row_chunk": row_chunk,
         "iterations": step,
         "wall": time.time() - t0,
         "stopped": stopped,

@@ -316,6 +316,10 @@ class Config:
     # once (the reference implementation, and a 4.78 GiB allocation at s = 128 on this
     # problem: measured OOM).  The peak memory is set by this, not by the sketch size.
     dsgnar_chunk: int = 0
+    # Rows per block in the CountSketch, which builds an `rows x s x K` workspace: the
+    # second allocation the GPU refused (8.87 GiB at rows ~ 4e5, s = 128).  0 = all rows at
+    # once.  4096 keeps the workspace at a few MB per block and changes no number.
+    dsgnar_row_chunk: int = 4096
     # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of
     # `qn_block` iterations (the inverse Hessian is carried across them), and the run stops
     # when `patience` consecutive blocks improve the loss by less than `plateau_tol`

@@ -1572,6 +1572,9 @@ def parse_args(argv=None):
                    help="initial trust-region radius (default 1)")
     p.add_argument("--dsgnar-omega", type=float, default=None,
                    help="Levenberg-Marquardt regularisation floor (default 1e-8)")
+    p.add_argument("--dsgnar-row-chunk", type=int, default=None, dest="dsgnar_row_chunk",
+                   help="rows per block in the CountSketch (default 4096; 0 = all rows at once, "
+                        "which builds a rows x s x K workspace and dies of OOM at s=128)")
     p.add_argument("--dsgnar-chunk", type=int, default=None, dest="dsgnar_chunk",
                    help="push the sketch tangents through in blocks of this size (0 = all at "
                         "once).  Peak memory is set by this: s=128 all at once needs a 4.78 GiB "
@@ -1763,6 +1766,8 @@ def parse_args(argv=None):
         cfg.dsgnar_omega = a.dsgnar_omega
     if a.dsgnar_chunk is not None:
         cfg.dsgnar_chunk = a.dsgnar_chunk
+    if a.dsgnar_row_chunk is not None:
+        cfg.dsgnar_row_chunk = a.dsgnar_row_chunk
     if a.qn_max_H_gb is not None:
         cfg.qn_max_H_gb = a.qn_max_H_gb
     if a.qn_block is not None:
