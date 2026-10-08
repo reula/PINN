@@ -1227,14 +1227,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     model, state, exact_fields = build(cfg, init_from)
     # The gradient-norm loop above now iterates the groups the formulation imposes, so this is
     # safe: it was the loop's GROUP_KEYS that raised KeyError: 'compat' when the key was gone.
-    from .geometry import set_want_compat
-    set_want_compat(not model.derives_gamma)
-    from .geometry import set_ricci_lam_source
-    set_ricci_lam_source(cfg.ricci_lam_source)
-    from .geometry import set_lam_eq_form
-    set_lam_eq_form(cfg.lam_eq_form)
-    from .geometry import set_relative_terms
-    set_relative_terms(cfg.relative_terms)
+    from .geometry import apply_config
+    apply_config(cfg, derives_gamma=model.derives_gamma)
     if verbose and exact_fields is not None:
         print_reference_summary(cfg, exact_fields)
     loss_fn = lambda st, batch, sc: total_loss(st, batch, cfg, model, exact_fields, pde_scale=sc)

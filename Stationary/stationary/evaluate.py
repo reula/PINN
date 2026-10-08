@@ -33,6 +33,14 @@ def load_run(run_dir: str, params_file: str = "params.pkl"):
     model = make_model(cfg)
     with open(os.path.join(run_dir, params_file), "rb") as fh:
         state = pickle.load(fh)
+    # The residual switches live in `geometry` as process globals and train() is no longer the
+    # only entry point that needs them: set them from the config here, so that every diagnostic
+    # (report, evaluate, compare, loss_scatter) evaluates the residuals of the objective the run
+    # ACTUALLY minimised.  `want_compat=True` keeps the structural check that `compare.main`
+    # asks for explicitly.
+    from .geometry import apply_config
+    apply_config(cfg, derives_gamma=getattr(model, "derives_gamma", None), want_compat=True)
+
     # params.pkl holds the parameter state itself; ckpt.pkl holds a training payload with
     # the state under "state" (and is what a crashed run has to offer). Accept both.
     if isinstance(state, dict) and "state" in state and "net" not in state:

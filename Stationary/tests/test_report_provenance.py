@@ -83,3 +83,37 @@ def test_the_report_runs_to_the_end_and_past_the_multipoles(tmp_path):
     # ... and the section that died is not merely headed: it has content after the header
     tail = text.split("CHART-INDEPENDENT (geometric invariants)")[1]
     assert "family read off the solution" in tail
+
+
+def test_loading_a_run_restores_the_objective_it_trained(tmp_path):
+    """The residual switches are globals, and only `train()` used to set them.
+
+    `_RICCI_LAM_SOURCE` defaults to 1 (the physical Ricci equation).  Most runs pass
+    `--ricci-lam-source 0`, so every diagnostic that loaded such a run and evaluated residuals
+    WITHOUT setting the switch was reporting `R_ij - (1/(2 lambda^2)) d_i lambda d_j lambda`
+    including the source: ~2e-9 at rho_out for any converged solution, which is why that column
+    read the same for every run, and why a saved run whose own log says 1.33e-14 came back as
+    8e-4 in a fresh process.  `evaluate.load_run` now applies the config, and this pins it.
+    """
+    import pickle
+    from dataclasses import asdict
+
+    from stationary import geometry
+    from stationary.evaluate import load_run
+    from stationary.train import build, parse_args
+
+    out = tmp_path / "run"
+    cfg = parse_args(["--outdir", str(out), "--arch", "sym_hybrid", "--n-coll", "32",
+                      "--n-bnd", "8", "--width", "4", "--depth", "2", "--no-figures",
+                      "--ricci-lam-source", "0", "--lam-eq-form", "log"])
+    model, state, _ = build(cfg)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "config.json").write_text(json.dumps(asdict(cfg)))
+    with open(out / "params.pkl", "wb") as fh:
+        pickle.dump(state, fh)
+
+    load_run(str(out))
+    assert float(geometry._RICCI_LAM_SOURCE) == 0.0, "the Ricci source must follow the run"
+    assert geometry._LAM_EQ_FORM == "log", "the lambda-equation form must follow the run"
+    assert geometry._WANT_COMPAT is True, "diagnostics want the structural compat check"
+    assert geometry._RELATIVE_TERMS is False

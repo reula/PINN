@@ -210,6 +210,31 @@ def _norm(t):
     return jnp.sqrt(jnp.sum(t * t))
 
 
+def apply_config(cfg, derives_gamma: bool | None = None,
+                 want_compat: bool | None = None) -> None:
+    """Set this module's switches from a Config -- the ONE place they are set from a cfg.
+
+    `_RICCI_LAM_SOURCE`, `_LAM_EQ_FORM`, `_RELATIVE_TERMS` and `_WANT_COMPAT` are process
+    globals, and `train()` used to be the only caller.  Every OTHER entry point -- the report,
+    `evaluate`, `compare`, `loss_scatter.py`, a notebook -- therefore evaluated residuals with
+    the DEFAULTS.  The consequence is not subtle: for a run with `--ricci-lam-source 0` (all the
+    recent ones) the "Ricci residual" in those tables was `R_ij - (1/(2 lambda^2)) d_i lambda
+    d_j lambda` *including the source*, whose value at rho_out is ~2e-9 for any converged
+    solution -- which is why that column looked constant across runs and why a loss computed
+    from a saved run (1.33e-14 in the run's own log) came back as 8e-4 in a fresh process.
+
+    `want_compat=True` is what the diagnostic paths want: the structural check that Gamma really
+    is h's Christoffel symbol, computed even for a metric-only model (see `compare.main`).
+    """
+    if want_compat is not None:
+        set_want_compat(bool(want_compat))
+    elif derives_gamma is not None:
+        set_want_compat(not derives_gamma)
+    set_ricci_lam_source(getattr(cfg, "ricci_lam_source", 1.0))
+    set_lam_eq_form(getattr(cfg, "lam_eq_form", "lambda"))
+    set_relative_terms(getattr(cfg, "relative_terms", False))
+
+
 def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
                  gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None, want_compat: bool | None = None) -> dict:
     """All four residual groups at a single point x (no scaling applied).
