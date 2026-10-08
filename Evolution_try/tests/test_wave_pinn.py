@@ -136,6 +136,33 @@ class TestPdeResidual(unittest.TestCase):
             r = pde_residual(cfg, lambda tt, xx: exact_solution(cfg, tt, xx), t, x)
             self.assertLess(float(jnp.max(jnp.abs(r))), 1e-10, msg=f"{eq}: {r}")
 
+    def test_exact_solution_is_periodic_in_time_far_past_the_image_window(self):
+        """The reference solution must stay valid at large t.
+
+        The periodised profile is a *truncated* image sum, so it is only
+        meaningful near the fundamental domain; ``exact_solution`` evaluates it at
+        ``x - c t``, which reaches -21 at T = 20.  If the fold into [-L, L) is
+        missing, the reference solution is numerical zero for t >~ 7 and every
+        error reported there is a ratio against nothing -- which is exactly what
+        happened, and why this test exists.
+        """
+        cfg = Config(T=20)
+        x = jnp.linspace(-cfg.L, cfg.L, 201)
+        ref = None
+        for t in (0.0, 2.0, 6.5, 10.0, 13.3, 17.0, 20.0):
+            ex = exact_solution(cfg, jnp.full_like(x, t), x)
+            self.assertGreater(float(jnp.sqrt(jnp.mean(ex ** 2))), 0.3)
+            if ref is None:
+                ref = ex
+            # u(t) == u(t - 2L) for the periodic problem, exactly
+            ex_prev = exact_solution(cfg, jnp.full_like(x, t - 2.0 * cfg.L), x)
+            self.assertLess(float(jnp.max(jnp.abs(ex - ex_prev))), 1e-12)
+        # ...and its residual still vanishes, at large t
+        t = jnp.array([5.0, 10.0, 15.0, 19.9])
+        xs = jnp.array([-0.7, -0.2, 0.1, 0.55])
+        r = pde_residual(cfg, lambda tt, xx: exact_solution(cfg, tt, xx), t, xs)
+        self.assertLess(float(jnp.max(jnp.abs(r))), 1e-10)
+
     def test_residual_is_second_order_for_the_wave_equation(self):
         """A linear function in t and x is not a solution, but a linear-in-t, quadratic-in-x
         polynomial has a constant residual -- a cheap check that the right derivatives are taken."""
@@ -302,3 +329,98 @@ class TestDsgnarMachinery(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestTrustRegionMachinery(unittest.TestCase):
+    """The third optimiser: Xu & Darve's trust region on the exact dense Hessian.
+
+    The paper delegates its loop to ``scipy.optimize.minimize(method="trust-exact")``
+    and its subproblem to ``scipy.optimize._trustregion_exact.IterativeSubproblem``.
+    The module therefore *calls* SciPy's solver rather than re-deriving it, and the
+    test that matters is that the outer loop built around it reproduces SciPy's own
+    trust-region loop step for step.  The other test is the one the paper's authors
+    insist on before optimising: that the Hessian is genuinely the second derivative
+    of the loss, and not the Gauss-Newton matrix the other optimisers use.
+    """
+
+    def test_outer_loop_matches_scipy_trust_exact(self):
+        from scipy.optimize import minimize
+        from wave_pinn.optim.trustregion import make_hessian, trust_region_phase
+
+        cfg = Config(n_coll=48, sampler="uniform", n_modes=2, resample_every=0,
+                     tr_maxiter=12, tr_chunk=64, tr_gtol=1e-12, log_every=1000)
+        key = jax.random.PRNGKey(41)
+        params = init_params(cfg, key)
+        obj = Objective(cfg, make_batch(cfg, key), params)
+        flat0, _ = jax.flatten_util.ravel_pytree(params)
+        loss, grad, hess = make_hessian(obj, cfg)
+        x0 = np.asarray(flat0, dtype=float)
+
+        flat, hist, info = trust_region_phase(obj, flat0, cfg, verbose=False)
+        ours = np.asarray(flat, dtype=float)
+
+        res = minimize(loss, x0, jac=grad, hess=hess, method="trust-exact",
+                       tol=0.0, options={"maxiter": 12, "gtol": 1e-12})
+
+        denom = max(1.0, float(np.max(np.abs(res.x))))
+        self.assertLess(float(np.max(np.abs(ours - res.x))) / denom, 1e-9,
+                        msg=f"our loop diverged from scipy's: {info['stopped']}")
+        self.assertAlmostEqual(float(loss(ours)), float(res.fun), places=10)
+
+    def test_exact_hessian_is_second_order_consistent_and_differs_from_gauss_newton(self):
+        """The paper's contribution is the indefinite exact Hessian, not J^T J."""
+        cfg = Config(n_coll=24, sampler="uniform", n_modes=2)
+        key = jax.random.PRNGKey(21)
+        params = init_params(cfg, key)
+        obj = Objective(cfg, make_batch(cfg, key), params)
+        flat, _ = jax.flatten_util.ravel_pytree(params)
+        H = np.asarray(jax.hessian(obj._loss)(flat), dtype=float)
+        self.assertLess(float(np.max(np.abs(H - H.T))), 1e-10 * max(1.0, float(np.max(np.abs(H)))))
+        eps = 1e-6
+        for j in (0, 5, 17):
+            e = np.zeros(flat.size)
+            e[j] = eps
+            gp = np.asarray(jax.grad(obj._loss)(flat + jnp.asarray(e)), dtype=float)
+            gm = np.asarray(jax.grad(obj._loss)(flat - jnp.asarray(e)), dtype=float)
+            fd = (gp - gm) / (2 * eps)
+            scale = max(1.0, float(np.max(np.abs(H[:, j]))))
+            self.assertLess(float(np.max(np.abs(H[:, j] - fd))) / scale, 1e-4)
+        res = np.asarray(obj.residual(flat), dtype=float)
+        J = np.asarray(obj.jacobian(flat), dtype=float)
+        H_gn = (2.0 / res.size) * (J.T @ J)
+        self.assertGreater(float(np.max(np.abs(H - H_gn))),
+                           1e-6 * max(1.0, float(np.max(np.abs(H)))))
+
+    def test_subproblem_is_optimal(self):
+        """PD H with an inactive constraint: p = -H^{-1} g.  Indefinite H: the step
+        lies (nearly) on the boundary and lowers the model."""
+        from wave_pinn.optim.trustregion import Subproblem
+        rng = np.random.default_rng(11)
+        A = rng.normal(size=(20, 20))
+        H = A @ A.T + 20.0 * np.eye(20)
+        g = rng.normal(size=20)
+        p, hits = Subproblem(H, g).solve(1e9)
+        self.assertFalse(hits)
+        self.assertLess(float(np.linalg.norm(p + np.linalg.solve(H, g))), 1e-8)
+
+        H_indef = H - 60.0 * np.eye(20)
+        delta = 0.5
+        p, hits = Subproblem(H_indef, g).solve(delta)
+        self.assertTrue(hits)
+        self.assertLess(float(np.linalg.norm(p)) / delta, 1.0 + 0.1 + 1e-9)   # 1 + k_easy slack
+        self.assertLess(float(g @ p + 0.5 * p @ H_indef @ p), 0.0)   # the model decreased
+
+    def test_trust_region_phase_descends(self):
+        from wave_pinn.optim.trustregion import trust_region_phase
+        cfg = Config(n_coll=64, sampler="uniform", n_modes=2, tr_maxiter=8,
+                     tr_chunk=64, resample_every=0, log_every=100)
+        key = jax.random.PRNGKey(31)
+        params = init_params(cfg, key)
+        obj = Objective(cfg, make_batch(cfg, key), params)
+        flat, _ = jax.flatten_util.ravel_pytree(params)
+        before = obj.loss(flat)
+        flat, hist, info = trust_region_phase(obj, flat, cfg, verbose=False)
+        self.assertLess(obj.loss(flat), 0.9 * before)
+        self.assertEqual(info["hessian"], "exact")
+        self.assertGreaterEqual(info["accepted"], 1)
+        self.assertTrue(all(np.isfinite(h["loss"]) for h in hist))

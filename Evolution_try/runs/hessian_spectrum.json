@@ -1,0 +1,16 @@
+{
+  "T": 2.0,
+  "n_coll": 2201,
+  "n_parameters": 2201,
+  "init_from": null,
+  "hessian_form_seconds": 107.65764689445496,
+  "lambda_min": -1.9064485027074076,
+  "lambda_max": 2.178740158918404,
+  "abs_scale": 2.178740158918404,
+  "zero_threshold": 2.178740158918404e-06,
+  "positive": 770,
+  "negative": 766,
+  "zero": 665,
+  "fraction_negative": 0.34802362562471606,
+  "fraction_zero": 0.3021353930031804
+}

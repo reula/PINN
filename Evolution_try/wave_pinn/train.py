@@ -88,7 +88,8 @@ def run(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
               f"precision={cfg.precision}")
         if cfg.resample_every:
             from .config import resample_schedule
-            per = {"adam": cfg.steps, "ssbroyden": cfg.qn_steps, "dsgnar": cfg.dsgnar_steps}
+            per = {"adam": cfg.steps, "ssbroyden": cfg.qn_steps, "dsgnar": cfg.dsgnar_steps,
+                   "trustregion": cfg.tr_maxiter}
             plan = ", ".join(f"{k} from {resample_schedule(cfg, v)[0]:.0f} x{growth:g}"
                              for k, v in per.items() if k in cfg.optimizer and v
                              for growth in [resample_schedule(cfg, v)[1]])

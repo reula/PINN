@@ -123,7 +123,8 @@ Evolution_try/
 │   ├── optim/
 │   │   ├── adam.py               Adam (warm-up or standalone)
 │   │   ├── ssbroyden.py          Crunch's self-scaling Broyden, in blocks
-│   │   └── dsgnar.py             doubly-sketched Gauss-Newton with adaptive ratio
+│   │   ├── dsgnar.py             doubly-sketched Gauss-Newton with adaptive ratio
+│   │   └── trustregion.py        exact-Hessian trust region (Xu & Darve)
 │   ├── evaluate.py               error metrics and plots
 │   ├── train.py                  the driver: build, optimise, measure, save
 │   ├── compare.py                one table over every run in runs/
@@ -132,7 +133,9 @@ Evolution_try/
 ├── scripts/
 │   ├── sweep_features.sh         the feature-map sweep
 │   ├── run_reference.sh          the reference SSBroyden solve
-│   └── run_dsgnar.sh             the DSGNAR solve
+│   ├── run_dsgnar.sh             the DSGNAR solve
+│   ├── hessian_spectrum.py       measure the exact Hessian's eigenvalues
+│   └── t20_diagnosis.py          the T = 20 figure: loss against error
 ├── tests/test_wave_pinn.py       unittest suite (no pytest needed)
 ├── vendor/Crunch/                vendored SSBroyden (from this repo's Jax/Crunch)
 └── runs/<label>/                 one directory per run, see §5
@@ -197,7 +200,8 @@ Every row is a config field; nothing here needs a code change to switch.
 | `sampler` | `uniform`, `random`, `grid_random`, `lhs` | collocation points |
 | `n_coll` | any integer | collocation points; `0` (default) = one per trainable parameter |
 | `residual_norm` | `auto`, `none` | divide the residual by its batch scale (a conditioning device) |
-| `optimizer` | `adam`, `ssbroyden`, `adam+ssbroyden`, `dsgnar`, `adam+dsgnar` | optimiser, or a warm-up followed by one |
+| `optimizer` | `adam`, `ssbroyden`, `adam+ssbroyden`, `dsgnar`, `adam+dsgnar`, `trustregion`, `adam+trustregion` | optimiser, or a warm-up followed by one |
+| `tr_*` | see `config.py` | the trust-region Newton knobs: radius, eta, `tr_hessian` (`exact` or the `gauss_newton` ablation) |
 | `n_layers`, `n_neurons` | any | architecture (default `6 × 20`, the requested one) |
 | `activation` | `tanh`, `sin`, `gelu`, `relu`, `softplus` | |
 | `init` | `glorot`, `lecun`, `siren`, `uniform`, `zeros` | |
@@ -227,6 +231,11 @@ Every row is a config field; nothing here needs a code change to switch.
 * **Adam** (`adam`, or as a warm-up in `adam+ssbroyden`). Included because PINN
   practice usually starts with it; it plateaus orders of magnitude above the
   quasi-Newton phases on this problem.
+* **Trust-region Newton** (`trustregion`) — the optimiser of Xu & Darve,
+  arXiv:2105.07552, and the third scheme this project was asked to carry.  It uses
+  the **exact dense Hessian**, which is what makes it different from DSGNAR: the
+  Gauss-Newton part `J^T J` plus `Σ_i r_i ∇²r_i`, and that second term is what
+  makes the model indefinite.  See §6.7.
 
 ### Stopping criteria
 
@@ -455,6 +464,115 @@ that SSBroyden sits on is **not** a representational limit of the 6 × 20 networ
 The same 2201 parameters represent the exact solution to `7·10^-7`; SSBroyden
 simply cannot find it, which is precisely the ill-conditioning argument the paper
 makes.
+
+### 6.6 T = 20: where the loss stops predicting the error
+
+The same two optimisers, run to `T = 20` (ten periods) on the same `[-1, 1]`
+domain, with the tolerances opened right up: `qn_gtol = 1e-16`,
+`plateau_tol = 1e-12`, `dsgnar_delta_min = 1e-15`.
+
+| run | optimiser | points | iterations | stopped | final loss | rel `L2` | rel `L2` at `t=20` |
+|---|---|---|---|---|---|---|---|
+| `T20_ssbroyden` | SSBroyden | 2201 | 19763 | budget | **6.98e-12** | 9.07e-01 | 9.17e-01 |
+| `T20_dsgnar` | DSGNAR | 2201 | 97 | radius below threshold | 1.67e-06 | 2.39e+01 | 4.20e+01 |
+| `T20_bigbatch` | SSBroyden | 8192 | 4000 | budget | 1.30e-07 | 1.10e+01 | 1.87e+01 |
+
+![T = 20 diagnosis](runs/T20_diagnosis.png)
+
+**Both fail, and driving the loss down makes it worse.**  SSBroyden reaches a
+training residual of `7·10^-12` — three orders of magnitude better than its `T = 2`
+result — with a 91 % error.  DSGNAR's error *grows* from 2.4 at iteration 50 to
+23.9 at iteration 75 while its loss falls from `3.6·10^-4` to `1.7·10^-6`.
+
+The middle panel is the mechanism.  The solid curves are the residual on the
+collocation points the optimiser is looking at; the dashed curves are the residual
+on an independent sample of the same size.  For SSBroyden the two end up a factor
+of `3·10^6` apart (`9.6·10^-12` against `3.0·10^-5` at iteration 19013) — the
+network is *interpolating the sample*, not solving the equation.  The right panel
+is the consequence: across these runs the true error is anti-correlated with the
+residual.
+
+Two things are going on, and it is worth separating them:
+
+1. **`n_coll = n_parameters` makes the sampled problem square.** Two thousand two
+   hundred and one residual equations for two thousand two hundred and one
+   parameters is generically *exactly solvable* whether or not the underlying PDE
+   has been solved, so the loss can be driven to zero by interpolation.  At
+   `T = 2` the interpolant happens to sit near the true solution; at `T = 20` it
+   does not.
+2. **The ansatz amplifies the error by `t²`.** The hard-coded part is
+   `u0 + t·v0`, whose magnitude reaches 61 at `t = 20`, and the network must cancel
+   it with `t² N`.  To hold the solution to `10^-3` the network must therefore
+   represent `N` to about `10^-3/400 ≈ 2.5·10^-6` — and `N_exact` is a narrow
+   feature that the `(t, cos, sin)` features have to build from scratch.
+
+Over-determination was tried and did not rescue it: `T20_bigbatch` uses 8192 points
+(3.7x the parameter count) and still ends at an 11x error, so (2) is the binding
+constraint, not (1).
+
+This is the same conclusion the DSGNAR paper's own trainer reaches for
+time-dependent problems, and it is why it marches in slabs along the time axis,
+restarting each slab from the previous one so that the hard part only grows by one
+small `Δt`.  **A single global solve on `[0, 20]` with this hard-constrained ansatz
+is the wrong formulation**, and the fix is time marching, not a better optimiser —
+`T = 2` is well inside the regime where the one-shot ansatz works, and the errors
+in §6.5 are real.
+
+### 6.7 The third optimiser: exact-Hessian trust region
+
+`wave_pinn/optim/trustregion.py` implements the optimiser of Xu & Darve,
+*Trust Region Method for Coupled Systems of PDE Solvers and Deep Neural Networks*
+(arXiv:2105.07552).  Two findings from reading it shaped the port, and both are
+recorded in the module docstring:
+
+* **The paper's optimiser is SciPy's.**  It specifies no trust-region loop; it says
+  it uses Conn-Gould-Toint Chapter 7 "implemented in the scipy library", and the
+  authors' own call site is
+  `minimize(..., method="trust-exact", jac=..., hess=..., options={"maxiter":5000, "gtol":0.0})`.
+  So the subproblem is More-Sorensen *nearly exact*: safeguarded Newton on the
+  secular equation, a Cholesky of `B + λI` per trial `λ`, and a two-dimensional
+  fallback along the negative-curvature direction in the hard case.  No CG, no
+  dogleg, no Cauchy point, no preconditioner.
+* **Hessian-vector products are not enough.**  The paper rejects matrix-free
+  explicitly and SciPy requires a dense `(n, n)` array.  The subproblem solver is
+  therefore delegated to `scipy.optimize._trustregion_exact.IterativeSubproblem`,
+  after a hand transcription of it was written and *disagreed with the original on
+  7 % of random indefinite problems* — the state that is easy to miss is that the
+  hard-case quadratic term is taken with the shifted matrix `H + λI`, not `H`.
+  Depending on the reference implementation is better than shipping an
+  approximation of it.
+
+The outer loop is ours, and is verified to reproduce SciPy's own trust-region loop
+step for step (`test_outer_loop_matches_scipy_trust_exact`), which is the strongest
+available statement since that loop *is* the paper's algorithm.
+
+**The paper's premise holds for this problem.**  At the random initialisation with
+`T = 2` and 2201 collocation points, the exact Hessian of the loss has
+
+| | |
+|---|---|
+| `λ_min`, `λ_max` | `-1.906`, `+2.179` |
+| negative eigenvalues | **766 of 2201** (34.8 %) |
+| numerically zero (`|λ| < 10^-6 λ_max`) | 665 (30.2 %) |
+| positive | 770 (35.0 %) |
+| time to form the matrix | 108 s (uncontended; `runs/hessian_spectrum.json`) |
+
+so the curvature really is indefinite, and the Gauss-Newton matrix DSGNAR uses
+(which is positive semi-definite by construction) is not the whole story — which is
+exactly why BFGS-method-style updates, which force positive definiteness, stall at
+`10^-4` on this problem while DSGNAR does not.  `scripts/hessian_spectrum.py`
+reproduces the measurement (and chunking the forward-over-reverse matters: the
+unchunked `jax.hessian` at `n = 2201` is killed by the OOM killer).
+
+**As a solver it is not competitive at this size.**  The `T = 2` run
+(`runs/T2_tr`, 512 collocation points to keep the Hessian affordable, 40 iterations,
+30 Hessians, 1825 s) reached a loss of `1.8·10^-3` and an error of 0.93 — nowhere
+near converged, and ~10x more wall time per iteration than DSGNAR, whose Hessian is
+never formed.  The paper's own networks are 901-921 parameters and needed ~270
+iterations; at 2201 parameters the `n³` factorisation and the `n`
+forward-over-reverse passes both grow, and the method's value here is the
+diagnostic in the table above rather than the solution it produces.
+
 
 ---
 

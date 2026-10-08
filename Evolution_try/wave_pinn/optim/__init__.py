@@ -36,6 +36,10 @@ def _phases(name: str) -> List[str]:
         return ["dsgnar"]
     if name == "adam+dsgnar":
         return ["adam", "dsgnar"]
+    if name == "trustregion":
+        return ["trustregion"]
+    if name == "adam+trustregion":
+        return ["adam", "trustregion"]
     raise ValueError(f"unknown optimizer {name!r}")
 
 
@@ -75,6 +79,12 @@ def run_optimizer(objective: Objective, flat0, cfg: Config,
             flat, hist, info = ssbroyden_phase(objective, flat, cfg,
                                                verbose=verbose, callback=_cb,
                                                step_offset=step, resample=resample)
+            step += int(info.get("iterations", 0))
+        elif phase == "trustregion":
+            from .trustregion import trust_region_phase
+            flat, hist, info = trust_region_phase(objective, flat, cfg,
+                                                  verbose=verbose, callback=_cb,
+                                                  step_offset=step, resample=resample)
             step += int(info.get("iterations", 0))
         elif phase == "dsgnar":
             from .dsgnar import dsgnar_phase

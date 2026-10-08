@@ -78,10 +78,30 @@ def n_images(cfg: Config) -> int:
     return int(min(64, max(3, math.ceil(reach / (2.0 * half)))))
 
 
+def wrap_periodic(cfg: Config, x):
+    """Fold ``x`` into ``[-L, L)``.
+
+    The profile is 2L-periodic *by construction* only where the image sum
+    converges, and the sum is truncated at ``n_images``; evaluating the raw sum
+    far outside the fundamental domain returns essentially zero, because no
+    retained image lands near the argument.  Folding first makes the function
+    exactly periodic for every argument, at every ``t``.
+
+    This is not cosmetic.  ``exact_solution`` evaluates the profile at
+    ``x - c t``, which reaches -21 at ``T = 20`` with ``L = 1``, i.e. far outside
+    the window (about ``+-6``) in which a three-image sum is meaningful.  Before
+    this fold, the reference solution at ``t >~ 7`` came out as numerical zero and
+    every error reported at large ``t`` was a ratio against nothing.  ``jnp.mod``
+    differentiates to 1, so ``dprofile`` is unaffected.
+    """
+    return jnp.mod(x + cfg.L, 2.0 * cfg.L) - cfg.L
+
+
 def profile(cfg: Config, x):
     """The initial profile actually used: periodised when that is wanted."""
     if not (cfg.periodic and cfg.periodize_ic) or cfg.u0 in NATIVE_PERIODIC:
         return _raw_profile(cfg, x)
+    x = wrap_periodic(cfg, x)
     n = n_images(cfg)
     total = _raw_profile(cfg, x)
     for k in range(1, n + 1):

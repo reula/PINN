@@ -34,7 +34,9 @@ CHOICES: Dict[str, tuple] = {
     "activation": ("tanh", "sin", "gelu", "relu", "softplus"),
     "init": ("glorot", "lecun", "siren", "zeros", "uniform"),
     "sampler": ("uniform", "random", "grid_random", "lhs"),
-    "optimizer": ("adam", "ssbroyden", "adam+ssbroyden", "dsgnar", "adam+dsgnar"),
+    "optimizer": ("adam", "ssbroyden", "adam+ssbroyden", "dsgnar", "adam+dsgnar",
+                  "trustregion", "adam+trustregion"),
+    "tr_hessian": ("exact", "gauss_newton"),
     "precision": ("float64", "float32"),
     "scheduler": ("none", "plateau", "cosine"),
     "residual_norm": ("auto", "none"),
@@ -108,6 +110,21 @@ class Config:
     dsgnar_delta0: float = 1.0         # initial trust-region radius
     dsgnar_delta_min: float = 1.0e-14  # termination radius
     dsgnar_omega: float = 1.0e-8       # regularisation floor in the ratio solve
+    # ---- trust-region Newton with an exact dense Hessian (arXiv:2105.07552) ----
+    tr_maxiter: int = 300              # outer iterations (the paper caps at 5000)
+    tr_delta0: float = 1.0             # initial trust radius   (scipy default)
+    tr_delta_max: float = 1.0e3        # maximum trust radius   (scipy default)
+    tr_eta: float = 0.15               # accept iff rho > eta; scipy requires eta < 0.25
+    tr_contract_below: float = 0.25    # rho below this  -> radius *= tr_contract
+    tr_contract: float = 0.25
+    tr_expand_above: float = 0.75      # rho above this *and* the step hit the boundary
+    tr_expand: float = 2.0             #                  -> radius *= tr_expand
+    tr_gtol: float = 1.0e-10           # stop when ||g||_2 < tr_gtol (scipy compares the 2-norm)
+    tr_subproblem_maxiter: int = 25    # secular-equation Newton cap (scipy >= 1.17 default)
+    tr_hessian: str = "exact"          # "exact": the paper's indefinite Hessian.
+                                       # "gauss_newton": (2/M) J^T J -- a *different*
+                                       # algorithm, kept only as an ablation.
+    tr_chunk: int = 128                # forward-mode chunk size for the dense Hessian
     # ------------------------------------------------------------ bookkeeping
     precision: str = "float64"
     outdir: str = ""                   # empty -> runs/<timestamp>-<label>

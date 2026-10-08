@@ -19,5 +19,10 @@ Sorted by space-time relative L2 error.
 | sweep_f6ic | ssbroyden | fourier_ic | 6 | 2048 | 7.396e-06 | 0.1322 | 0.2151 | 339 | 2500 |
 | dsgnar_smoke | dsgnar | periodic | 1 | 512 | 0.01624 | 0.7495 | 0.6664 | 16.07 | 20 |
 | sweep_f12ic | ssbroyden | fourier_ic | 12 | 2048 | 1.039e-05 | 0.7997 | 0.9063 | 337 | 2500 |
+| T20_ssbroyden | ssbroyden | periodic | 1 | 2201 | 6.976e-12 | 0.9072 | 0.9169 | 2511 | 19763 |
+| T2_tr | trustregion | periodic | 1 | 512 | 0.001836 | 0.9334 | 1.304 | 1840 | 40 |
 | sweep_f12 | ssbroyden | fourier | 12 | 2048 | 1.620e-04 | 1.131 | 1.838 | 270.1 | 2500 |
 | smoke_qn | ssbroyden | fourier | 6 | 1024 | 0.001457 | 5.188 | 9.377 | 20.82 | 200 |
+| T20_bigbatch | ssbroyden | periodic | 1 | 8192 | 1.300e-07 | 10.97 | 18.7 | 1211 | 4000 |
+| T20_dsgnar | dsgnar | periodic | 1 | 2201 | 1.670e-06 | 23.86 | 42 | 3516 | 97 |
+| T20_ssb_scout | ssbroyden | periodic | 1 | 2201 | 4.352e-07 | 28.57 | 12.79 | 289.7 | 2000 |
