@@ -495,7 +495,7 @@ def sample_shell(key, n: int, cfg: Config) -> jnp.ndarray:
     boundary layer keep their resolution) and the rest uniformly in volume (so the far field is
     represented per unit volume).  For a shell ratio of 100 and 27768 points, pure volume puts
     0.19 points inside rho = 2, while log puts 4179; at frac = 0.5 the hybrid puts ~2090 there
-    and still has ~13900 points outside rho = 10 (pure log: 13884, pure volume: 27640).
+    and still has ~20800 points outside rho = 10 (pure log: 13884, pure volume: 27740).
     """
     k1, k2 = jax.random.split(key)
     if cfg.radial == "hybrid":

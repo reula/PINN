@@ -26,7 +26,7 @@
 #       is represented per unit volume).  Pure volume (pq_c100_vacC_volpts) left 0.19 of 27768
 #       points inside rho = 2 and converged to a wrong, too-flat profile; pure log leaves the
 #       far field thin.  At frac = 0.5 the expected count inside rho = 2 is ~2090 and outside
-#       rho = 10 is ~13900.
+#       rho = 10 is ~20800.
 #
 # Usage, on the hub node (see HUB.md):
 #
