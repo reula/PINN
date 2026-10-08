@@ -33,7 +33,12 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
-PY="${PY:-python}"
+PY="${PY:-$HERE/.venv/bin/python}"
+if [ ! -x "$PY" ]; then
+    echo "run_hub.sh needs the project's python (jax lives there, not in PATH):" >&2
+    echo "  PY=\$PWD/.venv/bin/python $0" >&2
+    exit 1
+fi
 DRY="${DRY:-0}"
 INIT="${INIT:-runs/pq_c100_vac3/params.pkl}"
 SKETCH="${SKETCH:-128}"

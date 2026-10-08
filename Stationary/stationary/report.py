@@ -39,7 +39,6 @@ from .geometry_invariants import format_geometry, geometry_report, sphere_geomet
 from .losses import (OFFW, inner_bc_terms, outer_bc_terms, outer_pin_terms,
                      reference_consistency, robin_coefficients)
 from .model import point_fields
-from .multipoles import lambda_multipoles, multipole_radial_profile
 from .problem import (lam_inner_bc, reference_is_departure_only, sample_shell,
                       sample_sphere)
 
@@ -649,7 +648,22 @@ def main():
     # runs/control_ord1 the shell-wide max|dh| is 2.3e-2 while every geometric quantity
     # agrees much better.  These are the numbers that mean something.
     _section("CHART-INDEPENDENT (geometric invariants)")
-    ang = float(sum(jnp.sqrt(power[l]) for l in (1, 2, 3))) if power else 0.0
+    # "How much angular content does lambda carry?" in the ONE form the rest of this report
+    # uses: the S_lm coefficients divided by rho_out^(l+1) ARE the amplitudes at rho_out, so
+    # this is the same number the old amplitude-based line produced, without a second
+    # estimator (and without the `power` variable that this line used to borrow from it --
+    # removing that call left this one referencing a name that no longer existed, which is
+    # what silently truncated the report after the multipole tables).
+    ang = 0.0
+    try:
+        fac = float(getattr(cfg, "vtk_physical_inner", 1.0)) / float(cfg.rho_in)
+        c_out = multipole_constants(pf, [float(cfg.rho_out)], lmax=3, lam_inf=lam_inf,
+                                    factor=fac)
+        r_out = float(c_out["r_phys"][-1])
+        ang = float(sum(abs(float(c_out["S"][(l, 0)][-1])) / r_out ** (l + 1)
+                        for l in (1, 2, 3)))
+    except Exception as exc:
+        print(f"    angular-content check skipped: {exc}")
     if ang > 1e-6:
         print(f"    CAUTION: lambda has angular content (l=1,2,3 amplitudes sum to {ang:.2e}):")
         print(f"             this solution is NOT spherically symmetric, and the relations")

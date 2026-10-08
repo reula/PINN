@@ -46,3 +46,40 @@ def test_a_crashed_training_is_bannerred(tmp_path):
         json.dumps({"train_exit": 137, "at": "2026-10-05T23:10"}))
     banner = unfinished(str(tmp_path)) or ""
     assert "137" in banner and "2026-10-05T23:10" in banner, banner
+
+
+def test_the_report_runs_to_the_end_and_past_the_multipoles(tmp_path):
+    """A NameError in a LATER section used to truncate report.txt silently.
+
+    `report.py` printed the section header "CHART-INDEPENDENT (geometric invariants)" and then
+    died on a stale name (`power`, left behind when the amplitude-based multipole lines were
+    replaced by the S_lm form), because the name was computed in an earlier block.  The report
+    of every run after that change ended at that header: the multipole tables were there and
+    the geometric invariants, the family fit and the plane comparison were simply absent, with
+    nothing in the file to say so.  This test runs the whole pipeline -- a one-step training to
+    produce a real run directory, then `python -m stationary.report` on it -- and requires the
+    sections on BOTH sides of the multipoles to be present.
+    """
+    import os
+    import subprocess
+    import sys
+
+    from stationary.train import parse_args, train
+
+    out = tmp_path / "r"
+    cfg = parse_args(["--outdir", str(out), "--arch", "sym_hybrid", "--steps", "1",
+                      "--lbfgs-steps", "0", "--n-coll", "32", "--n-bnd", "8",
+                      "--width", "4", "--depth", "2", "--no-figures", "--ckpt-every", "0"])
+    train(cfg, verbose=False)
+
+    proc = subprocess.run([sys.executable, "-m", "stationary.report", "--outdir", str(out)],
+                          capture_output=True, text=True, cwd=os.getcwd())
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    text = proc.stdout
+    for needle in ("MULTIPOLES OF lambda", "SPURIOUS DIPOLE",
+                   "CHART-INDEPENDENT (geometric invariants)",
+                   "family read off the solution"):
+        assert needle in text, (needle, text[-3000:])
+    # ... and the section that died is not merely headed: it has content after the header
+    tail = text.split("CHART-INDEPENDENT (geometric invariants)")[1]
+    assert "family read off the solution" in tail
