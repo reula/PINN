@@ -10,20 +10,23 @@ import jax.numpy as jnp
 import numpy as np
 
 from .config import Config
-from .model import ansatz_u
 from .problem import exact_solution
 from .sampling import test_grid
 
 
-def solution_on_grid(params, cfg: Config, times=None, n_x: int | None = None) -> Dict:
-    """Sample the network and the exact solution on ``times x [-L, L]``."""
+def solution_on_grid(u_fn, cfg: Config, times=None, n_x: int | None = None) -> Dict:
+    """Sample a solution ``u_fn(t, x)`` and the exact solution on ``times x [-L, L]``.
+
+    ``u_fn`` rather than a parameter vector, because in the windowed mode the
+    solution is piecewise: a different network covers each time slab.
+    """
     n_x = n_x or cfg.n_test_x
     x = jnp.linspace(-cfg.L, cfg.L, n_x)
     times = list(times if times is not None else cfg.snapshot_times)
     out = {"x": np.asarray(x), "times": times, "u": {}, "exact": {}, "abs_err": {}}
     for t in times:
         tt = jnp.full_like(x, float(t))
-        u = np.asarray(ansatz_u(params, cfg, tt, x))
+        u = np.asarray(u_fn(tt, x))
         ex = np.asarray(exact_solution(cfg, tt, x))
         out["u"][float(t)] = u
         out["exact"][float(t)] = ex
@@ -51,8 +54,8 @@ def error_metrics(grid: Dict) -> Dict:
             "final_time_rel_l2": per_time[float(grid["times"][-1])]["rel_l2"]}
 
 
-def evaluate(params, cfg: Config, times=None, n_x: int | None = None) -> Dict:
-    grid = solution_on_grid(params, cfg, times=times, n_x=n_x)
+def evaluate(u_fn, cfg: Config, times=None, n_x: int | None = None) -> Dict:
+    grid = solution_on_grid(u_fn, cfg, times=times, n_x=n_x)
     return {"grid": grid, "metrics": error_metrics(grid)}
 
 

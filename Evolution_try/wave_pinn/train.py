@@ -17,7 +17,7 @@ from .evaluate import (error_metrics, plot_error_map, plot_history, plot_solutio
                        solution_on_grid)
 from .features import feature_dim
 from .losses import Objective
-from .model import init_params, n_parameters
+from .model import ansatz_u, init_params, n_parameters
 from .optim import run_optimizer
 from .sampling import make_batch
 
@@ -139,8 +139,9 @@ def run(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
             "step": int(step),
             "train_loss": float(loss),
             "test_loss": test_obj.loss(flat),
-            "rel_l2": error_metrics(solution_on_grid(objective.unflatten(flat), cfg))
-                      ["rel_l2_space_time"],
+            "rel_l2": error_metrics(solution_on_grid(
+                lambda tt, xx: ansatz_u(objective.unflatten(flat), cfg, tt, xx), cfg))
+                ["rel_l2_space_time"],
         })
 
     t_start = time.time()
@@ -151,7 +152,7 @@ def run(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
     params = objective.unflatten(flat)
 
     # ---- evaluation ------------------------------------------------------------
-    grid = solution_on_grid(params, cfg)
+    grid = solution_on_grid(lambda tt, xx: ansatz_u(params, cfg, tt, xx), cfg)
     metrics = error_metrics(grid)
     if verbose:
         print(f"[eval] space-time relative L2 = {metrics['rel_l2_space_time']:.6e}   "

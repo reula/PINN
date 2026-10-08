@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 CHOICES: Dict[str, tuple] = {
     "equation": ("wave2", "advection"),
     "u0": ("gaussian", "sin", "sin2", "sech2", "cosine_bump", "poly_bump"),
-    "ansatz": ("t2", "t"),
+    "ansatz": ("t2", "t2sat", "t"),
     "features": ("periodic", "periodic_ic", "fourier", "fourier_ic", "plain", "plain_ic"),
     "activation": ("tanh", "sin", "gelu", "relu", "softplus"),
     "init": ("glorot", "lecun", "siren", "zeros", "uniform"),
@@ -66,7 +66,9 @@ class Config:
     u0_amp: float = 1.0                # amplitude
     periodize_ic: bool = True          # replace u0 by its smooth 2L-periodic sum
     # ---------------------------------------------------------------- ansatz
-    ansatz: str = "t2"                 # "t2": u0 + t v0 + t^2 N | "t": u0 + t N
+    ansatz: str = "t2"                 # "t2": u0 + t v0 + t^2 N | "t2sat": u0 + t v0 + t^2/(tau^2+t^2) N | "t": u0 + t N
+    ansatz_tau: float = 1.0            # the saturation scale in "t2sat"
+    windows: int = 1                   # time slabs; 1 = one global solve on [0, T]
     # ------------------------------------------------------------- features
     features: str = "periodic"         # input feature map, see features.py
     n_modes: int = 1                   # harmonics, used only by features="fourier"

@@ -49,50 +49,60 @@ def _aspect_grid(cfg: Config) -> tuple:
     return n_x, n_t
 
 
-def _uniform(cfg: Config) -> tuple:
+def _uniform(cfg: Config, t0: float = 0.0, t1: float | None = None) -> tuple:
+    t1 = cfg.T if t1 is None else t1
     n_x, n_t = _aspect_grid(cfg)
     x = (-cfg.L + (np.arange(n_x) + 0.5) * (2.0 * cfg.L / n_x)).astype(np.float64)
-    t = np.linspace(0.0, cfg.T, n_t, dtype=np.float64)
+    t = np.linspace(t0, t1, n_t, dtype=np.float64)
     X, T = np.meshgrid(x, t, indexing="xy")
     return T.ravel(), X.ravel()
 
 
-def _random(cfg: Config, key) -> tuple:
+def _random(cfg: Config, key, t0: float = 0.0, t1: float | None = None) -> tuple:
+    t1 = cfg.T if t1 is None else t1
     kx, kt = jax.random.split(key)
     x = jax.random.uniform(kx, (cfg.n_coll,), minval=-cfg.L, maxval=cfg.L)
-    t = jax.random.uniform(kt, (cfg.n_coll,), minval=0.0, maxval=cfg.T)
+    t = jax.random.uniform(kt, (cfg.n_coll,), minval=t0, maxval=t1)
     return t, x
 
 
-def _grid_random(cfg: Config, key) -> tuple:
+def _grid_random(cfg: Config, key, t0: float = 0.0, t1: float | None = None) -> tuple:
+    t1 = cfg.T if t1 is None else t1
     _, n_t = _aspect_grid(cfg)
     n_x = max(1, cfg.n_coll // n_t)
     x = jax.random.uniform(key, (n_t, n_x), minval=-cfg.L, maxval=cfg.L)
-    t = jnp.linspace(0.0, cfg.T, n_t)[:, None] * jnp.ones((1, n_x))
+    t = jnp.linspace(t0, t1, n_t)[:, None] * jnp.ones((1, n_x))
     return t.ravel(), x.ravel()
 
 
-def _lhs(cfg: Config, key) -> tuple:
+def _lhs(cfg: Config, key, t0: float = 0.0, t1: float | None = None) -> tuple:
+    t1 = cfg.T if t1 is None else t1
     n = cfg.n_coll
     k1, k2 = jax.random.split(key)
     ux = (jnp.arange(n) + jax.random.uniform(k1, (n,))) / n
     ut = (jnp.arange(n) + jax.random.uniform(k2, (n,))) / n
-    return ut * cfg.T, -cfg.L + ux * 2.0 * cfg.L
+    return t0 + ut * (t1 - t0), -cfg.L + ux * 2.0 * cfg.L
 
 
-def sample_interior(cfg: Config, key) -> tuple:
+def sample_interior(cfg: Config, key, t0: float = 0.0, t1: float | None = None) -> tuple:
+    """Collocation points with ``t`` drawn from ``[t0, t1]`` (default ``[0, T]``).
+
+    The window arguments are what make slab marching work: a slab's residual must
+    be measured only where its ansatz is defined.
+    """
+    t1 = cfg.T if t1 is None else t1
     if cfg.sampler == "uniform":
-        return _uniform(cfg)
+        return _uniform(cfg, t0, t1)
     if cfg.sampler == "random":
-        return _random(cfg, key)
+        return _random(cfg, key, t0, t1)
     if cfg.sampler == "grid_random":
-        return _grid_random(cfg, key)
+        return _grid_random(cfg, key, t0, t1)
     if cfg.sampler == "lhs":
-        return _lhs(cfg, key)
+        return _lhs(cfg, key, t0, t1)
     raise ValueError(f"unknown sampler {cfg.sampler!r}")
 
 
-def residual_scale(cfg: Config, t, x, scale_override=None):
+def residual_scale(cfg: Config, t, x, scale_override=None, ic=None, t0: float = 0.0):
     """A constant by which to divide the PDE residual before optimising.
 
     The raw residual of this problem is O(u0'') ~ O(1/sigma^2), i.e. of order a
@@ -113,8 +123,8 @@ def residual_scale(cfg: Config, t, x, scale_override=None):
     from .problem import pde_residual
 
     def u_hard(tt, xx):
-        u0, v0 = initial_data(cfg, xx)
-        return u0 + tt * v0
+        u0, v0 = initial_data(cfg, xx) if ic is None else ic(xx)
+        return u0 + (tt - t0) * v0
 
     if cfg.equation == "advection":
         # For the hard part u_t = v0 and c u_x = c u0', and v0 = -c u0' makes their
@@ -127,18 +137,20 @@ def residual_scale(cfg: Config, t, x, scale_override=None):
     return jnp.where(s > 0.0, s, 1.0)
 
 
-def make_batch(cfg: Config, key, scale=None) -> Batch:
-    """Draw one collocation batch."""
-    t, x = sample_interior(cfg, key)
+def make_batch(cfg: Config, key, scale=None, t0: float = 0.0,
+               t1: float | None = None, ic=None) -> Batch:
+    """Draw one collocation batch, with ``t`` confined to ``[t0, t1]``."""
+    t, x = sample_interior(cfg, key, t0=t0, t1=t1)
     if cfg.n_boundary > 0:
-        tb = jnp.linspace(0.0, cfg.T, cfg.n_boundary)
+        tb = jnp.linspace(t0, cfg.T if t1 is None else t1, cfg.n_boundary)
         xl = -cfg.L * jnp.ones_like(tb)
         xr = cfg.L * jnp.ones_like(tb)
     else:
         tb = jnp.zeros((0,))
         xl = jnp.zeros((0,))
         xr = jnp.zeros((0,))
-    scale = residual_scale(cfg, jnp.asarray(t), jnp.asarray(x), scale_override=scale)
+    scale = residual_scale(cfg, jnp.asarray(t), jnp.asarray(x), scale_override=scale,
+                           ic=ic, t0=t0)
     return Batch(t=jnp.asarray(t), x=jnp.asarray(x), t_b=tb, x_left=xl, x_right=xr,
                  scale=scale)
 

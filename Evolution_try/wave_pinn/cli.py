@@ -52,7 +52,11 @@ def main(argv=None) -> int:
         return 0
 
     configure_jax(cfg)
-    run(cfg, verbose=not args.quiet)
+    if cfg.windows > 1:
+        from .windows import run_windows
+        run_windows(cfg, verbose=not args.quiet)
+    else:
+        run(cfg, verbose=not args.quiet)
     return 0
 
 

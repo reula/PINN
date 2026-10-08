@@ -22,7 +22,8 @@ Sorted by space-time relative L2 error.
 | T20_ssbroyden | ssbroyden | periodic | 1 | 2201 | 6.976e-12 | 0.9072 | 0.9169 | 2511 | 19763 |
 | T2_tr | trustregion | periodic | 1 | 512 | 0.001836 | 0.9334 | 1.304 | 1840 | 40 |
 | sweep_f12 | ssbroyden | fourier | 12 | 2048 | 1.620e-04 | 1.131 | 1.838 | 270.1 | 2500 |
+| T20sat_ssbroyden | ssbroyden | periodic | 1 | 2201 | 1.510e-07 | 3.475 | 1.525 | 368 | 7255 |
+| T20sat_dsgnar | dsgnar | periodic | 1 | 2201 | 5.938e-06 | 4.994 | 9.463 | 529.9 | 150 |
 | smoke_qn | ssbroyden | fourier | 6 | 1024 | 0.001457 | 5.188 | 9.377 | 20.82 | 200 |
 | T20_bigbatch | ssbroyden | periodic | 1 | 8192 | 1.300e-07 | 10.97 | 18.7 | 1211 | 4000 |
 | T20_dsgnar | dsgnar | periodic | 1 | 2201 | 1.670e-06 | 23.86 | 42 | 3516 | 97 |
-| T20_ssb_scout | ssbroyden | periodic | 1 | 2201 | 4.352e-07 | 28.57 | 12.79 | 289.7 | 2000 |

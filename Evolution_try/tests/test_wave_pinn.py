@@ -424,3 +424,56 @@ class TestTrustRegionMachinery(unittest.TestCase):
         self.assertEqual(info["hessian"], "exact")
         self.assertGreaterEqual(info["accepted"], 1)
         self.assertTrue(all(np.isfinite(h["loss"]) for h in hist))
+
+
+class TestWindows(unittest.TestCase):
+    """Slab marching: the chain must hand over exactly what the next window needs."""
+
+    def test_chain_is_continuous_in_u_and_u_t_at_the_edges(self):
+        from wave_pinn.windows import Chain, Slab
+        cfg = Config(T=2.0, windows=4, n_coll=64, sampler="uniform", n_modes=2)
+        x = jnp.linspace(-1.0, 1.0, 33)
+        slabs = []
+        for k in range(4):
+            s = Slab(cfg, k, 0.5 * k, 0.5 * (k + 1), prev=(slabs[-1] if slabs else None))
+            s.params = init_params(cfg, jax.random.PRNGKey(100 + k))
+            slabs.append(s)
+        chain = Chain(cfg, slabs)
+
+        # the first window starts from the exact initial condition
+        u0, v0 = initial_data(cfg, x)
+        self.assertLess(float(jnp.max(jnp.abs(slabs[0].solution(jnp.zeros_like(x), x) - u0))), 1e-13)
+        self.assertLess(float(jnp.max(jnp.abs(slabs[0].time_derivative(0.0, x) - v0))), 1e-11)
+
+        # and each hand-over is exact: the next window's U, V are the previous
+        # window's u, u_t at the shared edge, so both are continuous by construction
+        for k in range(1, 4):
+            t = 0.5 * k
+            left = slabs[k - 1].solution(jnp.full_like(x, t), x)
+            right = slabs[k].solution(jnp.full_like(x, t), x)
+            self.assertLess(float(jnp.max(jnp.abs(left - right))), 1e-12, msg=f"edge {k}")
+            dl = slabs[k - 1].time_derivative(t, x)
+            dr = slabs[k].time_derivative(t, x)
+            self.assertLess(float(jnp.max(jnp.abs(dl - dr))), 1e-9, msg=f"slope at edge {k}")
+        # the piecewise evaluation picks the right window
+        for t in (0.0, 0.4, 0.5, 1.1, 1.9, 2.0):
+            got = chain.u(jnp.full_like(x, t), x)
+            want = chain.slab_for(t).solution(jnp.full_like(x, t), x)
+            self.assertLess(float(jnp.max(jnp.abs(got - want))), 1e-14)
+
+    def test_sampling_confines_t_to_the_window(self):
+        cfg = Config(T=20.0, n_coll=256, sampler="random")
+        for t0, t1 in ((0.0, 2.0), (6.0, 8.0), (18.0, 20.0)):
+            b = make_batch(cfg, jax.random.PRNGKey(3), t0=t0, t1=t1)
+            self.assertGreaterEqual(float(jnp.min(b.t)), t0 - 1e-12)
+            self.assertLessEqual(float(jnp.max(b.t)), t1 + 1e-12)
+
+    def test_saturating_ansatz_keeps_the_initial_condition_exact(self):
+        cfg = Config(ansatz="t2sat", T=20.0)
+        params = init_params(cfg, jax.random.PRNGKey(5))
+        x = jnp.linspace(-1.0, 1.0, 33)
+        u0, v0 = initial_data(cfg, x)
+        self.assertLess(float(jnp.max(jnp.abs(ansatz_u(params, cfg, jnp.zeros_like(x), x) - u0))),
+                        1e-14)
+        ut = jax.vmap(lambda xx: jax.grad(lambda tt: ansatz_u(params, cfg, tt, xx))(0.0))(x)
+        self.assertLess(float(jnp.max(jnp.abs(ut - v0))), 1e-13)

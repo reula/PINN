@@ -199,6 +199,8 @@ Every row is a config field; nothing here needs a code change to switch.
 | `n_modes` | any integer | harmonics `K`, used only by `features="fourier"` |
 | `sampler` | `uniform`, `random`, `grid_random`, `lhs` | collocation points |
 | `n_coll` | any integer | collocation points; `0` (default) = one per trainable parameter |
+| `windows` | int | number of time slabs; `1` (default) = one global solve on `[0, T]` |
+| `ansatz` | `t2`, `t2sat`, `t` | `t^2`, `t^2/(tau^2+t^2)` (bounded) or `t` in front of the network |
 | `residual_norm` | `auto`, `none` | divide the residual by its batch scale (a conditioning device) |
 | `optimizer` | `adam`, `ssbroyden`, `adam+ssbroyden`, `dsgnar`, `adam+dsgnar`, `trustregion`, `adam+trustregion` | optimiser, or a warm-up followed by one |
 | `tr_*` | see `config.py` | the trust-region Newton knobs: radius, eta, `tr_hessian` (`exact` or the `gauss_newton` ablation) |
@@ -572,6 +574,69 @@ never formed.  The paper's own networks are 901-921 parameters and needed ~270
 iterations; at 2201 parameters the `n³` factorisation and the `n`
 forward-over-reverse passes both grow, and the method's value here is the
 diagnostic in the table above rather than the solution it produces.
+
+
+### 6.8 Two attempts to make T = 20 work
+
+**A saturating weight.**  The `t^2` in front of the network is what amplifies the
+error at large `t`, so `ansatz="t2sat"` replaces it with `t^2/(tau^2 + t^2)`, which
+is bounded by 1 and still satisfies `f(0) = f'(0) = 0`, so the hard-coded initial
+condition survives untouched.  The parameter sensitivity is then flat in time --
+measured, `max_theta |du/dtheta|` grows by a factor 6.4 from `t = 1` to `t = 20`
+with `t^2` and by 1.0 with `t2sat`.
+
+It does what it was meant to do, and it is not enough:
+
+| run | ansatz | final loss | train vs independent residual | rel `L2` |
+|---|---|---|---|---|
+| `T20_ssbroyden` | `t2` | 6.98e-12 | `9.6e-12` vs `3.0e-05` (**3e6 apart**) | 0.907 |
+| `T20sat_ssbroyden` | `t2sat` | 1.51e-07 | `1.7e-07` vs `2.2e-06` (13 apart) | 3.475 |
+| `T20_dsgnar` | `t2` | 1.67e-06 | `1.2e-07` vs `1.6e-06` | 23.86 |
+| `T20sat_dsgnar` | `t2sat` | 5.94e-06 | `5.9e-06` vs `1.6e-06` (2.6 apart) | 4.99 |
+
+All four are failures with `O(1)`-to-`O(25)` errors, so the saturating weight is
+*not* a fix on its own -- it changes which failure you get, not whether you get
+one.  It buys the honest residual (below), and DSGNAR improves from 23.9 to 5.0,
+while SSBroyden's error goes from 0.91 to 3.47 simply because its loss is then
+three orders less converged.
+
+`t2sat` **removes the sample-fitting**: the residual on the training sample and on
+an independent sample now track each other to within an order of magnitude, where
+with `t^2` they separated by six orders.  That is the conditioning diagnosis in
+§6.6 confirmed -- but the residual it can actually reach stalls at `1.5e-07`, far
+above what a `10^-4` error needs.  The pathology is gone; the accuracy is not
+there.
+
+**Windows.**  `windows=N` (and `wave_pinn/windows.py`) marches along the time axis.
+Window `k` is solved with the ansatz built from the *previous window's own
+solution*,
+
+    u(t, x) = U_k(x) + (t - t_k) V_k(x) + f(t - t_k) N_theta(t - t_k, x),
+    U_k = u_{k-1}(t_k),  V_k = d_t u_{k-1}(t_k),     both frozen,
+
+so the hard part only has to cancel `dt * V_k`, and the network sees the local
+time.  `u` and `u_t` are continuous across the edges by construction (tested to
+1e-12), the second derivative is not, and each window reuses the same optimiser
+code unchanged.
+
+The machinery is verified but the T = 20 production run is a *long* one, and it is
+worth recording why.  A window of width `dt` is exactly as hard as a `T = dt`
+problem, and §6.5 measured what that costs: DSGNAR needs ~200 iterations and
+SSBroyden ~10 000 to take `T = 2` down to `1e-6`.  Ten windows of `dt = 2`
+therefore cost ~2000 DSGNAR iterations (about 4.5 h here) or ~100 000 SSBroyden
+iterations (about 7 h) -- the same work as the global solve, redistributed.  An
+under-trained window chain is worse than the global solve, and measurement bears
+that out: with only 1000 SSBroyden iterations per window the chain's error grows
+along it (1.2e-02 in window 1, 0.50 in window 3, 1.23 in window 4), because each
+hand-over inherits the previous window's error.
+
+So the recommendation stands, with a price tag attached: **window the problem, and
+use DSGNAR inside the windows**, because it is the only one of the three that
+reaches `1e-6` on a `T = 2`-sized problem in a couple of hundred iterations.  The
+run is a few hours, not a few minutes, and it is the natural next step.
+
+    python -m wave_pinn.cli --set T=20 --set windows=10 --set ansatz=t2sat \
+        --set optimizer=dsgnar --set dsgnar_steps=200 --set n_coll=2201
 
 
 ---
