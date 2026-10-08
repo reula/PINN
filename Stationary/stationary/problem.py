@@ -312,6 +312,10 @@ class Config:
     dsgnar_delta0: float = 1.0          # initial trust-region radius
     dsgnar_delta_min: float = 1.0e-14   # stop below this radius
     dsgnar_omega: float = 1.0e-8        # regularisation floor
+    # Tangents pushed through in blocks of this size instead of all s at once.  0 = all at
+    # once (the reference implementation, and a 4.78 GiB allocation at s = 128 on this
+    # problem: measured OOM).  The peak memory is set by this, not by the sketch size.
+    dsgnar_chunk: int = 0
     # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of
     # `qn_block` iterations (the inverse Hessian is carried across them), and the run stops
     # when `patience` consecutive blocks improve the loss by less than `plateau_tol`

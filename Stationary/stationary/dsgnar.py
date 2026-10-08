@@ -224,7 +224,7 @@ def lift_srct(y, srct, n: int):
     return full * signs
 
 
-def jvp_columns(res_fn, flat_now, basis):
+def jvp_columns(res_fn, flat_now, basis, chunk: int = 0):
     """``J(flat_now) @ basis.T`` for a batch of tangents: ``(s, n) -> (s, M)``.
 
     The linearisation is rebuilt at ``flat_now`` on every call.  That is not a
@@ -233,9 +233,29 @@ def jvp_columns(res_fn, flat_now, basis):
     the *initial* parameters -- measured at 12 % relative error after a single
     1e-2 step, large enough to make the Gauss-Newton model meaningless while
     still producing a plausible-looking loss curve.
+
+    ``chunk > 0`` pushes the tangents through in blocks of that size instead of all
+    ``s`` at once.  The reference implementation vmaps the whole sketch in one call, and on
+    this problem that is what the GPU refused: the tangents of the *whole* residual --
+    every collocation point, every equation component, and the second derivatives of
+    lambda -- are materialised simultaneously, and at ``s = 128`` that is a single
+    4.78 GiB allocation (measured, runs/pq_c100_vacF_dsgnar_probe_s128:
+    ``RESOURCE_EXHAUSTED: Out of memory while trying to allocate 4.78GiB``).  The arithmetic
+    is unchanged -- same columns, same order -- and the peak is set by ``chunk``, not by
+    ``s``, which is what makes a useful sketch affordable.
     """
     _, jvp = jax.linearize(res_fn, flat_now)
-    return jax.vmap(jvp)(basis)
+    s = int(basis.shape[0])
+    if not chunk or chunk >= s:
+        return jax.vmap(jvp)(basis)
+    if s % chunk == 0:
+        # lax.map: a real sequential loop in the compiled program, so the intermediates of one
+        # block are freed before the next is traced (a Python loop would be unrolled into one
+        # huge computation and XLA could keep them all live).
+        blocks = basis.reshape(s // chunk, chunk, basis.shape[1])
+        return jax.lax.map(lambda b: jax.vmap(jvp)(b), blocks).reshape(s, -1)
+    outs = [jax.vmap(jvp)(basis[i:i + chunk]) for i in range(0, s, chunk)]
+    return jnp.concatenate(outs, axis=0)
 
 
 # --------------------------------------------------------------------------
@@ -484,7 +504,9 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     loss_fn = objective._loss                         # jitted scalar loss
     dct = _dct_matrix(n, dtype)                       # constant: built once, not per iteration
     loss_batch = jax.jit(jax.vmap(loss_fn))
-    sketched_jacobian = jax.jit(lambda flat_now, basis: jvp_columns(res_fn, flat_now, basis))
+    chunk = int(getattr(cfg, "dsgnar_chunk", 0) or 0)
+    sketched_jacobian = jax.jit(lambda flat_now, basis: jvp_columns(res_fn, flat_now, basis,
+                                                                    chunk))
 
     target_stage1 = float(cfg.dsgnar_stage1_ratio)
     target_stage2 = float(cfg.dsgnar_stage2_ratio)
@@ -528,7 +550,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
             res_fn = objective._residual
             loss_fn = objective._loss
             loss_batch = jax.jit(jax.vmap(loss_fn))
-            sketched_jacobian = jax.jit(lambda f, b: jvp_columns(res_fn, f, b))
+            sketched_jacobian = jax.jit(lambda f, b: jvp_columns(res_fn, f, b, chunk))
             scale = 1.0 / float(objective.residual(flat).shape[0])
             loss = objective.loss(flat)
 
@@ -638,6 +660,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
 
     info = {
         "optimizer": "dsgnar",
+        "chunk": chunk,
         "iterations": step,
         "wall": time.time() - t0,
         "stopped": stopped,

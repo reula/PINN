@@ -11,21 +11,21 @@
 # built for.  Starting from an existing run removes the Adam warm-up from the experiment: the
 # only question is whether the same loss can be pushed lower from the same point.
 #
-# Cost.  One iteration costs `--dsgnar-sketch` batched JVPs over the whole residual vector plus
-# one SVD of that size, and the tangent batch is s x n_rows; at s = 128 the tangent batch is a
-# few hundred MB for this problem.  MEASURE FIRST with PROBE=1 (5 iterations, printed timings
-# and memory), then launch the real one.
+# Cost.  One iteration costs `--dsgnar-sketch` JVPs over the whole residual vector plus one SVD
+# of that size.  The JVPs are pushed through in blocks of CHUNK tangents, because materialising
+# all s at once is what the GPU refused: at s=128 it asked for a single 4.78 GiB allocation
+# (runs/pq_c100_vacF_dsgnar_probe_s128).  Peak memory is set by CHUNK; the timings are printed.
 #
 # Usage, on the hub node (see HUB.md):
 #
 #     cd ~/serafin/Julia/PINN/Stationary
 #     git pull
-#     PROBE=1 SKETCH=256 bash run_dsgnar.sh                  # 5 iterations, to size it
-#     SKETCH=256 STEPS=60 bash run_dsgnar.sh                 # the real polish
+#     PROBE=1 SKETCH=128 bash run_dsgnar.sh                  # 5 iterations, to size it
+#     SKETCH=128 STEPS=60 bash run_dsgnar.sh                 # the real polish
 #     INIT=runs/pq_c100_vacB_logphi/params.pkl OUT=runs/pq_c100_vacG_dsgnar_B bash run_dsgnar.sh
 #     DRY=1 bash run_dsgnar.sh                               # print, launch nothing
 #
-# Env: INIT (default runs/pq_c100_vac3/params.pkl), OUT, SKETCH (128), STEPS (60),
+# Env: INIT (default runs/pq_c100_vac3/params.pkl), OUT, SKETCH (128), CHUNK (16), STEPS (60),
 #      PROBE (0), TAG (suffix for OUT), plus any extra arguments forwarded to run_hub.sh.
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -45,6 +45,7 @@ SKETCH="${SKETCH:-128}"
 PROBE="${PROBE:-0}"
 TAG="${TAG:-}"
 SKETCH_STR="${SKETCH}"
+CHUNK="${CHUNK:-16}"
 
 if [ "$PROBE" = "1" ]; then
     STEPS="${STEPS:-5}"
@@ -73,6 +74,7 @@ ARGS=(
     --qn-method dsgnar
     --dsgnar-steps "$STEPS"
     --dsgnar-sketch "$SKETCH_STR"
+    --dsgnar-chunk "$CHUNK"
     --init-from "$INIT"
     --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
     --R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0
@@ -86,8 +88,8 @@ ARGS=(
 
 echo "DSGNAR polish:  init $INIT"
 echo "                out  $OUT"
-echo "                $STEPS iteration(s), sketch s = $SKETCH_STR"
-echo "                (each iteration = $SKETCH_STR batched JVPs + one ${SKETCH_STR}x${SKETCH_STR} SVD)"
+echo "                $STEPS iteration(s), sketch s = $SKETCH_STR, chunk $CHUNK"
+echo "                (each iteration = $SKETCH_STR JVPs in blocks of $CHUNK + one ${SKETCH_STR}x${SKETCH_STR} SVD; peak memory ~ chunk, not s)"
 
 if [ "$DRY" = "1" ]; then
     printf 'DRY  %s run_hub.sh' "$PY"

@@ -1572,6 +1572,10 @@ def parse_args(argv=None):
                    help="initial trust-region radius (default 1)")
     p.add_argument("--dsgnar-omega", type=float, default=None,
                    help="Levenberg-Marquardt regularisation floor (default 1e-8)")
+    p.add_argument("--dsgnar-chunk", type=int, default=None, dest="dsgnar_chunk",
+                   help="push the sketch tangents through in blocks of this size (0 = all at "
+                        "once).  Peak memory is set by this: s=128 all at once needs a 4.78 GiB "
+                        "allocation and dies of OOM; chunk=16 fits.  Arithmetic is unchanged")
     p.add_argument("--vtk", action="store_true",
                    help="write VTK files for VisIt when this run is post-processed")
     p.add_argument("--vtk-n-half", type=int, default=None,
@@ -1757,6 +1761,8 @@ def parse_args(argv=None):
         cfg.dsgnar_delta0 = a.dsgnar_delta0
     if a.dsgnar_omega is not None:
         cfg.dsgnar_omega = a.dsgnar_omega
+    if a.dsgnar_chunk is not None:
+        cfg.dsgnar_chunk = a.dsgnar_chunk
     if a.qn_max_H_gb is not None:
         cfg.qn_max_H_gb = a.qn_max_H_gb
     if a.qn_block is not None:

@@ -138,3 +138,27 @@ def test_the_dsgnar_objective_and_phase_lower_the_loss(tmp_path):
     assert info["iterations"] >= 1
     assert history[-1]["loss"] < history[0]["loss"], (history[0]["loss"], history[-1]["loss"])
     assert info["n_residuals"] == obj._residual(obj.flat0).size
+
+
+def test_the_chunked_sketch_is_the_unchunked_sketch(tmp_path):
+    """`--dsgnar-chunk` only changes how the tangents are scheduled, never the arithmetic.
+
+    The reference implementation vmapped all s tangents in one call; on this problem that is a
+    single 4.78 GiB allocation at s = 128 and the GPU refused it (runs/pq_c100_vacF_dsgnar_probe_s128).
+    Chunking is the fix, so it has to give the same columns: this compares the two paths
+    elementwise, including an s that is NOT a multiple of the chunk.
+    """
+    from stationary.dsgnar import jvp_columns
+
+    n, m = 14, 7
+
+    def res(flat):
+        return jnp.tanh(flat[:m] * 1.7) + 0.3 * flat[m:2 * m] ** 2 + flat[:m] @ flat[:m]
+
+    flat = jnp.linspace(-0.4, 0.6, n)
+    for s, chunk in ((8, 0), (8, 4), (8, 3), (8, 8), (6, 4), (5, 2)):
+        basis = jnp.asarray(jax.random.normal(jax.random.PRNGKey(s + chunk), (s, n)))
+        want = jvp_columns(res, flat, basis, 0)
+        got = jvp_columns(res, flat, basis, chunk)
+        assert got.shape == want.shape == (s, m)
+        assert jnp.allclose(got, want, rtol=1e-12, atol=1e-14), (s, chunk)
