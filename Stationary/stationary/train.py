@@ -336,7 +336,8 @@ def print_config_summary(cfg: Config):
             if jax.config.jax_enable_x64 else "float32 (default)")
     print(f"  precision   {prec}")
     print(f"  plan        {cfg.steps} Adam + {cfg.lbfgs_steps} "
-          f"{'SSBroyden' if cfg.qn_method == 'ssbroyden' else 'L-BFGS'}   outdir {cfg.outdir}")
+          f"{'SSBroyden' if cfg.qn_method == 'ssbroyden' else ('DSGNAR' if cfg.qn_method == 'dsgnar' else 'L-BFGS')}"
+          f"   outdir {cfg.outdir}")
     print("=" * 72)
 
 
@@ -673,6 +674,51 @@ def _reweighted(cfg: Config, weights, g, when: int, verbose: bool = True, pde_ke
         print(f"[reweight {when}] " + " ".join(f"{k}={float(new[k]):.3g}" for k in GROUP_KEYS),
               flush=True)
     return new
+
+
+def dsgnar_qn_phase(state, batch, cfg: Config, model, exact_fields, weights,
+                    verbose: bool = True, start_total: int = 0):
+    """The quasi-Newton phase, run by DSGNAR instead of SSBroyden.
+
+    Returns the same `(state, history, weights)` triple as `ssbroyden_phase`, on the same
+    cumulative iteration counter, so the log line, `qn_stopped_at`, the report and the
+    checkpoints are unchanged.  The objective is `losses.total_loss` in the residual-vector
+    form (`flat_objective.FlatObjective`), so the two phases minimise the same function and
+    their losses are comparable.
+
+    Two differences, both reported rather than silent:
+
+    * the sample is refreshed from inside the phase through `resample`, on the same
+      `--resample-every` counter (the key is `seed + 777 + the cumulative iteration`, exactly
+      as in `ssbroyden_phase`, so a rerun draws the same samples);
+    * the gradient-norm reweighting is NOT applied during this phase: DSGNAR's trust region and
+      its Levenberg-Marquardt regularisation are what handle the scaling, and reweighting
+      mid-phase would change the objective its sketched Jacobian describes.
+    """
+    from .dsgnar import dsgnar_phase
+    from .flat_objective import FlatObjective
+
+    obj = FlatObjective(state, batch, cfg, model, exact_fields, weights=weights)
+    if cfg.reweight_every and verbose:
+        print("[dsgnar] note: --reweight-every is not applied inside the DSGNAR phase "
+              "(the trust region does the scaling); the weights stay as configured",
+              flush=True)
+    calls = [0]
+
+    def resample():
+        calls[0] += 1
+        point = int(cfg.steps) + start_total + calls[0] * int(cfg.resample_every or 1)
+        return FlatObjective(state, make_batch(jax.random.PRNGKey(cfg.seed + 777 + point), cfg),
+                             cfg, model, exact_fields, weights=weights)
+
+    flat, hist, info = dsgnar_phase(obj, obj.flat0, cfg, verbose=verbose,
+                                    step_offset=int(cfg.steps) + start_total,
+                                    resample=resample)
+    if verbose:
+        print(f"[dsgnar] {info['iterations']} iteration(s), s={info['sketch']}, "
+              f"{info['accepted']} accepted / {info['rejected']} rejected, "
+              f"stopped: {info['stopped']}", flush=True)
+    return obj.unflatten(flat), hist, weights
 
 
 def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool = True,
@@ -1379,6 +1425,9 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                                  gradnorms=group_gradnorms, history=history,
                                  pde_keys=pde_keys, start_H=resume_H,
                                  start_total=max(0, resume_step - cfg.steps))
+        elif cfg.qn_method == "dsgnar":
+            qn = dsgnar_qn_phase(state, batch, cfg, model, exact_fields, weights, verbose,
+                                 start_total=max(0, resume_step - cfg.steps))
         if qn is not None:
             state, qn_history, weights = qn
             history.extend(qn_history)
@@ -1507,8 +1556,22 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--steps", type=int, default=None)
     p.add_argument("--lbfgs-steps", type=int, default=None)
-    p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs"), default=None,
-                   help="quasi-Newton phase: Crunch's SSBroyden (default), or optax.lbfgs")
+    p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs", "dsgnar"), default=None,
+                   help="quasi-Newton phase: Crunch's SSBroyden (default), optax.lbfgs, or "
+                        "DSGNAR -- the doubly-sketched Gauss-Newton method of "
+                        "Evolution_try (stationary/dsgnar.py), which minimises the same "
+                        "objective in residual-vector form and sees curvature")
+    p.add_argument("--dsgnar-steps", type=int, default=None,
+                   help="DSGNAR iterations (each rebuilds a sketched Jacobian, so this is the "
+                        "budget: default 200)")
+    p.add_argument("--dsgnar-sketch", type=int, default=None,
+                   help="sketch size s (DSGNAR's cost knob): 0 = round(n_params/3), the "
+                        "reference default, which is far too large for this network; use "
+                        "128-512. Each iteration costs s batched JVPs and one s x s SVD")
+    p.add_argument("--dsgnar-delta0", type=float, default=None,
+                   help="initial trust-region radius (default 1)")
+    p.add_argument("--dsgnar-omega", type=float, default=None,
+                   help="Levenberg-Marquardt regularisation floor (default 1e-8)")
     p.add_argument("--vtk", action="store_true",
                    help="write VTK files for VisIt when this run is post-processed")
     p.add_argument("--vtk-n-half", type=int, default=None,
@@ -1686,6 +1749,14 @@ def parse_args(argv=None):
         cfg.lbfgs_steps = a.lbfgs_steps
     if a.qn_method is not None:
         cfg.qn_method = a.qn_method
+    if a.dsgnar_steps is not None:
+        cfg.dsgnar_steps = a.dsgnar_steps
+    if a.dsgnar_sketch is not None:
+        cfg.dsgnar_sketch = a.dsgnar_sketch
+    if a.dsgnar_delta0 is not None:
+        cfg.dsgnar_delta0 = a.dsgnar_delta0
+    if a.dsgnar_omega is not None:
+        cfg.dsgnar_omega = a.dsgnar_omega
     if a.qn_max_H_gb is not None:
         cfg.qn_max_H_gb = a.qn_max_H_gb
     if a.qn_block is not None:

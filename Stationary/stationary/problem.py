@@ -295,8 +295,23 @@ class Config:
     # none of them is present); "lbfgs" forces the optax path.  SSBroyden carries a
     # *dense* inverse-Hessian estimate, n_params^2: the production network (13 828
     # parameters) needs 1.53 GB in float64 and 0.76 GB in float32, which qn_max_H_gb caps.
-    qn_method: str = "ssbroyden"    # "ssbroyden" | "lbfgs"
+    qn_method: str = "ssbroyden"    # "ssbroyden" | "lbfgs" | "dsgnar"
     qn_max_H_gb: float = 2.0        # refuse the dense SSBroyden estimate above this
+    # --------------------------------------------------------------- DSGNAR
+    # The Gauss-Newton phase (stationary/dsgnar.py, vendored from Evolution_try).  It minimises
+    # the SAME objective as the other phases, in the residual-vector form
+    # (losses.residual_vector), and each iteration costs `dsgnar_sketch` batched
+    # Jacobian-vector products plus one SVD of that size, so the sketch is the cost knob.
+    # `dsgnar_sketch = 0` means round(n_params/3), which is the reference implementation's
+    # default and is too large here (13 828 parameters would need 4609 tangents ~ 15 GB of
+    # tangent batch); 128-512 is the range that fits a GPU for this problem.
+    dsgnar_steps: int = 200
+    dsgnar_sketch: int = 0
+    dsgnar_stage1_ratio: float = 0.15   # target decrease ratio while lambda is being driven down
+    dsgnar_stage2_ratio: float = 0.5    # ... and after it has bottomed out
+    dsgnar_delta0: float = 1.0          # initial trust-region radius
+    dsgnar_delta_min: float = 1.0e-14   # stop below this radius
+    dsgnar_omega: float = 1.0e-8        # regularisation floor
     # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of
     # `qn_block` iterations (the inverse Hessian is carried across them), and the run stops
     # when `patience` consecutive blocks improve the loss by less than `plateau_tol`

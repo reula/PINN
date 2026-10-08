@@ -107,8 +107,12 @@ def gauge_source_of(cfg, point_fields):
     raise ValueError(f"unknown gauge_source {cfg.gauge_source!r}")
 
 
-def pde_terms(point_fields, xs, cfg, gauge_src=None) -> dict:
-    """Mean squared (rho-scaled) residuals of the four equation groups.
+def pde_raw(point_fields, xs, cfg, gauge_src=None) -> dict:
+    """Per-point (rho-scaled) residual COMPONENTS of the equation groups -- no reduction.
+
+    `pde_terms` is the mean of their squares.  The unreduced arrays are what a least-squares
+    optimiser needs: the loss is a weighted sum of means of squares, so it is also the squared
+    norm of a residual vector (see `residual_vector` and stationary/dsgnar.py).
 
     `gauge_src(x)` (optional) replaces the harmonic gauge condition with the inhomogeneous
     Gamma^i_{jk} h^{jk} = gauge_src^i, which is what lets a non-harmonic chart (the Weyl
@@ -117,15 +121,19 @@ def pde_terms(point_fields, xs, cfg, gauge_src=None) -> dict:
     """
     if gauge_src is None:
         gauge_src = gauge_source_of(cfg, point_fields)
-    r = scaled_residuals_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref, gauge_src)
-    return {k: jnp.mean(v ** 2) for k, v in r.items()}
+    return scaled_residuals_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref, gauge_src)
 
 
-def pde_radial_terms(point_fields, xs, cfg) -> dict:
-    """Mean squared rho-scaled RADIAL DERIVATIVE of the lambda-equation residual.
+def pde_terms(point_fields, xs, cfg, gauge_src=None) -> dict:
+    """Mean squared (rho-scaled) residuals of the four equation groups."""
+    return {k: jnp.mean(v ** 2) for k, v in pde_raw(point_fields, xs, cfg, gauge_src).items()}
 
-    Empty -- and free, nothing is differentiated -- unless `cfg.w_lam_eq_radial` is nonzero,
-    so every existing run and every existing test is unaffected.  It exists because the
+
+def pde_radial_raw(point_fields, xs, cfg):
+    """The unreduced rho-scaled radial derivative of the lambda-equation residual, or None.
+
+    None (and free, nothing is differentiated) unless `cfg.w_lam_eq_radial` is nonzero, so
+    every existing run and every existing test is unaffected.  It exists because the
     lambda-equation is second order: the loss cannot see lambda''', and the order-3 Robin
     condition can be satisfied with a wrong far-field level by putting the mismatch exactly
     there (measured on runs/production_quad_quarter: outer Robin residual 7e-06 while
@@ -135,14 +143,19 @@ def pde_radial_terms(point_fields, xs, cfg) -> dict:
     from `scale_exps['lam_eq'] = 2` rather than hard-coded.
     """
     if not float(getattr(cfg, "w_lam_eq_radial", 0.0) or 0.0):
-        return {}
-    r = radial_derivative_residual_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref)
-    return {"lam_eq_radial": jnp.mean(r ** 2)}
+        return None
+    return radial_derivative_residual_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref)
+
+
+def pde_radial_terms(point_fields, xs, cfg) -> dict:
+    """Mean squared rho-scaled RADIAL DERIVATIVE of the lambda-equation residual."""
+    r = pde_radial_raw(point_fields, xs, cfg)
+    return {} if r is None else {"lam_eq_radial": jnp.mean(r ** 2)}
 
 
 # -------------------------------------------------------------- inner boundary
-def inner_bc_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
-    """Inner boundary residuals.
+def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
+    """Per-point inner boundary residuals, split by field and unreduced.
 
     "spherical" (the default) imposes the problem statement: lambda from lam_inner_bc and
     the round metric of areal radius inner_radius on the sphere.  "reference" imposes
@@ -160,7 +173,7 @@ def inner_bc_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
                                     jnp.array([f.lam - e.lam])])
 
         R = jax.vmap(one)(xs)
-        return {"h": jnp.mean(R[:, :6] ** 2), "lam": jnp.mean(R[:, 6] ** 2)}
+        return {"h": R[:, :6], "lam": R[:, 6]}
 
     def one(x):
         f = point_fields(x)
@@ -177,10 +190,16 @@ def inner_bc_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
         ])
 
     R = jax.vmap(one)(xs)
-    out = {"lam": jnp.mean(R[:, 0] ** 2), "h_tan": jnp.mean(R[:, 2:] ** 2)}
+    out = {"lam": R[:, 0], "h_tan": R[:, 2:]}
     if cfg.inner_h_rr is not None:
-        out["h_rr"] = jnp.mean(R[:, 1] ** 2)
+        out["h_rr"] = R[:, 1]
     return out
+
+
+def inner_bc_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
+    """Inner boundary residuals, reduced to means of squares."""
+    return {k: jnp.mean(v ** 2)
+            for k, v in inner_bc_raw(point_fields, xs, cfg, exact_fields).items()}
 
 
 def reference_consistency(point_fields, cfg, n: int = 64, seed: int = 7,
@@ -201,7 +220,8 @@ def reference_consistency(point_fields, cfg, n: int = 64, seed: int = 7,
 
 
 # -------------------------------------------------------------- outer boundary
-def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict:
+def outer_bc_raw(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict:
+    """Per-point outer boundary residuals, split by field and unreduced."""
     if cfg.outer_bc == "dirichlet_exact":
         if exact_fields is None:
             raise ValueError("dirichlet_exact outer BC needs exact_fields")
@@ -215,7 +235,7 @@ def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> di
             ])
 
         R = jax.vmap(one)(xs)
-        return {"h": jnp.mean(R[:, :6] ** 2), "lam": jnp.mean(R[:, 6] ** 2)}
+        return {"h": R[:, :6], "lam": R[:, 6]}
 
     if cfg.outer_bc == "robin":
         ph, pG, pl = cfg.robin_exps["h"], cfg.robin_exps["G"], cfg.robin_exps["lam"]
@@ -247,47 +267,33 @@ def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> di
             return jnp.concatenate([pack_sym(rh - sh) * OFFW, jnp.array([rl - sl])])
 
         R = jax.vmap(one)(xs)
-        out = {"h": jnp.mean(R[:, :6] ** 2), "lam": jnp.mean(R[:, -1] ** 2)}
+        out = {"h": R[:, :6], "lam": R[:, -1]}
         if cfg.robin_include_G:
-            out["G"] = jnp.mean(R[:, 6:24] ** 2)
+            out["G"] = R[:, 6:24]
         return out
 
     raise ValueError(f"unknown outer_bc {cfg.outer_bc!r}")
 
 
-def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
-    """Asymptotic-VALUE pins at rho_out (`cfg.pin_lam`, `cfg.pin_h_tan`, `cfg.pin_h_rr`).
+def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict:
+    """Outer boundary residuals, reduced to means of squares."""
+    return {k: jnp.mean(v ** 2)
+            for k, v in outer_bc_raw(point_fields, xs, cfg, exact_fields, lam_inf).items()}
 
-    Each term is the mean square of (candidate - reference) at the outer sphere, so a value
-    cannot be traded against a derivative the way a Robin residual can (see the Config
-    comment: the order-3 lambda combination is a cancellation of terms of order 0.1, and the
-    exact h deviation is a kernel mode of the h condition).  The comparison is to the exact
-    reference the run already carries, so no constant is hard-coded.
 
-    * `lam`   -- the spherical MEAN of the difference: the monopole, which is the branch.
-                 The l >= 1 content is deliberately left free, so that a later Robin-only
-                 relaxation phase can fix the multipoles from the equations.
-    * `h_tan` -- the tangential metric, angle by angle: g2 = (tr h - h_rr)/2, i.e. the areal
-                 radius content.
-    * `h_rr`  -- the radial gauge component, angle by angle.
+def outer_pin_raw(point_fields, xs, cfg, exact_fields=None):
+    """Per-point pin residuals, in the two groups the reduction distinguishes.
 
-    `cfg.pin_lam_robin` pins the same monopole through the order-1 Robin COMBINATION rather
-    than its value:
+    Returns `(averaged, value)`: the first are conditions on the spherical MEAN (reduced by
+    mean-then-square), the second are statements about every angle (reduced by
+    mean-of-squares).  `outer_pin_terms` reduces them; `residual_vector` needs them apart.
 
-        rho d_rho <lam> + (<lam> - lam_inf) = 0
-
-    Averaging commutes with rho d_rho, so this is the mean of the pointwise order-1 condition
-    `robin_operator(lam, x, base=1, order=1, inf_val=lam_inf)` -- exactly what
-    `--robin-orders lam=1` imposes at every angle, imposed on the spherical mean.  It needs
-    lam_inf and NO reference, which is what makes it the one pin available to a run whose
-    inner data are angular (S1/S2): for those the spherical reference is not a solution at
-    all, so every other pin here would be pinning a departure.  The mean is pinned and the
-    l >= 1 content of the combination is left free, the same deliberate blind spot as above.
+    See `outer_pin_terms` for the meaning of each pin.
     """
     robin_lam = bool(getattr(cfg, "pin_lam_robin", False))
     robin_h = bool(getattr(cfg, "pin_h_robin", False))
     if not (cfg.pin_lam or robin_lam or cfg.pin_h_tan or cfg.pin_h_rr or robin_h):
-        return {}
+        return {}, {}
     if exact_fields is None and (cfg.pin_lam or cfg.pin_h_tan or cfg.pin_h_rr):
         raise ValueError(
             "the far-field value pins are differences from the exact reference at rho_out, "
@@ -337,17 +343,49 @@ def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
         return v
 
     R = jax.vmap(one)(xs)       # a dict of batched arrays
-    out = {}
     # Two different reductions, and the difference is the whole point: an AVERAGED condition is
     # a statement about the mean, so it squares the mean; the metric's VALUE pins are
     # statements about every angle, so they average the squares.  `lam` is on the mean in both
-    # of its forms, which is why it appears only in the first loop.
-    for k, name in (("lam", "lam"), ("h_rr_robin", "h_rr"), ("h_tan_robin", "h_tan")):
-        if k in R:
-            out[name] = jnp.mean(R[k]) ** 2
-    for k, name in (("h_tan_value", "h_tan"), ("h_rr_value", "h_rr")):
-        if k in R:
-            out[name] = jnp.mean(R[k] ** 2)
+    # of its forms, which is why it appears only in the first group.
+    averaged = {name: R[k] for k, name in (("lam", "lam"), ("h_rr_robin", "h_rr"),
+                                           ("h_tan_robin", "h_tan")) if k in R}
+    value = {name: R[k] for k, name in (("h_tan_value", "h_tan"),
+                                        ("h_rr_value", "h_rr")) if k in R}
+    return averaged, value
+
+
+def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
+    """Asymptotic-VALUE pins at rho_out (`cfg.pin_lam`, `cfg.pin_h_tan`, `cfg.pin_h_rr`).
+
+    Each term is the mean square of (candidate - reference) at the outer sphere, so a value
+    cannot be traded against a derivative the way a Robin residual can (see the Config
+    comment: the order-3 lambda combination is a cancellation of terms of order 0.1, and the
+    exact h deviation is a kernel mode of the h condition).  The comparison is to the exact
+    reference the run already carries, so no constant is hard-coded.
+
+    * `lam`   -- the spherical MEAN of the difference: the monopole, which is the branch.
+                 The l >= 1 content is deliberately left free, so that a later Robin-only
+                 relaxation phase can fix the multipoles from the equations.
+    * `h_tan` -- the tangential metric, angle by angle: g2 = (tr h - h_rr)/2, i.e. the areal
+                 radius content.
+    * `h_rr`  -- the radial gauge component, angle by angle.
+
+    `cfg.pin_lam_robin` pins the same monopole through the order-1 Robin COMBINATION rather
+    than its value:
+
+        rho d_rho <lam> + (<lam> - lam_inf) = 0
+
+    Averaging commutes with rho d_rho, so this is the mean of the pointwise order-1 condition
+    `robin_operator(lam, x, base=1, order=1, inf_val=lam_inf)` -- exactly what
+    `--robin-orders lam=1` imposes at every angle, imposed on the spherical mean.  It needs
+    lam_inf and NO reference, which is what makes it the one pin available to a run whose
+    inner data are angular (S1/S2): for those the spherical reference is not a solution at
+    all, so every other pin here would be pinning a departure.  The mean is pinned and the
+    l >= 1 content of the combination is left free, the same deliberate blind spot as above.
+    """
+    averaged, value = outer_pin_raw(point_fields, xs, cfg, exact_fields)
+    out = {k: jnp.mean(v) ** 2 for k, v in averaged.items()}
+    out.update({k: jnp.mean(v ** 2) for k, v in value.items()})
     return out
 
 
@@ -416,6 +454,62 @@ def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> di
                                        lam_inf).values())
                     + sum(outer_pin_terms(pf, batch["outer"], cfg, exact_fields).values()))
     return out
+
+
+def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
+                    pde_scale=1.0, lam_inf=None) -> jnp.ndarray:
+    """The residual vector whose SQUARED NORM is `total_loss`.
+
+    Every term of the loss is a weighted mean of squares, so the loss is itself a sum of
+    squares:
+
+        L = sum_i r_i^2,     r_i = sqrt(weight_i / n_i) * (the i-th unreduced component),
+
+    with `n_i` the number of components that term averages over.  This function produces that
+    vector, which is exactly what a Gauss-Newton / least-squares method operates on (see
+    stationary/dsgnar.py, and `dsgnar_phase` in train.py).  Nothing about the objective
+    changes: same weights, same points, same terms -- only the reduction is deferred.
+
+    The two pin reductions are kept apart on purpose: an AVERAGED pin is `mean(R)**2`, so its
+    residual is the single number `mean(R)`, while a VALUE pin is `mean(R**2)` and keeps one
+    row per point.
+
+    `tests/test_dsgnar.py::test_the_residual_vector_squares_to_the_total_loss` asserts
+    `jnp.sum(residual_vector(...)**2) == total_loss(...)[0]`.
+    """
+    from .model import point_fields as make_point_fields
+
+    pf = make_point_fields(model, state["net"])
+    if lam_inf is None:
+        lam_inf = state.get("lam_inf", None)
+    if weights is None:
+        weights = default_weights(cfg)
+
+    rows = []
+
+    def add(w, v):
+        """One term: `w` its loss weight, `v` the unreduced components (any shape)."""
+        rows.append(jnp.sqrt(jnp.asarray(w) * float(pde_scale) / v.size) * v.reshape(-1))
+
+    pde = pde_raw(pf, batch["coll"], cfg)
+    for k in equation_keys(model):
+        add(weights[k], pde[k])
+    rad = pde_radial_raw(pf, batch["coll"], cfg)
+    if rad is not None:
+        add(float(cfg.w_lam_eq_radial), rad)
+    for k, v in inner_bc_raw(pf, batch["inner"], cfg, exact_fields).items():
+        rows.append(jnp.sqrt(jnp.asarray(weights.get(f"inner_{k}", weights["inner"]))
+                             / v.size) * v.reshape(-1))
+    for k, v in outer_bc_raw(pf, batch["outer"], cfg, exact_fields, lam_inf).items():
+        rows.append(jnp.sqrt(jnp.asarray(weights.get(f"outer_{k}", weights["outer"]))
+                             / v.size) * v.reshape(-1))
+    averaged, value = outer_pin_raw(pf, batch["outer"], cfg, exact_fields)
+    w_pin = jnp.asarray(cfg.w_pin)
+    for v in averaged.values():
+        rows.append(jnp.sqrt(w_pin) * jnp.mean(v).reshape(1))
+    for v in value.values():
+        rows.append(jnp.sqrt(w_pin / v.size) * v.reshape(-1))
+    return jnp.concatenate(rows)
 
 
 def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
