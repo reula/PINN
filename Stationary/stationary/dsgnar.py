@@ -530,7 +530,14 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     res_fn = objective._residual                      # jitted scalar-to-residual map
     loss_fn = objective._loss                         # jitted scalar loss
     dct = _dct_matrix(n, dtype)                       # constant: built once, not per iteration
-    loss_batch = jax.jit(jax.vmap(loss_fn))
+    # The 25 trust-region probes are evaluated SEQUENTIALLY, not in one vmap.  A vmap of the
+    # loss over the probes materialises the whole residual computation -- every collocation
+    # point, every equation component, the second derivatives of lambda -- 25 times over: XLA's
+    # memory analysis gives 0.49 GiB against 0.057 GiB for lax.map at 1/13 of the production
+    # collocation count, i.e. the 8.87 GiB the GPU refused (the failure surfaced at
+    # `rho_host = np.asarray(rhos)`, because the probe losses were computed lazily).  Same 25
+    # evaluations, same numbers, one workspace.
+    loss_batch = jax.jit(lambda flats: jax.lax.map(loss_fn, flats))
     chunk = int(getattr(cfg, "dsgnar_chunk", 0) or 0)
     row_chunk = int(getattr(cfg, "dsgnar_row_chunk", 0) or 0)
     sketched_jacobian = jax.jit(lambda flat_now, basis: jvp_columns(res_fn, flat_now, basis,
@@ -577,7 +584,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
             objective = resample()
             res_fn = objective._residual
             loss_fn = objective._loss
-            loss_batch = jax.jit(jax.vmap(loss_fn))
+            loss_batch = jax.jit(lambda flats: jax.lax.map(loss_fn, flats))
             sketched_jacobian = jax.jit(lambda f, b: jvp_columns(res_fn, f, b, chunk))
             scale = 1.0 / float(objective.residual(flat).shape[0])
             loss = objective.loss(flat)

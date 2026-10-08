@@ -187,3 +187,28 @@ def test_the_row_chunked_sketch_is_the_same_sketch():
     _, v0 = count_sketch(None, vec, key, s, k_hashes=k, row_chunk=0)
     _, v1 = count_sketch(None, vec, key, s, k_hashes=k, row_chunk=4)
     assert jnp.allclose(v0, v1, rtol=1e-12, atol=1e-14)
+
+
+def test_the_probe_losses_are_evaluated_sequentially(tmp_path):
+    """The trust-region probes must NOT be one big vmap of the loss.
+
+    `vmap(loss_fn)` over the 25 probes materialises the whole residual computation 25 times
+    over, and that is what the GPU refused at production size (8.87 GiB, surfacing at
+    `rho_host = np.asarray(rhos)`).  This pins both halves: the values agree, and the sequential
+    form needs a small fraction of the workspace -- measured with XLA's own analysis, so a
+    regression that puts the vmap back fails here and not on the hub.
+    """
+    from stationary.flat_objective import FlatObjective
+
+    cfg = _cfg(tmp_path)
+    model, state, exact_fields = build(cfg)
+    batch = make_batch(jax.random.PRNGKey(0), cfg)
+    obj = FlatObjective(state, batch, cfg, model, exact_fields)
+    flats = obj.flat0[None, :] + jnp.linspace(-1e-3, 1e-3, 25)[:, None] * jnp.ones_like(obj.flat0)
+
+    seq = jax.jit(lambda F: jax.lax.map(obj._loss, F))
+    par = jax.jit(lambda F: jax.vmap(obj._loss)(F))
+    assert jnp.allclose(seq(flats), par(flats), rtol=1e-12)
+    t_seq = seq.lower(flats).compile().memory_analysis().temp_size_in_bytes
+    t_par = par.lower(flats).compile().memory_analysis().temp_size_in_bytes
+    assert t_seq * 5 < t_par, (t_seq, t_par)
