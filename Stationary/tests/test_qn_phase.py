@@ -281,3 +281,30 @@ def test_the_two_boundaries_take_independent_point_counts():
     cfg2 = parse_args()
     assert make_batch(jax.random.PRNGKey(0), cfg2)["outer"].shape[0] == 300, \
         "without n_bnd_outer the two must still match"
+
+
+def test_a_block_draws_one_sample_at_the_newest_resampling_point():
+    """Why the log used to read "[resample 6500]" three times, and why that count mattered.
+
+    A block is PLANNED to span `qn_block` iterations, and that span can cover several
+    resampling points: `--qn-block 1500` with `--resample-every 500`, starting at 500 Adam
+    steps, covers 5500, 6000 and 6500.  The phase drew a sample at each and kept the last --
+    same final batch, since the key is `seed + 777 + point`, but two wasted draws, and the
+    message printed the block's endpoint, so all three said "[resample 6500]".  The report
+    counts `[resample` lines as its OBSERVED refresh count, so it read three times the number
+    of samples the phase actually ran on.
+    """
+    # the reported case: block [5000, 6500], every 500, the first point strictly after 5000
+    assert T._newest_resample_point(500, 5500, 6500) == 6500
+    # ... and the points it covers, in order, which is what the old loop drew
+    covered = [p for p in range(5500, 6501, 500)]
+    assert covered == [5500, 6000, 6500]
+    assert T._newest_resample_point(500, 5500, 6500) == covered[-1]   # the one it uses
+    assert T._newest_resample_point(500, 5500, 6000) == 6000      # a shorter block
+    assert T._newest_resample_point(500, 5500, 5499) is None      # the span reaches none
+    assert T._newest_resample_point(0, 5500, 6500) is None        # resampling off
+    assert T._newest_resample_point(500, None, 6500) is None      # nothing scheduled
+    # exactly one point per block span, so the number of draws equals the number of blocks that
+    # reach a point -- not the number of points covered
+    assert T._newest_resample_point(500, 500, 6500) == 6500
+    assert T._newest_resample_point(1500, 4500, 6500) == 6000

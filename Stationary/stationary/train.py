@@ -490,6 +490,24 @@ def _first_period_after(every: int, iters: int):
     return None if e <= 0 else (iters // e + 1) * e
 
 
+def _newest_resample_point(every: int, next_point, end: int):
+    """The NEWEST resampling point in [next_point, end], or None if the span reaches none.
+
+    A quasi-Newton block is planned to span `qn_block` iterations, and that span can cover
+    several resampling points: `--resample-every 500` with `--qn-block 1500` covers three.  Only
+    the newest of them can be the sample the block runs on, so the phase advances to it and
+    draws ONCE.  The old loop drew all of them and kept the last -- the same final batch, since
+    the key depends only on the point, but wasted work and a misleading log: the message printed
+    the block's endpoint, so three distinct draws at 5500, 6000 and 6500 all read
+    "[resample 6500]", and the report's count of `[resample` lines (its OBSERVED refresh count)
+    was three times the number of samples the phase actually used.
+    """
+    e = int(every or 0)
+    if e <= 0 or next_point is None or end < int(next_point):
+        return None
+    return int(next_point) + ((int(end) - int(next_point)) // e) * e
+
+
 def _first_reweight_after(cfg: Config, iters: int):
     """First reweighting point strictly after `iters` cumulative optimiser iterations.
 
@@ -914,12 +932,20 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         # The inverse Hessian is KEPT: a reweight changes the objective function and H is then
         # describing the old one, but a resample changes only the sample -- the function is the
         # same one, estimated on fresh points -- so H remains a valid approximation to it.
-        while next_rs is not None and cfg.steps + total + block >= next_rs:
-            batch = make_batch(jax.random.PRNGKey(cfg.seed + 777 + next_rs), cfg)
-            next_rs += e_rs
+        if next_rs is not None and cfg.steps + total + block >= next_rs:
+            # ONE draw per block, at the newest resampling point its span covers (a block of
+            # 1500 with --resample-every 500 covers three: 5500, 6000, 6500).  See
+            # `_newest_resample_point` for why the old loop's three draws, all labelled with the
+            # block's endpoint, were both wasted and misleading.
+            used_rs = _newest_resample_point(e_rs, next_rs, cfg.steps + total + block)
+            n_covered = (used_rs - next_rs) // e_rs + 1
+            batch = make_batch(jax.random.PRNGKey(cfg.seed + 777 + used_rs), cfg)
+            next_rs = used_rs + e_rs
             if verbose:
-                print(f"[resample {cfg.steps + total + block}] new collocation sample "
-                      f"of {cfg.n_coll} points", flush=True)
+                extra = ("" if n_covered == 1 else
+                         f" ({n_covered} resampling points in this block; the newest is used)")
+                print(f"[resample {used_rs}] new collocation sample "
+                      f"of {cfg.n_coll} points{extra}", flush=True)
         if reweighted:
             H = jnp.eye(n, dtype=flat0.dtype)
         if b == 0 and maps_start is not None:
