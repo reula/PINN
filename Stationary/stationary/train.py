@@ -406,12 +406,32 @@ def _crunch_minimize(root: str | None = None):
     explicit = root or os.environ.get("CRUNCH_ROOT")
     candidates = [os.path.normpath(explicit)] if explicit else _crunch_candidates(here)
     reasons = []
+
+    def _purge_crunch_modules(except_under: str | None = None) -> None:
+        """Drop Crunch/line_search_backtracking from sys.modules unless they live under
+        `except_under`.  Both halves matter: a half-imported `Crunch` left by a failed candidate
+        would be handed to the NEXT candidate's `import Crunch`, and a `Crunch` imported from a
+        DIFFERENT root (a stale sys.path entry, or an earlier `_crunch_minimize` call) would
+        make this candidate import successfully without being the one imported at all."""
+        keep = os.path.realpath(except_under) + os.sep if except_under else None
+        for m in [m for m in list(sys.modules)
+                  if m in ("Crunch", "line_search_backtracking") or m.startswith("Crunch.")]:
+            f = str(getattr(sys.modules[m], "__file__", "") or "")
+            if keep is None or not os.path.realpath(f).startswith(keep):
+                sys.modules.pop(m, None)
+
     for cand in candidates:
         if not os.path.isdir(os.path.join(cand, "Crunch", "Optimizers")):
             reasons.append(f"no Crunch/Optimizers under {cand}")
             continue
-        if cand not in sys.path:
-            sys.path.append(cand)
+        # The candidate goes FIRST, not last.  Appending made the search depend on whatever
+        # earlier roots were already on sys.path: a leaked `<repo>/Jax` (or any other copy)
+        # then satisfied the import while this candidate was credited for it, so a candidate
+        # holding a BROKEN Crunch looked usable.
+        inserted = cand not in sys.path
+        if inserted:
+            sys.path.insert(0, cand)
+        _purge_crunch_modules(except_under=cand)
         try:
             from Crunch.Optimizers.minimize_backtracking import minimize
         except Exception as exc:                                         # pragma: no cover
@@ -420,14 +440,23 @@ def _crunch_minimize(root: str | None = None):
             # particular sys.modules, where a half-built `Crunch` would otherwise be returned
             # to the NEXT candidate's `import Crunch` and fail there for the wrong reason.
             reasons.append(f"{cand}: {exc}")
-            for mod in [m for m in list(sys.modules)
-                        if m in ("Crunch", "line_search_backtracking")
-                        or m.startswith("Crunch.")]:
-                sys.modules.pop(mod, None)
-            try:
-                sys.path.remove(cand)
-            except ValueError:
-                pass
+            _purge_crunch_modules()
+            if inserted:
+                try:
+                    sys.path.remove(cand)
+                except ValueError:
+                    pass
+            continue
+        # Belt and braces: the module that answered must be the one under this candidate.
+        origin = str(getattr(sys.modules.get("Crunch"), "__file__", "") or "")
+        if origin and not os.path.realpath(origin).startswith(os.path.realpath(cand) + os.sep):
+            reasons.append(f"{cand}: Crunch resolved to {origin} instead")
+            _purge_crunch_modules()
+            if inserted:
+                try:
+                    sys.path.remove(cand)
+                except ValueError:
+                    pass
             continue
         return minimize, cand
     return None, ("; ".join(reasons) if reasons else "no candidate root")
@@ -613,7 +642,7 @@ def _reweighted(cfg: Config, weights, g, when: int, verbose: bool = True, pde_ke
     target = jnp.mean(jnp.stack([g[GROUP_KEYS.index(k)] for k in live]))
     w0 = {k: v for k, v in default_weights(cfg).items()}
     new = {}
-    for i, k in enumerate(equation_keys(model)):
+    for i, k in enumerate(GROUP_KEYS):
         if k not in live:
             new[k] = weights[k]        # boundary data, or nothing to balance
             continue
@@ -1164,7 +1193,14 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         def one(k):
             g = jax.grad(lambda st: group_terms(st, batch, cfg, model, exact_fields)[k])(state)
             return optax.global_norm(g)
-        return jnp.stack([one(k) for k in GROUP_KEYS])
+        # ONLY the groups this formulation imposes have a term to differentiate: for a
+        # metric-only model `group_terms` has no `compat`, and a list comprehension over
+        # GROUP_KEYS raised KeyError: 'compat' here even though `pde_keys` was already known
+        # (measured on `--arch sym_hybrid`, which is the usual run).  The absent groups get 0,
+        # which keeps the vector in GROUP_KEYS order -- that is how `_reweighted` indexes it --
+        # and 0 is below `reweight_floor`, so the rule leaves those weights alone.
+        zero = jnp.zeros(())
+        return jnp.stack([one(k) if k in pde_keys else zero for k in GROUP_KEYS])
 
     history = []
     resume_step = 0
@@ -1383,6 +1419,36 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     # total loss: an interior term, so it belongs next to the residual_report numbers.
     for k, v in pde_radial_terms(pf, batch["coll"], cfg).items():
         report[f"pde_{k}"] = float(v)
+    # Multipole coefficients in the ONE form that is comparable across runs: S_lm, the constant
+    # in front of Y_lm/rho^(l+1), with no rho factor (multipoles.multipole_constants).  S_10 is
+    # the SPURIOUS DIPOLE: the inner data impose S_1 = 0 and a static source has no dipole about
+    # its centre of mass, so a nonzero value is an origin/level artifact, not a property of the
+    # source.  Stored for lambda - lambda_inf AND for the Geroch-Hansen mass potential
+    # P = (1 - lambda)(1 + lambda)/(4 lambda), whose coefficients are the ones that carry the
+    # moments; the two agree only to linear order, so they differ from l = 2 on.
+    try:
+        from .multipoles import multipole_constants as _mconst
+        lam_inf_rep = (float(state["lam_inf"]) if "lam_inf" in state
+                       else (cfg.lam_inf if cfg.lam_inf is not None else cfg.lam_inf_init))
+        factor_rep = float(getattr(cfg, "vtk_physical_inner", 1.0)) / float(cfg.rho_in)
+        rhos_rep = [float(cfg.rho_out)]
+
+        class _P:                      # multipole_constants reads only `.lam`
+            __slots__ = ("lam",)
+
+            def __init__(self, lam):
+                self.lam = lam
+
+        c_lam = _mconst(pf, rhos_rep, lmax=3, lam_inf=lam_inf_rep, factor=factor_rep)
+        c_pot = _mconst(lambda q: _P((1.0 - pf(q).lam ** 2) / (4.0 * pf(q).lam)), rhos_rep,
+                        lmax=3, lam_inf=0.0, factor=factor_rep)
+        for l in range(4):
+            report[f"S_l{l}_lambda"] = float(c_lam["S"][(l, 0)][0])
+            report[f"S_l{l}_potential"] = float(c_pot["S"][(l, 0)][0])
+        report["spurious_dipole_lambda"] = float(c_lam["S"][(1, 0)][0])
+        report["spurious_dipole_potential"] = float(c_pot["S"][(1, 0)][0])
+    except Exception as exc:                      # diagnostics must never kill a run
+        print(f"[multipoles] failed: {exc}", flush=True)
     if cfg.make_figures:
         try:
             from .multipoles import make_figures
@@ -1527,7 +1593,14 @@ def parse_args(argv=None):
                    help="checkpoint to continue from, or 'auto' for <outdir>/ckpt.pkl")
     p.add_argument("--pde-ramp-steps", type=int, default=None)
     p.add_argument("--arch", type=str, default=None)
-    p.add_argument("--radial", type=str, default=None)
+    p.add_argument("--radial", type=str, default=None,
+                   help="radial sampling law: 'log' (default), 'uniform', 'volume' "
+                        "(rho^3 uniform: equally dense per unit volume, ~0.19 of 27768 points "
+                        "inside rho = 2 at a shell ratio of 100) or 'hybrid' "
+                        "(--radial-log-frac of the points log, the rest in volume)")
+    p.add_argument("--radial-log-frac", type=float, default=None, dest="radial_log_frac",
+                   help="fraction of the collocation points drawn log-uniformly when "
+                        "--radial hybrid (default 0.5); the rest are uniform in volume")
     p.add_argument("--scale-ref", type=float, default=None)
     p.add_argument("--scale-ref-rho-in", action="store_true")
     p.add_argument("--scale-exps", type=str, default=None)
@@ -1720,6 +1793,8 @@ def parse_args(argv=None):
         cfg.scale_exps = dict(zip(["compat", "ricci", "gauge", "lam_eq"], vals))
     if a.radial is not None:
         cfg.radial = a.radial
+    if a.radial_log_frac is not None:
+        cfg.radial_log_frac = float(a.radial_log_frac)
     if a.w_outer is not None:
         cfg.w_outer = a.w_outer
     if a.w_inner is not None:

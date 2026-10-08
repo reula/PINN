@@ -19,6 +19,8 @@ they do not depend on binning.
 """
 from __future__ import annotations
 
+import math
+
 import jax
 
 jax.config.update("jax_enable_x64", True)
@@ -33,12 +35,15 @@ RHO_IN, RHO_OUT = 1.0, 100.0
 N = 200_000
 
 
-def cfg_with(radial: str) -> Config:
-    return Config(rho_in=RHO_IN, rho_out=RHO_OUT, radial=radial)
+def cfg_with(radial: str, frac: float | None = None) -> Config:
+    cfg = Config(rho_in=RHO_IN, rho_out=RHO_OUT, radial=radial)
+    if frac is not None:
+        cfg.radial_log_frac = float(frac)
+    return cfg
 
 
-def radii(radial: str, seed: int = 0):
-    xs = sample_shell(jax.random.PRNGKey(seed), N, cfg_with(radial))
+def radii(radial: str, seed: int = 0, frac: float | None = None):
+    xs = sample_shell(jax.random.PRNGKey(seed), N, cfg_with(radial, frac))
     return np.asarray(jnp.linalg.norm(xs, axis=-1))
 
 
@@ -98,3 +103,39 @@ def test_the_three_laws_are_actually_different():
     half of the shell, volume > uniform > log in the fraction of points."""
     frac = {k: float(np.mean(radii(k) > 50.0)) for k in ("log", "uniform", "volume")}
     assert frac["log"] < frac["uniform"] < frac["volume"], frac
+
+
+def test_hybrid_is_the_mixture_of_the_two_laws():
+    """CDF(r) = frac P_log(r) + (1-frac) P_volume(r), for several fractions and radii."""
+    for frac in (0.25, 0.5, 0.75):
+        r = radii("hybrid", frac=frac)
+        for r_t in (1.5, 2.0, 5.0, 20.0, 60.0):
+            p_log = math.log(r_t / RHO_IN) / math.log(RHO_OUT / RHO_IN)
+            p_vol = (r_t**3 - RHO_IN**3) / (RHO_OUT**3 - RHO_IN**3)
+            want = frac * p_log + (1.0 - frac) * p_vol
+            got = float(np.mean(r < r_t))
+            assert abs(got - want) < 0.01, (frac, r_t, want, got)
+
+
+def test_hybrid_keeps_the_near_field_that_pure_volume_loses():
+    """The reason the hybrid exists: at a shell ratio of 100, pure volume leaves the inner
+    boundary layer (rho < 2, where lambda_0 and the steep rise live) with ~1 point in 200k,
+    while half-log keeps it at the log law's density."""
+    near_h = float(np.mean(radii("hybrid", frac=0.5) < 2.0))
+    near_v = float(np.mean(radii("volume") < 2.0))
+    p_log_2 = math.log(2.0 / RHO_IN) / math.log(RHO_OUT / RHO_IN)
+    assert near_h == pytest.approx(0.5 * p_log_2, rel=0.05), (near_h, near_v)
+    assert near_h > 1000.0 * max(near_v, 1.0 / N), (near_h, near_v)
+    # ... and the far field is still represented: half the points are volume-uniform
+    far_h = float(np.mean(radii("hybrid", frac=0.5) > 10.0))
+    assert far_h > float(np.mean(radii("log") > 10.0)), far_h
+
+
+def test_hybrid_endpoints_are_the_pure_laws():
+    a = radii("hybrid", frac=0.0)
+    b = radii("volume")
+    c = radii("hybrid", frac=1.0)
+    d = radii("log")
+    for r_t in (2.0, 10.0):
+        assert abs(float(np.mean(a < r_t)) - float(np.mean(b < r_t))) < 0.005
+        assert abs(float(np.mean(c < r_t)) - float(np.mean(d < r_t))) < 0.005

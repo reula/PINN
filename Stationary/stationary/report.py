@@ -447,52 +447,20 @@ def main():
         print(f"{rho:>10.4f} {vals[0]:>14.7f} {vals[1]:>12.7f}")
 
     # ---------------------------------------------------------------- multipoles
+    # ONE form only, in every run: S_lm, the constant in front of Y_lm/rho^(l+1).  The
+    # amplitudes a_lm = S_lm/rho^(l+1) are NOT reported here -- they carry the radius they were
+    # measured at, so the same physical tail reads as different numbers at different radii and
+    # cannot be compared between runs or with the inner data (which are imposed at rho_in).
     _section(f"MULTIPOLES OF lambda AT rho = {cfg.rho_out * (float(getattr(cfg, 'vtk_physical_inner', 1.0)) / float(cfg.rho_in)):g} (physical)")
-    coef, power, _ = lambda_multipoles(pf, cfg.rho_out, lmax=3)
-    # coefficients are in the real-SH basis with Y_00 = 1/sqrt(4 pi), so a_00 is the mean
-    # of lambda only up to that factor; print the mean itself, it is the readable number.
-    mean_out = float(coef[(0, 0)]) / math.sqrt(4.0 * math.pi)
-    print(f"    l=0:  mean lambda {mean_out:.7f}   = lambda_inf {lam_inf:g} "
-          f"{mean_out - lam_inf:+.3e}")
-    for l in range(1, 4):
-        print(f"    l={l}:  amplitude {float(jnp.sqrt(power[l])):.4e}")
-    # sample the decay inside the domain (not beyond rho_out, where the net extrapolates)
+    print("    lambda - lambda_inf = sum_lm S_lm Y_lm / rho^(l+1),   S_lm CONSTANT,")
+    print("    reported WITHOUT a rho factor.  S_10 is the spurious dipole: the inner data")
+    print("    impose S_1 = 0, so a nonzero value is an origin/level artifact.")
+    factor = float(getattr(cfg, "vtk_physical_inner", 1.0)) / float(cfg.rho_in)
+    rhos = [float(cfg.rho_in) * (float(cfg.rho_out) / float(cfg.rho_in)) ** (i / 5.0)
+            for i in range(6)]
     try:
-        rhos = [float(cfg.rho_in * (cfg.rho_out / cfg.rho_in) ** (i / 6.0)) for i in range(1, 7)]
-        prof = multipole_radial_profile(pf, rhos, lmax=3, lam_inf=lam_inf)
-        print(f"    decay with rho (fitted power vs expected -(l+1)), fitted over "
-              f"rho = {rhos[0]:.3g} .. {rhos[-1]:.3g}:")
-        for l in range(4):
-            f = prof[l]["fitted_power"]
-            if f != f:
-                print(f"      l={l}: no amplitude above the noise floor at any of these radii"
-                      f"   (expected {prof[l]['expected_power']})")
-            else:
-                print(f"      l={l}: fitted {f: .3f}   expected {prof[l]['expected_power']}")
-    except Exception as exc:
-        print(f"    decay fit skipped: {exc}")
-
-    # ------------------------------------------------- the radius-independent coefficient
-    # The amplitude above is NOT comparable with the inner data: it carries the rho^-(l+1) of
-    # the radius it was measured at, while the data are imposed with the power 1/rho^l.  The
-    # comparable object is the CONSTANT in front of the exact multipole,
-    #
-    #     lambda - lambda_inf = sum_lm S_lm Y_lm / rho^(l+1),        S_lm constant,
-    #
-    # with the same formula applied to the imposed inner data at rho_in (see
-    # multipoles.inner_constants).  A correct tail keeps it flat AND equal to the inner value;
-    # pq_c200_vac does neither, which is how a quadrupole 12x the physical one was visible only
-    # through a fitted power before.
-    try:
-        factor = float(getattr(cfg, "vtk_physical_inner", 1.0)) / float(cfg.rho_in)
-        rhos = [float(cfg.rho_in) * (float(cfg.rho_out) / float(cfg.rho_in)) ** (i / 5.0)
-                for i in range(6)]
         const = multipole_constants(pf, rhos, lmax=3, lam_inf=lam_inf, factor=factor)
         inner = inner_constants(cfg, lmax=3, factor=factor)
-        r_phys = const["r_phys"]
-        print(f"    as constants in front of Y_lm/rho^(l+1), rho PHYSICAL "
-              f"(chart x {factor:g}, rho_in_phys = {cfg.rho_in * factor:g}); rho = "
-              + " ".join(f"{r:.4g}" for r in r_phys))
         # The exact reference through the SAME estimator, so a drift can be read rather than
         # guessed: it is a departure baseline when the run's inner data are angular (the
         # spherical solution is not a solution of that problem) and the honest comparison for
@@ -500,10 +468,107 @@ def main():
         exact_const = (multipole_constants(lambda q: bc_exact(jnp.asarray(q)), rhos,
                                            lmax=3, lam_inf=lam_inf, factor=factor)
                        if bc_exact is not None else None)
+        r_phys = const["r_phys"]
+
+        def _sl(d, l, i=-1):
+            """S_l0 from either a multipole_constants dict ({"S": {...}: lists}) or a flat
+            inner_constants dict ({(l, m): scalar})."""
+            if d is None:
+                return float("nan")
+            s = d["S"] if "S" in d else d
+            v = s[(l, 0)]
+            return float(v[i]) if hasattr(v, "__len__") else float(v)
+
+        for l in range(4):
+            note = ("   <-- SPURIOUS DIPOLE (inner data 0, exact 0): an origin/level artifact, "
+                    "not a property of the source") if l == 1 else ""
+            print(f"    l={l}: S_{l}0 = {_sl(const, l): .6e}"
+                  f"   (inner data {_sl(inner, l): .6e}, exact {_sl(exact_const, l): .6e}){note}")
+        mean_out = lam_inf + _sl(const, 0) / (math.sqrt(4.0 * math.pi) * r_phys[-1])
+        print(f"    l=0 mean lambda at rho_out = {mean_out:.7f}   "
+              f"(lambda_inf {lam_inf:g}; S_00 = mean x sqrt(4 pi) x rho_out)")
+
+        # The decay diagnostic, in the S form: for a correct tail S_l is CONSTANT, so the fitted
+        # slope of log|S_l0| against log rho is 0.  Fitting the amplitudes instead would return
+        # -(l+1) by construction and would mix the radius into the answer.
+        print("    decay: slope of log|S_l0| vs log rho over rho = "
+              + " ".join(f"{r:.4g}" for r in r_phys) + "   (expected 0)")
+        for l in range(4):
+            vals = [float(v) for v in const["S"][(l, 0)]]
+            use = [(math.log(r), math.log(abs(v))) for r, v in zip(r_phys, vals) if abs(v) > 1e-14]
+            if len(use) >= 3:
+                n = len(use); sx = sum(a for a, _ in use); sy = sum(b for _, b in use)
+                sxx = sum(a * a for a, _ in use); sxy = sum(a * b for a, b in use)
+                slope = (n * sxy - sx * sy) / (n * sxx - sx * sx)
+                lo = min(abs(v) for v in vals if abs(v) > 1e-14)
+                hi = max(abs(v) for v in vals)
+                print(f"      l={l}: slope {slope: .3f}   |S_l0| in [{lo:.3e}, {hi:.3e}]")
+            else:
+                print(f"      l={l}: |S_l0| below the noise floor at every radius")
+
+        dip = [float(v) for v in const["S"][(1, 0)]]
+        dmax = max(abs(v) for v in dip)
+        drift = (max(dip) - min(dip)) / dmax if dmax > 0 else 0.0
+        print(f"    SPURIOUS DIPOLE: |S_10| at rho_out = {abs(dip[-1]):.3e}, "
+              f"drift over the table = {100 * drift:.1f}%   (physical tail: S_10 = 0)")
+
+        print(f"    table: rho PHYSICAL (chart x {factor:g}, rho_in_phys = "
+              f"{cfg.rho_in * factor:g}); rho = " + " ".join(f"{r:.4g}" for r in r_phys))
         for line in multipole_table(const, inner, exact_const, lmax=3):
             print(line)
     except Exception as exc:
         print(f"    S_lm table skipped: {exc}")
+
+    # ------------------------------------------- the Geroch-Hansen mass potential
+    # A static spacetime's multipole moments are moments of the mass potential
+    #
+    #     P = (lambda^2 - 1) / (4 lambda) = -(1 - lambda)(1 + lambda) / (4 lambda),
+    #
+    # i.e. P = (1/4)(lambda^-1 - lambda) up to the sign that makes P positive for a positive
+    # mass.  With lambda = e^{2U} (U < 0 here) P -> M/rho, and P = -U - (2/3)U^3 - ... while
+    # lambda - 1 = 2U + 2U^2 + ...: the two agree only to linear order, so their S_lm differ
+    # from l >= 2 on, and it is P (through the conformal completion, or the FHPS relations on
+    # the axis) that carries the moments.  Reported in the same S_lm form, with lambda_inf = 0.
+    try:
+        class _P:                      # multipole_constants reads only `.lam`
+            __slots__ = ("lam",)
+
+            def __init__(self, lam):
+                self.lam = lam
+
+        def p_of(lam):
+            return _P((1.0 - lam * lam) / (4.0 * lam))
+
+        pconst = multipole_constants(lambda q: p_of(pf(q).lam), rhos, lmax=3,
+                                     lam_inf=0.0, factor=factor)
+        p_inner = multipole_constants(lambda q: p_of(lam_inner_bc(q, cfg)),
+                                      [float(cfg.rho_in)], lmax=3, lam_inf=0.0, factor=factor)
+        pinner = {k: float(v[0]) for k, v in p_inner["S"].items()}
+        _section("MULTIPOLES OF THE GEROCH-HANSEN POTENTIAL (1-lambda)(1+lambda)/(4 lambda)")
+        for l in range(4):
+            note = "   <-- dipole (should vanish)" if l == 1 else ""
+            print(f"    l={l}: S_{l}0 = {float(pconst['S'][(l, 0)][-1]): .6e}"
+                  f"   (inner data {pinner[(l, 0)]: .6e}){note}")
+        print("    S_00 = sqrt(4 pi) rho_out x (mean P) = the mass-like level; every other")
+        print("    number is the coefficient in front of Y_lm/rho^(l+1) of P, with no rho factor.")
+        print("    decay: slope of log|S_l0(P)| vs log rho   (expected 0; a nonzero slope is a")
+        print("    tail that is not a multipole expansion, whatever the amplitude looks like)")
+        for l in range(4):
+            vals = [float(v) for v in pconst["S"][(l, 0)]]
+            use = [(math.log(r), math.log(abs(v))) for r, v in zip(r_phys, vals) if abs(v) > 1e-14]
+            if len(use) >= 3:
+                n = len(use); sx = sum(a for a, _ in use); sy = sum(b for _, b in use)
+                sxx = sum(a * a for a, _ in use); sxy = sum(a * b for a, b in use)
+                slope = (n * sxy - sx * sy) / (n * sxx - sx * sx)
+                print(f"      l={l}: slope {slope: .3f}   |S_l0| in "
+                      f"[{min(abs(v) for v in vals if abs(v) > 1e-14):.3e}, "
+                      f"{max(abs(v) for v in vals):.3e}]")
+            else:
+                print(f"      l={l}: |S_l0| below the noise floor at every radius")
+        for line in multipole_table(pconst, pinner, None, lmax=3):
+            print(line)
+    except Exception as exc:
+        print(f"    Geroch-Hansen potential table skipped: {exc}")
 
     # ---------------------------------------------------------------- residuals
     _section("PDE RESIDUALS (raw units)")

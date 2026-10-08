@@ -115,7 +115,13 @@ class Config:
     # points on the cheaper of the two.
     n_bnd_outer: int | None = None
     resample_every: int = 500
-    radial: str = "log"              # "uniform" | "log" | "volume"
+    radial: str = "log"              # "uniform" | "log" | "volume" | "hybrid"
+    # "hybrid" draws `radial_log_frac` of the points log-uniformly in rho and the rest
+    # uniformly in volume (see sample_shell).  The two extremes are not usable on their own for
+    # a shell ratio of 100: log keeps the near field and thins the far field, volume is equally
+    # dense per unit volume but puts 0.19 of 27768 points inside rho = 2 (measured on the
+    # pq_c100_vacC_volpts run, whose inner boundary layer was therefore unresolved).
+    radial_log_frac: float = 0.5
 
     # --------------------------------------------------- weights / scaling
     ricci_lam_source: float = 1.0     # 0 -> solve Ricci = 0, dropping only lambda's source
@@ -454,28 +460,63 @@ def sphere_directions(key, n: int) -> jnp.ndarray:
     return u / jnp.linalg.norm(u, axis=-1, keepdims=True)
 
 
-def sample_shell(key, n: int, cfg: Config) -> jnp.ndarray:
-    """Collocation points in the shell (uniform in rho, in log rho, or in volume).
+def _rho_log(key, n: int, cfg: Config):
+    """Log-uniform rho: the same number of points per decade, density ~ rho^-3 per volume."""
+    return jnp.exp(jax.random.uniform(key, (n,), minval=math.log(cfg.rho_in),
+                                      maxval=math.log(cfg.rho_out)))
 
-    `radial="volume"` draws rho^3 uniformly on [rho_in^3, rho_out^3], so the expected number
-    of points per sphere grows like rho^2: the points are equally dense per unit VOLUME, and
-    the far field is sampled as well as the near field.  With `radial="log"` (the default) the
-    count per sphere is constant, so the density per unit volume falls like rho^-3; with
-    `radial="uniform"` it falls like rho^-2.  The choice matters when the residuals are
-    weighted by rho^d: the loss estimates the integral of (weight x residual)^2 against the
-    sampling density, so a weight that grows with rho together with a density that thins with
-    rho gives a few far points a very large say (and a high-variance loss).
+
+def _rho_volume(key, n: int, cfg: Config):
+    """rho^3 uniform: the same number of points per unit VOLUME, count per sphere ~ rho^2."""
+    lo = float(cfg.rho_in) ** 3
+    hi = float(cfg.rho_out) ** 3
+    return (lo + (hi - lo) * jax.random.uniform(key, (n,))) ** (1.0 / 3.0)
+
+
+def _rho_uniform(key, n: int, cfg: Config):
+    """Uniform in rho: density ~ rho^-2 per volume, count per sphere ~ rho^2."""
+    return jax.random.uniform(key, (n,), minval=cfg.rho_in, maxval=cfg.rho_out)
+
+
+def sample_shell(key, n: int, cfg: Config) -> jnp.ndarray:
+    """Collocation points in the shell (uniform in rho, in log rho, in volume, or a mixture).
+
+    `radial="volume"` draws rho^3 uniformly on [rho_in^3, rho_out^3], so the expected number of
+    points per sphere grows like rho^2: the points are equally dense per unit VOLUME and the far
+    field is sampled as well as the near field.  With `radial="log"` (the default) the count per
+    decade is constant, so the density per unit volume falls like rho^-3, and with
+    `radial="uniform"` it falls like rho^-2.  The choice matters when the residuals are weighted
+    by rho^d: the loss estimates the integral of (weight x residual)^2 against the sampling
+    density, so a weight that grows with rho together with a density that thins with rho gives a
+    few far points a very large say (and a high-variance loss).
+
+    `radial="hybrid"` is the middle ground, and it is the one the two extremes cannot provide:
+    `radial_log_frac` of the points are drawn log-uniformly (so the near field and the inner
+    boundary layer keep their resolution) and the rest uniformly in volume (so the far field is
+    represented per unit volume).  For a shell ratio of 100 and 27768 points, pure volume puts
+    0.19 points inside rho = 2, while log puts 4179; at frac = 0.5 the hybrid puts ~2090 there
+    and still has ~13900 points outside rho = 10 (pure log: 13884, pure volume: 27640).
     """
     k1, k2 = jax.random.split(key)
-    if cfg.radial == "log":
-        rho = jnp.exp(jax.random.uniform(k1, (n,), minval=math.log(cfg.rho_in),
-                                         maxval=math.log(cfg.rho_out)))
+    if cfg.radial == "hybrid":
+        frac = float(getattr(cfg, "radial_log_frac", 0.5))
+        frac = 0.0 if frac < 0.0 else (1.0 if frac > 1.0 else frac)
+        n_log = int(round(n * frac))
+        if n_log <= 0:
+            rho = _rho_volume(k1, n, cfg)
+        elif n_log >= n:
+            rho = _rho_log(k1, n, cfg)
+        else:
+            k1a, k1b, k1s = jax.random.split(k1, 3)
+            rho = jnp.concatenate([_rho_log(k1a, n_log, cfg),
+                                   _rho_volume(k1b, n - n_log, cfg)])
+            rho = rho[jax.random.permutation(k1s, n)]
+    elif cfg.radial == "log":
+        rho = _rho_log(k1, n, cfg)
     elif cfg.radial == "volume":
-        lo = float(cfg.rho_in) ** 3
-        hi = float(cfg.rho_out) ** 3
-        rho = (lo + (hi - lo) * jax.random.uniform(k1, (n,))) ** (1.0 / 3.0)
+        rho = _rho_volume(k1, n, cfg)
     else:
-        rho = jax.random.uniform(k1, (n,), minval=cfg.rho_in, maxval=cfg.rho_out)
+        rho = _rho_uniform(k1, n, cfg)
     return rho[:, None] * sphere_directions(k2, n)
 
 
