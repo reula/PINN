@@ -245,11 +245,60 @@ per-iteration Python, which `s` also controls.
   obvious next lever if `s = 128` proves too small.
 * **No reweighting and no resume inside the phase** (see section 2.3).
 
-## 7. Open questions
+## 7. First measurement: it runs, and a converged start has nothing to accept
 
-1. Does `s = 128` on the `pq_c100` recipe lower the loss below what SSBroyden reached
-   (vac3 8.7e-13, B 2.5e-13, E 8.9e-14, F 1.3e-14) and, more to the point, does it move the
-   residual table or the multipoles? The first honest measurement is the probe run.
+`runs/pq_c100_vacF_dsgnar_probe_s128` — `--dsgnar-steps 5 --dsgnar-sketch 128 --dsgnar-chunk 16
+--dsgnar-row-chunk 4096`, starting from `runs/pq_c100_vac3/params.pkl`. After the three workspace
+fixes it ran to completion (exit 0) with no OOM:
+
+```
+[dsgnar] step      1  loss 1.036331e-12  rho -181400813.446  lam 4.222e-08  radius 3.333e-01  target 0.15  (29.4s)
+[dsgnar] DSGNAR: loss 1.036331e-12 -> 1.036331e-12 in 5 iterations (37.9s); budget; s=128, accepted 0, rejected 5
+[dsgnar] timing: batched JVPs 24.1s, probe evaluations 4.6s, other 9.2s
+```
+
+Two things to read from it.
+
+**The cost is fine.** 37.9 s for 5 iterations, of which 29.4 s is the first-iteration compile, so
+the steady state is about **2 s per iteration** (128 JVPs in blocks of 16 dominate, then the 25
+probe evaluations, then the `s x s` SVD and the per-iteration Python). A 200-iteration run is
+therefore minutes, not hours — against SSBroyden's ~0.2 s per iteration but thousands of them.
+
+**The start has nothing to accept.** The starting point is `pq_c100_vac3`'s final state, i.e. the
+end of 11019 Adam + SSBroyden iterations, at a plateau. For a near-stationary point the
+Gauss–Newton model predicts a decrease of essentially zero, so `rho = actual / predicted` is a
+0/0 artifact — the printed `-1.81e+08` — and since acceptance requires the measured loss to fall
+strictly, every probe is correctly rejected. The LM regulariser was pushed to its floor
+(`lam 4.2e-08` against `omega = 1e-8`) and the trust region shrank from 1.0 to 0.33 without
+finding a step that helped. None of this is a defect of the optimiser or of the wiring: it
+matches what the objective says, namely that this point is already a minimum of *this* loss.
+
+So the honest test needs a starting point with room to descend. The same run's own numbers give
+the bar:
+
+| | loss |
+|---|---|
+| `pq_c100_vac3` at the end of Adam (step 5000) | 8.27e-3 |
+| ... after its first SSBroyden block (1500 iterations) | 4.75e-11 |
+| ... at the end (11019 iterations) | 8.65e-13 |
+
+`run_dsgnar.sh` can start from any of them:
+
+```bash
+INIT=runs/pq_c100_vac3/params_adam.pkl OUT=runs/pq_c100_vacH_dsgnar_fromadam \
+  SKETCH=128 STEPS=100 bash run_dsgnar.sh
+```
+
+If DSGNAR takes 8.3e-3 to ~1e-11 in ~100 iterations at ~2 s each, it is a ~10x cheaper route to
+the same place; if it stalls or rejects, the sketch rank — not the point — is the suspect, and the
+knobs to try are `SKETCH=256` (the column matrix grows to ~0.9 GiB) and a cold start from a random
+init, which is how the reference project used the method.
+
+## 8. Open questions
+
+1. Does DSGNAR descend from the end of Adam (8.3e-3) as fast as SSBroyden's first block did
+   (4.75e-11 in 1500 iterations), and does it then reach the same final residuals
+   (vac3 8.7e-13, B 2.5e-13, E 8.9e-14, F 1.3e-14)?
 2. Is the cost per iteration acceptable at this problem size, given that each iteration rebuilds
    the sketch, and SSBroyden's iterations are ~0.2 s?
 3. Should the row sketch be subsampled (`--dsgnar-sketch-rows`) to buy a larger `s`?
