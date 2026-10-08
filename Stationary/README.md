@@ -653,6 +653,12 @@ rods (half-length 1, half-gap 0.5) and therefore both horizons *inside* the inne
 as measured below, makes the loss dimensionless and chart-independent); float64 — and it has
 to be, for the reason in §7.2.
 
+A third quasi-Newton phase is available: `--qn-method dsgnar`, the doubly-sketched
+Gauss–Newton method of arXiv:2607.02194 (Webb–Jerad–Cartis), which minimises the *same* objective
+in residual-vector form (`losses.residual_vector`) and sees curvature through a sketched Jacobian
+and one SVD.  It is documented separately, with its cost model, its workspace knobs and what it
+cannot fix: **`DSGNAR.md`**; launch it with `run_dsgnar.sh`.
+
 **Optimiser: SSBroyden from the random init, with no Adam phase at all** (`--steps 0`, blocks
 of 100, `initial_scale` engaged on the first block).  The loss went 1.746e+00 → 2.059e-13 in
 3000 iterations (2 h 4 min), monotonically, and was still improving by ~1.4x per block when
