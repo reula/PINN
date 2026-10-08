@@ -1,0 +1,8 @@
+# The two reference papers live here as source material and are cited from
+# README.md and docs/dsgnar_spec.md, but they are 14 MB of publisher binaries:
+# they stay on disk rather than in the repository's history.
+2607.02194v1.pdf
+2105.07552v1.pdf
+
+__pycache__/
+*.pyc
