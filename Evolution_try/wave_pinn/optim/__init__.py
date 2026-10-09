@@ -41,6 +41,8 @@ def _phases(name: str) -> List[str]:
         return ["trustregion"]
     if name == "adam+trustregion":
         return ["adam", "trustregion"]
+    if name == "jaxopt_broyden":
+        return ["jaxopt_broyden"]
     raise ValueError(f"unknown optimizer {name!r}")
 
 
@@ -84,6 +86,10 @@ def run_optimizer(objective: Objective, flat0, cfg: Config,
             from .dsgnar import dsgnar_phase
             out = dsgnar_phase(objective, flat, cfg, verbose=verbose, callback=_cb,
                                step_offset=step, resample=resample)
+        elif phase == "jaxopt_broyden":
+            from .jaxopt_broyden import jaxopt_broyden_phase
+            out = jaxopt_broyden_phase(objective, flat, cfg, verbose=verbose,
+                                       callback=_cb, step_offset=step, resample=resample)
         else:                                                   # pragma: no cover
             raise ValueError(f"unknown phase {phase!r}")
         return (*out, int(out[2].get("iterations", 0)))

@@ -545,6 +545,37 @@ class TestWindows(unittest.TestCase):
             want = chain.slab_for(t).solution(jnp.full_like(x, t), x)
             self.assertLess(float(jnp.max(jnp.abs(got - want))), 1e-14)
 
+    def test_soft_all_softens_window_one_too(self):
+        """`soft_all` enforces even the physical initial data as a penalty."""
+        cfg = Config(T=2.0, windows=3, window_ic="soft_all", w_ic=25.0,
+                     n_coll=64, sampler="uniform")
+        slabs = self._chain(cfg, n=3, seed=600)
+        for k in range(3):
+            self.assertEqual(slabs[k].ansatz_mode, "net")
+            x_edge, u_t, v_t, w = slabs[k].soft_ic
+            self.assertEqual(w, 25.0)
+        # and its targets are the exact physical initial data, not a hand-over.
+        # They live on the edge grid, which is what the penalty is evaluated on.
+        x_edge, u_t, v_t, _ = slabs[0].soft_ic
+        u0, v0 = initial_data(cfg, x_edge)
+        self.assertLess(float(jnp.max(jnp.abs(u_t - u0))), 1e-15)
+        self.assertLess(float(jnp.max(jnp.abs(v_t - v0))), 1e-14)
+
+    def test_broyden_squares_an_over_determined_system(self):
+        """A root finder needs n equations; the selection must be even and exact."""
+        from wave_pinn.optim.jaxopt_broyden import square_rows
+        r = jnp.arange(10.0)
+        got = square_rows(r, 5)
+        self.assertEqual(int(got.shape[0]), 5)
+        # an even stride covering both ends, strictly increasing, drawn from r
+        self.assertEqual(float(got[0]), 0.0)
+        self.assertEqual(float(got[-1]), 9.0)
+        self.assertTrue(bool(jnp.all(jnp.diff(got) > 0)))
+        self.assertTrue(bool(jnp.allclose(got, jnp.array([0.0, 2.0, 4.0, 7.0, 9.0]))))
+        self.assertEqual(int(square_rows(r, 10).shape[0]), 10)   # already square
+        with self.assertRaises(ValueError):
+            square_rows(r, 11)                                   # cannot root-find that
+
     def test_soft_hand_over_leaves_window_one_hard_coded(self):
         """The physical initial condition stays hard; only the hand-overs may soften.
 

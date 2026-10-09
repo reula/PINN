@@ -159,8 +159,11 @@ class Slab:
         Window 1 always keeps the hard-coded *physical* initial condition; it is
         the artificial hand-overs that may be softened.
         """
-        if self.index == 0 or getattr(self.cfg, "window_ic", "hard") == "hard":
+        mode = getattr(self.cfg, "window_ic", "hard")
+        if mode == "hard":
             return self.cfg.ansatz
+        if self.index == 0 and mode != "soft_all":
+            return self.cfg.ansatz          # window 1 keeps the exact physical IC
         return "net"
 
     @property
@@ -175,6 +178,11 @@ class Slab:
         if self.ansatz_mode != "net":
             return None
         x = edge_grid(self.cfg)
+        if self.index == 0:
+            # "soft_all": even the first window enforces the physical initial data
+            # as a penalty rather than building it into the ansatz.
+            u, v = initial_data(self.cfg, x)
+            return (x, u, v, float(getattr(self.cfg, "w_ic", 1.0e2)))
         u, v = self.u_edge_vals, self.v_edge_vals
         if u is None and self.u_edge is not None:
             u = from_spectral(self.cfg, self.u_edge, x)

@@ -37,9 +37,9 @@ CHOICES: Dict[str, tuple] = {
     "init": ("glorot", "lecun", "siren", "zeros", "uniform"),
     "sampler": ("uniform", "random", "grid_random", "lhs"),
     "optimizer": ("adam", "ssbroyden", "adam+ssbroyden", "dsgnar", "adam+dsgnar",
-                  "trustregion", "adam+trustregion"),
+                  "trustregion", "adam+trustregion", "jaxopt_broyden"),
     "tr_hessian": ("exact", "gauss_newton"),
-    "window_ic": ("hard", "soft"),
+    "window_ic": ("hard", "soft", "soft_all"),
     "overwrite": ("archive", "wipe", "fail"),
     "precision": ("float64", "float32"),
     "scheduler": ("none", "plateau", "cosine"),
@@ -143,6 +143,13 @@ class Config:
     dsgnar_delta0: float = 1.0         # initial trust-region radius
     dsgnar_delta_min: float = 1.0e-14  # termination radius
     dsgnar_omega: float = 1.0e-8       # regularisation floor in the ratio solve
+    broyden_steps: int = 500           # jaxopt.Broyden: a ROOT finder on r(theta)=0
+    broyden_tol: float = 1e-12         # stopping tolerance on |r|
+    broyden_history: int = 0           # 0 = full Broyden memory (O(steps*n))
+    broyden_stepsize: float = 0.0      # <=0 -> backtracking line search (jaxopt default)
+    broyden_linesearch: str = "backtracking"
+    broyden_maxls: int = 15            # line-search trials; jaxopt default
+    broyden_decrease: float = 0.8      # line-search shrink per trial; jaxopt default
     dsgnar_chunk: int = 64             # tangents per batched JVP; 0 = all at once (GPU OOM)
     dsgnar_row_chunk: int = 0          # CountSketch rows per block; 0 = off (unneeded at M ~ 2e3)
     # ---- trust-region Newton with an exact dense Hessian (arXiv:2105.07552) ----

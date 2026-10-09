@@ -91,12 +91,20 @@ def run(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
         if cfg.resample_every:
             from .config import resample_schedule
             per = {"adam": cfg.steps, "ssbroyden": cfg.qn_steps, "dsgnar": cfg.dsgnar_steps,
-                   "trustregion": cfg.tr_maxiter}
-            plan = ", ".join(f"{k} from {resample_schedule(cfg, v)[0]:.0f} x{growth:g}"
-                             for k, v in per.items() if k in cfg.optimizer and v
-                             for growth in [resample_schedule(cfg, v)[1]])
-            print(f"[cfg] redrawing the {cfg.n_coll} collocation points ({plan}; "
-                  f"geometric, at least {cfg.min_resamples} redraws per phase)")
+                   "trustregion": cfg.tr_maxiter, "jaxopt_broyden": cfg.broyden_steps}
+            parts = []
+            for name, budget in per.items():
+                if name not in cfg.optimizer or not budget:
+                    continue
+                first, growth = resample_schedule(cfg, budget)
+                n = 0 if first <= 0 else len([None for k in range(1, 200)
+                                              if first * growth ** (k - 1) <= budget])
+                parts.append(f"{name}: first at {first:.0f}, {n} redraws")
+            shape = ("a guaranteed number of redraws, front-loaded geometrically"
+                     if cfg.min_resamples > 0 else "a fixed period")
+            print(f"[cfg] redrawing the {cfg.n_coll} collocation points "
+                  f"({'; '.join(parts) if parts else 'none for this optimiser'}); "
+                  f"resample_every={cfg.resample_every} as {shape}")
         else:
             print("[cfg] collocation points are FROZEN (resample_every=0)")
 
