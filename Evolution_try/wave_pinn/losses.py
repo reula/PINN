@@ -28,9 +28,10 @@ from .problem import pde_residual, periodicity_defect
 from .sampling import Batch
 
 
-def raw_residual(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0):
+def raw_residual(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
+                 t_scale=None):
     """The residual rows in physical units, before normalisation."""
-    u = make_u_fn(params, cfg, ic=ic, t0=t0)
+    u = make_u_fn(params, cfg, ic=ic, t0=t0, t_scale=t_scale)
     rows = [pde_residual(cfg, u, batch.t, batch.x)]
     if cfg.w_periodic > 0.0 and batch.t_b.size:
         d_val, d_der = periodicity_defect(cfg, u, batch.t_b, batch.x_left, batch.x_right)
@@ -43,14 +44,15 @@ def raw_residual(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0):
     return rows[0] if len(rows) == 1 else jnp.concatenate(rows)
 
 
-def residual_vector(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0):
+def residual_vector(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
+                    t_scale=None):
     """The residual vector ``r(theta)`` handed to the optimisers.
 
     Only the PDE rows are normalised, by the fixed constant ``batch.scale``
     (see :func:`wave_pinn.sampling.residual_scale`); the optional penalty rows
     already carry their own weights.
     """
-    u = make_u_fn(params, cfg, ic=ic, t0=t0)
+    u = make_u_fn(params, cfg, ic=ic, t0=t0, t_scale=t_scale)
     pde = pde_residual(cfg, u, batch.t, batch.x) / batch.scale
     rows = [pde]
     if cfg.w_periodic > 0.0 and batch.t_b.size:
@@ -68,9 +70,10 @@ def loss_from_residual(r):
     return jnp.mean(r * r)
 
 
-def pde_loss_only(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0):
+def pde_loss_only(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
+                  t_scale=None):
     """The *unnormalised* mean squared PDE residual -- the physical training loss."""
-    u = make_u_fn(params, cfg, ic=ic, t0=t0)
+    u = make_u_fn(params, cfg, ic=ic, t0=t0, t_scale=t_scale)
     r = pde_residual(cfg, u, batch.t, batch.x)
     return jnp.mean(r * r)
 
@@ -84,11 +87,13 @@ class Objective:
     quasi-Newton methods see a plain ``R^n -> R`` function, as they require.
     """
 
-    def __init__(self, cfg: Config, batch: Batch, like_params, ic=None, t0: float = 0.0):
+    def __init__(self, cfg: Config, batch: Batch, like_params, ic=None, t0: float = 0.0,
+                 t_scale=None):
         self.cfg = cfg
         self.batch = batch
         self.ic = ic
         self.t0 = float(t0)
+        self.t_scale = t_scale
         flat0, self.unflatten = jax.flatten_util.ravel_pytree(like_params)
         self.n = int(flat0.size)
         self.dtype = flat0.dtype
@@ -97,7 +102,7 @@ class Objective:
         @jax.jit
         def _loss(flat):
             return loss_from_residual(
-                residual_vector(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0))
+                residual_vector(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0, t_scale=t_scale))
 
         @jax.jit
         def _pde_loss(flat):
@@ -132,10 +137,10 @@ class Objective:
         """``v -> J v`` without materialising ``J``; cheap for DSGNAR's sketches."""
         _, jvp = jax.linearize(
             lambda f: residual_vector(self.unflatten(f), self.cfg, self.batch,
-                                      ic=self.ic, t0=self.t0), flat)
+                                      ic=self.ic, t0=self.t0, t_scale=self.t_scale), flat)
         return jvp
 
     def with_batch(self, batch: Batch) -> "Objective":
         """A new objective on a fresh sample, keeping ic, t0 and the parameter layout."""
         return Objective(self.cfg, batch, self.unflatten(jnp.zeros((self.n,), self.dtype)),
-                         ic=self.ic, t0=self.t0)
+                         ic=self.ic, t0=self.t0, t_scale=self.t_scale)

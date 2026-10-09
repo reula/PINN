@@ -69,9 +69,69 @@ from .sampling import make_batch
 from .train import configure_jax
 
 
+# --------------------------------------------------------------------------
+# the edge representation: data, not a callable chain
+# --------------------------------------------------------------------------
+# Window k's ansatz is written relative to the solution at its start edge,
+#     u(t, x) = U(x) + (t - t_k) V(x) + f(t - t_k) N_theta(t - t_k, x).
+# If U and V were themselves network expressions -- U = u_{k-1}(t_k), and that
+# window's own U, V came from window k-2 -- then evaluating window k would walk
+# the whole chain: its residual graph would be k deep, cost O(k) per evaluation,
+# and every derivative would be taken through k nested networks.
+#
+# They do not have to be.  The solution at an edge is a smooth 2L-periodic
+# function of x, so it is stored as its Fourier coefficients and evaluated by
+# spectral interpolation.  Each window then carries its own two coefficient
+# arrays and nothing else: depth one, constant cost, and the only error the
+# hand-over introduces is the truncation of a series that converges
+# geometrically for these fields (the Gaussian's coefficients fall like
+# exp(-0.2 m^2), so sixty modes are already at machine precision).
+#
+# It also makes a window independently evaluable, which is what the per-window
+# theta_*.npy files were supposed to give and did not: reconstructing window 8
+# used to require replaying windows 1 to 7.
+
+
+def edge_grid(cfg: Config, n: Optional[int] = None):
+    """Uniform periodic grid for sampling an edge (endpoint excluded)."""
+    n = int(n or getattr(cfg, "ic_grid", 256))
+    return jnp.linspace(-cfg.L, cfg.L, n, endpoint=False)
+
+
+def _spectral_basis(cfg: Config, n: int, n_modes: int):
+    """Integer wavenumbers to keep, and the angular frequencies e^{i omega x}."""
+    k_int = jnp.fft.fftfreq(n, d=1.0 / n)
+    keep = jnp.abs(k_int) <= int(n_modes)
+    omega = jnp.where(keep, k_int * (jnp.pi / cfg.L), 0.0)
+    return keep, omega
+
+
+def to_spectral(cfg: Config, values, n_modes: Optional[int] = None):
+    """Fourier coefficients of a periodic field sampled on :func:`edge_grid`."""
+    n = int(values.shape[0])
+    keep, _ = _spectral_basis(cfg, n, n_modes or getattr(cfg, "ic_modes", 64))
+    return jnp.where(keep, jnp.fft.fft(values) / n, 0.0)
+
+
+def from_spectral(cfg: Config, coeffs, x, n_modes: Optional[int] = None):
+    """Evaluate the (truncated) Fourier series at arbitrary ``x``.
+
+    The ``+ L`` is not cosmetic: the DFT takes its origin at the first sample, and
+    :func:`edge_grid` starts at ``-L``.  Without the shift every retained mode is
+    rotated by ``e^{i pi k}``, which is a sign flip per mode -- the interpolant
+    then bears no resemblance to the field it came from.
+    """
+    n = int(coeffs.shape[0])
+    _, omega = _spectral_basis(cfg, n, n_modes or getattr(cfg, "ic_modes", 64))
+    xs = jnp.atleast_1d(x)
+    phase = jnp.exp(1j * omega[:, None] * (xs + cfg.L)[None, :])
+    out = jnp.real(coeffs @ phase)
+    return out if jnp.ndim(x) else out[0]
+
+
 @dataclass
 class Slab:
-    """One time window and the network that covers it."""
+    """One time window, its network, and the edge data it was handed."""
 
     cfg: Config
     index: int
@@ -80,24 +140,56 @@ class Slab:
     prev: Optional["Slab"] = None
     params: Any = None
     metrics: Dict = field(default_factory=dict)
+    # the IC this window was given, as Fourier coefficients (None on window 1,
+    # which uses the exact initial data)
+    u_edge: Any = None
+    v_edge: Any = None
+    # its own solution at self.t1, materialised for the next window
+    u_out: Any = None
+    v_out: Any = None
+
+    @property
+    def width(self) -> float:
+        """The time interval this network operates over -- its natural t scale."""
+        return float(self.t1 - self.t0)
 
     # ---------------------------------------------------------------- the IC
     def ic(self, x):
-        """``(U(x), V(x))``: the solution and its time derivative at ``self.t0``."""
-        if self.prev is None:
+        """``(U(x), V(x))`` at ``self.t0``, from this window's stored edge data.
+
+        Depth one: the two coefficient arrays are all this needs.  Window 1 has
+        none and uses the exact initial data.
+        """
+        if self.u_edge is None or self.v_edge is None:
             return initial_data(self.cfg, x)
-        return self.prev.solution(self.t0, x), self.prev.time_derivative(self.t0, x)
+        return (from_spectral(self.cfg, self.u_edge, x),
+                from_spectral(self.cfg, self.v_edge, x))
+
+    def materialise_edge(self, x=None):
+        """Sample this window's own solution at ``self.t1`` and store its coefficients.
+
+        Called once, after the window is trained: this is the hand-over, and after
+        it the next window depends on two arrays rather than on a network.
+        """
+        x = edge_grid(self.cfg) if x is None else x
+        u = self.solution(jnp.full_like(x, self.t1), x)
+        v = self.time_derivative(self.t1, x)
+        self.u_out = to_spectral(self.cfg, u)
+        self.v_out = to_spectral(self.cfg, v)
+        return self.u_out, self.v_out
 
     # ------------------------------------------------------------ evaluation
     def solution(self, t, x):
         """``u(t, x)`` on this window (``t`` may be a batch sharing one value)."""
-        return ansatz_u(self.params, self.cfg, t, x, ic=self.ic, t0=self.t0)
+        return ansatz_u(self.params, self.cfg, t, x, ic=self.ic, t0=self.t0,
+                        t_scale=self.width)
 
     def time_derivative(self, t, x):
         """``d_t u(t, x)`` -- what seeds the next window."""
         def one(tt, xx):
             return jax.grad(
-                lambda s: ansatz_u(self.params, self.cfg, s, xx, ic=self.ic, t0=self.t0))(tt)
+                lambda s: ansatz_u(self.params, self.cfg, s, xx, ic=self.ic,
+                                    t0=self.t0, t_scale=self.width))(tt)
 
         if jnp.ndim(x) == 0:
             return one(t, x)
@@ -145,8 +237,10 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
     t_start = time.time()
 
     for k in range(cfg.windows):
-        slab = Slab(cfg, k, float(edges[k]), float(edges[k + 1]),
-                    prev=(slabs[-1] if slabs else None))
+        prev = slabs[-1] if slabs else None
+        slab = Slab(cfg, k, float(edges[k]), float(edges[k + 1]), prev=prev,
+                    u_edge=(prev.u_out if prev is not None else None),
+                    v_edge=(prev.v_out if prev is not None else None))
         key = jax.random.PRNGKey(int(cfg.seed) + 101 * k)
         params = init_params(cfg, key)
         if cfg.init_from and k == 0:
@@ -154,11 +248,13 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
             if os.path.isdir(path):
                 path = os.path.join(path, "theta.npy")
             params = Objective(cfg, make_batch(cfg, key, t0=slab.t0, t1=slab.t1, ic=slab.ic),
-                               params, ic=slab.ic, t0=slab.t0).unflatten(
+                               params, ic=slab.ic, t0=slab.t0,
+                               t_scale=slab.width).unflatten(
                 jnp.asarray(np.load(path), dtype=jnp.float64))
         batch = make_batch(cfg, jax.random.PRNGKey(int(cfg.seed) + 7919 * (k + 1)),
                            t0=slab.t0, t1=slab.t1, ic=slab.ic)
-        objective = Objective(cfg, batch, params, ic=slab.ic, t0=slab.t0)
+        objective = Objective(cfg, batch, params, ic=slab.ic, t0=slab.t0,
+                              t_scale=slab.width)
         flat0, _ = jax.flatten_util.ravel_pytree(params)
         n_par = n_parameters(params)
 
@@ -178,6 +274,7 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
             objective, flat0, cfg, verbose=verbose,
             resample=(resample if cfg.resample_every else None))
         slab.params = objective.unflatten(flat)
+        slab.materialise_edge()          # hand-over as data, not as a network
         slabs.append(slab)
 
         # What the window inherited, against what it achieved.  The hand-over is an
@@ -249,10 +346,16 @@ def _save(cfg, outdir, result, grid, slabs, window_records, metrics, wall) -> No
     with open(os.path.join(outdir, "windows.json"), "w") as fh:
         json.dump({"windows": window_records, "metrics": metrics,
                    "n_parameters": result["n_parameters"], "wall": wall}, fh, indent=2)
-    # per-window parameters, so the chain can be rebuilt without retraining
+    # Per-window parameters AND edge data.  With the edge coefficients saved,
+    # window k can be evaluated from (params_k, u_edge_k, v_edge_k) alone -- no
+    # replay of the chain -- which is the point of materialising it.
     for s in slabs:
         flat, _ = jax.flatten_util.ravel_pytree(s.params)
         np.save(os.path.join(outdir, f"theta_window{s.index}.npy"), np.asarray(flat))
+        if s.u_edge is not None:
+            np.savez(os.path.join(outdir, f"edge_window{s.index}.npz"),
+                     u_edge=np.asarray(s.u_edge), v_edge=np.asarray(s.v_edge),
+                     u_out=np.asarray(s.u_out), v_out=np.asarray(s.v_out))
     np.savez_compressed(
         os.path.join(outdir, "fields.npz"),
         x=grid["x"], times=np.asarray(grid["times"]),

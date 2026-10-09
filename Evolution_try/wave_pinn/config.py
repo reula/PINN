@@ -69,6 +69,11 @@ class Config:
     ansatz: str = "t2"                 # "t2": u0 + t v0 + t^2 N | "t2sat": u0 + t v0 + t^2/(tau^2+t^2) N | "t": u0 + t N
     ansatz_tau: float = 1.0            # the saturation scale in "t2sat"
     windows: int = 1                   # time slabs; 1 = one global solve on [0, T]
+    ic_grid: int = 256                 # points on the edge grid for the window hand-over
+    ic_modes: int = 64                 # Fourier modes kept in the edge representation
+    t_scale: float = 0.0               # time-feature scale; 0 = the window width
+                                       # (or T when there is a single window).  A positive
+                                       # value overrides it -- for controlled comparisons.
     # ------------------------------------------------------------- features
     features: str = "periodic"         # input feature map, see features.py
     n_modes: int = 1                   # harmonics, used only by features="fourier"
@@ -90,6 +95,9 @@ class Config:
     resample_every: int = 250          # redraw the collocation points every N steps (0 = never)
     min_resamples: int = 5             # ...but never fewer than this many redraws per phase
     resample_growth: float = 1.5       # interval multiplier between redraws (front-loaded)
+    min_redraw_interval: int = 0       # 0 = redraw exactly as asked.  A positive value
+                                       # suppresses redraws in phases too short to redraw
+                                       # without the optimiser chasing its own sample.
     seed: int = 0
     init_from: str = ""                # path to a theta.npy (or a run directory) to warm start from
     # -------------------------------------------------------------- optimiser
@@ -203,9 +211,6 @@ class Config:
         return self.n_layers
 
 
-MIN_REDRAW_INTERVAL = 25      # below this, a phase gets no redraws at all
-
-
 def resample_schedule(cfg: "Config", total_steps: int) -> tuple:
     """``(first_redraw, growth)``; ``first_redraw == 0`` means "never redraw".
 
@@ -235,7 +240,8 @@ def resample_schedule(cfg: "Config", total_steps: int) -> tuple:
     # recompiles, because each redraw rebuilds the jitted objective on the device.
     # The min_resamples rule below is sound for a long phase and destructive for a
     # short one, so length decides.
-    if first < MIN_REDRAW_INTERVAL:
+    floor = int(getattr(cfg, "min_redraw_interval", 0) or 0)
+    if floor and first < floor:
         return 0.0, 1.0
     return max(1.0, first), max(1.0, float(cfg.resample_growth))
 

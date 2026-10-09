@@ -65,13 +65,21 @@ def feature_dim(cfg: Config) -> int:
     return d
 
 
-def features(cfg: Config, t, x, u0=None, v0=None):
+def features(cfg: Config, t, x, u0=None, v0=None, t_scale=None):
     """Build the feature matrix for the batches ``t``, ``x`` (any broadcast shape).
 
     ``u0``/``v0`` are only needed (and only used) by the ``*_ic`` maps; passing
     them in avoids differentiating the profile twice.
+
+    ``t_scale`` is the time interval the network actually operates over, and the
+    time feature is normalised by it -- NOT by ``cfg.T``.  In the windowed mode the
+    time handed in is the *local* time ``t - t_k`` in ``[0, dt]``, so dividing by
+    the global ``T`` compresses the input coordinate by a factor ``T/dt``: the
+    network then has to fit the whole evolution of a window into a tenth of its
+    input range, at ten times the effective frequency.  Default ``None`` means
+    ``cfg.T``, which is what a single global solve wants.
     """
-    t_hat = t / cfg.T
+    t_hat = t / (t_scale if t_scale else cfg.T)
     x_hat = x / cfg.L
     cols = [t_hat]
     if cfg.features.startswith("periodic"):

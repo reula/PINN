@@ -95,7 +95,7 @@ def mlp(params: List[dict], feat, cfg: Config):
 # --------------------------------------------------------------------------
 # the ansatz
 # --------------------------------------------------------------------------
-def ansatz_u(params, cfg: Config, t, x, ic=None, t0: float = 0.0):
+def ansatz_u(params, cfg: Config, t, x, ic=None, t0: float = 0.0, t_scale=None):
     """``u_theta(t, x)``.
 
     Works both for scalars (inside ``jax.hessian``, when the residual is built)
@@ -124,7 +124,7 @@ def ansatz_u(params, cfg: Config, t, x, ic=None, t0: float = 0.0):
     if jnp.ndim(t) == 0 and jnp.ndim(x) > 0:
         # a slab's IC is evaluated at one time against a batch of x
         t = jnp.broadcast_to(t, jnp.shape(x))
-    feat = features(cfg, t, x, u0, v0)
+    feat = features(cfg, t, x, u0, v0, t_scale=t_scale)
     net = mlp(params, feat, cfg)
     if cfg.ansatz == "t2":
         return u0 + t * v0 + t * t * net
@@ -153,6 +153,6 @@ def saturation_factor(cfg: Config, t):
     return (t * t) / (cfg.ansatz_tau ** 2 + t * t)
 
 
-def make_u_fn(params, cfg: Config, ic=None, t0: float = 0.0) -> Callable:
+def make_u_fn(params, cfg: Config, ic=None, t0: float = 0.0, t_scale=None) -> Callable:
     """Return the scalar-argument callable ``u(t, x)`` that the residual AD uses."""
-    return lambda t, x: ansatz_u(params, cfg, t, x, ic=ic, t0=t0)
+    return lambda t, x: ansatz_u(params, cfg, t, x, ic=ic, t0=t0, t_scale=t_scale)

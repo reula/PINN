@@ -461,15 +461,65 @@ class TestTrustRegionMachinery(unittest.TestCase):
 class TestWindows(unittest.TestCase):
     """Slab marching: the chain must hand over exactly what the next window needs."""
 
+    @staticmethod
+    def _chain(cfg, n=4, seed=100):
+        from wave_pinn.windows import Slab
+        slabs = []
+        for k in range(n):
+            prev = slabs[-1] if slabs else None
+            s = Slab(cfg, k, cfg.T * k / n, cfg.T * (k + 1) / n,
+                     prev=prev,
+                     u_edge=(prev.u_out if prev is not None else None),
+                     v_edge=(prev.v_out if prev is not None else None))
+            s.params = init_params(cfg, jax.random.PRNGKey(seed + k))
+            s.materialise_edge()
+            slabs.append(s)
+        return slabs
+
+    def test_edge_interpolation_is_at_machine_precision(self):
+        """The hand-over stores Fourier coefficients; recovering the field must be exact.
+
+        How many modes that takes is a property of the field, and it is worth
+        pinning: the Gaussian's coefficients fall like ``exp(-0.2 m^2)``, so 8
+        modes leaves 5.8e-08 and 16 is already at machine precision.  The default
+        is 64, which is comfortable for this profile and for anything smoother.
+        """
+        from wave_pinn.windows import edge_grid, from_spectral, to_spectral
+        cfg = Config(T=2.0)
+        x = jnp.linspace(-1.0, 1.0, 401)
+        for modes in (16, 32, 64):
+            c = to_spectral(cfg, profile(cfg, edge_grid(cfg)), n_modes=modes)
+            got = from_spectral(cfg, c, x, n_modes=modes)
+            self.assertLess(float(jnp.max(jnp.abs(got - profile(cfg, x)))), 1e-13, msg=f"modes={modes}")
+
+    def test_a_window_depends_only_on_its_own_edge_data(self):
+        """Nothing further down the chain may be needed to evaluate a window.
+
+        This is the property the first implementation got wrong: the ansatz was
+        written relative to the previous window's U and V *as network expressions*,
+        so evaluating window k walked back to window 1, with a residual graph k
+        deep and a cost that grew along the chain.  Materialising the edge as
+        Fourier coefficients makes each window self-contained, and this test is
+        what says so: scramble every earlier window and the later one must not
+        move by a single bit.
+        """
+        cfg = Config(T=2.0, windows=3, n_coll=64, sampler="uniform")
+        x = jnp.linspace(-1.0, 1.0, 41)
+        slabs = self._chain(cfg, n=3, seed=300)
+        before = slabs[2].solution(jnp.full_like(x, 1.25), x)
+        before_t = slabs[2].time_derivative(1.25, x)
+        slabs[0].params = init_params(cfg, jax.random.PRNGKey(991))
+        slabs[1].params = init_params(cfg, jax.random.PRNGKey(992))
+        after = slabs[2].solution(jnp.full_like(x, 1.25), x)
+        after_t = slabs[2].time_derivative(1.25, x)
+        self.assertEqual(float(jnp.max(jnp.abs(before - after))), 0.0)
+        self.assertEqual(float(jnp.max(jnp.abs(before_t - after_t))), 0.0)
+
     def test_chain_is_continuous_in_u_and_u_t_at_the_edges(self):
-        from wave_pinn.windows import Chain, Slab
+        from wave_pinn.windows import Chain
         cfg = Config(T=2.0, windows=4, n_coll=64, sampler="uniform", n_modes=2)
         x = jnp.linspace(-1.0, 1.0, 33)
-        slabs = []
-        for k in range(4):
-            s = Slab(cfg, k, 0.5 * k, 0.5 * (k + 1), prev=(slabs[-1] if slabs else None))
-            s.params = init_params(cfg, jax.random.PRNGKey(100 + k))
-            slabs.append(s)
+        slabs = self._chain(cfg, n=4)
         chain = Chain(cfg, slabs)
 
         # the first window starts from the exact initial condition
@@ -477,8 +527,8 @@ class TestWindows(unittest.TestCase):
         self.assertLess(float(jnp.max(jnp.abs(slabs[0].solution(jnp.zeros_like(x), x) - u0))), 1e-13)
         self.assertLess(float(jnp.max(jnp.abs(slabs[0].time_derivative(0.0, x) - v0))), 1e-11)
 
-        # and each hand-over is exact: the next window's U, V are the previous
-        # window's u, u_t at the shared edge, so both are continuous by construction
+        # and each hand-over is continuous, now limited only by the truncation of
+        # the edge series (machine precision for these fields) rather than exact
         for k in range(1, 4):
             t = 0.5 * k
             left = slabs[k - 1].solution(jnp.full_like(x, t), x)
