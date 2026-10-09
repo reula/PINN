@@ -1302,6 +1302,59 @@ Then:
 figure in the chart the run trained in.  Use `3.5` (or whatever the standard size is for that
 configuration) instead if you want the standard sizes; only the axes move.
 
+### 16.1 Checking results in place, over ssh, without the hub's terminal
+
+The login node shares the filesystem with the JupyterHub node, so every run directory and log can
+be read from the Mac; only the GPU work needs the hub's terminal.  The route is the login node,
+`serafin.ccad.unc.edu.ar` -- the `jupyter_ccad` alias points at the hub node itself and is **not
+reachable** from here (measured: `ssh: connect to host jupyter.ccad.unc.edu.ar port 22: Operation
+timed out`).  The same tree has two names:
+
+| where | path |
+|---|---|
+| hub node (JupyterLab terminal) | `~/serafin/Julia/PINN/Stationary` |
+| login node (from the Mac) | `/home/reula/Julia/PINN/Stationary`, i.e. `~/Julia/PINN/Stationary` |
+
+A run's own log prints the hub's absolute paths (`/home/reula/serafin/...`), which is a quick
+cross-check that the two are the same files.
+
+Status of every run, one line each:
+
+    ssh serafin.ccad.unc.edu.ar 'cd Julia/PINN/Stationary
+      for r in $(ls -d runs/pq_* 2>/dev/null); do
+        printf "%-34s exit=%-3s %s\n" "$r" "$(cat $r/train.exit 2>/dev/null)" \
+               "$(grep -m1 "final loss" $r/report.txt 2>/dev/null | tr -s " ")"
+      done' 2>/dev/null
+
+The files that answer most questions: `train.exit` (0 clean, 1 died -- and remember `run_hub.sh`
+post-processes a crashed run on purpose, so a report can exist for a run that failed),
+`logs/<name>.log` (training, with the `[qn]`/`[dsgnar]`/`[resample]` lines),
+`logs/<name>.post.log` (post-processing), `report.txt` and `report.json` (the report and the same
+numbers machine-readable), `history.json` (the loss trajectory), `config.json` (every flag, which
+is how a run is identified).
+
+The greps used while chasing a run:
+
+    ssh serafin.ccad.unc.edu.ar 'cd Julia/PINN/Stationary; tail -5 logs/<name>.log'
+    ssh serafin.ccad.unc.edu.ar 'cd Julia/PINN/Stationary; grep -nE "EXHAUSTED|Traceback|Killed|no module|[0-9]+ resample" logs/<name>.log'
+    ssh serafin.ccad.unc.edu.ar 'cd Julia/PINN/Stationary; grep -E "final loss|outer BC residuals|SPURIOUS DIPOLE:|steps  " runs/<name>/report.txt'
+    ssh serafin.ccad.unc.edu.ar 'cd Julia/PINN/Stationary; ls -lt runs/<name>'
+
+Two things this route cannot do:
+
+* **See the GPU.**  The login node has no card at all (`nvidia-smi: command not found`; 32 CPU
+  cores), so whether a run is on the device can only be checked in the JupyterLab terminal.
+* **Run the package.**  The virtualenv is a hub-side tree: from the login node
+  `Stationary/.venv/bin/python` does not exist, and the login node's own `python3` has neither
+  `jax` nor `numpy` (standard library only).  Anything that imports `stationary` runs either in the
+  JupyterLab terminal or here after `scp`-ing the run back and regenerating locally, which is what
+  the rest of section 16 does.
+
+Three habits: `-o BatchMode=yes` fails immediately instead of waiting for a password prompt inside
+a script; every CCAD connection prints its welcome box on stdout, so a parsed command should be a
+single quoted one and/or end in `2>/dev/null`; and `git pull` works from the login node (same
+checkout) but changes the code the hub's next run imports, so do it between runs, not during one.
+
 ## 17. Known issue: post-processing loses the `weyl_*` fields
 
 `stationary.evaluate.load_run` rebuilds the `Config` from `config.json` but does not carry the
