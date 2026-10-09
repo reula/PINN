@@ -659,6 +659,16 @@ in residual-vector form (`losses.residual_vector`) and sees curvature through a 
 and one SVD.  It is documented separately, with its cost model, its workspace knobs and what it
 cannot fix: **`DSGNAR.md`**; launch it with `run_dsgnar.sh`.
 
+`jaxopt`'s `Broyden` was tried for the same slot and **dropped** (Oct 2026).  It is a square ROOT
+finder -- an overdetermined residual system is refused outright -- so as a minimiser it can only
+run on the stationarity condition `F(theta) = grad L(theta)`, and there it is fragile and slow:
+at 149 parameters and 256 collocation points, `gamma = 1` (the default) drove the loss 4.65 -> 462
+while reducing `||grad||`, `gamma = 1e3` gave NaN in one iteration, and `gamma = 1e-3` descended to
+0.46, all at roughly 5 s per iteration against SSBroyden's 0.2 s at fifteen times the parameters.
+The package stays installed in this checkout's venv (`jaxopt 0.8.5`, no import of it anywhere, not
+in `requirements.txt`); remove it with `./.venv/bin/pip uninstall jaxopt` if a clean environment is
+wanted.
+
 **Optimiser: SSBroyden from the random init, with no Adam phase at all** (`--steps 0`, blocks
 of 100, `initial_scale` engaged on the first block).  The loss went 1.746e+00 → 2.059e-13 in
 3000 iterations (2 h 4 min), monotonically, and was still improving by ~1.4x per block when
