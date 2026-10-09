@@ -57,7 +57,7 @@ import jax.flatten_util
 import jax.numpy as jnp
 import numpy as np
 
-from .config import Config, resolve_outdir
+from .config import Config, prepare_outdir, resolve_outdir
 from .evaluate import (error_metrics, plot_error_map, plot_history, plot_solution,
                        solution_on_grid)
 from .features import feature_dim
@@ -270,7 +270,9 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
         raise ValueError("windows must be >= 1")
     outdir = resolve_outdir(cfg)
     if save:
-        os.makedirs(outdir, exist_ok=True)
+        archived = prepare_outdir(cfg, outdir)
+        if archived and verbose:
+            print(f"[cfg] {outdir} held an earlier run; moved it to {archived}", flush=True)
 
     edges = np.linspace(0.0, cfg.T, cfg.windows + 1)
     slabs: List[Slab] = []

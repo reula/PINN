@@ -20,6 +20,8 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import shutil
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -38,6 +40,7 @@ CHOICES: Dict[str, tuple] = {
                   "trustregion", "adam+trustregion"),
     "tr_hessian": ("exact", "gauss_newton"),
     "window_ic": ("hard", "soft"),
+    "overwrite": ("archive", "wipe", "fail"),
     "precision": ("float64", "float32"),
     "scheduler": ("none", "plateau", "cosine"),
     "residual_norm": ("auto", "none"),
@@ -160,6 +163,13 @@ class Config:
     # ------------------------------------------------------------ bookkeeping
     precision: str = "float64"
     outdir: str = ""                   # empty -> runs/<timestamp>-<label>
+    overwrite: str = "archive"         # what to do when the output directory already
+                                       # holds a run: move it aside as <dir>_prev_<stamp>
+                                       # (archive), delete it (wipe), or refuse (fail).
+                                       # Reusing a label used to write over the old run
+                                       # while leaving files the new one does not
+                                       # produce -- a 10-window run's theta_window5..9
+                                       # surviving into a 5-window run, for instance.
     label: str = "run"
     log_every: int = 25                # print/record every N optimiser steps
     eval_every: int = 0                # if >0, record the test error every N steps (needs the exact solution)
@@ -248,9 +258,9 @@ def resample_schedule(cfg: "Config", total_steps: int) -> tuple:
     the honest outcome is that no redraw happens.
 
     ``min_redraw_interval`` (default 0, off) additionally suppresses redraws when
-    the interval would be shorter than it.  It exists because a redraw every ~20
-    iterations in a 200-iteration phase is destructive: measured, 1.05e-09 with
-    nine redraws against 4.48e-15 with none, at 4.5x the wall time.
+    the interval would be shorter than it.  It was added on the strength of a
+    comparison that turned out to be confounded -- see the note on `resample_span`
+    -- so it is off by default and should be read as a knob, not a finding.
     """
     if cfg.resample_every <= 0 or total_steps <= 0:
         return 0.0, 1.0
@@ -321,6 +331,41 @@ def apply_overrides(cfg: Config, overrides: Optional[List[str]]) -> Config:
             raise KeyError(f"unknown config field in --set: {key!r}")
         updates[key] = _coerce(value.strip())
     return cfg.replace(**updates)
+
+
+def prepare_outdir(cfg: Config, outdir: Optional[str] = None) -> Optional[str]:
+    """Make the output directory ready, without ever mixing two runs.
+
+    A run writes its artefacts into ``outdir`` and does not delete anything, so
+    reusing a label used to leave whatever the previous run produced.  ``config.json``
+    is written by every run and by nothing else, so its presence identifies a
+    previous run here; when it is found the directory is moved aside (default),
+    deleted, or refused, according to ``cfg.overwrite``.
+
+    Returns the path the previous run was archived to, or None.
+    """
+    outdir = outdir or resolve_outdir(cfg)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+        return None
+    if "config.json" not in os.listdir(outdir):
+        return None                        # nothing of ours here; leave it alone
+    mode = getattr(cfg, "overwrite", "archive")
+    if mode == "fail":
+        raise SystemExit(
+            f"{outdir} already holds a run.  Move it, or pass "
+            f"--set overwrite=archive (move it aside) or --set overwrite=wipe.")
+    if mode == "wipe":
+        shutil.rmtree(outdir)
+        os.makedirs(outdir, exist_ok=True)
+        return None
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest, n = f"{outdir}_prev_{stamp}", 1
+    while os.path.exists(dest):
+        dest, n = f"{outdir}_prev_{stamp}_{n}", n + 1
+    shutil.move(outdir, dest)
+    os.makedirs(outdir, exist_ok=True)
+    return dest
 
 
 def resolve_outdir(cfg: Config, root: Optional[str] = None) -> str:

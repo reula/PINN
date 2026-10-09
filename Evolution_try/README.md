@@ -324,14 +324,32 @@ redraws, and the interval between them grows geometrically
 | DSGNAR | 250 | 6 | 10 |
 | DSGNAR | 150 | 4 | 10 |
 
-The interval is sized so that `min_resamples` (default 5) redraws land inside the
-first eighth of the budget, and it grows because early iterations move the
-solution a lot and later ones barely at all.  Sizing redraws against the *budget*
-alone is not enough: DSGNAR converges here in tens of iterations, so a
-budget-sized interval fires once or twice — measured, a run that converged at
-iteration 69 under `resample_every=25` with a 250-iteration budget got exactly
-two redraws.  Each phase reports the count it actually performed in
-`info["resamples"]`, which is what the runs in §6.5 quote.
+**`resample_every` means what it says: a fixed period.**  Setting
+`min_resamples > 0` instead asks for a *guaranteed number* of redraws inside the
+phase, which front-loads them geometrically from `resample_span * budget /
+growth^(min_resamples-1)`.  The two are separate because fusing them was a
+mistake: with the guarantee on by default, `resample_every=250` on a 500-iteration
+phase redrew at step 13, not 250 — not something a reader of the config could see.
+
+`resample_span` (default 0.15) is where the assumption lives: it is the fraction
+of the phase by which the guaranteed redraws must be complete, i.e. how early a
+phase is assumed to stop.  It replaced a hard-coded `8` in the denominator, which
+was `growth^4 = 5.06` with 1.6x of unexplained margin and quietly meant a span of
+0.127.  A DSGNAR phase does stop on its own radius criterion well before budget,
+which is why redraws have to be early or they never fire at all.
+
+Each phase reports the count it actually performed in `info["resamples"]`.
+
+**Correction, from the finished T = 20 runs.**  An earlier note here claimed that
+redrawing costs six orders of magnitude in the loss — `1.05e-09` with nine redraws
+against `4.48e-15` with none.  That comparison was confounded: the run with the
+redraws was also the run whose time feature was divided by the global `T` instead
+of the window width (see the windows section).  With that fixed, redraws make no
+measurable difference at this phase length: the two finished windowed runs
+performed 6-8 redraws per window and reached `1.5e-14` (hard hand-over, window 1,
+245 iterations) and `7.8e-15` (soft, 238 iterations), against `2.37e-14` for a
+standalone phase with no redraws at all.  Resampling was never the problem, and
+mid-phase redrawing is not what a long phase needs protecting from.
 
 Redrawing only works with a stochastic sampler; `sampler="uniform"` is a
 deterministic tensor grid that ignores the key, so `validate()` rejects that
