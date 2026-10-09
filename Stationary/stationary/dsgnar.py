@@ -275,14 +275,18 @@ def jvp_columns(res_fn, flat_now, basis, chunk: int = 0):
     s = int(basis.shape[0])
     if not chunk or chunk >= s:
         return jax.vmap(jvp)(basis)
-    if s % chunk == 0:
-        # lax.map: a real sequential loop in the compiled program, so the intermediates of one
-        # block are freed before the next is traced (a Python loop would be unrolled into one
-        # huge computation and XLA could keep them all live).
-        blocks = basis.reshape(s // chunk, chunk, basis.shape[1])
-        return jax.lax.map(lambda b: jax.vmap(jvp)(b), blocks).reshape(s, -1)
-    outs = [jax.vmap(jvp)(basis[i:i + chunk]) for i in range(0, s, chunk)]
-    return jnp.concatenate(outs, axis=0)
+    # lax.map is a real sequential loop in the compiled program: the intermediates of one block
+    # are freed before the next is traced, which is the whole point.  A Python loop would be
+    # unrolled into one huge computation and XLA may keep all of it live -- so the block count
+    # must NOT depend on the chunk dividing s.  It usually does not: the default sketch is
+    # floor(n/3), which is 761 here (prime) and was 733 in Evolution_try.  Pad with ZERO
+    # tangents instead, run the loop, and slice the padding off: J @ 0 = 0, so the columns are
+    # the ones asked for.
+    pad = (-s) % chunk
+    if pad:
+        basis = jnp.concatenate([basis, jnp.zeros((pad, basis.shape[1]), dtype=basis.dtype)], 0)
+    blocks = basis.reshape((s + pad) // chunk, chunk, basis.shape[1])
+    return jax.lax.map(lambda b: jax.vmap(jvp)(b), blocks).reshape(s + pad, -1)[:s]
 
 
 # --------------------------------------------------------------------------

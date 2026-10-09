@@ -148,7 +148,7 @@ Knobs (all numerically transparent — the grouping of sums changes, not the sum
 | flag | default | what it caps |
 |---|---|---|
 | `--dsgnar-sketch s` | 0 (= `n/3` = 761 here) | the `rows x s` column matrix (`s = 128` → ~0.4 GiB, `s = 256` → ~0.9 GiB) |
-| `--dsgnar-chunk N` | 0 (all at once) | tangents per JVP block; the launcher uses 16 |
+| `--dsgnar-chunk N` | 0 (all at once) | tangents per JVP block; the launcher uses 16. Blocks are zero-padded to a multiple of N, never unrolled: the default sketch is `floor(n/3)` = 761, prime, and a divisibility rule would have silently lost the memory bound on every run that used it |
 | `--dsgnar-row-chunk N` | 4096 | CountSketch rows per block |
 | `--dsgnar-steps` | 200 | iterations (each rebuilds a sketched Jacobian) |
 | `--dsgnar-delta0` / `--dsgnar-omega` | 1.0 / 1e-8 | initial trust region / LM floor |
