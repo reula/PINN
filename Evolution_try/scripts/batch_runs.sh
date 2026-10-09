@@ -33,7 +33,8 @@ DRY=0
 WITH_BROYDEN="${WITH_BROYDEN:-0}"
 DSGNAR_STEPS="${DSGNAR_STEPS:-300}"
 DSGNAR_ROUNDS="${DSGNAR_ROUNDS:-5}"
-QN_STEPS="${QN_STEPS:-3000}"
+QN_STEPS="${QN_STEPS:-1500}"
+QN_ROUNDS="${QN_ROUNDS:-2}"
 NCOLLS="${NCOLLS:-2201 8192}"
 SNAPSHOT="[0,2,4,6,8,10,12,14,16,18,20]"
 
@@ -95,10 +96,15 @@ flags_for() {
         dsgnar)    echo "--set optimizer=dsgnar --set dsgnar_steps=$DSGNAR_STEPS \
 --set dsgnar_sketch=0 --set dsgnar_delta0=1.0 --set dsgnar_delta_min=1e-14 \
 --set resample_rounds=$DSGNAR_ROUNDS" ;;
-        ssbroyden) # one round: each SSBroyden round runs to its own plateau, which is
-                   # thousands of iterations, so five of them per window is not a batch
+        ssbroyden) # Two rounds, not five: each SSBroyden round runs to its own plateau,
+                   # thousands of iterations, so five per window is not a batch.  But not
+                   # ONE either -- with a single round it never redraws, and SSBroyden is the
+                   # method measured to fit a frozen sample rather than estimate the residual
+                   # (train 9.6e-12 against an independent sample's 3.0e-05 on T=20, a factor
+                   # of 3e6).  Two rounds buys the "loss on next sample" column, which is what
+                   # says how much of its answer was sample-fitting, at the same total budget.
                    echo "--set optimizer=ssbroyden --set qn_steps=$QN_STEPS --set qn_block=250 \
---set qn_gtol=1e-12 --set resample_rounds=1" ;;
+--set qn_gtol=1e-12 --set resample_rounds=$QN_ROUNDS" ;;
         jaxopt_broyden) echo "--set optimizer=jaxopt_broyden --set broyden_steps=60 \
 --set resample_rounds=1" ;;
     esac
@@ -120,19 +126,25 @@ for row in "${MATRIX[@]}"; do
     printf '%-6s %-34s %-9s %-24s %s\n' "$i" "$lab" "$nc" "$opt/$ic" "$state"
 done
 
-# Rough, from the two finished T=20 windowed runs: 1043 s for dsgnar at n_coll=2201
-# with a 500-iteration budget and one round.  Sealed with the actual numbers below,
-# because a guess that is wrong by 5x is worse than no guess.
-PER_RUN_2201_DSGNAR=1500
+# Rough, and now scaled for ROUNDS.  The two finished T=20 windowed runs took
+# 1043 s and 1384 s for dsgnar at n_coll=2201, but those were ONE round per window
+# (~185 iterations, stopping on the radius criterion).  Five rounds per window is
+# roughly 3x the iterations, so ~4400 s.  Only the first run can settle it: it
+# reports its own wall time, and everything after can be read against that.
+PER_RUN_2201_DSGNAR=4400
 echo
-echo "rough wall time (from the finished runs; the JVP cost scales with n_coll,"
-echo "and SSBroyden's dense H costs more per step than DSGNAR's sketched one):"
+echo "rough wall time.  UNRELIABLE until run 1 reports: it is scaled from the two"
+echo "finished one-round runs, and the rounds above change the iteration count.  The"
+echo "JVP cost scales with n_coll; SSBroyden needs far more iterations than DSGNAR.":
 tot=0
 for row in "${MATRIX[@]}"; do
     read -r opt ic nc <<<"$row"
     [ -f "$HERE/runs/$(label_for "$opt" "$ic" "$nc")/report.md" ] && continue
     base=$PER_RUN_2201_DSGNAR
-    if [ "$opt" = "ssbroyden" ]; then base=$((base * 3)); fi
+    # SSBroyden: n*log-ish per step on the dense inverse Hessian plus a line search,
+    # against DSGNAR's sketched JVP -- measured on CPU as 0.44 s/iteration until
+    # convergence, but it needs thousands of iterations where DSGNAR needs hundreds.
+    if [ "$opt" = "ssbroyden" ]; then base=$((base * 2 / 3)); fi
     if [ "$opt" = "jaxopt_broyden" ]; then base=300; fi
     est=$(( base * nc / 2201 ))
     tot=$((tot + est))
@@ -183,5 +195,8 @@ for row in "${MATRIX[@]}"; do
 done
 
 echo
+echo
 echo "=== batch finished in $(( ($(date +%s) - started) / 60 )) min ==="
+grep -c "exit=0" logs/batch.log | xargs -I{} echo "{} runs succeeded"
+grep "exit=[^0]" logs/batch.log && echo "^ failures above; their logs are in logs/" || true
 echo "now:  $PY scripts/report_batch.py"
