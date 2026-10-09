@@ -294,11 +294,41 @@ the same place; if it stalls or rejects, the sketch rank — not the point — i
 knobs to try are `SKETCH=256` (the column matrix grows to ~0.9 GiB) and a cold start from a random
 init, which is how the reference project used the method.
 
+### Second measurement: from the end of Adam it stops after 28 iterations
+
+`runs/pq_c100_vacH_dsgnar_fromadam` — the same flags, started from the Adam end (loss 8.27e-3):
+
+```
+[dsgnar] step 1  loss 8.315069e-03  rho -0.613  lam 5.634e+03  radius 3.333e-01  target 0.15
+[dsgnar] DSGNAR: loss 8.315069e-03 -> 8.290791e-03 in 28 iterations (92.1s); radius below threshold
+         s=128, accepted 4, rejected 24, stage2=False
+[dsgnar] timing: batched JVPs 70.0s, probe evaluations 0.8s, other 21.3s
+```
+
+**0.3 % of the loss in 92 s, then `radius < delta_min` and exit.** For scale: SSBroyden's first
+1500-iteration block took the same start from 8.27e-3 to 4.75e-11. Per unit wall time DSGNAR is
+about nine orders of magnitude behind here, with 24 of 28 probes rejected.
+
+The failure mode is structural, not a knob that was set wrong: the trust region lives in the
+**sketch** space (`s = 128`), and the step is lifted to the 2285 parameters by the SRCT embedding,
+whose columns are not unit-norm. If the lifted step overshoots, the probe is rejected, the radius
+is multiplied down, and the radius is the only thing that moves -- so 24 rejections walk it from
+1.0 to `delta_min = 1e-14` geometrically and the phase stops. The large `lam 5.6e3` at the first
+step says the same thing from the other side: the sketched subproblem is regularisation-dominated,
+i.e. the `s = 128` model of a 2285-parameter, rho^d-weighted second-order system is a poor one.
+
+If it is worth one more try, the suspect to change is the *initial scale*, not the sketch:
+`--dsgnar-delta0 1e-3` (or smaller) makes the first lifted step small enough to be acceptable, and
+only then does `STEPS` mean anything. `SKETCH=256` is the other half (below). If neither moves it,
+the conclusion is that this optimiser, tuned on a 2201-parameter smooth wave problem, does not
+transfer to this objective, and the levers that have evidence here are the batch noise (more
+points) and the missing conditions (the multipole pin) -- not the optimiser.
+
 ## 8. Open questions
 
-1. Does DSGNAR descend from the end of Adam (8.3e-3) as fast as SSBroyden's first block did
-   (4.75e-11 in 1500 iterations), and does it then reach the same final residuals
-   (vac3 8.7e-13, B 2.5e-13, E 8.9e-14, F 1.3e-14)?
+1. Does `--dsgnar-delta0 1e-3` (a smaller lifted first step) turn the 28-iteration stall into
+   descent? This is the last cheap test before parking the optimiser: two starts have now failed
+   to make progress (0/5 accepted at the plateau, 4/28 from the Adam end).
 2. Is the cost per iteration acceptable at this problem size, given that each iteration rebuilds
    the sketch, and SSBroyden's iterations are ~0.2 s?
 3. Should the row sketch be subsampled (`--dsgnar-sketch-rows`) to buy a larger `s`?
