@@ -64,7 +64,7 @@ from .features import feature_dim
 from .losses import Objective
 from .model import ansatz_u, init_params, n_parameters
 from .optim import run_optimizer
-from .problem import initial_data
+from .problem import exact_solution, initial_data
 from .sampling import make_batch
 from .train import configure_jax
 
@@ -180,6 +180,18 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
         slab.params = objective.unflatten(flat)
         slabs.append(slab)
 
+        # What the window inherited, against what it achieved.  The hand-over is an
+        # initial-value problem, so a window's error is (at best) the error of the
+        # solution it was handed at t0: measuring BOTH separates "this window solved
+        # badly" from "this window solved a badly posed problem", which is otherwise
+        # indistinguishable from the outside -- and it is the number that decides
+        # whether to spend more iterations per window or fewer windows.
+        xs = jnp.linspace(-cfg.L, cfg.L, cfg.n_test_x)
+        u_in, _v_in = slab.ic(xs)
+        ex_in = exact_solution(cfg, jnp.full_like(xs, slab.t0), xs)
+        den_in = float(jnp.sqrt(jnp.mean(ex_in ** 2)))
+        ic_rel = (float(jnp.sqrt(jnp.mean((u_in - ex_in) ** 2))) / den_in) if den_in > 0 else 0.0
+
         # error of this window alone, on its own interior
         n_in = max(3, min(11, cfg.windows * 3))
         times = np.linspace(slab.t0, slab.t1, n_in)[1:]
@@ -187,16 +199,23 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
                                 times=[float(x) for x in times], n_x=cfg.n_test_x)
         m = error_metrics(grid)
         slab.metrics = m
+        # Same measure at both ends of the hand-over: inherited error at t0, error at
+        # t1.  The space-time rel L2 above mixes times and is not comparable with it.
+        end_rel = m["per_time"][float(times[-1])]["rel_l2"]
         window_records.append({
             "index": k, "t0": slab.t0, "t1": slab.t1,
             "final_loss": float(history[-1]["loss"]) if history else float("nan"),
+            "ic_rel_l2": ic_rel,
             "rel_l2": m["rel_l2_space_time"],
+            "rel_l2_end": end_rel,
+            "amplification": (end_rel / ic_rel) if ic_rel > 0 else float("nan"),
             "wall": sum(float(i.get("wall") or 0.0) for i in infos),
             "phase_infos": infos,
         })
         if verbose:
             print(f"[win {k+1}/{cfg.windows}] loss {window_records[-1]['final_loss']:.3e}   "
-                  f"window rel L2 {m['rel_l2_space_time']:.3e}", flush=True)
+                  f"inherited {ic_rel:.3e} -> end {end_rel:.3e} "
+                  f"(x{window_records[-1]['amplification']:.2f})", flush=True)
 
     chain = Chain(cfg, slabs)
     wall = time.time() - t_start
@@ -269,11 +288,12 @@ def _report(cfg, result, metrics, window_records, wall) -> str:
         m = metrics["per_time"][t]
         A(f"| {t:g} | {m['rel_l2']:.6e} | {m['linf']:.6e} |")
     A("")
-    A("| window | t range | final loss | window rel L2 | wall (s) |")
-    A("|---|---|---|---|---|")
+    A("| window | t range | final loss | inherited rel L2 | window rel L2 | amplification | wall (s) |")
+    A("|---|---|---|---|---|---|---|")
     for r in window_records:
         A(f"| {r['index']+1} | [{r['t0']:g}, {r['t1']:g}] | {r['final_loss']:.3e} | "
-          f"{r['rel_l2']:.3e} | {r['wall']:.0f} |")
+          f"{r.get('ic_rel_l2', float('nan')):.3e} | {r['rel_l2']:.3e} | "
+          f"x{r.get('amplification', float('nan')):.2f} | {r['wall']:.0f} |")
     A("")
     A(f"wall time: {wall:.1f} s")
     return "\n".join(L) + "\n"
