@@ -499,7 +499,24 @@ alone predicted:**
 
   With a lower weight the order-2 run's PDE residuals improve 2.5x and its loss 5x (part of
   which is just the outer term being counted less -- trust the weight-independent PDE and
-  boundary residuals, not the loss).  At order 4 (x64, 3000 steps, `n_coll = 256`) the same
+  boundary residuals, not the loss).
+
+  **How true that is for the pq_c100 family, measured** (`loss_scatter.py` on
+  `runs/pq_c100_vacF_phihyb25`, 6 batches at production size, the run's own switches):
+  the loss is `(2.0 +- 1.5)e-13` and **93% of it is the lambda pin** (`w_pin = 100`), with
+  `pde_lam_eq` 6.8%, `pde_ricci` 0.2% and everything else at or below 0.1%
+  (`outer_h` is `w = 0`, so the whole outer Robin residual, 1.5e-08, contributes nothing).
+  The pin's batch scatter *is* the loss's scatter (std 1.5e-13 of 1.5e-13), and it is pure
+  Monte-Carlo error of a near-cancelling spherical mean: the pointwise order-1 residual at
+  `rho_out` is ~2.3e-06, its mean is ~3e-08 (a cancellation to 1%), and a mean-then-square term
+  therefore carries ~100% relative standard error at `n_bnd_outer = 4548`.  Measured over 40
+  draws of the outer sample at fixed parameters: pin term 2.14e-15 +- 2.32e-15 at 4548 points,
+  1.09e-15 +- 1.22e-15 at 18192, 9.06e-16 +- 7.31e-16 at 40000 -- the std falls as 1/sqrt(n),
+  and the mean converges to ~9e-16.  So for these runs: more *collocation* points barely move
+  the loss (the collocation enters only through the 6.8% lambda-equation and 0.2% Ricci terms);
+  what moves it is `--n-bnd-outer`, and what moves the *solution* is the collocation and the
+  sampling, judged on the raw residual table.  A single run's "final loss" is one draw from
+  this distribution: F's 1.33e-14 is a lucky batch whose mean is 2e-13.  At order 4 (x64, 3000 steps, `n_coll = 256`) the same
   sweep shows a **trade-off rather than a correct setting**: as `w_outer` falls 100 -> 0.1
   the `lam_eq` residual improves 2.83e-05 -> 1.49e-05 while the outer `lambda` residual
   degrades 6.2e-02 -> 2.2e-01 and `lambda(100)` falls 0.661 -> 0.490.  Hence the verdict on

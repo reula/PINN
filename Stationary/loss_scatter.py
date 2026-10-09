@@ -32,8 +32,34 @@ import jax.numpy as jnp
 import numpy as np
 
 from stationary.evaluate import load_run
-from stationary.losses import group_terms, total_loss
+from stationary.losses import default_weights, equation_keys, group_terms, total_loss
 from stationary.train import make_batch
+
+
+def contributions(cfg, model, parts):
+    """The weighted contribution of each term to the loss (they sum to it).
+
+    `total_loss`'s `parts` are UNWEIGHTED means of squares; the loss weights them.  Splitting the
+    loss this way says which term sets both its level and -- across batches -- its scatter, which
+    is what decides whether more collocation points or more boundary points is the way down.
+    """
+    w = default_weights(cfg)
+    keys = set(equation_keys(model))
+    out = {}
+    for k, v in parts.items():
+        if k.startswith("pde_lam_eq_radial"):
+            out[k] = float(cfg.w_lam_eq_radial) * v
+        elif k.startswith("pde_"):
+            g = k[4:]
+            if g in keys:
+                out[k] = float(w[g]) * v
+        elif k.startswith("inner_"):
+            out[k] = float(w.get(k, w["inner"])) * v
+        elif k.startswith("outer_"):
+            out[k] = float(w.get(k, w["outer"])) * v
+        elif k.startswith("pin_"):
+            out[k] = float(cfg.w_pin) * v
+    return out
 
 
 def main() -> int:
@@ -62,15 +88,14 @@ def main() -> int:
           f"n_coll {cfg.n_coll}  n_bnd {cfg.n_bnd}/{cfg.n_bnd_outer}  "
           f"radial {cfg.radial}  lam_eq_form {cfg.lam_eq_form}  scale_ref {cfg.scale_ref}")
 
-    losses, groups = [], []
-    parts_last = None
+    losses, groups, contribs = [], [], []
     for i in range(a.batches):
         batch = make_batch(jax.random.PRNGKey(a.seed0 + i), cfg)
         loss, parts = total_loss(state, batch, cfg, model, exact)
         losses.append(float(loss))
         gp = group_terms(state, batch, cfg, model, exact)
         groups.append({k: float(v) for k, v in gp.items()})
-        parts_last = {k: float(v) for k, v in parts.items()}
+        contribs.append(contributions(cfg, model, {k: float(v) for k, v in parts.items()}))
     L = np.array(losses)
     print(f"\n  loss over {a.batches} batches: mean {L.mean():.6e}   std {L.std():.3e}"
           f"   min {L.min():.6e}   max {L.max():.6e}   spread {(L.max()-L.min())/L.mean():.1%}")
@@ -80,9 +105,15 @@ def main() -> int:
         v = np.array([g[k] for g in groups])
         print(f"    {k:16s} mean {v.mean():.6e}   std {v.std():.3e}   "
               f"({v.std()/max(v.mean(), 1e-300):.1%} across batches)")
-    print("\n  terms of the last batch:")
-    for k, v in sorted(parts_last.items(), key=lambda kv: -abs(kv[1]))[:8]:
-        print(f"    {k:18s} {v:.6e}")
+    print("\n  weighted contributions (they sum to the loss): mean +- std over the batches,")
+    print("  sorted by the std that sets the loss's scatter")
+    names = sorted(contribs[0], key=lambda k: -np.std([c[k] for c in contribs]))
+    tot = np.array([sum(c.values()) for c in contribs])
+    for k in names[:8]:
+        v = np.array([c[k] for c in contribs])
+        share = 100.0 * v.mean() / tot.mean() if tot.mean() else 0.0
+        print(f"    {k:18s} mean {v.mean():.3e}  std {v.std():.3e}  ({share:5.1f}% of the loss)")
+    print(f"    {'TOTAL':18s} mean {tot.mean():.3e}  std {tot.std():.3e}")
     print("\n  A loss below the batch scatter is a number on one sample, not a better solution.")
     return 0
 
