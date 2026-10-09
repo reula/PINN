@@ -4,9 +4,9 @@
 #   bash scripts/run_dsgnar.sh
 #   DSGNAR_STEPS=200 SKETCH=800 bash scripts/run_dsgnar.sh
 set -eu
-PY=${PY:-/Users/reula/jax_env/bin/python}
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
+PY="$(find_python)" || { echo "no interpreter with jax; set PY=" >&2; exit 1; }
 cd "$(dirname "$0")/.."
-export MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/mpl-wazepinn}
 
 LABEL=${LABEL:-dsgnar_ref}
 FEATURES=${FEATURES:-periodic}

@@ -8,9 +8,9 @@
 # [-1, 1] to T = 2, periodic, Gaussian u0 with sigma = 0.2, v0 = -c u0',
 # hard-coded initial condition, 6 layers x 20 neurons.
 set -eu
-PY=${PY:-/Users/reula/jax_env/bin/python}
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
+PY="$(find_python)" || { echo "no interpreter with jax; set PY=" >&2; exit 1; }
 cd "$(dirname "$0")/.."
-export MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/mpl-wazepinn}
 
 LABEL=${LABEL:-ssbroyden_ref}
 FEATURES=${FEATURES:-periodic}

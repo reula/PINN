@@ -150,40 +150,71 @@ information, error metrics), `fields.npz` (the fields on a test grid),
 
 ## 4. Running it
 
-The project's interpreter is the one that has JAX:
+`Evolution_try` is self-contained.  It vendors the Crunch SSBroyden it needs under
+`vendor/`, imports nothing from `Stationary/`, and writes **everything it
+produces inside its own directory**:
+
+```
+Evolution_try/
+├── runs/<label>/     one directory per run: config.json, history.json or
+│                     windows.json, report.md, fields.npz, theta.npy, the figures
+└── logs/             launcher logs and .pid files       (both gitignored)
+```
+
+You need an interpreter with `jax`, `numpy`, `scipy`, `optax` and `matplotlib`.
+`scripts/env.sh` finds one for you, in this order: `$PY`, then
+`Evolution_try/.venv`, then `~/jax_env` (the Mac development one), then
+`../Stationary/.venv` (the CUDA one on the hub, a convenience, not a dependency),
+then `~/venvs/pinn`, then `python3` on `PATH`.  To give the project its own venv:
 
 ```bash
-PY=/Users/reula/jax_env/bin/python
-cd /Users/reula/Julia/PINN/Evolution_try
-export MPLCONFIGDIR=/tmp/mpl-wazepinn     # matplotlib's cache dir is not writable
+cd <checkout>/Evolution_try
+python3 -m venv .venv
+.venv/bin/pip install "jax[cuda12]==0.11.1"     # or jax[cpu]; see requirements.txt
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -c "import jax; print(jax.version if hasattr(jax,'version') else jax.__version__, jax.devices())"
+```
 
-# the reference solve (SSBroyden, to convergence)
-bash scripts/run_reference.sh
+Then, from anywhere (the launcher resolves its own directory, so there is nothing
+to `cd` to and nothing to export):
 
-# the paper's optimiser on the same problem
-bash scripts/run_dsgnar.sh
+```bash
+# check the environment: interpreter, devices, the private APIs, then the tests
+bash <checkout>/Evolution_try/scripts/hub_run.sh --check
 
-# a one-off, with any field overridden
+# the windowed T = 20 solve, detached, logging into Evolution_try/logs/
+bash <checkout>/Evolution_try/scripts/hub_run.sh T20win_dsgnar dsgnar
+bash <checkout>/Evolution_try/scripts/hub_run.sh T20win_ssbroyden ssbroyden
+```
+
+and from inside the directory, for the shorter things:
+
+```bash
+cd <checkout>/Evolution_try
+
+bash scripts/run_reference.sh          # the reference SSBroyden solve
+bash scripts/run_dsgnar.sh             # DSGNAR on the same problem
+bash scripts/sweep_features.sh         # the feature-map sweep
+
+PY=.venv/bin/python                    # or let env.sh find one; see above
 $PY -m wave_pinn.cli --label my_try --set optimizer=adam+ssbroyden \
-    --set features=fourier --set n_modes=8 --set n_coll=4096
-
-# what have I got so far?
+    --set features=periodic --set n_coll=4096
 $PY -m wave_pinn.compare --out runs/COMPARISON.md
-
-# loss curves and errors of several runs on one figure
 $PY -m wave_pinn.plot_runs --runs ssbroyden_ref dsgnar_ref --out runs/comparison.png
-
-# the tests
 $PY -m unittest discover -s tests -v
 ```
 
 `--set key=value` works for every field of `Config` (see `config.py`), values are
 coerced to int/float/bool/JSON automatically, and `--config runs/<label>/config.json`
-restarts from a previous run's configuration. `--dry-run` prints the resolved
-config without running anything.
+restarts from a previous run's configuration.  `--dry-run` prints the resolved
+config without running anything.  Set `CRUNCH_ROOT` to use a different `Crunch`
+checkout instead of the vendored copy.
 
-Set `CRUNCH_ROOT` to point at a different `Crunch` checkout if you do not want
-the vendored copy.
+**Git hygiene.**  `runs/` is tracked, so a run started here leaves the working tree
+dirty and the *next* `git pull` will complain.  Either commit the runs you want to
+keep (from the machine that produced them), or point a throwaway run elsewhere with
+`--outdir /path/outside/the/checkout`.
+
 
 ---
 

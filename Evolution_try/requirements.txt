@@ -1,0 +1,41 @@
+# Reference environment for the wave-equation PINN (Evolution_try).
+#
+# This project is independent of Stationary/.  It vendors the Crunch SSBroyden it
+# needs under vendor/, writes its own runs/ and logs/, and imports nothing from
+# Stationary/ -- so it can have a venv of its own:
+#
+#     cd <checkout>/Evolution_try
+#     python3 -m venv .venv
+#     .venv/bin/pip install "jax[cpu]==0.11.1"      # or the CUDA wheel, below
+#     .venv/bin/pip install -r requirements.txt
+#
+# and scripts/env.sh will then pick `.venv` up before anything else.  Using the
+# CUDA venv next door (../Stationary/.venv) also works and is what the scripts
+# fall back to, but it is a convenience, not a dependency; things get ported
+# between the two projects by hand.
+#
+# jaxlib is deliberately NOT listed.  Install jax FIRST with the wheel matching
+# the hardware, so pip sees jax already satisfied and leaves the device build
+# alone; installing this file first would pull the CPU wheel:
+#
+#     pip install "jax[cpu]==0.11.1"              # CPU
+#     pip install "jax[cuda12]==0.11.1"           # NVIDIA, self-contained wheels
+#     pip install "jax[cuda12-local]==0.11.1"     # NVIDIA, CUDA already in the image
+#
+# ('cuda13' if nvidia-smi reports a CUDA 13 driver.)  Then verify, because JAX
+# falls back to CPU silently:
+#
+#     python -c "import jax; print(jax.__version__, jax.devices())"
+#
+jax==0.11.1
+
+# scipy is a hard dependency of this code, not only of jax: optim/trustregion.py
+# imports scipy.optimize._trustregion_exact (the paper's own subproblem solver)
+# and scipy.linalg.lapack.dpotrf.  That module is private, so it is the one import
+# a scipy upgrade could break -- scripts/env.sh and the test suite both exercise
+# it, and the hub dependency check in the README catches it in seconds.
+scipy>=1.11
+
+numpy
+optax
+matplotlib

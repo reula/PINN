@@ -5,9 +5,9 @@
 #
 #   bash scripts/sweep_features.sh
 set -u
-PY=${PY:-/Users/reula/jax_env/bin/python}
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
+PY="$(find_python)" || { echo "no interpreter with jax; set PY=" >&2; exit 1; }
 cd "$(dirname "$0")/.."
-export MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/mpl-wazepinn}
 
 common="--set optimizer=ssbroyden --set qn_steps=2500 --set qn_block=250 \
         --set n_coll=2048 --set sampler=random --set plateau_tol=1e-10 \

@@ -18,12 +18,15 @@
 # scheduler, so a process started from a JupyterLab terminal dies with that
 # terminal, and a notebook cell dies with the server.
 #
+# Everything this project produces stays inside Evolution_try/: runs/ and logs/.
+#
 # Env overrides: PY (interpreter), T, WINDOWS, NCOLL, SNAP (time slices to report)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"     # Evolution_try/
 cd "$HERE"
+source "$HERE/scripts/env.sh"
 
 LABEL="${1:-T20win_dsgnar}"
 OPT="${2:-dsgnar}"
@@ -32,18 +35,11 @@ WINDOWS="${WINDOWS:-10}"
 NCOLL="${NCOLL:-2201}"
 SNAP="${SNAP:-[0,2,4,6,8,10,12,14,16,18,20]}"
 
-# ---- interpreter: explicit PY, else the CUDA venv next door, else ~/venvs/pinn
-find_py() {
-    local c
-    for c in "${PY:-}" "$HERE/../Stationary/.venv/bin/python" \
-             "$HOME/venvs/pinn/bin/python" "$(command -v python3 || true)" \
-             "$(command -v python || true)"; do
-        [ -n "$c" ] && [ -x "$c" ] || continue
-        if "$c" -c 'import jax' >/dev/null 2>&1; then printf '%s\n' "$c"; return 0; fi
-    done
-    return 1
+PY="$(find_python)" || {
+    echo "FATAL: no interpreter with jax+numpy+scipy+optax. Set PY=/path/to/python," >&2
+    echo "       or create this project's own venv:  see requirements.txt" >&2
+    exit 1
 }
-PY="$(find_py)" || { echo "FATAL: no interpreter with jax; set PY=/path/to/python" >&2; exit 1; }
 
 mkdir -p logs .mplcache
 echo "checkout : $HERE"
@@ -57,6 +53,35 @@ if not any(d.platform == "gpu" for d in jax.devices()):
     print("WARNING: no GPU visible -- JAX falls back to CPU silently. "
           "Expected on a Mac; on the hub check PY and the spawner's GPU request.")
 EOF
+
+if [ "${1:-}" = "--check" ]; then
+    echo "checkout : $HERE"
+    echo "python   : $PY"
+    "$PY" - <<'EOF'
+import sys
+import jax, numpy, scipy, optax, matplotlib
+print("jax      :", jax.__version__, jax.devices())
+print("numpy    :", numpy.__version__, "| scipy", scipy.__version__, "| optax", optax.__version__)
+if not any(d.platform == "gpu" for d in jax.devices()):
+    print("WARNING  : no GPU visible. Expected on a Mac; on the hub check PY, and note")
+    print("           that the JupyterHub spawner must request a GPU -- a CPU-only")
+    print("           environment turns a 30-minute run into a 4-hour one silently.")
+from scipy.optimize._trustregion_exact import IterativeSubproblem   # optim/trustregion.py
+from scipy.linalg.lapack import dpotrf
+from jax.scipy.fft import dct                                       # optim/dsgnar.py
+import jax.ops
+assert hasattr(jax.ops, "segment_sum")
+assert hasattr(jax.lax, "map")
+from wave_pinn.optim.ssbroyden import load_minimize
+m, where = load_minimize()
+print("crunch   :", "OK from " + str(where) if m is not None else "UNAVAILABLE")
+print("private APIs (scipy trust-exact, jax.scipy.fft.dct, jax.ops.segment_sum): OK")
+EOF
+    echo
+    echo "--- test suite (the gate; ~2-3 min) ---"
+    "$PY" -m unittest discover -s "$HERE/tests" 2>&1 | tail -4
+    exit 0
+fi
 
 case "$OPT" in
     dsgnar)      OPTFLAGS="--set optimizer=dsgnar --set dsgnar_steps=200 \
