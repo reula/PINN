@@ -21,7 +21,8 @@
 # Everything this project produces stays inside Evolution_try/: runs/ and logs/.
 #
 # Env overrides: PY (interpreter), T, WINDOWS, NCOLL, SNAP (time slices to report),
-#                ANSATZ (default t2), RESAMPLE_EVERY (default 0), DSGNAR_STEPS (default 500)
+#                ANSATZ (default t2), RESAMPLE_EVERY (default 0), DSGNAR_STEPS (default 500),
+#                RESAMPLE_ROUNDS (default 5: converge, redraw, converge again), WINDOW_IC
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -107,7 +108,9 @@ $LAUNCH env MPLBACKEND=Agg MPLCONFIGDIR="$HERE/.mplcache" \
     "$PY" -m wave_pinn.cli \
         --label "$LABEL" --outdir "$OUT" \
         --set T="$T" --set windows="$WINDOWS" --set ansatz="${ANSATZ:-t2}" \
+        --set window_ic="${WINDOW_IC:-soft}" \
         --set n_coll="$NCOLL" --set sampler=random --set resample_every="${RESAMPLE_EVERY:-0}" \
+        --set resample_rounds="${RESAMPLE_ROUNDS:-5}" \
         --set "snapshot_times=$SNAP" \
         $OPTFLAGS \
     > "$LOG" 2>&1 < /dev/null &

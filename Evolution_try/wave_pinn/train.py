@@ -239,4 +239,20 @@ def _report(cfg, result, metrics, infos, wall) -> str:
     for i, info in enumerate(infos):
         A(f"* phase {i+1}: `{info.get('optimizer')}` in {info.get('iterations')} iterations, "
           f"{info.get('wall', float('nan')):.1f} s, stopped: {info.get('stopped')}")
+        rounds = info.get("rounds") or []
+        if len(rounds) > 1:
+            A("")
+            A("  Converge, redraw, converge again.  `param change` is how far the round had to")
+            A("  move the solution to fit the sample it was just handed, and `on next sample`")
+            A("  is the loss of this round's solution on the *following* round's points --")
+            A("  neither should grow.  A param change that does not fall towards the")
+            A("  numerical floor means the solution is fitting the collocation points.")
+            A("")
+            A("  | round | iterations | loss (own sample) | loss on next sample | param change |")
+            A("  |---|---|---|---|---|")
+            for rec in rounds:
+                nxt = rec.get("loss_on_next_sample")
+                A(f"  | {rec['round']+1} | {rec['iterations']} | {rec['final_loss']:.3e} | "
+                  f"{'--' if nxt is None else f'{nxt:.3e}'} | {rec['param_rel_change']:.2e} |")
+            A("")
     return "\n".join(lines) + "\n"

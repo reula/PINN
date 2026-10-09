@@ -101,6 +101,13 @@ class Config:
                                        # (a conditioning device; the ratio DSGNAR uses is
                                        # scale invariant, and the error metrics are unaffected)
     resample_every: int = 250          # redraw the collocation points every N steps (0 = never)
+    resample_rounds: int = 5           # converge fully, then redraw and converge again,
+                                       # this many times.  The redraw happens BETWEEN
+                                       # convergence runs, so the optimiser is never
+                                       # chasing a moving target -- and whether the
+                                       # solution moves at all between rounds is the
+                                       # measurement of stability to resampling.
+                                       # 1 = a single run, no redraws.
     resample_span: float = 0.15        # with min_resamples > 0: the fraction of the phase
                                        # by which the guaranteed redraws must be complete
                                        # (i.e. the assumed early-stopping point).
