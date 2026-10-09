@@ -35,6 +35,7 @@
 #     nvidia-smi --query-gpu=memory.total,memory.used --format=csv,noheader
 #     PY=$PWD/.venv/bin/python ./run_phi_hybrid.sh              # both, sequentially
 #     PY=$PWD/.venv/bin/python ./run_phi_hybrid.sh --only F     # one
+#     RHO_OUT=10 FRAC=0.25 bash run_phi_hybrid.sh --only G      # another shell, same mixture
 #     DRY=1 bash ./run_phi_hybrid.sh                            # print, launch nothing
 #
 # Each run is launched by run_hub.sh (detached, logged, resumable) and this script WAITS for it
@@ -55,6 +56,9 @@ fi
 TAG="${TAG:-}"
 DRY="${DRY:-0}"
 ONLY=""
+# shell ratio and mixture for the single-run mode (--only G); defaults are the F recipe's
+RHO_OUT="${RHO_OUT:-10.0}"
+FRAC="${FRAC:-0.25}"
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -71,7 +75,7 @@ export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-/tmp/jaxcache-$US
 BASE=(
     --arch axisym_hybrid --steps 5000 --lbfgs-steps 30000 --qn-block 1500
     --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
-    --R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0
+    --R0 0.5773502691896258 --rho-in 1.0 --inner-radius 1.0
     --vtk-physical-inner 1.0
     --lam0 0.33333333333333337 --lam-inf 1.0 --lam-bc-S2 -0.08333333333333333
     --outer-bc robin --robin-orders h=3,lam=3 --no-robin-G
@@ -107,11 +111,25 @@ run_one() {
     echo "== $name finished: $out  (log: logs/$(basename "$out").log)"
 }
 
+if [ "$ONLY" = "G" ]; then
+    # One run with the shell and the mixture given on the command line, everything else as the
+    # E/F recipe (phi = log lambda, the hybrid sampler, the metric BCs and the source-free Ricci
+    # equation untouched):
+    #     RHO_OUT=10 FRAC=0.25 bash run_phi_hybrid.sh --only G
+    # NOTE the loss is NOT comparable with the pq_c100 family: its weights scale with rho and the
+    # pin's own floor grows as rho_out^-2 (the [pin] line measures 6.6e-05 at ratio 100), so at
+    # ratio 10 both the loss and the pin term are much larger at the same solution quality.
+    # Compare raw residuals and the S_lm tables instead.
+    tag="${RHO_OUT/./p}"
+    ftag="${FRAC/./}"
+    run_one "pq_r${tag}_phihyb${ftag}" --rho-out "$RHO_OUT" --lam-eq-form log --radial hybrid \
+        --radial-log-frac "$FRAC"
+fi
 if [ -z "$ONLY" ] || [ "$ONLY" = "E" ]; then
-    run_one pq_c100_vacE_phihyb50 --lam-eq-form log --radial hybrid --radial-log-frac 0.5
+    run_one pq_c100_vacE_phihyb50 --rho-out 100.0 --lam-eq-form log --radial hybrid --radial-log-frac 0.5
 fi
 if [ -z "$ONLY" ] || [ "$ONLY" = "F" ]; then
-    run_one pq_c100_vacF_phihyb25 --lam-eq-form log --radial hybrid --radial-log-frac 0.25
+    run_one pq_c100_vacF_phihyb25 --rho-out 100.0 --lam-eq-form log --radial hybrid --radial-log-frac 0.25
 fi
 
 echo
