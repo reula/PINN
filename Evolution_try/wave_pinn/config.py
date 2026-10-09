@@ -101,7 +101,12 @@ class Config:
                                        # (a conditioning device; the ratio DSGNAR uses is
                                        # scale invariant, and the error metrics are unaffected)
     resample_every: int = 250          # redraw the collocation points every N steps (0 = never)
-    min_resamples: int = 5             # ...but never fewer than this many redraws per phase
+    resample_span: float = 0.15        # with min_resamples > 0: the fraction of the phase
+                                       # by which the guaranteed redraws must be complete
+                                       # (i.e. the assumed early-stopping point).
+    min_resamples: int = 0             # 0 = resample_every is a literal fixed period.  A
+                                       # positive value instead GUARANTEES that many redraws
+                                       # per phase, front-loading them geometrically.
     resample_growth: float = 1.5       # interval multiplier between redraws (front-loaded)
     min_redraw_interval: int = 0       # 0 = redraw exactly as asked.  A positive value
                                        # suppresses redraws in phases too short to redraw
@@ -222,36 +227,45 @@ class Config:
 def resample_schedule(cfg: "Config", total_steps: int) -> tuple:
     """``(first_redraw, growth)``; ``first_redraw == 0`` means "never redraw".
 
-    The redraw interval grows geometrically instead of staying fixed, and the
-    first redraw comes early.  Two reasons, both empirical:
+    ``resample_every`` means what it says: a **fixed period**, the first redraw
+    after exactly that many iterations, and ``growth = 1``.  Set
+    ``min_resamples > 0`` to ask instead for a *guaranteed number* of redraws
+    within the phase, which front-loads them geometrically -- the interval is then
+    ``min(resample_every, total/(8*min_resamples))`` growing by
+    ``resample_growth``.
 
-    * DSGNAR converges in tens of iterations here, not thousands.  A fixed
-      interval sized against its *budget* (``dsgnar_steps``) therefore fires once
-      or twice before the trust region collapses and the run ends -- measured: a
-      run that converged at iteration 69 under ``resample_every=25`` and a
-      250-iteration budget got exactly two redraws.  Sizing the first interval
-      against an eighth of the budget places ``min_resamples`` redraws inside
-      the first eighth of the phase, which is where a converging DSGNAR run
-      actually lives: measured here, runs that were allowed 250 iterations
-      stopped at 55 and 69.
-    * Early iterations move the solution a lot and later ones barely at all, so
-      spending the redraws early is the better use of them.
+    The two modes are separate because fusing them was a mistake: with
+    ``min_resamples`` on by default, ``resample_every=250`` on a 500-iteration
+    phase redrew at step 13, not 250, which is not something a reader of the
+    config can see.  If a phase is short enough that a fixed period never fires,
+    the honest outcome is that no redraw happens.
+
+    ``min_redraw_interval`` (default 0, off) additionally suppresses redraws when
+    the interval would be shorter than it.  It exists because a redraw every ~20
+    iterations in a 200-iteration phase is destructive: measured, 1.05e-09 with
+    nine redraws against 4.48e-15 with none, at 4.5x the wall time.
     """
     if cfg.resample_every <= 0 or total_steps <= 0:
         return 0.0, 1.0
-    wanted = max(1, int(cfg.min_resamples))
-    first = min(float(cfg.resample_every), max(1.0, float(total_steps) / (8.0 * wanted)))
-    # A phase too short to redraw without the optimiser chasing its own sample gets
-    # no redraws at all.  This is a measured rule, not a preference: on this
-    # problem, 200 DSGNAR iterations at n_coll = 2201 reach a loss of 1.05e-09 with
-    # nine redraws and 4.48e-15 with none -- six orders, plus 4.5x the wall time in
-    # recompiles, because each redraw rebuilds the jitted objective on the device.
-    # The min_resamples rule below is sound for a long phase and destructive for a
-    # short one, so length decides.
+    wanted = int(getattr(cfg, "min_resamples", 0) or 0)
+    if wanted > 0:
+        growth = max(1.0, float(cfg.resample_growth))
+        # Redraws fall at t, t*g, ..., t*g^(m-1), so putting the last guaranteed one
+        # at `resample_span` of the phase means t = span*total/g^(m-1).  The span is
+        # where the assumption lives: a DSGNAR phase usually stops on its own radius
+        # criterion well before its budget, so redraws have to be done early or they
+        # never happen.  This replaces a hard-coded 8, which was 1.5^4 = 5.06 with
+        # 1.6x of unexplained margin and quietly meant span = 0.13.
+        span = float(getattr(cfg, "resample_span", 0.15))
+        first = min(float(cfg.resample_every),
+                    max(1.0, span * float(total_steps) / (growth ** (wanted - 1))))
+    else:
+        first = float(cfg.resample_every)
+        growth = 1.0                                  # a fixed period
     floor = int(getattr(cfg, "min_redraw_interval", 0) or 0)
     if floor and first < floor:
         return 0.0, 1.0
-    return max(1.0, first), max(1.0, float(cfg.resample_growth))
+    return max(1.0, first), growth
 
 
 def resample_interval(cfg: "Config", total_steps: int) -> int:

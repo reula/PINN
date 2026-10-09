@@ -352,6 +352,7 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
             "rel_l2_end": end_rel,
             "amplification": (end_rel / ic_rel) if ic_rel > 0 else float("nan"),
             "wall": sum(float(i.get("wall") or 0.0) for i in infos),
+            "resamples": sum(int(i.get("resamples") or 0) for i in infos),
             "phase_infos": infos,
         })
         if verbose:
@@ -442,10 +443,11 @@ def _report(cfg, result, metrics, window_records, wall) -> str:
         m = metrics["per_time"][t]
         A(f"| {t:g} | {m['rel_l2']:.6e} | {m['linf']:.6e} |")
     A("")
-    A("| window | t range | final loss | inherited rel L2 | window rel L2 | amplification | wall (s) |")
-    A("|---|---|---|---|---|---|---|")
+    A("| window | t range | final loss | redraws | inherited rel L2 | window rel L2 | amplification | wall (s) |")
+    A("|---|---|---|---|---|---|---|---|")
     for r in window_records:
         A(f"| {r['index']+1} | [{r['t0']:g}, {r['t1']:g}] | {r['final_loss']:.3e} | "
+          f"{r.get('resamples', 0)} | "
           f"{r.get('ic_rel_l2', float('nan')):.3e} | {r['rel_l2']:.3e} | "
           f"x{r.get('amplification', float('nan')):.2f} | {r['wall']:.0f} |")
     A("")
