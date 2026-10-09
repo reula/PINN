@@ -121,7 +121,12 @@ def run(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
         k = jax.random.PRNGKey((int(cfg.seed) + 7919 * resample_counter["i"]) % (2 ** 31 - 1))
         return objective.with_batch(make_batch(cfg, k))
 
-    resample_fn = resample if cfg.resample_every else None
+    # The rounds mechanism needs to be ABLE to redraw even when mid-phase redrawing
+    # is off: `resample_rounds>1` redraws *between* convergence runs, which is the
+    # only place a redraw belongs.  Gating this on `resample_every` alone silently
+    # reduced every rounds run to a single round -- the knob was accepted and ignored.
+    wants_resample = bool(cfg.resample_every) or int(cfg.resample_rounds) > 1
+    resample_fn = resample if wants_resample else None
 
     # ---- optional probe: residual on an independent sample, and the true error ---
     # Both matter and they answer different questions.  The independent residual

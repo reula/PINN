@@ -545,6 +545,31 @@ class TestWindows(unittest.TestCase):
             want = chain.slab_for(t).solution(jnp.full_like(x, t), x)
             self.assertLess(float(jnp.max(jnp.abs(got - want))), 1e-14)
 
+    def test_rounds_fire_with_mid_phase_redrawing_off(self):
+        """`resample_rounds` must work when `resample_every=0`.
+
+        The rounds mechanism redraws BETWEEN convergence runs, which is the only
+        place a redraw belongs for a secant method -- so "no mid-phase redrawing"
+        does not mean "no rounds".  Gating the callable on `resample_every` at the
+        call site made `resample_rounds` a silent no-op: accepted, ignored, and
+        invisible except in the absence of a table that should have been there.
+        """
+        import os
+        import tempfile
+        from wave_pinn.windows import run_windows
+        cfg = Config(T=2.0, windows=2, optimizer="dsgnar", dsgnar_steps=3,
+                     dsgnar_sketch=16, n_coll=32, sampler="random",
+                     resample_every=0, resample_rounds=2,
+                     snapshot_times=[0.0, 1.0, 2.0])
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = cfg.replace(outdir=tmp)
+            run_windows(cfg, verbose=False)
+            rec = json.load(open(os.path.join(tmp, "windows.json")))
+        self.assertEqual(len(rec["windows"]), 2)
+        for w in rec["windows"]:
+            n_rounds = len(w["phase_infos"][0].get("rounds") or [])
+            self.assertEqual(n_rounds, 2, msg=f"window {w['index']+1}: {n_rounds} rounds, expected 2")
+
     def test_soft_all_softens_window_one_too(self):
         """`soft_all` enforces even the physical initial data as a penalty."""
         cfg = Config(T=2.0, windows=3, window_ic="soft_all", w_ic=25.0,

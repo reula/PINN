@@ -107,6 +107,16 @@ def run_optimizer(objective: Objective, flat0, cfg: Config,
         # That is the opposite of redrawing mid-run, where the optimiser chases a
         # target that moves every few iterations and never converges to any of them.
         n_rounds = rounds if (i == len(phases) - 1 and resample is not None) else 1
+        if rounds > 1 and n_rounds == 1 and i == len(phases) - 1:
+            # Say so rather than silently running one round: a caller that asked for
+            # rounds and supplied no way to redraw is misconfigured, and this exact
+            # mismatch (resample_every=0 gating the callable on the caller side) made
+            # resample_rounds a no-op in the first batch that used it.
+            import warnings
+            warnings.warn(
+                f"resample_rounds={rounds} but no resample callable was supplied, so "
+                f"only ONE round will run.  Mid-phase redrawing being off does not mean "
+                f"rounds are off -- pass a resample callable.", RuntimeWarning, stacklevel=2)
         round_infos: List[Dict] = []
         hist_all: List[Dict] = []
         total_iters = 0

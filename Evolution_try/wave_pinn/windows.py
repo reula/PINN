@@ -325,9 +325,12 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
                 cfg, jax.random.PRNGKey((int(cfg.seed) + 7919 * (100 + counter["i"])) % (2 ** 31 - 1)),
                 t0=slab.t0, t1=slab.t1, ic=slab.ic))
 
+        # see the note in train.run: rounds need a redraw even when mid-phase
+        # redrawing is off, and gating this on resample_every disabled the rounds
+        wants_resample = bool(cfg.resample_every) or int(cfg.resample_rounds) > 1
         flat, history, infos, phase_histories = run_optimizer(
             objective, flat0, cfg, verbose=verbose,
-            resample=(resample if cfg.resample_every else None))
+            resample=(resample if wants_resample else None))
         slab.params = objective.unflatten(flat)
         slab.materialise_edge()          # hand-over as data, not as a network
         slabs.append(slab)
