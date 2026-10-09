@@ -692,6 +692,52 @@ What they pin down:
   is then the free-space `u0(x-ct)`) but the ansatz is no longer exactly
   periodic, and the error floor rises to `~10⁻⁴`.
 
+### Running on a GPU
+
+Nothing here is CPU-specific — it is all JAX — but four things decide whether a
+run on the CUDA environment works or dies, and the first is not optional.
+
+**The DSGNAR sketch is chunked by default, and that is what makes it run at all.**
+The batched Jacobian-vector product materialises the tangents of the *whole*
+residual at once.  On the sibling problem in this repository that was measured at
+`4.78 GiB` for `s = 128` alone, and the GPU refused it with
+`RESOURCE_EXHAUSTED: Out of memory while trying to allocate 4.78GiB`; the
+CountSketch rows were refused next, at `8.87 GiB`.  `dsgnar_chunk` (default 64)
+pushes the tangents through in blocks with `jax.lax.map` — a real sequential loop,
+so one block's intermediates are freed before the next is traced — and
+`dsgnar_row_chunk` does the same for the sketch rows.  Neither changes any
+arithmetic: both are tested against the unchunked result to `1e-12`, and the loss
+trajectory is identical to the last digit.  The sketch size is `floor(n/3)`, which
+for `n = 2201` is 733 — prime — so the implementation *pads* to a whole number of
+blocks rather than falling back to a Python loop that XLA could keep unrolled.
+Chunking costs about 15 % of the batched-JVP time on CPU; raise `dsgnar_chunk`
+(e.g. 128, 256) if the card has room, lower it if it does not.
+
+**float64 is deliberate, and it is what the GPU is worst at.**  `configure_jax`
+sets `jax_enable_x64`; do not "help" by exporting `JAX_ENABLE_X64` instead, and do
+not switch to `precision="float32"` to go faster — the residuals of interest are
+`1e-15` here, four orders below float32's epsilon.  On a datacenter card float64
+runs at half rate, on a consumer card at a thirty-second, so expect the speedup to
+be smaller than the core count suggests.  The heavy parts (the batched JVPs and
+the dense Hessian) still parallelise well; the per-iteration Python and the whole
+trust-region subproblem do not.
+
+**Preallocation.**  `XLA_PYTHON_CLIENT_PREALLOCATE=false` on a shared hub.  JAX
+reserves 75 % of the visible device at startup, which on a shared machine is both
+antisocial and a hard failure when someone else already holds it.
+
+**The trust-region path is host-bound by construction.**  Its subproblem solver is
+SciPy's, so the dense Hessian is copied to the host every iteration, and forming it
+costs `n` forward-over-reverse passes (`tr_chunk`, default 128, bounds the peak).
+It runs correctly on a GPU, but the GPU is not where its time goes.
+
+Finally, the version: this checkout was written against JAX 0.9.2 and the hub runs
+0.11.1.  The test suite is the gate — 33 tests, a couple of minutes — and it
+exercises every private API the project depends on (`jax.lax.map`,
+`jax.ops.segment_sum`, `jax.scipy.fft.dct(norm="ortho")`,
+`scipy.optimize._trustregion_exact`, Crunch's `jax._src.scipy.optimize.line_search`).
+
+
 ---
 
 ## 9. Sources

@@ -112,6 +112,8 @@ class Config:
     dsgnar_delta0: float = 1.0         # initial trust-region radius
     dsgnar_delta_min: float = 1.0e-14  # termination radius
     dsgnar_omega: float = 1.0e-8       # regularisation floor in the ratio solve
+    dsgnar_chunk: int = 64             # tangents per batched JVP; 0 = all at once (GPU OOM)
+    dsgnar_row_chunk: int = 0          # CountSketch rows per block; 0 = off (unneeded at M ~ 2e3)
     # ---- trust-region Newton with an exact dense Hessian (arXiv:2105.07552) ----
     tr_maxiter: int = 300              # outer iterations (the paper caps at 5000)
     tr_delta0: float = 1.0             # initial trust radius   (scipy default)

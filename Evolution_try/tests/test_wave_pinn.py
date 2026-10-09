@@ -310,6 +310,38 @@ class TestDsgnarMachinery(unittest.TestCase):
             nrm = float(jnp.linalg.norm(g / (sing ** 2 + lam)))
             self.assertLess(abs(nrm - delta) / delta, 1e-6, msg=f"delta={delta}")
 
+    def test_jvp_chunking_changes_no_arithmetic(self):
+        """Chunking the batched JVPs is a memory knob, not a numerical one.
+
+        It is the difference between a DSGNAR run on a GPU and an
+        ``RESOURCE_EXHAUSTED``, so it must not perturb the sketch.  The sketch
+        size is ``floor(n/3)``, which for n = 2201 is 733 -- prime -- so the
+        implementation pads to a whole number of blocks instead of falling back
+        to a Python loop that XLA could keep unrolled.
+        """
+        chunk_sizes = (0, 8, 6, 1)          # 6 and 1 do not divide s
+        n, s = self.obj.n, 11
+        srct = self.D.make_srct(jax.random.PRNGKey(41), n, s)
+        B = self.D.srct_columns(srct, n, s, self.obj.dtype)
+        full = self.D.jvp_columns(self.obj.residual, self.flat, B)
+        scale = float(jnp.max(jnp.abs(full)))
+        for c in chunk_sizes:
+            got = self.D.jvp_columns(self.obj.residual, self.flat, B, c)
+            self.assertEqual(got.shape, full.shape)
+            self.assertLess(float(jnp.max(jnp.abs(got - full))) / scale, 1e-12, msg=f"chunk={c}")
+
+    def test_count_sketch_row_chunking_changes_no_arithmetic(self):
+        from wave_pinn.optim.dsgnar import count_sketch
+        s = 11
+        r = self.obj.residual(self.flat)
+        mat = jnp.ones((r.shape[0], 3))
+        key = jax.random.PRNGKey(43)
+        ref_mat, ref_vec = count_sketch(mat, r, key, s, row_chunk=0)
+        for rc in (4, 8, 2):                # only exact divisors take the blocked path
+            got_mat, got_vec = count_sketch(mat, r, key, s, row_chunk=rc)
+            self.assertLess(float(jnp.max(jnp.abs(got_vec - ref_vec))), 1e-12, msg=f"rc={rc}")
+            self.assertLess(float(jnp.max(jnp.abs(got_mat - ref_mat))), 1e-12, msg=f"rc={rc}")
+
     def test_dsgnar_phase_descends(self):
         from wave_pinn.optim.dsgnar import dsgnar_phase
         # a deterministic grid, so this measures DSGNAR and not the sampler

@@ -107,7 +107,7 @@ _LAM_STEP_CLIP: float = 1.0e6  # guard against a Newton step dividing by an unde
 # --------------------------------------------------------------------------
 # CountSketch: C J and C r   (paper Eq. 16, reference `_count_sketch`)
 # --------------------------------------------------------------------------
-def count_sketch(mat, vec, key, s: int, k_hashes: int = N_HASHES):
+def count_sketch(mat, vec, key, s: int, k_hashes: int = N_HASHES, row_chunk: int = 0):
     """Apply the CountSketch ``C`` to the rows of ``mat`` and to ``vec``.
 
     ``C`` has exactly ``K`` non-zeros per column, at ``(h_k(j), j)`` with value
@@ -124,14 +124,37 @@ def count_sketch(mat, vec, key, s: int, k_hashes: int = N_HASHES):
     rows = vec.shape[0]
     acc_mat = None if mat is None else jnp.zeros((s,) + mat.shape[1:], dtype=mat.dtype)
     acc_vec = jnp.zeros((s,), dtype=vec.dtype)
+    # ``row_chunk`` splits the rows into blocks and sums the partial bucket sums.  Exactly the
+    # same number -- segment_sum is a sum over rows and the hash draws are untouched -- but the
+    # temporary ``mat * signs`` and the segment_sum workspace are ``row_chunk x s`` rather than
+    # ``rows x s``.  At this project's sizes the rows are only a few thousand and the temporary
+    # is a few megabytes, so it is off by default; it is here because it is the knob that was
+    # needed next on a GPU once the JVPs were chunked (rows ~ 4e5 there, 8.87 GiB refused).
+    block = int(row_chunk or 0)
+    use_blocks = block > 0 and rows % block == 0 and block < rows
     for _ in range(k_hashes):
         key, k_sign, k_bucket = jax.random.split(key, 3)
         signs = jax.random.rademacher(k_sign, (rows,), dtype=vec.dtype) / jnp.sqrt(k_hashes)
         buckets = jax.random.randint(k_bucket, (rows,), 0, s)
+        if not use_blocks:
+            if mat is not None:
+                acc_mat = acc_mat + jax.ops.segment_sum(
+                    mat * signs.reshape((-1,) + (1,) * (mat.ndim - 1)), buckets, num_segments=s)
+            acc_vec = acc_vec + jax.ops.segment_sum(vec * signs, buckets, num_segments=s)
+            continue
+        nb = rows // block
+        sc = signs.reshape(nb, block)
+        bc = buckets.reshape(nb, block)
+        vc = vec.reshape(nb, block)
+        acc_vec = acc_vec + jnp.sum(
+            jax.vmap(lambda sgn, bkt, v: jax.ops.segment_sum(sgn * v, bkt, num_segments=s))(sc, bc, vc),
+            axis=0)
         if mat is not None:
-            acc_mat = acc_mat + jax.ops.segment_sum(
-                mat * signs.reshape((-1,) + (1,) * (mat.ndim - 1)), buckets, num_segments=s)
-        acc_vec = acc_vec + jax.ops.segment_sum(vec * signs, buckets, num_segments=s)
+            mc = mat.reshape((nb, block) + mat.shape[1:])
+            scm = sc.reshape((nb, block) + (1,) * (mat.ndim - 1))
+            acc_mat = acc_mat + jnp.sum(
+                jax.vmap(lambda sgn, bkt, m: jax.ops.segment_sum(sgn * m, bkt, num_segments=s))(
+                    scm, bc, mc), axis=0)
     return acc_mat, acc_vec
 
 
@@ -216,7 +239,7 @@ def lift_srct(y, srct, n: int):
     return full * signs
 
 
-def jvp_columns(res_fn, flat_now, basis):
+def jvp_columns(res_fn, flat_now, basis, chunk: int = 0):
     """``J(flat_now) @ basis.T`` for a batch of tangents: ``(s, n) -> (s, M)``.
 
     The linearisation is rebuilt at ``flat_now`` on every call.  That is not a
@@ -225,9 +248,35 @@ def jvp_columns(res_fn, flat_now, basis):
     the *initial* parameters -- measured at 12 % relative error after a single
     1e-2 step, large enough to make the Gauss-Newton model meaningless while
     still producing a plausible-looking loss curve.
+
+    ``chunk > 0`` pushes the tangents through in blocks of that size instead of all
+    ``s`` at once.  This is the difference between running on a GPU and not: the
+    tangents of the whole residual are materialised simultaneously, and on the
+    sibling problem in this repository ``s = 128`` alone was a single 4.78 GiB
+    allocation -- ``RESOURCE_EXHAUSTED: Out of memory while trying to allocate
+    4.78GiB``.  Chunking changes no arithmetic, only the peak.  The default here
+    is 64 rather than "off" for exactly that reason.
     """
     _, jvp = jax.linearize(res_fn, flat_now)
-    return jax.vmap(jvp)(basis)
+    s = int(basis.shape[0])
+    if not chunk or chunk >= s:
+        return jax.vmap(jvp)(basis)
+    # Pad up to a whole number of blocks rather than falling back to a Python loop.
+    # The sketch size is s = floor(n/3), which for n = 2201 is 733 -- prime -- so a
+    # "only if it divides" rule would send every real run down the fallback path.
+    # Zero columns contribute nothing and are sliced off at the end.
+    pad = (-s) % chunk
+    if pad:
+        basis = jnp.concatenate(
+            [basis, jnp.zeros((pad, basis.shape[1]), basis.dtype)], axis=0)
+    total = s + pad
+    # lax.map, not a Python loop: it stays a real sequential loop in the compiled
+    # program, so one block's intermediates are freed before the next is traced.  A
+    # Python loop is unrolled into one large computation and XLA may keep every
+    # block alive, which is the memory the chunking was for.
+    blocks = basis.reshape(total // chunk, chunk, basis.shape[1])
+    out = jax.lax.map(lambda b: jax.vmap(jvp)(b), blocks).reshape(total, -1)
+    return out[:s]
 
 
 # --------------------------------------------------------------------------
@@ -476,7 +525,10 @@ def dsgnar_phase(objective: Objective, flat0, cfg: Config,
     loss_fn = objective._loss                         # jitted scalar loss
     dct = _dct_matrix(n, dtype)                       # constant: built once, not per iteration
     loss_batch = jax.jit(jax.vmap(loss_fn))
-    sketched_jacobian = jax.jit(lambda flat_now, basis: jvp_columns(res_fn, flat_now, basis))
+    tan_chunk = int(getattr(cfg, "dsgnar_chunk", 0) or 0)
+    row_chunk = int(getattr(cfg, "dsgnar_row_chunk", 0) or 0)
+    sketched_jacobian = jax.jit(
+        lambda flat_now, basis: jvp_columns(res_fn, flat_now, basis, tan_chunk))
 
     target_stage1 = float(cfg.dsgnar_stage1_ratio)
     target_stage2 = float(cfg.dsgnar_stage2_ratio)
@@ -534,7 +586,8 @@ def dsgnar_phase(objective: Objective, flat0, cfg: Config,
             res_fn = objective._residual
             loss_fn = objective._loss
             loss_batch = jax.jit(jax.vmap(loss_fn))
-            sketched_jacobian = jax.jit(lambda f, b: jvp_columns(res_fn, f, b))
+            sketched_jacobian = jax.jit(
+                lambda f, b: jvp_columns(res_fn, f, b, tan_chunk))
             scale = 1.0 / float(objective.residual(flat).shape[0])
             loss = objective.loss(flat)
 
@@ -551,7 +604,8 @@ def dsgnar_phase(objective: Objective, flat0, cfg: Config,
         # same hash draws then give r~ as well, keeping the two sketches identical.
         tic = time.time()
         j_cols = sketched_jacobian(flat, B).T         # (M, s) = J (Omega S)
-        j_sketch, r_tilde = count_sketch(j_cols, residual, k_ck, s, k_hashes=N_HASHES)
+        j_sketch, r_tilde = count_sketch(j_cols, residual, k_ck, s, k_hashes=N_HASHES,
+                                         row_chunk=row_chunk)
         t_jvp += time.time() - tic
 
         # --- Algorithm 1 line 4: one SVD serves every lambda ------------------
@@ -649,6 +703,8 @@ def dsgnar_phase(objective: Objective, flat0, cfg: Config,
         "stopped": stopped,
         "sketch": s,
         "hashes": N_HASHES,
+        "tangent_chunk": tan_chunk,
+        "row_chunk": row_chunk,
         "probes": q,
         "n_parameters": n,
         "n_residuals": int(round(1.0 / scale)),
