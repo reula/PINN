@@ -470,7 +470,9 @@ class TestWindows(unittest.TestCase):
             s = Slab(cfg, k, cfg.T * k / n, cfg.T * (k + 1) / n,
                      prev=prev,
                      u_edge=(prev.u_out if prev is not None else None),
-                     v_edge=(prev.v_out if prev is not None else None))
+                     v_edge=(prev.v_out if prev is not None else None),
+                     u_edge_vals=(prev.u_out_vals if prev is not None else None),
+                     v_edge_vals=(prev.v_out_vals if prev is not None else None))
             s.params = init_params(cfg, jax.random.PRNGKey(seed + k))
             s.materialise_edge()
             slabs.append(s)
@@ -542,6 +544,39 @@ class TestWindows(unittest.TestCase):
             got = chain.u(jnp.full_like(x, t), x)
             want = chain.slab_for(t).solution(jnp.full_like(x, t), x)
             self.assertLess(float(jnp.max(jnp.abs(got - want))), 1e-14)
+
+    def test_soft_hand_over_leaves_window_one_hard_coded(self):
+        """The physical initial condition stays hard; only the hand-overs may soften.
+
+        Window k >= 2 runs a plain network plus a penalty pulling it to the stored
+        edge values -- which lets it *correct* an inherited error, something a hard
+        constraint forbids because the error is inside the ansatz.  Window 1 must
+        not: its initial condition is the physical one, and it stays exact.
+        """
+        cfg = Config(T=2.0, windows=3, window_ic="soft", w_ic=50.0,
+                     n_coll=64, sampler="uniform")
+        slabs = self._chain(cfg, n=3, seed=400)
+        self.assertEqual(slabs[0].ansatz_mode, cfg.ansatz)      # hard
+        self.assertIsNone(slabs[0].soft_ic)
+        for k in (1, 2):
+            self.assertEqual(slabs[k].ansatz_mode, "net")       # soft
+            x_edge, u_t, v_t, w = slabs[k].soft_ic
+            self.assertEqual(w, 50.0)
+            self.assertEqual(int(x_edge.shape[0]), int(cfg.ic_grid))
+            self.assertEqual(int(u_t.shape[0]), int(cfg.ic_grid))
+
+    def test_soft_penalty_adds_two_rows_per_edge_point(self):
+        from wave_pinn.losses import Objective
+        cfg = Config(T=2.0, windows=3, window_ic="soft", n_coll=128, sampler="uniform")
+        slabs = self._chain(cfg, n=3, seed=500)
+        s2 = slabs[1]
+        obj = Objective(cfg, make_batch(cfg, jax.random.PRNGKey(1), t0=s2.t0, t1=s2.t1,
+                                        ic=s2.ic), s2.params, ic=s2.ic, t0=s2.t0,
+                        t_scale=s2.width, ansatz=s2.ansatz_mode, soft_ic=s2.soft_ic)
+        flat, _ = jax.flatten_util.ravel_pytree(s2.params)
+        n_pde = int(obj.residual(flat).shape[0]) - 2 * int(cfg.ic_grid)
+        self.assertGreater(n_pde, 0)
+        self.assertEqual(int(obj.residual(flat).shape[0]), n_pde + 2 * int(cfg.ic_grid))
 
     def test_sampling_confines_t_to_the_window(self):
         cfg = Config(T=20.0, n_coll=256, sampler="random")

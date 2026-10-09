@@ -145,8 +145,46 @@ class Slab:
     u_edge: Any = None
     v_edge: Any = None
     # its own solution at self.t1, materialised for the next window
-    u_out: Any = None
+    u_out: Any = None          # Fourier coefficients  (hard hand-over)
     v_out: Any = None
+    u_out_vals: Any = None     # values on the edge grid (soft hand-over)
+    v_out_vals: Any = None
+    u_edge_vals: Any = None    # what this window was handed, as values
+    v_edge_vals: Any = None
+
+    @property
+    def ansatz_mode(self) -> str:
+        """``"net"`` for a soft hand-over, otherwise the configured ansatz.
+
+        Window 1 always keeps the hard-coded *physical* initial condition; it is
+        the artificial hand-overs that may be softened.
+        """
+        if self.index == 0 or getattr(self.cfg, "window_ic", "hard") == "hard":
+            return self.cfg.ansatz
+        return "net"
+
+    @property
+    def soft_ic(self):
+        """``(x_edge, U, V, w)`` for the penalty, or None on the hard path.
+
+        The targets are the *values* the previous window left on the edge grid.
+        If only the Fourier coefficients are present -- a Slab built by hand, or
+        one whose values were not kept -- they are recovered from them, so the
+        soft path does not depend on the order in which a slab was assembled.
+        """
+        if self.ansatz_mode != "net":
+            return None
+        x = edge_grid(self.cfg)
+        u, v = self.u_edge_vals, self.v_edge_vals
+        if u is None and self.u_edge is not None:
+            u = from_spectral(self.cfg, self.u_edge, x)
+        if v is None and self.v_edge is not None:
+            v = from_spectral(self.cfg, self.v_edge, x)
+        if u is None or v is None:
+            raise ValueError(
+                "window_ic='soft' needs the previous window's edge data; "
+                "materialise_edge() has not run or the chain was not wired")
+        return (x, u, v, float(getattr(self.cfg, "w_ic", 1.0e2)))
 
     @property
     def width(self) -> float:
@@ -174,6 +212,8 @@ class Slab:
         x = edge_grid(self.cfg) if x is None else x
         u = self.solution(jnp.full_like(x, self.t1), x)
         v = self.time_derivative(self.t1, x)
+        self.u_out_vals = u
+        self.v_out_vals = v
         self.u_out = to_spectral(self.cfg, u)
         self.v_out = to_spectral(self.cfg, v)
         return self.u_out, self.v_out
@@ -182,14 +222,15 @@ class Slab:
     def solution(self, t, x):
         """``u(t, x)`` on this window (``t`` may be a batch sharing one value)."""
         return ansatz_u(self.params, self.cfg, t, x, ic=self.ic, t0=self.t0,
-                        t_scale=self.width)
+                        t_scale=self.width, ansatz=self.ansatz_mode)
 
     def time_derivative(self, t, x):
         """``d_t u(t, x)`` -- what seeds the next window."""
         def one(tt, xx):
             return jax.grad(
                 lambda s: ansatz_u(self.params, self.cfg, s, xx, ic=self.ic,
-                                    t0=self.t0, t_scale=self.width))(tt)
+                                    t0=self.t0, t_scale=self.width,
+                                    ansatz=self.ansatz_mode))(tt)
 
         if jnp.ndim(x) == 0:
             return one(t, x)
@@ -240,7 +281,9 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
         prev = slabs[-1] if slabs else None
         slab = Slab(cfg, k, float(edges[k]), float(edges[k + 1]), prev=prev,
                     u_edge=(prev.u_out if prev is not None else None),
-                    v_edge=(prev.v_out if prev is not None else None))
+                    v_edge=(prev.v_out if prev is not None else None),
+                    u_edge_vals=(prev.u_out_vals if prev is not None else None),
+                    v_edge_vals=(prev.v_out_vals if prev is not None else None))
         key = jax.random.PRNGKey(int(cfg.seed) + 101 * k)
         params = init_params(cfg, key)
         if cfg.init_from and k == 0:
@@ -249,12 +292,14 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
                 path = os.path.join(path, "theta.npy")
             params = Objective(cfg, make_batch(cfg, key, t0=slab.t0, t1=slab.t1, ic=slab.ic),
                                params, ic=slab.ic, t0=slab.t0,
-                               t_scale=slab.width).unflatten(
+                               t_scale=slab.width, ansatz=slab.ansatz_mode,
+                               soft_ic=slab.soft_ic).unflatten(
                 jnp.asarray(np.load(path), dtype=jnp.float64))
         batch = make_batch(cfg, jax.random.PRNGKey(int(cfg.seed) + 7919 * (k + 1)),
                            t0=slab.t0, t1=slab.t1, ic=slab.ic)
         objective = Objective(cfg, batch, params, ic=slab.ic, t0=slab.t0,
-                              t_scale=slab.width)
+                              t_scale=slab.width, ansatz=slab.ansatz_mode,
+                              soft_ic=slab.soft_ic)
         flat0, _ = jax.flatten_util.ravel_pytree(params)
         n_par = n_parameters(params)
 
@@ -379,9 +424,15 @@ def _report(cfg, result, metrics, window_records, wall) -> str:
     A(f"# {cfg.label} (windowed)\n")
     A(f"* equation: `{cfg.equation}`, `c = {cfg.c}`, `x in [{-cfg.L}, {cfg.L}]`, "
       f"`t in [0, {cfg.T}]`, periodic in x")
-    A(f"* ansatz: `{cfg.ansatz}` with the initial data of each window taken from the "
-      f"previous window (`U = u_k-1(t_k)`, `V = d_t u_k-1(t_k)`, both frozen)")
-    A(f"* windows: {cfg.windows} of `dt = {cfg.T / cfg.windows:g}`")
+    if getattr(cfg, "window_ic", "hard") == "soft":
+        A(f"* ansatz: window 1 is `{cfg.ansatz}` on the exact initial data; later windows are a "
+          f"plain network with a penalty (`w_ic = {cfg.w_ic:g}`) pulling `u` and `u_t` onto the "
+          f"previous window's solution at the shared edge, so an inherited error can be corrected")
+    else:
+        A(f"* ansatz: `{cfg.ansatz}` with each window's initial data frozen into the ansatz "
+          f"(`U = u_k-1(t_k)`, `V = d_t u_k-1(t_k)`, stored as Fourier coefficients)")
+    A(f"* windows: {cfg.windows} of `dt = {cfg.T / cfg.windows:g}`, hand-over `{cfg.window_ic}`"
+      + (f" (w_ic = {cfg.w_ic:g})" if cfg.window_ic == "soft" else ""))
     A(f"* features: `{cfg.features}`; network {cfg.n_layers} x {cfg.n_neurons} per window")
     A(f"* optimiser: `{cfg.optimizer}`\n")
     A(f"space-time relative L2 error: **{metrics['rel_l2_space_time']:.6e}**\n")

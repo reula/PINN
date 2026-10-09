@@ -95,7 +95,8 @@ def mlp(params: List[dict], feat, cfg: Config):
 # --------------------------------------------------------------------------
 # the ansatz
 # --------------------------------------------------------------------------
-def ansatz_u(params, cfg: Config, t, x, ic=None, t0: float = 0.0, t_scale=None):
+def ansatz_u(params, cfg: Config, t, x, ic=None, t0: float = 0.0, t_scale=None,
+             ansatz=None):
     """``u_theta(t, x)``.
 
     Works both for scalars (inside ``jax.hessian``, when the residual is built)
@@ -116,6 +117,7 @@ def ansatz_u(params, cfg: Config, t, x, ic=None, t0: float = 0.0, t_scale=None):
     The network sees the *local* time ``t - t0``, so the weights it must learn do
     not depend on how far along the chain the window sits.
     """
+    mode = cfg.ansatz if ansatz is None else ansatz
     if ic is None:
         u0, v0 = initial_data(cfg, x)
     else:
@@ -126,13 +128,21 @@ def ansatz_u(params, cfg: Config, t, x, ic=None, t0: float = 0.0, t_scale=None):
         t = jnp.broadcast_to(t, jnp.shape(x))
     feat = features(cfg, t, x, u0, v0, t_scale=t_scale)
     net = mlp(params, feat, cfg)
-    if cfg.ansatz == "t2":
+    if mode == "t2":
         return u0 + t * v0 + t * t * net
-    if cfg.ansatz == "t2sat":
+    if mode == "t2sat":
         return u0 + t * v0 + saturation_factor(cfg, t) * net
-    if cfg.ansatz == "t":
+    if mode == "t":
         return u0 + t * net
-    raise ValueError(f"unknown ansatz {cfg.ansatz!r}")
+    if mode == "net":
+        # No hard constraint at all: the initial data is enforced softly, by a
+        # penalty row in the loss.  Used for the *hand-over* windows, where the
+        # "initial condition" is the previous window's solution rather than the
+        # physical initial data -- softening it lets the network correct an
+        # inherited error instead of propagating it, which a hard constraint
+        # forbids by construction.
+        return net
+    raise ValueError(f"unknown ansatz {mode!r}")
 
 
 def saturation_factor(cfg: Config, t):
@@ -153,6 +163,8 @@ def saturation_factor(cfg: Config, t):
     return (t * t) / (cfg.ansatz_tau ** 2 + t * t)
 
 
-def make_u_fn(params, cfg: Config, ic=None, t0: float = 0.0, t_scale=None) -> Callable:
+def make_u_fn(params, cfg: Config, ic=None, t0: float = 0.0, t_scale=None,
+              ansatz=None) -> Callable:
     """Return the scalar-argument callable ``u(t, x)`` that the residual AD uses."""
-    return lambda t, x: ansatz_u(params, cfg, t, x, ic=ic, t0=t0, t_scale=t_scale)
+    return lambda t, x: ansatz_u(params, cfg, t, x, ic=ic, t0=t0, t_scale=t_scale,
+                                 ansatz=ansatz)

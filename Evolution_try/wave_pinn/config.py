@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 CHOICES: Dict[str, tuple] = {
     "equation": ("wave2", "advection"),
     "u0": ("gaussian", "sin", "sin2", "sech2", "cosine_bump", "poly_bump"),
-    "ansatz": ("t2", "t2sat", "t"),
+    "ansatz": ("t2", "t2sat", "t", "net"),
     "features": ("periodic", "periodic_ic", "fourier", "fourier_ic", "plain", "plain_ic"),
     "activation": ("tanh", "sin", "gelu", "relu", "softplus"),
     "init": ("glorot", "lecun", "siren", "zeros", "uniform"),
@@ -37,6 +37,7 @@ CHOICES: Dict[str, tuple] = {
     "optimizer": ("adam", "ssbroyden", "adam+ssbroyden", "dsgnar", "adam+dsgnar",
                   "trustregion", "adam+trustregion"),
     "tr_hessian": ("exact", "gauss_newton"),
+    "window_ic": ("hard", "soft"),
     "precision": ("float64", "float32"),
     "scheduler": ("none", "plateau", "cosine"),
     "residual_norm": ("auto", "none"),
@@ -69,6 +70,13 @@ class Config:
     ansatz: str = "t2"                 # "t2": u0 + t v0 + t^2 N | "t2sat": u0 + t v0 + t^2/(tau^2+t^2) N | "t": u0 + t N
     ansatz_tau: float = 1.0            # the saturation scale in "t2sat"
     windows: int = 1                   # time slabs; 1 = one global solve on [0, T]
+    window_ic: str = "hard"            # how a window inherits the previous one:
+                                       # "hard": build it into the ansatz (depth one,
+                                       #   needs the edge as a differentiable function)
+                                       # "soft": a plain network plus a penalty pulling
+                                       #   it to the stored edge values (window 1 always
+                                       #   keeps the hard-coded physical IC)
+    w_ic: float = 1.0e2                # weight of the soft initial-condition penalty
     ic_grid: int = 256                 # points on the edge grid for the window hand-over
     ic_modes: int = 64                 # Fourier modes kept in the edge representation
     t_scale: float = 0.0               # time-feature scale; 0 = the window width

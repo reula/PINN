@@ -28,8 +28,22 @@ from .problem import pde_residual, periodicity_defect
 from .sampling import Batch
 
 
+def ic_penalty_rows(u_fn, t0: float, x_edge, u_target, v_target, weight: float):
+    """Rows pulling ``u`` and ``u_t`` at the window edge onto the stored values.
+
+    Both are measured against the *previous window's* solution and its time
+    derivative, sampled on a fixed edge grid -- data, so no differentiable
+    representation of the previous window is needed here.
+    """
+    w = jnp.sqrt(weight)
+    tt = jnp.full_like(x_edge, t0)
+    u = jax.vmap(u_fn, in_axes=(0, 0))(tt, x_edge)
+    u_t = jax.vmap(lambda xx: jax.grad(u_fn, 0)(t0, xx))(x_edge)
+    return jnp.concatenate([w * (u - u_target), w * (u_t - v_target)])
+
+
 def raw_residual(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
-                 t_scale=None):
+                 t_scale=None, ansatz=None, soft_ic=None):
     """The residual rows in physical units, before normalisation."""
     u = make_u_fn(params, cfg, ic=ic, t0=t0, t_scale=t_scale)
     rows = [pde_residual(cfg, u, batch.t, batch.x)]
@@ -45,14 +59,14 @@ def raw_residual(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
 
 
 def residual_vector(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
-                    t_scale=None):
+                    t_scale=None, ansatz=None, soft_ic=None):
     """The residual vector ``r(theta)`` handed to the optimisers.
 
     Only the PDE rows are normalised, by the fixed constant ``batch.scale``
     (see :func:`wave_pinn.sampling.residual_scale`); the optional penalty rows
     already carry their own weights.
     """
-    u = make_u_fn(params, cfg, ic=ic, t0=t0, t_scale=t_scale)
+    u = make_u_fn(params, cfg, ic=ic, t0=t0, t_scale=t_scale, ansatz=ansatz)
     pde = pde_residual(cfg, u, batch.t, batch.x) / batch.scale
     rows = [pde]
     if cfg.w_periodic > 0.0 and batch.t_b.size:
@@ -60,6 +74,9 @@ def residual_vector(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
         w = jnp.sqrt(cfg.w_periodic)
         rows.append(w * d_val)
         rows.append(w * d_der)
+    if soft_ic is not None:
+        x_edge, u_target, v_target, w_ic = soft_ic
+        rows.append(ic_penalty_rows(u, t0, x_edge, u_target, v_target, w_ic))
     if cfg.w_l2 > 0.0:
         flat, _ = jax.flatten_util.ravel_pytree(params)
         rows.append(jnp.sqrt(cfg.w_l2) * flat)
@@ -88,12 +105,14 @@ class Objective:
     """
 
     def __init__(self, cfg: Config, batch: Batch, like_params, ic=None, t0: float = 0.0,
-                 t_scale=None):
+                 t_scale=None, ansatz=None, soft_ic=None):
         self.cfg = cfg
         self.batch = batch
         self.ic = ic
         self.t0 = float(t0)
         self.t_scale = t_scale
+        self.ansatz = ansatz
+        self.soft_ic = soft_ic
         flat0, self.unflatten = jax.flatten_util.ravel_pytree(like_params)
         self.n = int(flat0.size)
         self.dtype = flat0.dtype
@@ -102,15 +121,18 @@ class Objective:
         @jax.jit
         def _loss(flat):
             return loss_from_residual(
-                residual_vector(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0, t_scale=t_scale))
+                residual_vector(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0, t_scale=t_scale,
+                ansatz=ansatz, soft_ic=soft_ic))
 
         @jax.jit
         def _pde_loss(flat):
-            return pde_loss_only(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0)
+            return pde_loss_only(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0,
+                                 t_scale=t_scale, ansatz=ansatz)
 
         @jax.jit
         def _residual(flat):
-            return residual_vector(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0)
+            return residual_vector(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0,
+                                   t_scale=t_scale, ansatz=ansatz, soft_ic=soft_ic)
 
         self._loss = _loss
         self._pde_loss = _pde_loss
@@ -143,4 +165,5 @@ class Objective:
     def with_batch(self, batch: Batch) -> "Objective":
         """A new objective on a fresh sample, keeping ic, t0 and the parameter layout."""
         return Objective(self.cfg, batch, self.unflatten(jnp.zeros((self.n,), self.dtype)),
-                         ic=self.ic, t0=self.t0, t_scale=self.t_scale)
+                         ic=self.ic, t0=self.t0, t_scale=self.t_scale, ansatz=self.ansatz,
+                         soft_ic=self.soft_ic)
