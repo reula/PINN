@@ -20,7 +20,8 @@
 #
 # Everything this project produces stays inside Evolution_try/: runs/ and logs/.
 #
-# Env overrides: PY (interpreter), T, WINDOWS, NCOLL, SNAP (time slices to report)
+# Env overrides: PY (interpreter), T, WINDOWS, NCOLL, SNAP (time slices to report),
+#                ANSATZ (default t2), RESAMPLE_EVERY (default 0), DSGNAR_STEPS (default 500)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -84,7 +85,10 @@ EOF
 fi
 
 case "$OPT" in
-    dsgnar)      OPTFLAGS="--set optimizer=dsgnar --set dsgnar_steps=200 \
+    # 500 iterations per window and NO redraws: measured on this problem, a 200-iteration
+    # DSGNAR phase with nine redraws reaches 1.05e-09 where the same phase with none
+    # reaches 4.48e-15, and costs 4.5x the wall time.
+    dsgnar)      OPTFLAGS="--set optimizer=dsgnar --set dsgnar_steps=${DSGNAR_STEPS:-500} \
                 --set dsgnar_sketch=733 --set dsgnar_delta0=1.0 --set dsgnar_delta_min=1e-15" ;;
     ssbroyden)   OPTFLAGS="--set optimizer=ssbroyden --set qn_steps=8000 --set qn_block=250 \
                 --set qn_gtol=1e-16" ;;
@@ -102,8 +106,8 @@ $LAUNCH env MPLBACKEND=Agg MPLCONFIGDIR="$HERE/.mplcache" \
     XLA_PYTHON_CLIENT_PREALLOCATE=false \
     "$PY" -m wave_pinn.cli \
         --label "$LABEL" --outdir "$OUT" \
-        --set T="$T" --set windows="$WINDOWS" --set ansatz=t2sat \
-        --set n_coll="$NCOLL" --set sampler=random --set resample_every=250 \
+        --set T="$T" --set windows="$WINDOWS" --set ansatz="${ANSATZ:-t2}" \
+        --set n_coll="$NCOLL" --set sampler=random --set resample_every="${RESAMPLE_EVERY:-0}" \
         --set "snapshot_times=$SNAP" \
         $OPTFLAGS \
     > "$LOG" 2>&1 < /dev/null &
