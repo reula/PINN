@@ -189,7 +189,10 @@ def ssbroyden_phase(objective: Objective, flat0, cfg: Config,
     info = {"optimizer": "ssbroyden", "crunch_root": where, "n_parameters": n,
             "H_gb": gb, "iterations": total_nit, "stopped": stopped,
             "wall": time.time() - t0, "blocks": len(history) - 1,
-            "resamples": resample_count}
+            "resamples": resample_count,
+            # every phase reports its final loss under the same key, so the per-round
+            # table has something to show; without it SSBroyden's rounds read `nan`
+            "loss_final": float(loss)}
     if verbose:
         print(f"[qn] SSBroyden: loss {history[0]['loss']:.6e} -> {loss:.6e} in "
               f"{total_nit} iterations ({info['wall']:.1f}s); {stopped}", flush=True)
