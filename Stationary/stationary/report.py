@@ -125,6 +125,23 @@ def unfinished(run_dir):
             f"from an INCOMPLETE run.")
 
 
+def qn_label_of(run_dir: str) -> str:
+    """The quasi-Newton label for a run directory, from its stored config.
+
+    Split out of `report` so that the mapping can be tested without running a report: every
+    method is named, and a method this report does not know is named as unknown rather than
+    silently relabelled.
+    """
+    cfg_path = os.path.join(run_dir, "config.json")
+    method = None
+    if os.path.exists(cfg_path):
+        method = json.load(open(cfg_path)).get("qn_method")
+    if method is None:                      # a run made before `qn_method` existed was L-BFGS
+        method = "lbfgs"
+    return {"lbfgs": "L-BFGS", "ssbroyden": "SSBroyden", "dsgnar": "DSGNAR"}.get(
+        method, f"{method} (unknown method)")
+
+
 def sampling_lines(cfg, log_path=None):
     """How many points, and how long one batch is used -- the sampling provenance.
 
@@ -203,7 +220,11 @@ def main():
     qn_known = qn_method is not None
     if qn_method is None:
         qn_method = "lbfgs"
-    qn_label = "L-BFGS" if qn_method == "lbfgs" else "SSBroyden"
+    # Every method has to be named, and none of them may be guessed from the others: a
+    # `--qn-method dsgnar` run used to be labelled "SSBroyden" here, so a report could say
+    # "5000 Adam + SSBroyden (28 of a 30000 cap)" for a phase that ran 28 DSGNAR iterations and
+    # exited on its trust region -- which is exactly the sentence that hid a stalled run.
+    qn_label = qn_label_of(run_dir)
 
     # ---------------------------------------------------------------- provenance
     _section("RUN / CODE")

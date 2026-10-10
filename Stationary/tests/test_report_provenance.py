@@ -117,3 +117,22 @@ def test_loading_a_run_restores_the_objective_it_trained(tmp_path):
     assert geometry._LAM_EQ_FORM == "log", "the lambda-equation form must follow the run"
     assert geometry._WANT_COMPAT is True, "diagnostics want the structural compat check"
     assert geometry._RELATIVE_TERMS is False
+
+
+def test_every_named_method_is_named_in_the_report(tmp_path):
+    """`--qn-method dsgnar` used to be reported as "SSBroyden".
+
+    The RUN/CODE line is what a reader trusts for "which optimiser produced this", and the old
+    mapping (`"L-BFGS" if qn_method == "lbfgs" else "SSBroyden"`) relabelled every other method.
+    It mattered: a DSGNAR run that exited after 28 iterations on its collapsed trust region read
+    as a 30000-iteration SSBroyden cap, which is how the stall stayed invisible.
+    """
+    import json as _json
+    from stationary.report import qn_label_of
+
+    for method, expect in (("ssbroyden", "SSBroyden"), ("lbfgs", "L-BFGS"),
+                           ("dsgnar", "DSGNAR"), ("newthing", "newthing (unknown method)")):
+        (tmp_path / "config.json").write_text(_json.dumps({"qn_method": method}))
+        assert qn_label_of(str(tmp_path)) == expect, method
+    (tmp_path / "config.json").write_text(_json.dumps({}))          # pre-qn_method run
+    assert qn_label_of(str(tmp_path)) == "L-BFGS"
