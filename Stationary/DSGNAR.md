@@ -332,10 +332,24 @@ With `s = 256, K = 8`, from the same Adam end at the same reduced size, 15 itera
     losses: 3.76e-2 3.76e-2 3.66e-2 3.60e-2 3.47e-2 3.36e-2 3.21e-2 3.00e-2 2.76e-2
             2.53e-2 2.26e-2 2.00e-2 1.73e-2 1.50e-2 1.28e-2 1.12e-2
 
-`s = 512, K = 8` reaches 9.87e-03 in the same 15 iterations at twice the CPU cost.  So the recipe
-to run on the GPU is `--dsgnar-sketch 256 --dsgnar-hashes 8 --dsgnar-chunk 16` (the calibration and
-the safeguard are on by default), and the stop condition to watch is no longer `radius below
-threshold` but the budget.
+The ablation, same start and same 15 iterations, says which knob is which:
+
+| configuration | loss after 15 | reduction | accepted/rejected |
+|---|---|---|---|
+| `s = 128, K = 8`, calibrated | **4.58e-03** | **87.8%** | 15/0, every step at full length |
+| `s = 256, K = 8`, calibrated | 1.12e-02 | 70% | 15/0 |
+| `s = 512, K = 8`, calibrated | 9.87e-03 | 74% | 15/0 |
+| `s = 256, K = 8`, NOT calibrated | 2.91e-02 | 22.6% | 12/3, mixed lengths |
+| `s = 128, K = 4` (the reference default), calibrated | 3.73e-02 | 0.94% | 13/2, lengths 1/2, 1/4 ... |
+
+So the hash count is the dominant knob -- `K = 4` is what made every run stall, and `K = 8` fixes
+both the prediction and the direction, with the calibration needed to make the ratios honest (and
+the safeguard a net that this configuration never needs).  The recipe to run on the GPU is
+`--dsgnar-sketch 128 --dsgnar-hashes 8 --dsgnar-chunk 16` (calibration and safeguard are on by
+default): 128 keeps the `M x s` column matrix at ~0.4 GiB at the production row count, and `K = 8`
+only doubles the (minor) CountSketch work.  At ~13% of the loss per iteration, ~150 iterations
+should take the r10 Adam end (6.6e-04) to the 1e-11 range.  The stop condition to watch is no
+longer `radius below threshold`, which is what the previous three runs reported.
 
 ### Second measurement: from the end of Adam it stops after 28 iterations
 
