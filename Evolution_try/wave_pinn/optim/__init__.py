@@ -146,6 +146,18 @@ def run_optimizer(objective: Objective, flat0, cfg: Config,
                 # the jump is how much of that solution was sample-specific
                 rec["loss_on_next_sample"] = float(objective.loss(flat))
             round_infos.append(rec)
+            # A loss at the numerical floor means every remaining round optimises
+            # rounding noise.  That is not merely useless: measured on window 1 of
+            # dsgnar_soft_all_nc2201, round 1 reached 2.1e-18 and rounds 2-4 then
+            # produced rho of -3e13, -2e13, -5e13 -- the sketched model is singular
+            # there -- and round 4 hung the process outright.  Stopping is the fix.
+            floor = float(getattr(cfg, "rounds_loss_floor", 0.0) or 0.0)
+            if floor and n_rounds > 1 and rec["final_loss"] <= floor:
+                if verbose:
+                    print(f"[{phase}] round {r+1}/{n_rounds}: loss {rec['final_loss']:.3e} is at the "
+                          f"floor ({floor:.0e}); stopping the rounds here rather than "
+                          f"optimising rounding noise", flush=True)
+                break
             if n_rounds > 1 and verbose:
                 extra = ("  redraw -> %.3e" % rec["loss_on_next_sample"]
                          if "loss_on_next_sample" in rec else "")

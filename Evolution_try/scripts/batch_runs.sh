@@ -35,6 +35,7 @@ DSGNAR_STEPS="${DSGNAR_STEPS:-300}"
 DSGNAR_ROUNDS="${DSGNAR_ROUNDS:-5}"
 QN_STEPS="${QN_STEPS:-1500}"
 QN_ROUNDS="${QN_ROUNDS:-2}"
+STALL_MINUTES="${STALL_MINUTES:-10}"   # kill a run that has produced no output for this long
 NCOLLS="${NCOLLS:-2201 8192}"
 SNAPSHOT="[0,2,4,6,8,10,12,14,16,18,20]"
 
@@ -181,12 +182,46 @@ for row in "${MATRIX[@]}"; do
         --set n_coll="$nc" --set sampler=random --set resample_every=0 \
         --set "snapshot_times=$SNAPSHOT" \
         $(flags_for "$opt") \
-        >"$log" 2>&1
+        >"$log" 2>&1 &
+    runpid=$!
+
+    # Watchdog.  A run has been measured to hang outright: window 1 of
+    # dsgnar_soft_all_nc2201 reached a loss of 2.1e-18, the sketched Gauss-Newton
+    # model went singular there (rho = -4.9e13) and the process stopped producing
+    # output -- blocking the remaining seven runs for over an hour, silently.  A
+    # batch that can be blocked without saying so is worse than one that fails.
+    # The package now stops the rounds at that floor; this is the backstop for
+    # whatever the next pathology turns out to be.
+    hung=0
+    last_size=-1
+    idle=0
+    while kill -0 "$runpid" 2>/dev/null; do
+        sleep 60
+        now_size=$(stat -c %s "$log" 2>/dev/null || echo 0)
+        if [ "$now_size" = "$last_size" ]; then
+            idle=$((idle + 1))
+            if [ "$idle" -ge "$STALL_MINUTES" ]; then
+                echo "[$i/${#MATRIX[@]}] $lab: no output for $STALL_MINUTES min -- killing it, moving on"
+                kill -TERM "$runpid" 2>/dev/null
+                sleep 15
+                kill -KILL "$runpid" 2>/dev/null
+                hung=1
+                break
+            fi
+        else
+            idle=0
+            last_size=$now_size
+        fi
+    done
+    wait "$runpid" 2>/dev/null
     rc=$?
+    [ "$hung" = "1" ] && rc=99
     took=$(( $(date +%s) - t0 ))
     elapsed=$(( $(date +%s) - started ))
     if [ $rc -eq 0 ]; then
         echo "[$i/${#MATRIX[@]}] $lab done in $((took / 60)) min  (batch so far: $((elapsed / 3600)) h $(((elapsed % 3600) / 60)) min)"
+    elif [ $rc -eq 99 ]; then
+        echo "[$i/${#MATRIX[@]}] $lab HUNG and was killed after $((took / 60)) min -- log: $log"
     else
         echo "[$i/${#MATRIX[@]}] $lab FAILED (exit $rc) after $((took / 60)) min -- log: $log"
     fi
@@ -198,5 +233,10 @@ echo
 echo
 echo "=== batch finished in $(( ($(date +%s) - started) / 60 )) min ==="
 grep -c "exit=0" logs/batch.log | xargs -I{} echo "{} runs succeeded"
-grep "exit=[^0]" logs/batch.log && echo "^ failures above; their logs are in logs/" || true
+grep "exit=99" logs/batch.log >/dev/null 2>&1 && {
+    echo; echo "HUNG runs (killed by the watchdog, no report.md, so a re-run will pick them up):"
+    grep "exit=99" logs/batch.log; }
+grep -E "exit=(1|[2-9][0-9])" logs/batch.log >/dev/null 2>&1 && {
+    echo; echo "FAILED runs:"; grep -E "exit=(1|[2-9][0-9])" logs/batch.log; } || true
+echo "re-run this script to retry anything without a report.md (it is resumable)"
 echo "now:  $PY scripts/report_batch.py"

@@ -80,6 +80,10 @@ class Config:
                                        #   it to the stored edge values (window 1 always
                                        #   keeps the hard-coded physical IC)
     w_ic: float = 1.0e2                # weight of the soft initial-condition penalty
+    rounds_loss_floor: float = 1.0e-16 # stop the converge/redraw rounds once the loss is at
+                                       # the numerical floor: further rounds run on rounding
+                                       # noise, where the Gauss-Newton model is degenerate
+                                       # (measured: rho = -4.9e13, then a hang).  0 disables.
     window_retries: int = 2            # re-draw and retry a window whose optimiser stalled
     window_stall_factor: float = 1.0e3 # stalled = final loss above this times the best
                                        # final loss seen so far in the run
