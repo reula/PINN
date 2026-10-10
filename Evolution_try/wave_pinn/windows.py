@@ -151,6 +151,7 @@ class Slab:
     v_out_vals: Any = None
     u_edge_vals: Any = None    # what this window was handed, as values
     v_edge_vals: Any = None
+    attempts: int = 0          # retries caused by a stalled optimiser
 
     @property
     def ansatz_mode(self) -> str:
@@ -294,6 +295,18 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
                     v_edge=(prev.v_out if prev is not None else None),
                     u_edge_vals=(prev.u_out_vals if prev is not None else None),
                     v_edge_vals=(prev.v_out_vals if prev is not None else None))
+        # A window is retried on a fresh collocation sample if the optimiser stalls.
+        # Measured: DSGNAR's radius criterion can declare convergence with the loss
+        # 7 orders above the floor this same configuration reaches elsewhere (7.6e-07
+        # against 1e-14) -- the trust region collapses without progress and the phase
+        # stops.  Under the HARD hand-over that is survivable; under the SOFT one that
+        # window amplified the error by x1709 and took the whole T=20 run from 1.8e-05
+        # to 3.7e-02.  It is sample luck, so a fresh sample is the treatment.
+        stall_factor = float(getattr(cfg, "window_stall_factor", 1.0e3))
+        max_tries = 1 + max(0, int(getattr(cfg, "window_retries", 0)))
+        best_loss = min([r["final_loss"] for r in window_records], default=float("inf"))
+        attempt = 0
+        best_try = None                  # (loss, flat, history, infos, phase_histories)
         key = jax.random.PRNGKey(int(cfg.seed) + 101 * k)
         params = init_params(cfg, key)
         if cfg.init_from and k == 0:
@@ -305,32 +318,56 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
                                t_scale=slab.width, ansatz=slab.ansatz_mode,
                                soft_ic=slab.soft_ic).unflatten(
                 jnp.asarray(np.load(path), dtype=jnp.float64))
-        batch = make_batch(cfg, jax.random.PRNGKey(int(cfg.seed) + 7919 * (k + 1)),
-                           t0=slab.t0, t1=slab.t1, ic=slab.ic)
-        objective = Objective(cfg, batch, params, ic=slab.ic, t0=slab.t0,
-                              t_scale=slab.width, ansatz=slab.ansatz_mode,
-                              soft_ic=slab.soft_ic)
-        flat0, _ = jax.flatten_util.ravel_pytree(params)
         n_par = n_parameters(params)
-
         if verbose:
             print(f"\n[win {k+1}/{cfg.windows}] t in [{slab.t0:g}, {slab.t1:g}]  "
                   f"{n_par} parameters  dt = {slab.t1 - slab.t0:g}", flush=True)
 
-        counter = {"i": 0}
+        while True:
+            # every attempt gets its own collocation sample; a retry also gets a
+            # FRESH parameter initialisation, since the stalled state is what we are
+            # trying to escape
+            if attempt:
+                params = init_params(cfg, jax.random.PRNGKey(int(cfg.seed) + 101 * k + 5077 * attempt))
+            batch = make_batch(cfg, jax.random.PRNGKey(
+                (int(cfg.seed) + 7919 * (k + 1) + 104729 * attempt) % (2 ** 31 - 1)),
+                t0=slab.t0, t1=slab.t1, ic=slab.ic)
+            objective = Objective(cfg, batch, params, ic=slab.ic, t0=slab.t0,
+                                  t_scale=slab.width, ansatz=slab.ansatz_mode,
+                                  soft_ic=slab.soft_ic)
+            flat0, _ = jax.flatten_util.ravel_pytree(params)
 
-        def resample(_k=k):
-            counter["i"] += 1
-            return objective.with_batch(make_batch(
-                cfg, jax.random.PRNGKey((int(cfg.seed) + 7919 * (100 + counter["i"])) % (2 ** 31 - 1)),
-                t0=slab.t0, t1=slab.t1, ic=slab.ic))
+            counter = {"i": 0}
 
-        # see the note in train.run: rounds need a redraw even when mid-phase
-        # redrawing is off, and gating this on resample_every disabled the rounds
-        wants_resample = bool(cfg.resample_every) or int(cfg.resample_rounds) > 1
-        flat, history, infos, phase_histories = run_optimizer(
-            objective, flat0, cfg, verbose=verbose,
-            resample=(resample if wants_resample else None))
+            def resample(_k=k):
+                counter["i"] += 1
+                return objective.with_batch(make_batch(
+                    cfg, jax.random.PRNGKey((int(cfg.seed) + 7919 * (100 + counter["i"])) % (2 ** 31 - 1)),
+                    t0=slab.t0, t1=slab.t1, ic=slab.ic))
+
+            # see the note in train.run: rounds need a redraw even when mid-phase
+            # redrawing is off, and gating this on resample_every disabled the rounds
+            wants_resample = bool(cfg.resample_every) or int(cfg.resample_rounds) > 1
+            flat, history, infos, phase_histories = run_optimizer(
+                objective, flat0, cfg, verbose=verbose,
+                resample=(resample if wants_resample else None))
+            final_loss = float(history[-1]["loss"]) if history else float("nan")
+            # Keep the best attempt, not the last: a retry that lands worse than the
+            # attempt it was meant to rescue should not win by being later.
+            if best_try is None or final_loss < best_try[0]:
+                best_try = (final_loss, flat, history, infos, phase_histories)
+            stalled = (attempt + 1 < max_tries and best_loss < float("inf")
+                       and final_loss > stall_factor * best_loss)
+            if not stalled:
+                break
+            attempt += 1
+            if verbose:
+                print(f"[win {k+1}/{cfg.windows}] the optimiser stalled at loss "
+                      f"{final_loss:.3e}, {final_loss / best_loss:.0e}x the best so far "
+                      f"(best {best_loss:.3e}); redrawing and retrying "
+                      f"({attempt}/{max_tries - 1})", flush=True)
+        slab.attempts = attempt
+        _loss, flat, history, infos, phase_histories = best_try
         slab.params = objective.unflatten(flat)
         slab.materialise_edge()          # hand-over as data, not as a network
         slabs.append(slab)
@@ -366,6 +403,7 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
             "amplification": (end_rel / ic_rel) if ic_rel > 0 else float("nan"),
             "wall": sum(float(i.get("wall") or 0.0) for i in infos),
             "resamples": sum(int(i.get("resamples") or 0) for i in infos),
+            "attempts": int(getattr(slab, "attempts", 0)),
             "phase_infos": infos,
         })
         if verbose:
@@ -456,11 +494,11 @@ def _report(cfg, result, metrics, window_records, wall) -> str:
         m = metrics["per_time"][t]
         A(f"| {t:g} | {m['rel_l2']:.6e} | {m['linf']:.6e} |")
     A("")
-    A("| window | t range | final loss | redraws | inherited rel L2 | window rel L2 | amplification | wall (s) |")
-    A("|---|---|---|---|---|---|---|---|")
+    A("| window | t range | final loss | retries | redraws | inherited rel L2 | window rel L2 | amplification | wall (s) |")
+    A("|---|---|---|---|---|---|---|---|---|")
     for r in window_records:
         A(f"| {r['index']+1} | [{r['t0']:g}, {r['t1']:g}] | {r['final_loss']:.3e} | "
-          f"{r.get('resamples', 0)} | "
+          f"{r.get('attempts', 0)} | {r.get('resamples', 0)} | "
           f"{r.get('ic_rel_l2', float('nan')):.3e} | {r['rel_l2']:.3e} | "
           f"x{r.get('amplification', float('nan')):.2f} | {r['wall']:.0f} |")
     A("")

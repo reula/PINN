@@ -545,6 +545,39 @@ class TestWindows(unittest.TestCase):
             want = chain.slab_for(t).solution(jnp.full_like(x, t), x)
             self.assertLess(float(jnp.max(jnp.abs(got - want))), 1e-14)
 
+    def test_a_stalled_window_is_retried_and_the_best_attempt_kept(self):
+        """A window whose optimiser stalls is redrawn and retried.
+
+        Measured on the real T=20 batch: DSGNAR's radius criterion declared
+        convergence with the loss 7 orders above the floor the same configuration
+        reaches elsewhere (7.6e-07 against 1e-14).  Under the hard hand-over that
+        costs a little; under the soft one that window amplified the error by x1709
+        and took the run from 1.8e-05 to 3.7e-02.  It is sample luck, so a fresh
+        sample is the treatment -- and the retry must not be able to *lose* to the
+        attempt it was rescuing, which is why the best attempt is kept rather than
+        the last.
+        """
+        import os
+        import tempfile
+        from wave_pinn.windows import run_windows
+        base = dict(T=2.0, windows=2, optimizer="dsgnar", dsgnar_steps=4,
+                    dsgnar_sketch=16, n_coll=32, sampler="random",
+                    resample_every=0, resample_rounds=1,
+                    snapshot_times=[0.0, 1.0, 2.0])
+        # forcing the threshold to nothing makes every window stall by definition
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Config(window_stall_factor=1e-30, window_retries=1, **base).replace(outdir=tmp)
+            run_windows(cfg, verbose=False)
+            forced = json.load(open(os.path.join(tmp, "windows.json")))
+        self.assertEqual([w["attempts"] for w in forced["windows"]], [0, 1])
+        # window 1 has nothing to compare against yet, so it is never a stall
+        # and with the default threshold a healthy run retries nothing
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Config(**base).replace(outdir=tmp)
+            run_windows(cfg, verbose=False)
+            normal = json.load(open(os.path.join(tmp, "windows.json")))
+        self.assertEqual([w["attempts"] for w in normal["windows"]], [0, 0])
+
     def test_rounds_fire_with_mid_phase_redrawing_off(self):
         """`resample_rounds` must work when `resample_every=0`.
 

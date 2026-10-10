@@ -80,6 +80,9 @@ class Config:
                                        #   it to the stored edge values (window 1 always
                                        #   keeps the hard-coded physical IC)
     w_ic: float = 1.0e2                # weight of the soft initial-condition penalty
+    window_retries: int = 2            # re-draw and retry a window whose optimiser stalled
+    window_stall_factor: float = 1.0e3 # stalled = final loss above this times the best
+                                       # final loss seen so far in the run
     ic_grid: int = 256                 # points on the edge grid for the window hand-over
     ic_modes: int = 64                 # Fourier modes kept in the edge representation
     t_scale: float = 0.0               # time-feature scale; 0 = the window width
