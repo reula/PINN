@@ -160,7 +160,9 @@ fi
 
 # ---- run ------------------------------------------------------------------
 mkdir -p logs
-: > logs/batch.log
+# append, not truncate: a restart is resumable, and the record of the runs that
+# already succeeded must survive it
+printf '# batch restart %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> logs/batch.log
 started=$(date +%s)
 i=0
 for row in "${MATRIX[@]}"; do
