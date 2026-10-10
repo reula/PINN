@@ -127,28 +127,49 @@ for row in "${MATRIX[@]}"; do
     printf '%-6s %-34s %-9s %-24s %s\n' "$i" "$lab" "$nc" "$opt/$ic" "$state"
 done
 
-# Rough, and now scaled for ROUNDS.  The two finished T=20 windowed runs took
-# 1043 s and 1384 s for dsgnar at n_coll=2201, but those were ONE round per window
-# (~185 iterations, stopping on the radius criterion).  Five rounds per window is
-# roughly 3x the iterations, so ~4400 s.  Only the first run can settle it: it
-# reports its own wall time, and everything after can be read against that.
-PER_RUN_2201_DSGNAR=4400
+# Measured on this hub, from the runs that have finished at n_coll = 2201:
+#
+#     dsgnar      2017 s, 2052 s      -> 2035
+#     ssbroyden    348 s,  360 s      ->  354
+#
+# Scaling to n_coll = 8192 is NOT the 3.7x the point count suggests.  The runs
+# report their own breakdown -- "batched JVPs 5.1s, probe evaluations 0.5s, other
+# 14.8s" over 31 iterations, i.e. 0.16 s/iteration of JVP against 0.48 s/iteration
+# of Python and SVD -- and only the first term scales with the number of points.
+# So 8192 costs about 1.7x.  That factor is the one extrapolation here; everything
+# else is measured.  An earlier version of this script assumed linear scaling and
+# predicted 29 h for a batch that took 5.5 h.
+SEC_DSGNAR_2201=2035
+SEC_SSBROYDEN_2201=354
+BIG_NCOLL_FACTOR_NUM=17          # 1.7x, as a fraction to stay in integer arithmetic
+BIG_NCOLL_FACTOR_DEN=10
+
+sec_for() {
+    local base
+    case "$1" in
+        dsgnar)          base=$SEC_DSGNAR_2201 ;;
+        ssbroyden)       base=$SEC_SSBROYDEN_2201 ;;
+        jaxopt_broyden)  base=300 ;;
+        *)               base=$SEC_DSGNAR_2201 ;;
+    esac
+    if [ "$2" -gt 2201 ]; then
+        echo $(( base * BIG_NCOLL_FACTOR_NUM / BIG_NCOLL_FACTOR_DEN ))
+    else
+        echo "$base"
+    fi
+}
+
 echo
-echo "rough wall time.  UNRELIABLE until run 1 reports: it is scaled from the two"
-echo "finished one-round runs, and the rounds above change the iteration count.  The"
-echo "JVP cost scales with n_coll; SSBroyden needs far more iterations than DSGNAR.":
+# NOTE: "already done" is decided by looking for runs/<label>/report.md on THIS
+# machine.  Since runs/ is gitignored and therefore machine-local, running this on
+# a machine that does not hold the runs reports every one of them as remaining.
+# That is not a bug, but it does mean a --dry-run here can overstate the work.
+echo "wall time, measured at n_coll=2201 and extrapolated to 8192 (the one guess):"
 tot=0
 for row in "${MATRIX[@]}"; do
     read -r opt ic nc <<<"$row"
     [ -f "$HERE/runs/$(label_for "$opt" "$ic" "$nc")/report.md" ] && continue
-    base=$PER_RUN_2201_DSGNAR
-    # SSBroyden: n*log-ish per step on the dense inverse Hessian plus a line search,
-    # against DSGNAR's sketched JVP -- measured on CPU as 0.44 s/iteration until
-    # convergence, but it needs thousands of iterations where DSGNAR needs hundreds.
-    if [ "$opt" = "ssbroyden" ]; then base=$((base * 2 / 3)); fi
-    if [ "$opt" = "jaxopt_broyden" ]; then base=300; fi
-    est=$(( base * nc / 2201 ))
-    tot=$((tot + est))
+    tot=$(( tot + $(sec_for "$opt" "$nc") ))
 done
 printf '  remaining: about %d h %02d min\n' $((tot / 3600)) $(((tot % 3600) / 60))
 
