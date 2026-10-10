@@ -294,6 +294,49 @@ the same place; if it stalls or rejects, the sketch rank — not the point — i
 knobs to try are `SKETCH=256` (the column matrix grows to ~0.9 GiB) and a cold start from a random
 init, which is how the reference project used the method.
 
+### Third measurement: it works once the model is not noise-limited (and how it was found)
+
+The stall was **not** the step, the accept rule or the trust region; it was the sketched model's
+*estimated decrease*, which on this problem is both biased and noise-dominated.  Measured at
+`n = 2285`, `n_coll = 1024`, from the Adam end (loss 3.76e-02), against the exact quadratic model
+of the very same step (`g.p` and `½ pᵀJᵀJp/M`, two extra evaluations):
+
+| s | sketch predicts | exact model | ratio | actual decrease | rho (exact) |
+|---|---|---|---|---|---|
+| 64 | 1.57e-02 | -1.15e-03 | -13.7 | -8.19e-03 (loss *rises*) | — |
+| 128 | 1.51e-02 | +1.25e-03 | 12.1 | +1.05e-03 | 0.84 |
+| 256 | 1.89e-02 | +2.35e-03 | 8.0 | +2.35e-03 | 1.00 |
+| 512 | 1.57e-02 | +5.09e-03 | 3.1 | +3.34e-04 | 0.07 |
+
+The sketch's prediction is *flat* (~1.6e-02) while the exact model varies by 4x: it is dominated by
+the row sketch's noise, not by the curvature.  With a 8-12x over-estimate every ratio lands near
+0.02 against the 0.15 target, the PCHIP always chooses the smallest radius, and 3^-28 = 1e-13 is
+exactly the walk to `delta_min` -- which is why every run stopped after ~28 iterations.
+
+Two changes, both now default and both tested (`tests/test_dsgnar.py`):
+
+* **`--dsgnar-hashes K`** (default 4, the reference's): the row sketch's variance falls like `1/K`.
+  `K = 8` is what makes the model track the function here.
+* **model calibration** (`--dsgnar-no-calibrate` turns it off): divide the predicted decrease by the
+  median measured/predicted ratio over the 25 probes, which already evaluate the true loss.  Only
+  over-optimism is corrected (the factor is clamped to >= 1).
+* **safeguarded step length** (`--dsgnar-backtrack`, `--dsgnar-backtrack-steps`): scan fractions
+  1, 1/2, 1/4, ... of the *same* lifted direction and take the largest that lowers the loss; the
+  trust region then follows the accepted fraction.  The algorithm's accept rule is unchanged ("the
+  objective strictly fell"); this is a safety net, and with the calibration it is not needed.
+
+With `s = 256, K = 8`, from the same Adam end at the same reduced size, 15 iterations, **15 accepted
+/ 0 rejected**, all at fraction 1.0:
+
+    3.7626e-02 -> 1.1188e-02      (70% of the loss in 15 iterations, monotone, 322 s on CPU)
+    losses: 3.76e-2 3.76e-2 3.66e-2 3.60e-2 3.47e-2 3.36e-2 3.21e-2 3.00e-2 2.76e-2
+            2.53e-2 2.26e-2 2.00e-2 1.73e-2 1.50e-2 1.28e-2 1.12e-2
+
+`s = 512, K = 8` reaches 9.87e-03 in the same 15 iterations at twice the CPU cost.  So the recipe
+to run on the GPU is `--dsgnar-sketch 256 --dsgnar-hashes 8 --dsgnar-chunk 16` (the calibration and
+the safeguard are on by default), and the stop condition to watch is no longer `radius below
+threshold` but the budget.
+
 ### Second measurement: from the end of Adam it stops after 28 iterations
 
 `runs/pq_c100_vacH_dsgnar_fromadam` — the same flags, started from the Adam end (loss 8.27e-3):

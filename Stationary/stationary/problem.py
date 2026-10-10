@@ -320,6 +320,22 @@ class Config:
     # second allocation the GPU refused (8.87 GiB at rows ~ 4e5, s = 128).  0 = all rows at
     # once.  4096 keeps the workspace at a few MB per block and changes no number.
     dsgnar_row_chunk: int = 4096
+    # Fraction and count for the safeguarded step length: the lifted step `Omega S p` is
+    # scanned at 1, bt, bt^2, ... and the first length that lowers the loss is taken.  The
+    # trust region lives in the sketch space, so its radius does not fix the length that
+    # reaches the parameters -- and on this problem that mismatch is what stalled every run
+    # (first step rejected with rho ~ -1, then ~28 geometric rejections to delta_min).
+    dsgnar_backtrack: float = 0.5
+    dsgnar_backtrack_steps: int = 4     # 1, 1/2, 1/4, 1/8, 1/16
+    # Calibrate the sketched model's predicted decrease by the median measured/predicted
+    # ratio over the 25 probes, which already evaluate the true loss.  The sketch is
+    # measured 12x over-optimistic on this problem (n=2285, s=128), and that alone made
+    # every ratio ~0.02 against a 0.15 target, so the radius walked to delta_min.
+    dsgnar_calibrate: bool = True
+    # CountSketch hashes: the row sketch's variance falls like 1/K, and the sketch's
+    # estimate of the model decrease is measured NOISE-limited here (the prediction stays at
+    # ~1.6e-02 across s = 64..512 while the true model varies 4x).  The reference uses 4.
+    dsgnar_hashes: int = 4
     # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of
     # `qn_block` iterations (the inverse Hessian is carried across them), and the run stops
     # when `patience` consecutive blocks improve the loss by less than `plateau_tol`

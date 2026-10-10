@@ -1569,6 +1569,20 @@ def parse_args(argv=None):
     p.add_argument("--dsgnar-row-chunk", type=int, default=None, dest="dsgnar_row_chunk",
                    help="rows per block in the CountSketch (default 4096; 0 = all rows at once, "
                         "which builds a rows x s x K workspace and dies of OOM at s=128)")
+    p.add_argument("--dsgnar-hashes", type=int, default=None, dest="dsgnar_hashes",
+                   help="CountSketch hash functions (default 4).  The row sketch's variance "
+                        "falls like 1/K and the sketched model's predicted decrease is measured "
+                        "noise-limited on this problem")
+    p.add_argument("--dsgnar-no-calibrate", action="store_true", dest="dsgnar_no_calibrate",
+                   help="do NOT rescale the sketched model's predicted decrease by the median "
+                        "measured/predicted ratio over the probes (default: calibrate)")
+    p.add_argument("--dsgnar-backtrack", type=float, default=None, dest="dsgnar_backtrack",
+                   help="factor for the safeguarded step length: the lifted step is scanned at "
+                        "1, f, f^2, ... and the first length that lowers the loss is taken "
+                        "(default 0.5)")
+    p.add_argument("--dsgnar-backtrack-steps", type=int, default=None,
+                   dest="dsgnar_backtrack_steps",
+                   help="how many extra fractions to try (default 4: down to 1/16)")
     p.add_argument("--dsgnar-chunk", type=int, default=None, dest="dsgnar_chunk",
                    help="push the sketch tangents through in blocks of this size (0 = all at "
                         "once).  Peak memory is set by this: s=128 all at once needs a 4.78 GiB "
@@ -1760,6 +1774,14 @@ def parse_args(argv=None):
         cfg.dsgnar_omega = a.dsgnar_omega
     if a.dsgnar_chunk is not None:
         cfg.dsgnar_chunk = a.dsgnar_chunk
+    if a.dsgnar_hashes is not None:
+        cfg.dsgnar_hashes = a.dsgnar_hashes
+    if a.dsgnar_no_calibrate:
+        cfg.dsgnar_calibrate = False
+    if a.dsgnar_backtrack is not None:
+        cfg.dsgnar_backtrack = a.dsgnar_backtrack
+    if a.dsgnar_backtrack_steps is not None:
+        cfg.dsgnar_backtrack_steps = a.dsgnar_backtrack_steps
     if a.dsgnar_row_chunk is not None:
         cfg.dsgnar_row_chunk = a.dsgnar_row_chunk
     if a.qn_max_H_gb is not None:

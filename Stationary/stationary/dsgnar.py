@@ -544,6 +544,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     loss_batch = jax.jit(lambda flats: jax.lax.map(loss_fn, flats))
     chunk = int(getattr(cfg, "dsgnar_chunk", 0) or 0)
     row_chunk = int(getattr(cfg, "dsgnar_row_chunk", 0) or 0)
+    k_hashes = max(1, int(getattr(cfg, "dsgnar_hashes", N_HASHES) or N_HASHES))
     sketched_jacobian = jax.jit(lambda flat_now, basis: jvp_columns(res_fn, flat_now, basis,
                                                                     chunk))
 
@@ -606,7 +607,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         # same hash draws then give r~ as well, keeping the two sketches identical.
         tic = time.time()
         j_cols = sketched_jacobian(flat, B).T         # (M, s) = J (Omega S)
-        j_sketch, r_tilde = count_sketch(j_cols, residual, k_ck, s, k_hashes=N_HASHES,
+        j_sketch, r_tilde = count_sketch(j_cols, residual, k_ck, s, k_hashes=k_hashes,
                                         row_chunk=row_chunk)
         t_jvp += time.time() - tic
 
@@ -633,6 +634,31 @@ def dsgnar_phase(objective, flat0, cfg: Config,
 
         finite = jnp.all(jnp.isfinite(probe_losses))
         act_red = loss - probe_losses
+
+        # ------------------------------------------------------------ model calibration
+        # The sketched model is systematically OVER-OPTIMISTIC on this problem, and by a lot:
+        # measured at n = 2285, s = 128 against the EXACT quadratic model of the same step
+        # (loss 3.76e-02), the linear term is -4.94e-03 and the true model decrease 1.25e-03,
+        # while the sketch predicts 1.51e-02 -- a factor 12.  Every ratio then lands at ~0.02
+        # against the 0.15 target, the PCHIP always picks the smallest radius, and the trust
+        # region walks 3^-28 = 1e-13 to delta_min in ~28 iterations: that, not the step or the
+        # accept rule, is what stopped all three runs.  The 25 probes already measure the TRUE
+        # loss, so the over-estimate is measurable for free -- divide the predictions by the
+        # median measured/predicted ratio.  Only over-optimism is corrected (the factor is
+        # clamped to >= 1): an under-confident model needs no help, and scaling it up would make
+        # the trust region reckless.
+        calib = 1.0
+        if bool(getattr(cfg, "dsgnar_calibrate", True)):
+            act_np = np.asarray(act_red, dtype=np.float64)
+            pred_np = np.asarray(probe_pred, dtype=np.float64)
+            ok = np.isfinite(act_np) & np.isfinite(pred_np) & (act_np > 0.0) & (pred_np > 0.0)
+            if bool(ok.any()):
+                calib = float(np.median(pred_np[ok] / act_np[ok]))
+                if not np.isfinite(calib) or calib < 1.0:
+                    calib = 1.0
+                calib = min(calib, 1.0e6)
+            probe_pred = probe_pred / calib
+
         rhos = jnp.where(finite, act_red / (probe_pred + jnp.finfo(dtype).tiny),
                          -jnp.inf)
 
@@ -651,21 +677,67 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         else:
             final_sk, final_pred = step_and_pred(sing, g, v_t, lam_star)
             final_pred = final_pred * scale
+        final_pred = final_pred / calib      # same calibration as the probes
         final_step = lift_srct(final_sk, srct, n)
-        new_loss = float(loss_fn(flat + final_step))
-        final_act = loss - new_loss
-        final_rho = final_act / (float(final_pred) + float(jnp.finfo(dtype).tiny))
-        if not np.isfinite(new_loss) or not np.isfinite(final_rho):
-            final_rho = -np.inf
-            new_loss = loss
+
+        # ---------------------------------------------------------------- safeguarded length
+        # The trust region lives in the SKETCH space, so the length that reaches the parameters
+        # is that of `Omega S p`, which the model does not control.  Measured on this problem
+        # (pq_c100_vacH_dsgnar_fromadam, pq_r10_phihyb025_dsgnar): the first proposed step raises
+        # the loss by about the predicted decrease (rho ~ -1), the next 27 are rejected as well,
+        # and 3^-28 = 1e-13 is exactly the walk from delta0 = 1 to delta_min -- so the phase
+        # exits after ~28 iterations having accepted almost nothing.  That is a LENGTH mismatch,
+        # not a direction one: the same direction, scaled down, is a descent step.
+        #
+        # So scan fractions of the SAME lifted direction and take the first that lowers the loss.
+        # The algorithm's accept rule is unchanged ("the objective strictly fell", Algorithm 1
+        # line 8) and rho is used only where the paper uses it, to move the trust region; the
+        # accepted fraction then says by how much the model overestimated the usable step.
+        bt = float(getattr(cfg, "dsgnar_backtrack", 0.5) or 0.5)
+        if not (0.0 < bt < 1.0):
+            bt = 0.5
+        # Include two very short lengths: they separate a curvature error (rho -> 1 as the step
+        # shrinks, because the model is exact in the linear regime) from a scale/convention error
+        # (rho stays far from 1 however short the step, so the gradient projection or the
+        # prediction's units are wrong).
+        fracs = [1.0]
+        for _ in range(max(0, int(getattr(cfg, "dsgnar_backtrack_steps", 0) or 0))):
+            if fracs[-1] * bt > 0.0:
+                fracs.append(fracs[-1] * bt)
+        fracs += [1.0e-3, 1.0e-2]
+
+        new_loss, final_act, final_rho, used = loss, -np.inf, -np.inf, 0.0
+        scan = []
+        for f in fracs:
+            cand = float(loss_fn(flat + f * final_step))
+            scan.append((f, cand))
+            if np.isfinite(cand) and cand < loss:
+                new_loss, final_act, used = cand, loss - cand, f
+                # the model decrease is linear in the step to leading order, so the predicted
+                # decrease at fraction f is f * pred(1): enough for the radius move below
+                denom = f * float(final_pred) + float(jnp.finfo(dtype).tiny)
+                final_rho = final_act / denom
+                if not np.isfinite(final_rho):
+                    final_rho = -np.inf
+                break
+        if verbose and (step < 3 or (step + 1) % max(1, int(cfg.log_every)) == 0):
+            pred1 = float(final_pred)
+            bits = []
+            for f, l in scan:
+                rho_f = (loss - l) / (f * pred1 + float(jnp.finfo(dtype).tiny))
+                bits.append(f"{f:g}:{l:.3e}(rho {rho_f:+.3f})")
+            print("[dsgnar]   step scan: " + "  ".join(bits)
+                  + f"   current {loss:.3e}, accepted {used:g}, model pred {pred1:.3e}, "
+                    f"calibration {calib:.2f}", flush=True)
 
         # --- Algorithm 1 lines 8-11: accept iff the objective strictly fell ---
-        # (equivalently rho > 0; NOT rho >= target), then move the trust region.
-        accepted = bool(final_act > 0.0 and np.isfinite(final_rho))
+        accepted = bool(final_act > 0.0)
         if accepted:
-            flat = flat + final_step
+            flat = flat + used * final_step
             loss = new_loss
-            radius = delta_star
+            # the trust region follows the ACCEPTED length: if a tenth of the step was usable,
+            # the next radius is about a tenth, not delta_star
+            radius = delta_star if used >= 1.0 else max(delta_min, used * delta_star)
             lam_final = lam_star
             accepted_count += 1
         else:
@@ -688,7 +760,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         history.append({"step": step_offset + step, "loss": loss,
                         "resid": float(jnp.linalg.norm(residual)) * float(np.sqrt(scale)),
                         "rho": float(final_rho), "lam": lam_star, "radius": radius,
-                        "accepted": accepted, "wall": wall})
+                        "accepted": accepted, "frac": used, "wall": wall})
         if callback:
             callback(step_offset + step, loss, flat)
         if verbose and (step % max(1, int(cfg.log_every)) == 0 or step == 1):
@@ -706,7 +778,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         "wall": time.time() - t0,
         "stopped": stopped,
         "sketch": s,
-        "hashes": N_HASHES,
+        "hashes": k_hashes,
         "probes": q,
         "n_parameters": n,
         "n_residuals": int(round(1.0 / scale)),
