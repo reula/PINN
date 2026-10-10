@@ -33,7 +33,14 @@ IC_COLOR = {"hard": "#c0392b", "soft": "#1f6feb", "soft_all": "#2e8b57"}
 IC_LABEL = {"hard": "hard hand-over", "soft": "soft (window 1 hard)",
             "soft_all": "soft, first window too"}
 OPT_STYLE = {"dsgnar": "-", "ssbroyden": "--", "jaxopt_broyden": ":"}
-OPT_MARK = {"dsgnar": "o", "ssbroyden": "s", "jaxopt_broyden": "^"}
+# marker encodes n_coll, NOT the optimiser: with two collocation sizes the same
+# (optimiser, hand-over) pair occurs twice, and encoding both in the same channel
+# draws them as one indistinguishable line.
+NCOLL_MARK = {2201: "o", 8192: "s"}
+
+
+def mark(run):
+    return NCOLL_MARK.get(run["n_coll"], "^")
 
 
 def load_run(path: str) -> Optional[Dict]:
@@ -95,8 +102,8 @@ def main(argv: List[str]) -> int:
 
     fig, ax = plt.subplots(2, 2, figsize=(14, 9.5))
     fig.suptitle(f"Windowed T = 20 — {len(runs)} runs, float64, 10 windows of dt = 2\n"
-                 f"colour = how a window inherits the previous one, "
-                 f"line = optimiser, marker = n_coll", fontsize=12)
+                 f"colour = hand-over, line = optimiser, marker = n_coll (o 2201, s 8192)",
+                 fontsize=12)
 
     # (a) error along the integration
     a = ax[0, 0]
@@ -104,7 +111,7 @@ def main(argv: List[str]) -> int:
         if r["rel"] is None:
             continue
         a.semilogy(r["t"], np.maximum(r["rel"], 1e-16),
-                   marker=OPT_MARK.get(r["optimizer"], "o"), ls=OPT_STYLE.get(r["optimizer"], "-"),
+                   marker=mark(r), ls=OPT_STYLE.get(r["optimizer"], "-"),
                    color=IC_COLOR.get(r["window_ic"], "grey"), lw=1.5, ms=4, alpha=.9,
                    label=f"{r['optimizer']}/{r['window_ic']}/{r['n_coll']}")
     a.set_xlabel("t"); a.set_ylabel(r"relative $L_2$ error")
@@ -130,10 +137,13 @@ def main(argv: List[str]) -> int:
         amps = [w.get("amplification") for w in r["windows"]]
         amps = [x if (x and np.isfinite(x)) else np.nan for x in amps]
         a.plot(np.arange(1, len(amps) + 1), amps,
-               marker=OPT_MARK.get(r["optimizer"], "o"), ls=OPT_STYLE.get(r["optimizer"], "-"),
+               marker=mark(r), ls=OPT_STYLE.get(r["optimizer"], "-"),
                color=IC_COLOR.get(r["window_ic"], "grey"), lw=1.4, ms=4, alpha=.9)
     a.axhline(1.0, color="k", ls=":", lw=1.2)
-    a.set_xlabel("hand-over number"); a.set_ylabel("error out / error in")
+    # log scale: one stalled window reached x1709 and would flatten every other
+    # curve into the axis, hiding the question this panel exists to answer
+    a.set_yscale("log")
+    a.set_xlabel("hand-over number"); a.set_ylabel("error out / error in  (log)")
     a.set_title("(c) amplification at each hand-over  (1 = the chain preserves the error)")
     a.grid(alpha=.3)
 
@@ -142,7 +152,7 @@ def main(argv: List[str]) -> int:
     for r in runs:
         a.semilogy([w["t1"] for w in r["windows"]],
                    np.maximum([w["final_loss"] for w in r["windows"]], 1e-16),
-                   marker=OPT_MARK.get(r["optimizer"], "o"), ls=OPT_STYLE.get(r["optimizer"], "-"),
+                   marker=mark(r), ls=OPT_STYLE.get(r["optimizer"], "-"),
                    color=IC_COLOR.get(r["window_ic"], "grey"), lw=1.4, ms=4, alpha=.9)
     a.set_xlabel("t at the end of the window"); a.set_ylabel("final loss in the window")
     a.set_title("(d) did each window converge on its own sample?")
