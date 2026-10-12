@@ -154,10 +154,15 @@ class Config:
                                        #     ratio 1.5e20; numerical rank 619 at 1e-8 of
                                        #     the largest, 914 at 1e-10, 1233 at 1e-12.
                                        #   cosine between the lifted DSGNAR step and the
-                                       #   exact Gauss-Newton step, 3 sketch draws:
-                                       #     s= 733 (d/3)  0.43 (lam=1e-3)   0.49 (lam=1)
+                                       #   exact Gauss-Newton step, over sketch draws:
+                                       #     s= 733 (d/3)  0.42 (lam=1e-3)   0.48 (lam=1)
                                        #     s= 900        0.53              0.56
-                                       #     s=1100 (d/2)  0.62              0.63
+                                       #     s=1100 (d/2)  0.62              0.64
+                                       #     s=1500 (0.68d) 0.75             0.78
+                                       #   so d/2 is NOT the optimum: the cosine is still
+                                       #   climbing at 0.68 d, i.e. past the paper's range,
+                                       #   and the cost is what stops it -- the SVD goes as
+                                       #   s^3 (8.6x from 733 to 1500) and the JVPs as s.
                                        #   and K makes no difference: 0.315 (K=4) against
                                        #   0.303 (K=8) at lam=1e-8.
                                        #
