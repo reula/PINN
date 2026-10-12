@@ -163,10 +163,19 @@ class Config:
                                        #
                                        # So the limit is the COLUMN sketch, and s = d/3 sits
                                        # below the numerical rank of J -- the paper asks for s
-                                       # to comfortably exceed it.  Raising s to d/2 recovers
-                                       # about a third of the direction.  The predictions are
-                                       # already honest (pred/exact 1.03 to 1.13), which is why
-                                       # the calibration had nothing to fix.
+                                       # to comfortably exceed it.  The predictions are already
+                                       # honest (pred/exact 1.03 to 1.13), which is why the
+                                       # calibration had nothing to fix.
+                                       #
+                                       # And it is not a cosmetic difference.  T=2, n_coll=2201,
+                                       # K=4, same seed and same frozen batch, only s changed:
+                                       #   s= 733   186 it   loss 2.243e-14   rel L2 6.756e-06
+                                       #   s=1100   301 it   loss 2.918e-20   rel L2 4.116e-09
+                                       # 1640x the accuracy for 2.35x the wall time.  The
+                                       # paper's [d/3, d/2] range spans that much on this
+                                       # problem, so the bottom of it is the wrong end.  Run
+                                       # scripts/dsgnar_sketch_audit.py before choosing: it
+                                       # measures the cosine in about ten minutes.
     dsgnar_stage1_ratio: float = 0.15  # target ratio rho in stage 1 (textbook Eq. 14 units)
     dsgnar_stage2_ratio: float = 0.5   # target ratio rho in stage 2
     dsgnar_delta0: float = 1.0         # initial trust-region radius
