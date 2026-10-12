@@ -157,6 +157,52 @@ class Config:
     broyden_linesearch: str = "backtracking"
     broyden_maxls: int = 15            # line-search trials; jaxopt default
     broyden_decrease: float = 0.8      # line-search shrink per trial; jaxopt default
+    dsgnar_hashes: int = 0              # K, CountSketch hashes; 0 = the module default (4).
+                                       # The row sketch's variance falls like 1/K and the
+                                       # predicted decrease is noise-limited at K=4, which
+                                       # is what stalled every run of the sibling problem
+                                       # (0.94% of the loss in 15 iterations against 87.8%)
+    dsgnar_calibrate: bool = False      # divide the model's predicted decrease by the
+                                       # median measured/predicted ratio over the probes
+                                       # (clamped >= 1).  OFF by default, and the reason is
+                                       # measured: it fixes a 12x over-optimism on the
+                                       # sibling problem, but HERE the factor is only
+                                       # 1.0-3.3 and correcting a near-unity noisy factor
+                                       # mostly adds variance to the radius choice.  At
+                                       # s=733, K=8, 20 iterations: 0.021 calibrated against
+                                       # 0.0052 not; the 30-iteration run at n_coll=2201 on
+                                       # the same problem says the opposite (3.0e-03 against
+                                       # 1.1e-02).  Mixed evidence does not earn a default.
+    dsgnar_backtrack: float = 0.5       # scan 1, f, f^2 ... of the lifted step and take the
+                                       # first length that lowers the loss
+    dsgnar_backtrack_steps: int = -1    # extra fractions; NEGATIVE disables the safeguard
+                                       # (the default), 4 gives 1/2 ... 1/16
+    # ------------------------------------------------------------------ DSGNAR, ported
+    # The three knobs below are a port from the sibling project, where an ablation
+    # found the sketched model over-optimistic by a factor 12 and K = 4 the cause of
+    # every stall (0.94% of the loss in 15 iterations against 87.8% at K = 8).  The
+    # port is complete, tested and OFF BY DEFAULT, because measured on THIS problem
+    # at s = 733 it does not transfer, and in two of four comparisons it is worse:
+    #
+    #   production size, cold start, to convergence (n_coll = 2201, s = 733)
+    #     K=4 no-cal no-safe   186 it, loss 2.24e-14, rel L2 6.756e-06
+    #     K=8 cal    safe      252 it, loss 2.35e-14, rel L2 9.277e-06
+    #   warm-started from a converged theta (the rounds regime, loss 3.93e-13)
+    #     K=4 no-cal no-safe   40 it, ratio 0.1413
+    #     K=8 no-cal safe      25 it, ratio 0.2376, stops on "radius below threshold"
+    #     K=4 cal    safe      40 it, ratio 0.1399
+    #   30 iterations at n_coll = 2201, delta_min = 0 (their ablation, our problem)
+    #     K=8 cal best (3.02e-03), K=4 cal worst (4.06e-02) -- their ordering
+    #   20 iterations at s = 733, n_coll = 128
+    #     K=8 no-cal best (0.0052), K=8 cal 0.0210 -- the opposite ordering
+    #
+    # The pattern that explains it: their over-optimism is a factor 12 at s = 128;
+    # here it measures 1.0 to 3.3, because s = d/3 is a far milder compression of a
+    # 2201-parameter problem.  Calibrating a near-unity noisy factor mostly adds
+    # variance to the radius choice, and the safeguard's rule -- follow the ACCEPTED
+    # length rather than delta_star -- shrinks the radius faster and reaches
+    # delta_min sooner.  K = 8 costs double the sketch work for no measured gain.
+    # "Mixed evidence does not earn a default" is the whole of the reasoning.
     dsgnar_chunk: int = 64             # tangents per batched JVP; 0 = all at once (GPU OOM)
     dsgnar_row_chunk: int = 0          # CountSketch rows per block; 0 = off (unneeded at M ~ 2e3)
     # ---- trust-region Newton with an exact dense Hessian (arXiv:2105.07552) ----

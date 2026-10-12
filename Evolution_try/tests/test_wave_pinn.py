@@ -342,6 +342,53 @@ class TestDsgnarMachinery(unittest.TestCase):
             self.assertLess(float(jnp.max(jnp.abs(got_vec - ref_vec))), 1e-12, msg=f"rc={rc}")
             self.assertLess(float(jnp.max(jnp.abs(got_mat - ref_mat))), 1e-12, msg=f"rc={rc}")
 
+    def test_dsgnar_honours_the_hash_count_and_reports_the_calibration(self):
+        """K is the dominant knob; the calibration is the honesty fix, off by default.
+
+        Both are ports from the sibling project's ablation, which measured K = 4 as
+        what stalled every run there (0.94% of the loss in 15 iterations against
+        87.8% at K = 8) and traced it to the sketched model predicting a decrease
+        ~12x larger than the true one, so every ratio landed near 0.02 against a
+        0.15 target, the PCHIP picked the smallest radius every time, and the trust
+        region walked 3^-28 to delta_min in about 28 iterations -- the signature in
+        this project's own logs (rounds of 34 and 31 iterations, both terminating on
+        "radius below threshold").
+
+        The two do NOT transfer equally.  K = 8 is unambiguous here: at s = 733 it
+        cut the loss 9x more than K = 4 in 20 iterations.  The calibration fixes a
+        12x over-optimism there but the factor is only 1.0-3.3 here, and correcting
+        a near-unity noisy factor mostly adds variance -- it helped in some
+        configurations and hurt in others, so it is not a default.
+        """
+        from wave_pinn.optim.dsgnar import dsgnar_phase
+        cfg = Config(T=2.0, n_coll=64, dsgnar_sketch=16, dsgnar_steps=4,
+                     sampler="uniform", log_every=1000, dsgnar_calibrate=True)
+        for k in (4, 8):
+            cfg_k = cfg.replace(dsgnar_hashes=k)
+            obj = Objective(cfg_k, make_batch(cfg_k, jax.random.PRNGKey(5)), self.params)
+            _, _, info = dsgnar_phase(obj, self.flat, cfg_k, verbose=False)
+            self.assertEqual(info["hashes"], k)
+            self.assertTrue(info["calibrate"])
+            # only over-optimism is corrected, so the factor can never be below 1
+            self.assertGreaterEqual(info["calibration_final"], 1.0)
+
+    def test_dsgnar_calibration_is_off_by_default_and_switchable(self):
+        """The ablation needs the old behaviour to exist on demand, and the default
+        is the configuration the evidence supports -- which for the calibration is
+        no, and for the hash count is K = 8."""
+        from wave_pinn.optim.dsgnar import dsgnar_phase
+        self.assertFalse(Config().dsgnar_calibrate)
+        self.assertEqual(Config().dsgnar_hashes, 0)      # 0 -> the module default
+        cfg = Config(T=2.0, n_coll=64, dsgnar_sketch=16, dsgnar_steps=4,
+                     sampler="uniform", log_every=1000,
+                     dsgnar_calibrate=False, dsgnar_backtrack_steps=-1,
+                     dsgnar_hashes=4)
+        obj = Objective(cfg, make_batch(cfg, jax.random.PRNGKey(5)), self.params)
+        _, _, info = dsgnar_phase(obj, self.flat, cfg, verbose=False)
+        self.assertFalse(info["calibrate"])
+        self.assertEqual(info["calibration_final"], 1.0)
+        self.assertEqual(info["hashes"], 4)
+
     def test_dsgnar_phase_descends(self):
         from wave_pinn.optim.dsgnar import dsgnar_phase
         # a deterministic grid, so this measures DSGNAR and not the sampler
