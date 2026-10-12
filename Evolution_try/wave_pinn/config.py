@@ -144,7 +144,29 @@ class Config:
     plateau_patience: int = 3          # consecutive blocks below plateau_tol before stopping
     qn_max_H_gb: float = 8.0           # refuse a dense inverse Hessian larger than this
     dsgnar_steps: int = 200            # DSGNAR iterations (each one rebuilds a sketched Jacobian)
-    dsgnar_sketch: int = 0             # sketch size s; 0 -> max(1, round(d_theta/3))
+    dsgnar_sketch: int = 0             # sketch size s; 0 -> max(1, round(d_theta/3)).
+                                       # MEASURED, and this is the knob that matters here.
+                                       # scripts/dsgnar_sketch_audit.py forms the exact
+                                       # Jacobian (38.7 MB, under a second) and compares:
+                                       #
+                                       #   the exact J at T=2, n_coll=2201:
+                                       #     singular values 6.997e+02 down to 4.557e-18,
+                                       #     ratio 1.5e20; numerical rank 619 at 1e-8 of
+                                       #     the largest, 914 at 1e-10, 1233 at 1e-12.
+                                       #   cosine between the lifted DSGNAR step and the
+                                       #   exact Gauss-Newton step, 3 sketch draws:
+                                       #     s= 733 (d/3)  0.43 (lam=1e-3)   0.49 (lam=1)
+                                       #     s= 900        0.53              0.56
+                                       #     s=1100 (d/2)  0.62              0.63
+                                       #   and K makes no difference: 0.315 (K=4) against
+                                       #   0.303 (K=8) at lam=1e-8.
+                                       #
+                                       # So the limit is the COLUMN sketch, and s = d/3 sits
+                                       # below the numerical rank of J -- the paper asks for s
+                                       # to comfortably exceed it.  Raising s to d/2 recovers
+                                       # about a third of the direction.  The predictions are
+                                       # already honest (pred/exact 1.03 to 1.13), which is why
+                                       # the calibration had nothing to fix.
     dsgnar_stage1_ratio: float = 0.15  # target ratio rho in stage 1 (textbook Eq. 14 units)
     dsgnar_stage2_ratio: float = 0.5   # target ratio rho in stage 2
     dsgnar_delta0: float = 1.0         # initial trust-region radius
