@@ -196,6 +196,46 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
     return out
 
 
+def inner_datum_of(cfg, exact_fields=None):
+    """`x (N,3) -> (h_datum (N,3,3), lam_datum (N,))`: the inner data as a function of DIRECTION.
+
+    Evaluate the datum at the point of the inner sphere with the same direction, `rho_in * x/|x|`.
+    That restriction is on purpose.  A datum is an inner-sphere quantity, so its value is what the
+    inner condition prescribes and there is nothing to "extend"; the polynomial `lam_inner_bc` in
+    particular grows like `z^2 / rho_in^2` and would reach ~800 at rho_out = 100 if it were simply
+    evaluated at x.  Keeping it direction-only makes the datum bounded, and the hard-constraint
+    blend in `model._blend_inner` then leaks it outward with weight `rho_in/r` -- 1% at rho_out =
+    100 -- which the network absorbs.
+
+    Both inner_bc modes return direction-only data, so a run can switch the inner condition from
+    soft to hard without touching anything else.
+    """
+    if getattr(cfg, "inner_bc", "spherical") == "reference":
+        if exact_fields is None:
+            raise ValueError("inner_bc = 'reference' needs exact_fields")
+
+        def datum(x):
+            r = jnp.linalg.norm(x, axis=-1, keepdims=True)
+            e = jax.vmap(exact_fields)(cfg.rho_in * x / r)
+            return e.h, e.lam
+
+        return datum
+
+    def datum(x):
+        r = jnp.linalg.norm(x, axis=-1, keepdims=True)
+        n = x / r
+        nn = n[..., :, None] * n[..., None, :]
+        hrr = 1.0 if cfg.inner_h_rr is None else cfg.inner_h_rr
+        # c is the round sphere of areal radius `inner_radius` evaluated ON the inner sphere, so
+        # c = (inner_radius / rho_in)^2 -- NOT 1: the two differ whenever the config's inner
+        # radius is not rho_in, and the residual then reads exactly 3|1 - c| (1.73 for the
+        # default inner_radius = 2 with rho_in = 1), which is how this was caught.
+        c = (float(cfg.inner_radius) / float(cfg.rho_in)) ** 2
+        return hrr * nn + c * (I3 - nn), lam_inner_bc(cfg.rho_in * n, cfg)
+
+    return datum
+
+
 def inner_bc_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
     """Inner boundary residuals, reduced to means of squares."""
     return {k: jnp.mean(v ** 2)

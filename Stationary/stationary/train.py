@@ -44,6 +44,16 @@ def make_model(cfg: Config):
               rho_in=cfg.rho_in, rho_out=cfg.rho_out)
     if cfg.arch in ("sym", "sym_hybrid", "axisym_hybrid"):
         kw["decay"] = cfg.decay_feature
+    if getattr(cfg, "hard_inner_bc", False):
+        # The inner data is imposed by construction (model._blend_inner) instead of by a penalty.
+        # `load_run` goes through here too, so a loaded run evaluates the same constrained ansatz
+        # it trained -- no separate provenance switch to keep in step.
+        from .losses import inner_datum_of
+        exact = (exact_asset(cfg)
+                 if getattr(cfg, "inner_bc", "spherical") == "reference" else None)
+        kw["hard_inner"] = inner_datum_of(cfg, exact)
+        print("[inner] HARD inner boundary data: the fields ARE the datum on the inner sphere "
+              "(blend weight 1 - rho_in/rho), so the inner BC terms of the loss are zero")
     return cls(**kw)
 
 
@@ -1592,6 +1602,10 @@ def parse_args(argv=None):
                         "phase is otherwise silent between its first three step scans and the "
                         "next multiple of this, which reads as a hang: --log-every 25 gives a "
                         "line about every minute")
+    p.add_argument("--hard-inner-bc", action="store_true", dest="hard_inner_bc",
+                   help="impose the inner boundary data by construction (blend the fields with the "
+                        "datum at the same direction, weight 1 - rho_in/rho) instead of penalising "
+                        "its violation; the inner BC terms of the loss become identically zero")
     p.add_argument("--dsgnar-radius-floor", type=float, default=None, dest="dsgnar_radius_floor",
                    help="floor for the trust region as a fraction of the radius that last produced "
                         "an accepted step (default 1e-3; 0 lets 32 rejections collapse it to "
@@ -1808,6 +1822,8 @@ def parse_args(argv=None):
         cfg.dsgnar_chunk = a.dsgnar_chunk
     if a.log_every is not None:
         cfg.log_every = int(a.log_every)
+    if a.hard_inner_bc:
+        cfg.hard_inner_bc = True
     if a.dsgnar_radius_floor is not None:
         cfg.dsgnar_radius_floor = a.dsgnar_radius_floor
     if a.dsgnar_shrink_ok:

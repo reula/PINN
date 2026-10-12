@@ -11,6 +11,8 @@ Outputs (25 numbers):
 """
 from __future__ import annotations
 
+from typing import Callable, Optional
+
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
@@ -39,6 +41,36 @@ def _dense(features, **kw):
 I3 = jnp.eye(3)
 
 
+def _blend_inner(x, h, lam, rho_in, hard_inner):
+    """Impose the inner boundary data EXACTLY, instead of penalising its violation.
+
+    The fields are blended with the datum taken at the same direction (see
+    `losses.inner_datum_of`), with a weight that vanishes on the inner sphere:
+
+        m(r) = 1 - rho_in / r,   h = h_d(n) + m (h_net - h_d(n)),   lam likewise,
+
+    so on the inner sphere the fields ARE the datum, to roundoff, and outward the network takes
+    over (the datum leaks with weight rho_in/r -- 1% at rho_out = 100).  Both blends are convex
+    combinations because 0 <= m < 1 outside the inner sphere, so lambda stays positive even
+    though the network's own lambda is not bounded below by anything.
+
+    This is a change of parameterisation, not a penalty: Gamma and every derivative are taken
+    afterwards by the same code, so the extra m-derivative terms are absorbed by the network, and
+    with this on the inner BC terms of the loss are identically zero -- `inner_bc_terms` should
+    report ~1e-16, which is what `tests/test_hard_inner_bc.py` checks.
+    """
+    if hard_inner is None:
+        return h, lam
+    h_d, lam_d = hard_inner(x)                       # (N,3,3), (N,) or (N,1)
+    r = jnp.linalg.norm(x, axis=-1, keepdims=True)
+    m = 1.0 - rho_in / r                             # (N,1), zero on the inner sphere
+    lam_2d = jnp.reshape(lam, (-1, 1))
+    lam_d = jnp.reshape(lam_d, (-1, 1))
+    h_out = h_d + m[..., None] * (h - h_d)
+    lam_out = lam_d + m * (lam_2d - lam_d)
+    return h_out, (lam_out.reshape(-1) if lam.ndim == 1 else lam_out)
+
+
 class FieldNet(nn.Module):
     # First-order formulation: Gamma is an independent output, so compatibility is a real
     # equation.  The metric-only classes below set this True -- see losses.equation_keys,
@@ -52,6 +84,9 @@ class FieldNet(nn.Module):
     rho_out: float = 20.0
     lam_scale: float = 1.0
     out_std: float = 1e-2      # small final-layer init: start near flat space
+    # Optional inner datum (rho direction only), applied by `_blend_inner`: with it set the
+    # inner boundary data holds by construction rather than by a penalty.
+    hard_inner: Optional[Callable] = None
 
     @nn.compact
     def __call__(self, x):
@@ -72,6 +107,7 @@ class FieldNet(nn.Module):
         h = I3 + sym3(out[..., :6])
         G = gamma3(out[..., 6:24])
         lam = self.lam_scale * jnp.exp(out[..., 24])
+        h, lam = _blend_inner(x, h, lam, self.rho_in, self.hard_inner)
         return Fields(h, G, lam.squeeze(-1) if lam.ndim > 1 else lam)
 
 
@@ -120,6 +156,7 @@ class SymFieldNet(nn.Module):
     rho_in: float = 2.0
     rho_out: float = 20.0
     out_std: float = 1e-2
+    hard_inner: Optional[Callable] = None
     decay: bool = False      # add rho_in/rho: the natural decay variable of the solution
 
     @nn.compact
@@ -156,6 +193,7 @@ class SymFieldNet(nn.Module):
         g3 = jnp.einsum("jk,ni->nijk", d, n)
         G = (a[:, None, None, None] * n3 + b[:, None, None, None] * g2
              + c[:, None, None, None] * g3)
+        h, lam = _blend_inner(x, h, lam, self.rho_in, self.hard_inner)
         return Fields(h, G, lam)
 
 
@@ -176,6 +214,7 @@ class HybridNet(nn.Module):
     rho_in: float = 2.0
     rho_out: float = 20.0
     out_std: float = 1e-2
+    hard_inner: Optional[Callable] = None
 
     @nn.compact
     def __call__(self, x):
@@ -195,6 +234,7 @@ class HybridNet(nn.Module):
         h = I3 + sym3(out[..., :6])
         lam = jnp.exp(out[..., 6])
         G = jnp.zeros(x.shape[:-1] + (3, 3, 3))
+        h, lam = _blend_inner(x, h, lam, self.rho_in, self.hard_inner)
         return Fields(h, G, lam)
 
 
@@ -218,6 +258,7 @@ class SymHybridNet(nn.Module):
     rho_in: float = 2.0
     rho_out: float = 20.0
     out_std: float = 1e-2
+    hard_inner: Optional[Callable] = None
     decay: bool = False
 
     @nn.compact
@@ -241,7 +282,8 @@ class SymHybridNet(nn.Module):
         nn_ = jnp.einsum("ni,nj->nij", n, n)
         h = (1.0 + out[..., 0])[:, None, None] * d + out[..., 1][:, None, None] * nn_
         G = jnp.zeros(x.shape[:-1] + (3, 3, 3))
-        return Fields(h, G, jnp.exp(out[..., 2]))
+        h, lam = _blend_inner(x, h, jnp.exp(out[..., 2]), self.rho_in, self.hard_inner)
+        return Fields(h, G, lam)
 
 
 class AxisymHybridNet(nn.Module):
@@ -268,6 +310,7 @@ class AxisymHybridNet(nn.Module):
     rho_in: float = 1.0
     rho_out: float = 100.0
     out_std: float = 1e-2
+    hard_inner: Optional[Callable] = None
     decay: bool = False
 
     @nn.compact
@@ -301,4 +344,5 @@ class AxisymHybridNet(nn.Module):
              + out[..., 2][:, None, None] * nz
              + out[..., 3][:, None, None] * zz)
         G = jnp.zeros(x.shape[:-1] + (3, 3, 3))
-        return Fields(h, G, jnp.exp(out[..., 4]))
+        h, lam = _blend_inner(x, h, jnp.exp(out[..., 4]), self.rho_in, self.hard_inner)
+        return Fields(h, G, lam)

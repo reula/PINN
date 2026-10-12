@@ -346,6 +346,12 @@ class Config:
     # WINDOW_SCALE = 3 walk 1.5 to 1e-14: both finished runs stopped early that way (r10 at
     # 266 of 600 iterations, c100 at 508 of 2000) with the line search still able to descend.
     dsgnar_radius_floor: float = 1.0e-3
+    # Impose the inner boundary data by construction rather than by a penalty: the fields
+    # are blended with the datum (taken at the same direction) with weight 1 - rho_in/rho,
+    # so they ARE the datum on the inner sphere.  The residual maps show the soft inner BC
+    # competing with the PDE loss in a thin ring at r = rho_in, which is where the raw
+    # lambda-equation residual is concentrated in both finished runs.
+    hard_inner_bc: bool = False
     # `ckpt_every` also drives an in-phase DSGNAR checkpoint (params_dsgnar.pkl): the phase
     # has no iteration-level checkpointing of its own, and a competitive run is hours long.
     # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of
