@@ -557,6 +557,8 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     key = jax.random.PRNGKey(int(cfg.seed))
     flat = jnp.asarray(flat0, dtype=dtype)
     radius = float(cfg.dsgnar_delta0)
+    # the radius that last produced an accepted step: the floor below is a fraction of it
+    last_accept_radius = float(cfg.dsgnar_delta0)
     r_lo = r_hi = radius
     lam_final = float(omega)
     step = 0
@@ -745,11 +747,22 @@ def dsgnar_phase(objective, flat0, cfg: Config,
             # is safe (the scan trims it), so the radius only shrinks on a REJECTED step.
             nxt = delta_star if used >= 1.0 else max(delta_min, used * delta_star)
             radius = max(radius, nxt) if bool(getattr(cfg, "dsgnar_grow_on_accept", True)) else nxt
+            last_accept_radius = float(radius)
             lam_final = lam_star
             accepted_count += 1
         else:
             rejected_count += 1
             radius = r_hi if final_rho > target_rho + RHO_HI_MARGIN else r_lo
+            # ... but not without a floor.  Rejections are the only thing that shrinks the radius
+            # now, and each one divides it by WINDOW_SCALE: 32 of them walk 1.557 to 1e-14 and the
+            # phase stops on `radius below threshold` having spent only a fraction of its budget --
+            # measured on both finished runs (r10: 266 of 600 iterations, 30 rejections; c100: 508
+            # of 2000, 32 rejections), i.e. 3^32 ~ 1e15.  With the guarded length there is no need
+            # for the radius to go to zero: it may shrink to a small fraction of the radius that
+            # last produced an accepted step, and the line search does the rest.
+            floor = float(getattr(cfg, "dsgnar_radius_floor", 0.0) or 0.0)
+            if floor > 0.0 and last_accept_radius > 0.0:
+                radius = max(radius, floor * last_accept_radius)
 
         step += 1
         lam_history.append(max(lam_final, omega))

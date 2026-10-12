@@ -1592,6 +1592,10 @@ def parse_args(argv=None):
                         "phase is otherwise silent between its first three step scans and the "
                         "next multiple of this, which reads as a hang: --log-every 25 gives a "
                         "line about every minute")
+    p.add_argument("--dsgnar-radius-floor", type=float, default=None, dest="dsgnar_radius_floor",
+                   help="floor for the trust region as a fraction of the radius that last produced "
+                        "an accepted step (default 1e-3; 0 lets 32 rejections collapse it to "
+                        "delta_min and stop the phase early)")
     p.add_argument("--dsgnar-shrink-on-accept", action="store_true", dest="dsgnar_shrink_ok",
                    help="let an ACCEPTED step shrink the trust region as the paper's radius rule "
                         "does (default: never shrink on success; the model's ratio is not "
@@ -1804,6 +1808,8 @@ def parse_args(argv=None):
         cfg.dsgnar_chunk = a.dsgnar_chunk
     if a.log_every is not None:
         cfg.log_every = int(a.log_every)
+    if a.dsgnar_radius_floor is not None:
+        cfg.dsgnar_radius_floor = a.dsgnar_radius_floor
     if a.dsgnar_shrink_ok:
         cfg.dsgnar_grow_on_accept = False
     if a.dsgnar_hashes is not None:

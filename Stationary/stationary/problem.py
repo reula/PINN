@@ -341,6 +341,11 @@ class Config:
     # the safeguarded length a too-large radius is safe.  Measured: without this the radius
     # walked to delta_min at iteration 76 of a run that had accepted 72 of them.
     dsgnar_grow_on_accept: bool = True
+    # Floor for the trust region, as a fraction of the radius that last produced an accepted
+    # step (0 disables).  Rejections are the only remaining shrink source, and 32 of them at
+    # WINDOW_SCALE = 3 walk 1.5 to 1e-14: both finished runs stopped early that way (r10 at
+    # 266 of 600 iterations, c100 at 508 of 2000) with the line search still able to descend.
+    dsgnar_radius_floor: float = 1.0e-3
     # `ckpt_every` also drives an in-phase DSGNAR checkpoint (params_dsgnar.pkl): the phase
     # has no iteration-level checkpointing of its own, and a competitive run is hours long.
     # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of
