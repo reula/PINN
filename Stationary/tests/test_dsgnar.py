@@ -212,3 +212,60 @@ def test_the_probe_losses_are_evaluated_sequentially(tmp_path):
     t_seq = seq.lower(flats).compile().memory_analysis().temp_size_in_bytes
     t_par = par.lower(flats).compile().memory_analysis().temp_size_in_bytes
     assert t_seq * 5 < t_par, (t_seq, t_par)
+
+
+def test_the_radius_floor_anchors_to_the_high_water_mark():
+    """A phase whose every step is rejected must still reach its budget.
+
+    This is the A/B that the first floor failed: with the floor, `radius` may not fall below
+    `floor * delta0` no matter how many rejections arrive, so the `radius below threshold` stop
+    cannot fire and the phase spends its budget.  The objective here is deliberately uphill
+    (`loss = 1 + |flat|^2`), which makes EVERY step rejected, and `J = I` so the sketch is exact
+    and the iterations are meaningful rather than degenerate.
+    """
+    import jax.numpy as jnp
+    from stationary.dsgnar import dsgnar_phase
+    from stationary.problem import Config
+
+    class Uphill:
+        n = 4
+        dtype = jnp.float64
+        flat0 = jnp.zeros(4)
+
+        # the phase reads the residual through `_residual` (its jitted scalar->residual map) and
+        # the reduced loss through `_loss`
+        _residual = residual = lambda self, flat: jnp.asarray(flat, dtype=jnp.float64)
+        _loss = loss = None            # replaced below (lambda fields cannot reference siblings)
+
+
+
+        def unflatten(self, flat):
+            return flat
+
+    def _res(flat):
+        return jnp.asarray(flat, dtype=jnp.float64)
+
+    def _lss(flat):
+        return 1.0 + jnp.sum(jnp.asarray(flat, dtype=jnp.float64) ** 2)
+
+    Uphill._residual = staticmethod(jax.jit(_res))   # staticmethod: a plain function
+    Uphill._loss = staticmethod(jax.jit(_lss))       # would bind self on attribute access
+    Uphill.residual = lambda self, flat: _res(flat)
+    Uphill.loss = lambda self, flat: _lss(flat)
+
+    def run(floor):
+        # 40 rejections is past 3^-28 ~ 1e-13, which is where a floorless phase stops
+        cfg = Config(dsgnar_steps=40, dsgnar_sketch=4, dsgnar_delta0=1.0, dsgnar_radius_floor=floor,
+                     seed=0, n_coll=8, n_bnd=4)
+        obj = Uphill()
+        _, hist, info = dsgnar_phase(obj, obj.flat0, cfg, verbose=False)
+        return hist, info
+
+    hist, info = run(0.0)
+    assert info["stopped"] == "radius below threshold", info          # the old behaviour
+    assert info["iterations"] < 40
+
+    hist, info = run(1.0e-3)
+    assert info["stopped"] == "budget", info                          # the floor holds it up
+    assert info["iterations"] == 40
+    assert min(h["radius"] for h in hist) >= 1.0e-3 * 1.0 - 1e-15

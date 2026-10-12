@@ -557,8 +557,15 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     key = jax.random.PRNGKey(int(cfg.seed))
     flat = jnp.asarray(flat0, dtype=dtype)
     radius = float(cfg.dsgnar_delta0)
-    # the radius that last produced an accepted step: the floor below is a fraction of it
-    last_accept_radius = float(cfg.dsgnar_delta0)
+    # HIGH-WATER MARK of the trust region, and the reference for the floor below.  It must be the
+    # largest radius reached so far, not the latest accepted one: rejected steps shrink the radius
+    # and accepted steps only preserve it, so "a fraction of the last accepted radius" is a
+    # ratchet -- it decays with the radius it is supposed to protect, which is exactly what the
+    # first version did (pq_r100_phihyb025_floor: 33 rejections interleaved with accepts took the
+    # radius from 1.557 to 6.8e-14 anyway, and the phase stopped at 508 of 2000 iterations with
+    # the same loss as the run without any floor).  Anchoring to the high-water mark makes the
+    # collapse impossible: the radius can never fall below floor * delta0.
+    hwm_radius = float(cfg.dsgnar_delta0)
     r_lo = r_hi = radius
     lam_final = float(omega)
     step = 0
@@ -747,7 +754,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
             # is safe (the scan trims it), so the radius only shrinks on a REJECTED step.
             nxt = delta_star if used >= 1.0 else max(delta_min, used * delta_star)
             radius = max(radius, nxt) if bool(getattr(cfg, "dsgnar_grow_on_accept", True)) else nxt
-            last_accept_radius = float(radius)
+            hwm_radius = max(hwm_radius, float(radius))
             lam_final = lam_star
             accepted_count += 1
         else:
@@ -761,8 +768,8 @@ def dsgnar_phase(objective, flat0, cfg: Config,
             # for the radius to go to zero: it may shrink to a small fraction of the radius that
             # last produced an accepted step, and the line search does the rest.
             floor = float(getattr(cfg, "dsgnar_radius_floor", 0.0) or 0.0)
-            if floor > 0.0 and last_accept_radius > 0.0:
-                radius = max(radius, floor * last_accept_radius)
+            if floor > 0.0:
+                radius = max(radius, floor * hwm_radius)
 
         step += 1
         lam_history.append(max(lam_final, omega))

@@ -345,7 +345,8 @@ class Config:
     # step (0 disables).  Rejections are the only remaining shrink source, and 32 of them at
     # WINDOW_SCALE = 3 walk 1.5 to 1e-14: both finished runs stopped early that way (r10 at
     # 266 of 600 iterations, c100 at 508 of 2000) with the line search still able to descend.
-    dsgnar_radius_floor: float = 1.0e-3
+    dsgnar_radius_floor: float = 1.0e-3   # of the HIGH-WATER MARK of the radius, not of the
+                                          # last accepted one (that decays with it)
     # Impose the inner boundary data by construction rather than by a penalty: the fields
     # are blended with the datum (taken at the same direction) with weight 1 - rho_in/rho,
     # so they ARE the datum on the inner sphere.  The residual maps show the soft inner BC
