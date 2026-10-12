@@ -1569,6 +1569,11 @@ def parse_args(argv=None):
     p.add_argument("--dsgnar-row-chunk", type=int, default=None, dest="dsgnar_row_chunk",
                    help="rows per block in the CountSketch (default 4096; 0 = all rows at once, "
                         "which builds a rows x s x K workspace and dies of OOM at s=128)")
+    p.add_argument("--dsgnar-shrink-on-accept", action="store_true", dest="dsgnar_shrink_ok",
+                   help="let an ACCEPTED step shrink the trust region as the paper's radius rule "
+                        "does (default: never shrink on success; the model's ratio is not "
+                        "trustworthy enough here, and the safeguarded length makes a large radius "
+                        "safe)")
     p.add_argument("--dsgnar-hashes", type=int, default=None, dest="dsgnar_hashes",
                    help="CountSketch hash functions (default 4).  The row sketch's variance "
                         "falls like 1/K and the sketched model's predicted decrease is measured "
@@ -1774,6 +1779,8 @@ def parse_args(argv=None):
         cfg.dsgnar_omega = a.dsgnar_omega
     if a.dsgnar_chunk is not None:
         cfg.dsgnar_chunk = a.dsgnar_chunk
+    if a.dsgnar_shrink_ok:
+        cfg.dsgnar_grow_on_accept = False
     if a.dsgnar_hashes is not None:
         cfg.dsgnar_hashes = a.dsgnar_hashes
     if a.dsgnar_no_calibrate:

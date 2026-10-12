@@ -336,6 +336,11 @@ class Config:
     # estimate of the model decrease is measured NOISE-limited here (the prediction stays at
     # ~1.6e-02 across s = 64..512 while the true model varies 4x).  The reference uses 4.
     dsgnar_hashes: int = 4
+    # An ACCEPTED step never shrinks the trust region (only a rejected one does): the
+    # model's ratio is not trustworthy enough to justify shrinking after a success, and with
+    # the safeguarded length a too-large radius is safe.  Measured: without this the radius
+    # walked to delta_min at iteration 76 of a run that had accepted 72 of them.
+    dsgnar_grow_on_accept: bool = True
     # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of
     # `qn_block` iterations (the inverse Hessian is carried across them), and the run stops
     # when `patience` consecutive blocks improve the loss by less than `plateau_tol`

@@ -735,9 +735,16 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         if accepted:
             flat = flat + used * final_step
             loss = new_loss
-            # the trust region follows the ACCEPTED length: if a tenth of the step was usable,
-            # the next radius is about a tenth, not delta_star
-            radius = delta_star if used >= 1.0 else max(delta_min, used * delta_star)
+            # The radius follows the ACCEPTED length -- but an accepted step never SHRINKS it.
+            # The paper moves the radius to the PCHIP radius `delta_star`, which is right when the
+            # model's ratio is trustworthy; here it is not (the calibration factor runs 60-80 in
+            # the middle of a run), so "the objective fell but the model thinks it should have
+            # fallen more" shrank the radius on *success* and walked it to delta_min after 76
+            # iterations -- loss 8.3e-06 with 72 accepted / 4 rejected, i.e. descent that stopped
+            # for no reason the loss knew about.  With the safeguarded length a too-large radius
+            # is safe (the scan trims it), so the radius only shrinks on a REJECTED step.
+            nxt = delta_star if used >= 1.0 else max(delta_min, used * delta_star)
+            radius = max(radius, nxt) if bool(getattr(cfg, "dsgnar_grow_on_accept", True)) else nxt
             lam_final = lam_star
             accepted_count += 1
         else:

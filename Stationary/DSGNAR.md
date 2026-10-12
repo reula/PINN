@@ -351,6 +351,33 @@ only doubles the (minor) CountSketch work.  At ~13% of the loss per iteration, ~
 should take the r10 Adam end (6.6e-04) to the 1e-11 range.  The stop condition to watch is no
 longer `radius below threshold`, which is what the previous three runs reported.
 
+### Fourth measurement: the production run works, and one last piece of the radius rule
+
+`runs/pq_r10_phihyb025_dsgnar2` -- the recipe above, from the Adam end of the r10 shell
+(loss 5.399738e-04), on the GPU:
+
+```
+[dsgnar] step      1  loss 4.212520e-04  rho +0.358  lam 5.756e+02  radius 1.667e-01  target 0.15  (44.3s)
+[dsgnar] DSGNAR: loss 5.399738e-04 -> 8.332133e-06 in 76 iterations (206.6s); radius below threshold
+         s=128, accepted 72, rejected 4, stage2=True
+[dsgnar] timing: batched JVPs 149.2s, probe evaluations 5.0s, other 52.4s
+```
+
+**65x down in 3.6 minutes, 72 of 76 steps accepted, `rho` median 0.153 against a target of 0.15** --
+the trust-region control is now nominal, where before it was 4/28 with `rho ~ 0.02`.  (The report
+also labels the phase DSGNAR now, which is how the earlier stall had been invisible.)
+
+It still ended on `radius below threshold`, and the trajectory says why: the radius went
+1.0 -> 0.167 -> ... -> 1.0e-14 while *72 steps were being accepted*, because the paper's rule moves
+the radius to the PCHIP radius `delta_star`, and with a model whose calibration factor runs 60-80
+mid-run `delta_star` is systematically smaller than the radius that just produced a good step.  So
+a *successful* step shrank the trust region and the run stopped for a reason the loss knew nothing
+about.  Since the safeguarded length makes a too-large radius safe (the scan trims it), the radius
+now shrinks only on a **rejected** step (`--dsgnar-shrink-on-accept` restores the paper's rule).
+Same local problem, 60 iterations with that change: **60 accepted / 0 rejected, 3.7626e-02 ->
+1.0700e-04 (99.7%), stopped on budget**, the lengths trimmed to 1/2, 1/4, 1/8, 1/16 ... as the run
+progresses.  That is the configuration to use on the GPU.
+
 ### Second measurement: from the end of Adam it stops after 28 iterations
 
 `runs/pq_c100_vacH_dsgnar_fromadam` — the same flags, started from the Adam end (loss 8.27e-3):
