@@ -1569,6 +1569,11 @@ def parse_args(argv=None):
     p.add_argument("--dsgnar-row-chunk", type=int, default=None, dest="dsgnar_row_chunk",
                    help="rows per block in the CountSketch (default 4096; 0 = all rows at once, "
                         "which builds a rows x s x K workspace and dies of OOM at s=128)")
+    p.add_argument("--log-every", type=int, default=None, dest="log_every",
+                   help="how often the phases print a progress line (default 200).  The DSGNAR "
+                        "phase is otherwise silent between its first three step scans and the "
+                        "next multiple of this, which reads as a hang: --log-every 25 gives a "
+                        "line about every minute")
     p.add_argument("--dsgnar-shrink-on-accept", action="store_true", dest="dsgnar_shrink_ok",
                    help="let an ACCEPTED step shrink the trust region as the paper's radius rule "
                         "does (default: never shrink on success; the model's ratio is not "
@@ -1779,6 +1784,8 @@ def parse_args(argv=None):
         cfg.dsgnar_omega = a.dsgnar_omega
     if a.dsgnar_chunk is not None:
         cfg.dsgnar_chunk = a.dsgnar_chunk
+    if a.log_every is not None:
+        cfg.log_every = int(a.log_every)
     if a.dsgnar_shrink_ok:
         cfg.dsgnar_grow_on_accept = False
     if a.dsgnar_hashes is not None:
