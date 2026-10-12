@@ -711,9 +711,27 @@ def dsgnar_qn_phase(state, batch, cfg: Config, model, exact_fields, weights,
         return FlatObjective(state, make_batch(jax.random.PRNGKey(cfg.seed + 777 + point), cfg),
                              cfg, model, exact_fields, weights=weights)
 
+    # An in-phase checkpoint, because this phase has no iteration-level checkpointing of its own
+    # and a long run is worth hours: every `--ckpt-every` iterations the current parameters go to
+    # `params_dsgnar.pkl` (atomically, through write_params), so a kill costs at most that many
+    # iterations and the next run continues with
+    #     --steps 0 --init-from runs/<that run>/params_dsgnar.pkl
+    # A distinct name on purpose: `params.pkl` is the run's RESULT and is not written until the
+    # phase finishes.
+    every = int(cfg.ckpt_every or 0)
+    n_ckpt = [0]
+
+    def checkpoint(step, loss_now, flat_now):
+        if every and step and step % every == 0:
+            write_params(cfg.outdir, obj.unflatten(flat_now), "params_dsgnar.pkl")
+            n_ckpt[0] += 1
+            if verbose:
+                print(f"[dsgnar] checkpoint at iteration {step} (loss {loss_now:.6e}) -> "
+                      f"params_dsgnar.pkl", flush=True)
+
     flat, hist, info = dsgnar_phase(obj, obj.flat0, cfg, verbose=verbose,
                                     step_offset=int(cfg.steps) + start_total,
-                                    resample=resample)
+                                    callback=checkpoint, resample=resample)
     if verbose:
         print(f"[dsgnar] {info['iterations']} iteration(s), s={info['sketch']}, "
               f"{info['accepted']} accepted / {info['rejected']} rejected, "
