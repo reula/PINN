@@ -237,6 +237,44 @@ the separable basis used by the earlier solver, every basis function lay in the 
 order-3 and order-4 least-squares systems was identically zero (largest entry 6.2e-15),
 against 9.9e-3 at order 1 and 2.5e-4 at order 2.
 
+### 6.3b With a PURE QUADRUPOLE datum there is no spurious dipole
+
+The order-1 distortion of Sec. 6.3 is `A = S1/(rho_in + 2 rho_out^3/rho_in^2)`, proportional to the
+data's DIPOLE amplitude, so the natural question is what survives when the datum has no dipole at
+all: `S1 = 0`, `S2 = 0.05`.  `laplace_probe.py` solves exactly that (ratio-4 shell, homogeneous
+`B_n[lam - lam0] = 0`, hybrid radial law with 40 % log-uniform points, three independent batches,
+error and decomposition measured on fresh points) and projects the error onto the two homogeneous
+radial powers of the flat Laplacian per angular sector, `rho^l` (growing) and `rho^-(l+1)`
+(decaying):
+
+| order | max\|err\| (3 batches) | l = 1 growing `rho^1` | l = 2 growing `rho^2` |
+|---|---|---|---|
+| 1, `S1 = 0.1` (shipped data) | 3.45e-03 | **+3.07e-03** | +1.7e-03 |
+| 1, `S1 = 0` | 4.84e-04, 4.88e-04, 4.84e-04 | **+4.5e-06, -4.5e-07, +5.3e-06** | +5.19..5.22e-04 |
+| 2, `S1 = 0` | 1.22e-04, 1.29e-04, 1.33e-04 | **+2.2e-06, -2.4e-06, +3.7e-07** | -1.33..-1.36e-04 |
+
+(SBroyden, 657..1053 iterations, every solve converged; the 3.07e-03 reproduces the `A` of
+Sec. 6.3 exactly, which is the check that the decomposition measures the documented quantity.)
+
+**The dipole is data-driven and nothing else.**  Remove the datum's dipole and the l = 1 sector
+falls from 3.07e-03 to the solver's floor, ~1e-6, a factor 500 below the l = 2 coefficient that
+survives; the whole order-1 distortion is then the spurious growing QUADRUPOLE, `~5.2e-04`, and
+going to order 2 divides it by 4.  In this problem the l = 1 amplitude is fixed by two things:
+the inner datum carries no l = 1, and at `rho_in` the growing and decaying l = 1 harmonics must
+cancel, `a rho_in + b/rho_in^2 = 0`; since `B_n` does not annihilate `rho^1`, the outer condition
+forces `a = 0`.  So there is no kernel mode to drift into.
+
+That is the sharpest statement available about the production dipole, and it is a negative one:
+the `|S_10| ~ 0.37` of `pq_r100_phihyb025_hard2` (whose inner datum also has `S1 = 0`) cannot be
+explained by the formulation or by an unconstrained kernel -- the reduced flat problem with the
+same multipole content in its data has no dipole at all.  Whatever makes it there is in the
+full system, and the obvious candidate is the one thing this reduction removes: the metric.  The
+lambda equation is `Delta_h lambda`, so an l = 1 component of `h` is an l = 1 SOURCE for it, while
+the metric's boundary weights in these runs are switched off (`inner_h = 0, outer_h = 0`) and its
+interior content is constrained only by Ricci and the gauge condition.  The check to run next is a
+multipole decomposition of `h` itself on the production runs: if `h` carries l = 1 where `lambda`
+does, the source is identified.
+
 ### 6.4 The background subtraction has to match on both sides
 
 `B_n` sees the background: applied to a constant it gives `prod(1+i) = 6` at order 3, so a
