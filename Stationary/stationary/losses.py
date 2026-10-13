@@ -173,7 +173,9 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
                                     jnp.array([f.lam - e.lam])])
 
         R = jax.vmap(one)(xs)
-        return {"h": R[:, :6], "lam": R[:, 6]}
+        drop = getattr(cfg, "drop_inner_ls", ()) or ()
+        return {"h": _drop_legendre_modes(R[:, :6], xs, drop),
+                "lam": _drop_legendre_modes(R[:, 6][:, None], xs, drop)[:, 0]}
 
     def one(x):
         f = point_fields(x)
@@ -190,9 +192,11 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
         ])
 
     R = jax.vmap(one)(xs)
-    out = {"lam": R[:, 0], "h_tan": R[:, 2:]}
+    drop = getattr(cfg, "drop_inner_ls", ()) or ()
+    out = {"lam": _drop_legendre_modes(R[:, 0][:, None], xs, drop)[:, 0],
+           "h_tan": _drop_legendre_modes(R[:, 2:], xs, drop)}
     if cfg.inner_h_rr is not None:
-        out["h_rr"] = R[:, 1]
+        out["h_rr"] = _drop_legendre_modes(R[:, 1][:, None], xs, drop)[:, 0]
     return out
 
 
@@ -307,12 +311,48 @@ def outer_bc_raw(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict
             return jnp.concatenate([pack_sym(rh - sh) * OFFW, jnp.array([rl - sl])])
 
         R = jax.vmap(one)(xs)
-        out = {"h": R[:, :6], "lam": R[:, -1]}
+        drop = getattr(cfg, "drop_robin_ls", ()) or ()
+        out = {"h": _drop_legendre_modes(R[:, :6], xs, drop),
+               "lam": _drop_legendre_modes(R[:, -1][:, None], xs, drop)[:, 0]}
         if cfg.robin_include_G:
-            out["G"] = R[:, 6:24]
+            out["G"] = _drop_legendre_modes(R[:, 6:24], xs, drop)
         return out
 
     raise ValueError(f"unknown outer_bc {cfg.outer_bc!r}")
+
+
+def _legendre(l, mu):
+    """P_l(mu) by the standard recurrence (jax has no Legendre module)."""
+    if l == 0:
+        return jnp.ones_like(mu)
+    p0, p1 = jnp.ones_like(mu), mu
+    for k in range(2, l + 1):
+        p0, p1 = p1, ((2 * k - 1) * mu * p1 - (k - 1) * p0) / k
+    return p1
+
+
+def _drop_legendre_modes(R, xs, ls):
+    """Remove the `l in ls` angular content of every column of `R`, sampled on the sphere `xs`.
+
+    `cfg.drop_robin_ls` is how a run says "do not let the outer condition act on this multipole":
+    the residual handed to the loss keeps the l = 0 and l >= 2 parts untouched and loses the l = 1
+    one, so the dipole is left completely free at the outer boundary.  That is a diagnostic, not a
+    physical statement: with the Robin window's action on the dipole removed, whatever the interior
+    pushes into that sector is unopposed, and the multipole it settles into can be read directly.
+
+    The outer batch is a uniform draw on the sphere, so the coefficient of `P_l(mu)` is estimated
+    without bias by `(2l+1)/N sum_i R_i P_l(mu_i)`, since `E[P_l P_l'] = delta_ll'/(2l+1)` for a
+    uniform `mu`.  Every column (a metric component, or lambda) is treated separately.
+    """
+    ls = [int(l) for l in (ls or ())]
+    if not ls:
+        return R
+    mu = xs[:, 2] / jnp.linalg.norm(xs, axis=-1)
+    for l in ls:
+        P = _legendre(l, mu)
+        c = (2 * l + 1) / R.shape[0] * jnp.sum(R * P[:, None], axis=0)
+        R = R - c[None, :] * P[:, None]
+    return R
 
 
 def outer_bc_terms(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict:

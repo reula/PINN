@@ -353,6 +353,15 @@ class Config:
     # competing with the PDE loss in a thin ring at r = rho_in, which is where the raw
     # lambda-equation residual is concentrated in both finished runs.
     hard_inner_bc: bool = False
+    # Multipoles the OUTER condition is not allowed to act on (--drop-robin-l 1 drops the
+    # dipole).  A diagnostic: it leaves that sector free so one can see what the interior
+    # pushes into it, and it is how a run separates the Robin window's action on a given
+    # multipole from the multipole's own content.
+    drop_robin_ls: tuple = ()
+    # The same for the INNER datum (--drop-inner-l 1): the inner data on these runs carry no
+    # dipole, so requiring the field's l = 1 part to match them is itself a dipole condition.
+    # Dropping both makes the dipole a completely free mode, which is the point of the test.
+    drop_inner_ls: tuple = ()
     # `ckpt_every` also drives an in-phase DSGNAR checkpoint (params_dsgnar.pkl): the phase
     # has no iteration-level checkpointing of its own, and a competitive run is hours long.
     # "Run until the loss plateaus": the quasi-Newton phase is done in blocks of

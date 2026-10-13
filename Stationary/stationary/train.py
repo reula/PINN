@@ -1602,6 +1602,12 @@ def parse_args(argv=None):
                         "phase is otherwise silent between its first three step scans and the "
                         "next multiple of this, which reads as a hang: --log-every 25 gives a "
                         "line about every minute")
+    p.add_argument("--drop-robin-l", action="append", type=int, default=None, dest="drop_robin_l",
+                   help="multipole the outer condition must not act on (e.g. 1 for the dipole); "
+                        "repeatable, and a diagnostic: that sector is then left free")
+    p.add_argument("--drop-inner-l", action="append", type=int, default=None, dest="drop_inner_l",
+                   help="multipole the INNER datum must not act on (e.g. 1 for the dipole): the "
+                        "inner data have no dipole, so this frees the sector there too")
     p.add_argument("--hard-inner-bc", action="store_true", dest="hard_inner_bc",
                    help="impose the inner boundary data by construction (blend the fields with the "
                         "datum at the same direction, weight 1 - rho_in/rho) instead of penalising "
@@ -1822,6 +1828,10 @@ def parse_args(argv=None):
         cfg.dsgnar_chunk = a.dsgnar_chunk
     if a.log_every is not None:
         cfg.log_every = int(a.log_every)
+    if a.drop_inner_l:
+        cfg.drop_inner_ls = tuple(int(l) for l in a.drop_inner_l)
+    if a.drop_robin_l:
+        cfg.drop_robin_ls = tuple(int(l) for l in a.drop_robin_l)
     if a.hard_inner_bc:
         cfg.hard_inner_bc = True
     if a.dsgnar_radius_floor is not None:
