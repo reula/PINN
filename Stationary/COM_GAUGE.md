@@ -105,6 +105,57 @@ should be `propto lam_0'`, not a decaying harmonic `rho^{-2}` with an independen
 these two profiles are different functions of `rho` on a shell of ratio 100 and are easy to tell
 apart.
 
+## 3b. The measurement: it is NOT a translation (and not even a clean harmonic)
+
+`com_translation_test.py` runs the Sec. 3 test on the two finished c100 runs (`floor2`,
+`hard2`), with a positive control first.  The control is a field that *is* a rigid translation,
+`F(x) = 1 - 0.1/|x - d z|`, put through the identical projection and fit:
+
+| control | `l = 1` max | ratio median | spread | exact `-d_z` |
+|---|---|---|---|---|
+| `d_z = 0` | 6.2e-17 | — | — | 0 |
+| `d_z = 0.05` | 1.25e-03 | **-0.0500** | 2.2e-04 | -0.05 |
+| `d_z = 0.20` | 5.00e-03 | **-0.1999** | 8.7e-04 | -0.20 |
+
+So the ratio test would have found a translation: it is constant to 0.4 % and returns `d_z` exactly.
+On the runs it does not come out at all:
+
+| run | `l = 1` of `lambda` | ratio over `rho in [2,99]` | far field `[60,99]` | `rho^-2` explains |
+|---|---|---|---|---|
+| `floor2` | max 1.43e-05 **at `rho ~ 3.5`** | -2.5e-04 +- 3.9e-03 | +2.7e-03 +- 2.7e-03 | 51 % of the `l = 1` norm in `[40,99]` |
+| `hard2` | max 2.63e-05 **at `rho ~ 9.1`** | +6.7e-04 +- 2.7e-02 | +6.1e-02 +- 4.1e-02 | **3.4 %** |
+
+Three things are wrong with the translation reading, in increasing order of importance:
+
+1. the ratio is **not constant and changes sign** as the fit window moves (and the spread is larger
+   than the median), where the control's spread was 0.4 %;
+2. the `l = 1` amplitude peaks in the **near field** (`rho ~ 3.5` and `9.1`), not in the tail, and
+   oscillates with several nodes in `log rho` — visible in
+   `plots/com_translation_floor2.png` — which is the shape of the network's own radial basis
+   (`sin/cos(pi i t)`, `t = log(rho/rho_in)/log(ratio)`), not of a smooth gauge mode;
+3. the far-field `l = 1` content is **not a decaying harmonic**: a `c/rho^2` fit explains 51 % of its
+   norm for `floor2` and only 3.4 % for `hard2`, the run with the largest reported `|S_10|`.
+
+The cross-sector check fails the same way: the metric's `l = 1` amplitude is ~1e-04 and its own fit
+gives `a_z ~ 0.8-1.3`, four orders of magnitude from the `a_z ~ 1e-04` that `lambda` implies, so `h`
+and `lambda` are not two views of one translated configuration.
+
+**What this means.**  The dipole is not a rigid translation of the configuration, and — more
+usefully — the `l = 1` content of these solutions is *not resolved as an asymptotic harmonic at all*.
+That is exactly what the reported multipole tables had been hinting at: the `|S_10|` lines carry a
+"drift over the table" of 100-163 %, i.e. the extracted dipole changes with the extraction radius.
+The numbers in those lines are therefore not converged multipole measurements, and building a
+center-of-mass argument on top of them would be building on sand.
+
+**Consequence for the plan.**  The gauge pin of Sec. 4 keeps its *principle* — the asymptotic chart
+does have a translation freedom and a center of mass is the invariant that fixes it — but here it
+would act on a field whose `l = 1` sector is dominated by ansatz-resolution structure.  The order of
+operations is therefore reversed: pin the `l = 1` (or the center of mass) *first*, as a
+**regularisation** that forces that sector to be a clean decaying harmonic, and only then read the
+dipole as a gauge mode.  Route 1 of Sec. 4 does both at once, and the diagnostic to confirm it is
+the same ratio test: after the pin, the ratio should be constant and the far-field `c/rho^2` fraction
+should approach 1.
+
 ## 4. Step two: the gauge pin to implement afterwards
 
 Three routes, in increasing order of fidelity:
