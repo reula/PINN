@@ -179,7 +179,8 @@ def main():
                                              "initial_H": jnp.eye(flat0.size),
                                              "update_method": "ssbroyden2",
                                              "initial_scale": False})
-            solved, iters, ok = unflatten(res.x), int(res.nit), bool(res.success)
+            solved, iters = unflatten(res.x), int(res.nit)
+            detail = "converged" if res.success else f"SSBroyden status {int(res.status)}"
         else:
             from stationary.dsgnar import dsgnar_phase
 
@@ -199,7 +200,11 @@ def main():
                 return make_obj(args.seed0 + 1000 * b + counter["k"])
 
             flat, hist, info = dsgnar_phase(obj, obj.flat0, cfg, verbose=False, resample=resample)
-            solved, iters, ok = obj.unflatten(flat), int(info["iterations"]), True
+            solved, iters = obj.unflatten(flat), int(info["iterations"])
+            # DSGNAR stops on its budget or on the radius; it has no convergence flag of
+            # its own, so report what it actually did rather than assuming
+            detail = (f"stopped: {info['stopped']}, accepted {info['accepted']}/"
+                      f"{info['accepted'] + info['rejected']}")
 
         # measured on FRESH points, never the ones trained on
         xs = P.sample_shell(jax.random.PRNGKey(9 + b), 4096, P.cfg_ratio4())
@@ -207,8 +212,7 @@ def main():
         exact = np.asarray(jax.vmap(P.lam_exact_ratio4)(xs))
         err = got - exact
         d = decompose(P, cfg, xs, err)
-        label = "converged" if ok else "NOT converged"
-        print(f"  batch {b}: {iters:5d} iterations ({label}), max|err| {np.max(np.abs(err)):.3e}")
+        print(f"  batch {b}: {iters:5d} iterations ({detail}), max|err| {np.max(np.abs(err)):.3e}")
         for l in (0, 1, 2):
             print(f"      l={l}:  growing rho^{l} {d[l]['grow']:+.3e}   "
                   f"decaying rho^-{l + 1} {d[l]['decay']:+.3e}   (sector fit {d[l]['resid']:.1e})")
