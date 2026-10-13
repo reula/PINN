@@ -1,0 +1,61 @@
+########## ssbroyden order 1
+flat Laplacian, ratio-4 shell, order 1, S1 = 0, S2 = 0.05
+optimiser ssbroyden, 256 collocation + 96 boundary points, radial hybrid with log fraction 0.4, 3 independent batches
+  batch 0:   953 iterations (converged), max|err| 4.820e-04
+      l=0:  growing rho^0 +6.770e-06   decaying rho^-1 -8.726e-07   (sector fit 4.8e-04)
+      l=1:  growing rho^1 -1.298e-05   decaying rho^-2 -1.582e-06   (sector fit 5.0e-04)
+      l=2:  growing rho^2 +5.224e-04   decaying rho^-3 -2.102e-08   (sector fit 6.8e-05)
+  batch 1:  1053 iterations (converged), max|err| 4.883e-04
+      l=0:  growing rho^0 -1.373e-05   decaying rho^-1 +5.096e-06   (sector fit 5.0e-04)
+      l=1:  growing rho^1 +4.540e-06   decaying rho^-2 -3.423e-07   (sector fit 4.9e-04)
+      l=2:  growing rho^2 +5.201e-04   decaying rho^-3 -4.168e-07   (sector fit 1.8e-05)
+  batch 2:   801 iterations (converged), max|err| 4.844e-04
+      l=0:  growing rho^0 -3.626e-06   decaying rho^-1 +2.247e-06   (sector fit 4.9e-04)
+      l=1:  growing rho^1 -4.482e-07   decaying rho^-2 +4.189e-07   (sector fit 4.8e-04)
+      l=2:  growing rho^2 +5.190e-04   decaying rho^-3 -4.541e-07   (sector fit 5.5e-05)
+########## ssbroyden order 2
+flat Laplacian, ratio-4 shell, order 2, S1 = 0, S2 = 0.05
+optimiser ssbroyden, 256 collocation + 96 boundary points, radial hybrid with log fraction 0.4, 3 independent batches
+  batch 0:   797 iterations (converged), max|err| 1.292e-04
+      l=0:  growing rho^0 -8.102e-06   decaying rho^-1 +2.658e-06   (sector fit 1.2e-04)
+      l=1:  growing rho^1 +2.157e-06   decaying rho^-2 -3.123e-07   (sector fit 1.3e-04)
+      l=2:  growing rho^2 -1.333e-04   decaying rho^-3 +2.418e-07   (sector fit 2.5e-05)
+  batch 1:   657 iterations (converged), max|err| 1.222e-04
+      l=0:  growing rho^0 +9.972e-06   decaying rho^-1 -2.609e-07   (sector fit 1.3e-04)
+      l=1:  growing rho^1 -2.365e-06   decaying rho^-2 +9.429e-07   (sector fit 1.2e-04)
+      l=2:  growing rho^2 -1.346e-04   decaying rho^-3 +4.146e-07   (sector fit 6.0e-05)
+  batch 2:   775 iterations (converged), max|err| 1.331e-04
+      l=0:  growing rho^0 -5.779e-06   decaying rho^-1 +1.485e-06   (sector fit 1.3e-04)
+      l=1:  growing rho^1 +3.693e-07   decaying rho^-2 -5.813e-07   (sector fit 1.3e-04)
+      l=2:  growing rho^2 -1.360e-04   decaying rho^-3 +1.760e-07   (sector fit 1.8e-05)
+########## dsgnar order 1
+flat Laplacian, ratio-4 shell, order 1, S1 = 0, S2 = 0.05
+optimiser dsgnar, 256 collocation + 96 boundary points, radial hybrid with log fraction 0.4, 3 independent batches
+  batch 0:   400 iterations (converged), max|err| 4.630e-02
+      l=0:  growing rho^0 +1.854e-04   decaying rho^-1 -1.832e-04   (sector fit 4.6e-02)
+      l=1:  growing rho^1 +1.104e-03   decaying rho^-2 +2.013e-05   (sector fit 4.7e-02)
+      l=2:  growing rho^2 +2.153e-03   decaying rho^-3 -7.348e-04   (sector fit 2.1e-03)
+  batch 1:   400 iterations (converged), max|err| 4.329e-02
+      l=0:  growing rho^0 +1.067e-03   decaying rho^-1 +1.649e-04   (sector fit 4.5e-02)
+      l=1:  growing rho^1 +1.767e-03   decaying rho^-2 -1.463e-04   (sector fit 4.5e-02)
+      l=2:  growing rho^2 +1.412e-03   decaying rho^-3 -7.264e-04   (sector fit 3.6e-03)
+  batch 2:   400 iterations (converged), max|err| 5.257e-02
+      l=0:  growing rho^0 -1.033e-03   decaying rho^-1 -4.981e-04   (sector fit 5.0e-02)
+      l=1:  growing rho^1 +1.686e-05   decaying rho^-2 -1.787e-04   (sector fit 5.0e-02)
+      l=2:  growing rho^2 +1.200e-03   decaying rho^-3 -7.439e-04   (sector fit 5.6e-03)
+########## dsgnar order 2
+flat Laplacian, ratio-4 shell, order 2, S1 = 0, S2 = 0.05
+optimiser dsgnar, 256 collocation + 96 boundary points, radial hybrid with log fraction 0.4, 3 independent batches
+  batch 0:   400 iterations (converged), max|err| 4.736e-02
+      l=0:  growing rho^0 +2.761e-04   decaying rho^-1 -4.057e-04   (sector fit 4.6e-02)
+      l=1:  growing rho^1 +5.038e-04   decaying rho^-2 +2.899e-05   (sector fit 4.8e-02)
+      l=2:  growing rho^2 +2.264e-03   decaying rho^-3 -7.417e-04   (sector fit 2.4e-03)
+  batch 1:   400 iterations (converged), max|err| 4.466e-02
+      l=0:  growing rho^0 +3.746e-04   decaying rho^-1 +2.766e-04   (sector fit 4.6e-02)
+      l=1:  growing rho^1 +7.668e-04   decaying rho^-2 -7.473e-05   (sector fit 4.6e-02)
+      l=2:  growing rho^2 +1.470e-03   decaying rho^-3 -7.233e-04   (sector fit 3.9e-03)
+  batch 2:   400 iterations (converged), max|err| 5.081e-02
+      l=0:  growing rho^0 -4.229e-04   decaying rho^-1 -4.822e-04   (sector fit 4.8e-02)
+      l=1:  growing rho^1 -5.095e-04   decaying rho^-2 -4.695e-05   (sector fit 5.0e-02)
+      l=2:  growing rho^2 +1.150e-03   decaying rho^-3 -7.580e-04   (sector fit 3.0e-03)
+EXIT=0

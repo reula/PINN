@@ -147,8 +147,12 @@ def main():
     n_coll = args.n_coll or P.RATIO4_COLL
     n_bnd = args.n_bnd or P.RATIO4_BND
     print(f"flat Laplacian, ratio-4 shell, order {args.order}, S1 = {args.s1:g}, S2 = {args.s2:g}")
+    settings = (f"{args.optimizer} steps={args.dsgnar_steps} s={args.dsgnar_sketch} "
+                f"resample={args.resample_every}" if args.optimizer == "dsgnar"
+                else f"{args.optimizer} maxiter={args.maxiter or P.QN_MAXITER}")
     print(f"optimiser {args.optimizer}, {n_coll} collocation + {2 * n_bnd} boundary points, "
           f"radial hybrid with log fraction {args.log_frac}, {args.batches} independent batches")
+    print(f"settings {settings}")
 
     for b in range(args.batches):
         P.S1, P.S2 = args.s1, args.s2
