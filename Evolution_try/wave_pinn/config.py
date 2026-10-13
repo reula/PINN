@@ -173,14 +173,25 @@ class Config:
                                        # calibration had nothing to fix.
                                        #
                                        # And it is not a cosmetic difference.  T=2, n_coll=2201,
-                                       # K=4, same seed and same frozen batch, only s changed:
-                                       #   s= 733   186 it   loss 2.243e-14   rel L2 6.756e-06
-                                       #   s=1100   301 it   loss 2.918e-20   rel L2 4.116e-09
-                                       # 1640x the accuracy for 2.35x the wall time.  The
-                                       # paper's [d/3, d/2] range spans that much on this
-                                       # problem, so the bottom of it is the wrong end.  Run
-                                       # scripts/dsgnar_sketch_audit.py before choosing: it
-                                       # measures the cosine in about ten minutes.
+                                       # K=4, same seed and same frozen batch, only s changed.
+                                       # scripts/run_sketch_curve.sh, on the A30:
+                                       #   s= 733 (d/3)   144 s   loss 2.283e-14   rel L2 4.580e-06
+                                       #   s=1100 (d/2)   215 s   loss 2.897e-20   rel L2 4.167e-09
+                                       #   s=1500 (0.68d) 276 s   loss 5.412e-23   rel L2 6.963e-10
+                                       # On CPU the same two first points gave 6.756e-06 and
+                                       # 4.116e-09: the LOSSES reproduce to 2%, the errors differ
+                                       # by up to 1.5x because the error is far more sensitive
+                                       # than the loss to GPU-versus-CPU reduction order.
+                                       #
+                                       # The returns collapse: d/3 -> d/2 buys 1099x for 1.49x
+                                       # the time, and d/2 -> 0.68 d only 6x more for 1.28x.  The
+                                       # paper's [d/3, d/2] range therefore spans three orders of
+                                       # magnitude, and the bottom of it is the wrong end.  Past
+                                       # d/2 the per-window solve stops being the limit -- in the
+                                       # windowed chain the hand-over amplification (~1.5x per
+                                       # window, ten windows) takes over, so a further 6x on each
+                                       # window buys little at the end of the chain.
+                                       # Run scripts/dsgnar_sketch_audit.py before choosing.
     dsgnar_stage1_ratio: float = 0.15  # target ratio rho in stage 1 (textbook Eq. 14 units)
     dsgnar_stage2_ratio: float = 0.5   # target ratio rho in stage 2
     dsgnar_delta0: float = 1.0         # initial trust-region radius
