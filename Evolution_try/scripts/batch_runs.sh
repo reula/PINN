@@ -36,6 +36,11 @@ DSGNAR_ROUNDS="${DSGNAR_ROUNDS:-5}"
 QN_STEPS="${QN_STEPS:-1500}"
 QN_ROUNDS="${QN_ROUNDS:-2}"
 STALL_MINUTES="${STALL_MINUTES:-10}"   # kill a run that has produced no output for this long
+DSGNAR_SKETCH="${DSGNAR_SKETCH:-0}"   # 0 -> the package default, s = d/3.  The audit
+                                      # measured s = d/3 as below the numerical rank of J
+                                      # and 1640x worse than s = d/2 at T = 2, so a
+                                      # production batch probably wants 1100 or 1500.
+FOCUSED="${FOCUSED:-0}"               # 1 -> four cells instead of twelve
 NCOLLS="${NCOLLS:-2201 8192}"
 SNAPSHOT="[0,2,4,6,8,10,12,14,16,18,20]"
 
@@ -79,12 +84,23 @@ fi
 # ---- the matrix -----------------------------------------------------------
 # optimizer  hand-over  n_coll
 MATRIX=()
-for nc in $NCOLLS; do
-    for ic in hard soft soft_all; do
-        MATRIX+=("dsgnar $ic $nc")
-        MATRIX+=("ssbroyden $ic $nc")
+if [ "$FOCUSED" = "1" ]; then
+    # The focused set: the hand-over ordering at the production size, plus one cell
+    # at the smaller size as a cross-check, plus SSBroyden once so the optimiser
+    # comparison is present.  The full twelve are only needed when the sketch size
+    # is settled; at s = d/2 each run costs about 2.4x what it did at s = d/3.
+    for row in "dsgnar soft_all 8192" "dsgnar soft 8192" "dsgnar hard 8192" \
+               "dsgnar soft_all 2201" "ssbroyden soft_all 8192"; do
+        MATRIX+=("$row")
     done
-done
+else
+    for nc in $NCOLLS; do
+        for ic in hard soft soft_all; do
+            MATRIX+=("dsgnar $ic $nc")
+            MATRIX+=("ssbroyden $ic $nc")
+        done
+    done
+fi
 [ "$WITH_BROYDEN" = "1" ] && [ "$HAVE_JAXOPT" = "1" ] && for nc in $NCOLLS; do
     for ic in hard soft soft_all; do
         MATRIX+=("jaxopt_broyden $ic $nc")
@@ -95,7 +111,7 @@ flags_for() {
     local opt="$1"
     case "$opt" in
         dsgnar)    echo "--set optimizer=dsgnar --set dsgnar_steps=$DSGNAR_STEPS \
---set dsgnar_sketch=0 --set dsgnar_delta0=1.0 --set dsgnar_delta_min=1e-14 \
+--set dsgnar_sketch=$DSGNAR_SKETCH --set dsgnar_delta0=1.0 --set dsgnar_delta_min=1e-14 \
 --set resample_rounds=$DSGNAR_ROUNDS" ;;
         ssbroyden) # Two rounds, not five: each SSBroyden round runs to its own plateau,
                    # thousands of iterations, so five per window is not a batch.  But not
@@ -111,11 +127,21 @@ flags_for() {
     esac
 }
 
-label_for() { echo "$1_$2_nc$3"; }
+label_for() {
+    # The sketch size goes in the LABEL.  Without it a re-run at a different s
+    # collides with the finished runs of the same name and is skipped as "already
+    # done" -- a silent no-op that reports success, which is the failure mode this
+    # whole session has been finding in one place after another.
+    local lab="${1}_${2}_nc${3}"
+    if [ "$1" = "dsgnar" ] && [ "${DSGNAR_SKETCH:-0}" != "0" ]; then
+        lab="${lab}_s${DSGNAR_SKETCH}"
+    fi
+    echo "$lab"
+}
 
 # ---- plan -----------------------------------------------------------------
 echo
-echo "=== plan: ${#MATRIX[@]} runs, sequential ==="
+echo "=== plan: ${#MATRIX[@]} runs, sequential  (sketch s = ${DSGNAR_SKETCH:-0}, 0 = d/3)$([[ "$FOCUSED" = 1 ]] && echo ", FOCUSED") ==="
 printf '%-6s %-34s %-9s %s\n' "#" "label" "n_coll" "optimiser / hand-over"
 i=0
 for row in "${MATRIX[@]}"; do
