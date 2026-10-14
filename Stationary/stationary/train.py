@@ -224,12 +224,31 @@ def build(cfg: Config, init_from: str | None = None):
 
 
 def make_batch(key, cfg: Config):
+    """The sampling: collocation in the shell, the inner datum, the outer sphere.
+
+    `outer_extra` carries the SAME Robin condition on a geometric ladder of spheres inside
+    `rho_out` (`outer_shells` extra radii, ratio `outer_shell_ratio`).  Why: the condition is
+    homogeneous and the exact solution satisfies it identically at EVERY radius, so sampling it at
+    several radii is not an approximation -- but sampling it at one radius is gameable.  Measured on
+    pq_r100_phihyb025_R0: B_3[h - I3] was 1.30, 0.52, 0.059 at rho = 50, 90, 99 and 4.8e-05 at
+    rho = 100.0, i.e. the condition held only in the last 0.1 of the shell, and the metric kept a
+    constant l = 2 part of ~6% (h_rr = 1.0288 on the equator, 0.9418 on the axis, against a
+    spherical mean of 1.00015).  A ladder of spheres leaves the layer nowhere to hide.
+    """
     k1, k2, k3 = jax.random.split(key, 3)
-    return {
+    batch = {
         "coll": sample_shell(k1, cfg.n_coll, cfg),
         "inner": sample_sphere(k2, cfg.n_bnd, cfg.rho_in),
         "outer": sample_sphere(k3, cfg.n_bnd_outer or cfg.n_bnd, cfg.rho_out),
     }
+    extra = int(getattr(cfg, "outer_shells", 1) or 1) - 1
+    if extra > 0:
+        ratio = float(getattr(cfg, "outer_shell_ratio", 2.0) or 2.0)
+        keys = jax.random.split(k3, extra)
+        batch["outer_extra"] = jnp.concatenate([
+            sample_sphere(keys[i], cfg.n_bnd_outer or cfg.n_bnd, cfg.rho_out / ratio ** (i + 1))
+            for i in range(extra)])
+    return batch
 
 
 CKPT_NAME = "ckpt.pkl"
@@ -1602,6 +1621,13 @@ def parse_args(argv=None):
                         "phase is otherwise silent between its first three step scans and the "
                         "next multiple of this, which reads as a hang: --log-every 25 gives a "
                         "line about every minute")
+    p.add_argument("--outer-shells", type=int, default=None, dest="outer_shells",
+                   help="impose the outer Robin condition on N spheres (rho_out, rho_out/ratio, "
+                        "...) instead of just rho_out; the exact solution satisfies it at every "
+                        "radius, and a single sphere can be satisfied in a thin layer while the "
+                        "bulk stays wrong")
+    p.add_argument("--outer-shell-ratio", type=float, default=None, dest="outer_shell_ratio",
+                   help="spacing of that ladder (default 2: rho_out/2, /4, ...)")
     p.add_argument("--drop-robin-l", action="append", type=int, default=None, dest="drop_robin_l",
                    help="multipole the outer condition must not act on (e.g. 1 for the dipole); "
                         "repeatable, and a diagnostic: that sector is then left free")
@@ -1833,6 +1859,10 @@ def parse_args(argv=None):
         cfg.log_every = int(a.log_every)
     if getattr(a, "pin_h_robin", None) is False:
         cfg.pin_h_robin = False
+    if a.outer_shells is not None:
+        cfg.outer_shells = int(a.outer_shells)
+    if a.outer_shell_ratio is not None:
+        cfg.outer_shell_ratio = float(a.outer_shell_ratio)
     if a.drop_inner_l:
         cfg.drop_inner_ls = tuple(int(l) for l in a.drop_inner_l)
     if a.drop_robin_l:

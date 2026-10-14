@@ -530,6 +530,9 @@ def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> di
     out["inner"] = sum(inner_bc_terms(pf, batch["inner"], cfg, exact_fields).values())
     # The outer group carries the Robin conditions AND the value pins: the plateau rule and
     # the per-block log watch this number, and a run is not converged while a pin is unmet.
+    if batch.get("outer_extra") is not None:
+        out["outer_extra"] = sum(outer_bc_terms(pf, batch["outer_extra"], cfg, exact_fields,
+                                                lam_inf).values())
     out["outer"] = (sum(outer_bc_terms(pf, batch["outer"], cfg, exact_fields,
                                        lam_inf).values())
                     + sum(outer_pin_terms(pf, batch["outer"], cfg, exact_fields).values()))
@@ -583,6 +586,12 @@ def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
     for k, v in outer_bc_raw(pf, batch["outer"], cfg, exact_fields, lam_inf).items():
         rows.append(jnp.sqrt(jnp.asarray(weights.get(f"outer_{k}", weights["outer"]))
                              / v.size) * v.reshape(-1))
+    # the same condition on the inner shells of the ladder (see train.make_batch).  The PIN stays on
+    # rho_out alone: it is an average and belongs at the outer sphere.
+    if batch.get("outer_extra") is not None:
+        for k, v in outer_bc_raw(pf, batch["outer_extra"], cfg, exact_fields, lam_inf).items():
+            rows.append(jnp.sqrt(jnp.asarray(weights.get(f"outer_{k}", weights["outer"]))
+                                 / v.size) * v.reshape(-1))
     averaged, value = outer_pin_raw(pf, batch["outer"], cfg, exact_fields)
     w_pin = jnp.asarray(cfg.w_pin)
     for v in averaged.values():
@@ -618,6 +627,9 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     inner = inner_bc_terms(pf, batch["inner"], cfg, exact_fields)
     for k, v in inner.items():
         parts[f"inner_{k}"] = v
+    if batch.get("outer_extra") is not None:
+        parts["outer_extra"] = sum(outer_bc_terms(pf, batch["outer_extra"], cfg, exact_fields,
+                                                  lam_inf).values())
     outer = outer_bc_terms(pf, batch["outer"], cfg, exact_fields, lam_inf)
     for k, v in outer.items():
         parts[f"outer_{k}"] = v

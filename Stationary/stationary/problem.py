@@ -369,6 +369,12 @@ class Config:
     # dipole).  A diagnostic: it leaves that sector free so one can see what the interior
     # pushes into it, and it is how a run separates the Robin window's action on a given
     # multipole from the multipole's own content.
+    # The outer Robin condition on a GEOMETRIC LADDER of spheres inside rho_out: the condition
+    # is homogeneous and the exact solution satisfies it at every radius, so this is not an
+    # approximation -- but at a single radius it is gameable (a thin layer at rho_out satisfied
+    # it while the bulk carried a constant l = 2 metric part of ~6%).  1 = the old behaviour.
+    outer_shells: int = 1
+    outer_shell_ratio: float = 2.0     # radii rho_out / ratio, / ratio^2, ...
     drop_robin_ls: tuple = ()
     # The same for the INNER datum (--drop-inner-l 1): the inner data on these runs carry no
     # dipole, so requiring the field's l = 1 part to match them is itself a dipole condition.
