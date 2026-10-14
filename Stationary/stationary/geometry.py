@@ -355,6 +355,39 @@ def lam_eq_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray) -> jnp.nd
     return lam_eq_of(Hinv, hess, dlam, lam)
 
 
+def radial_derivative_residuals_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
+                                     ref: float | None = None, groups=None) -> dict:
+    """The rho-scaled RADIAL DERIVATIVE of every equation group's residual, at many points.
+
+    One jvp along n = x/rho gives all the groups at once (they share the field derivatives), and
+    each is multiplied by length**(exps[g] + 1): the residual carries length^-exps[g] and its
+    radial derivative one more inverse length, so ONE EXTRA RHO is exactly the factor that makes
+    the term dimensionally the same as the group it comes from -- which is what lets it carry the
+    same weight, rather than needing a weight of its own.
+
+    In relative mode the residuals are already dimensionless ratios, so the factor is rho^1.
+
+    Why it exists: a loss built from an equation at scattered points is blind to how the residual
+    varies BETWEEN them, and that is the freedom a thin layer near the boundary (or a
+    non-decaying l = 2 metric part) exploits.
+    """
+    groups = tuple(groups) if groups is not None else tuple(exps)
+    p_extra = 1.0 if _RELATIVE_TERMS else None
+
+    def one(x):
+        rho = jnp.linalg.norm(x)
+        n = x / rho
+        d = jax.jvp(lambda y: residuals_at(fields, y), (x,), (n,))[1]
+        base = rho if ref is None else jnp.asarray(float(ref))
+        out = {}
+        for g in groups:
+            p = p_extra if p_extra is not None else float(exps.get(g, 0.0)) + 1.0
+            out[g] = d[g] * base ** p
+        return out
+
+    return jax.vmap(one)(xs)
+
+
 def radial_derivative_residual_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
                                      ref: float | None = None) -> jnp.ndarray:
     """d/drho of the raw lambda-equation residual, times length**(exp + 1).
