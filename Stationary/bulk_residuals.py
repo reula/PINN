@@ -37,9 +37,17 @@ def _means(batched, rhos, n_th=64):
         n = x / float(r)
         h_rr = jnp.einsum("ni,nij,nj->n", n, f.h, n)
         h_tan = 0.5 * (jnp.einsum("nii->n", f.h) - h_rr)
-        # the l = 0 Legendre projection is (2*0+1)/2 * int dmu = (1/2) sum w .
+        lam = jnp.reshape(f.lam, (-1,))
+        # The l = 0 projection is (1/2) int dmu; but the MEAN is not enough -- a run can have a
+        # perfect spherical mean and a large non-decaying l = 2 part (measured on
+        # pq_r100_phihyb025_R0: mean h_rr(100) = 1.00015 while h_rr = 1.0288 on the equator and
+        # 0.9418 on the axis).  So carry the l = 1, 2 amplitudes as well.
+        def amp(v, l):
+            P = np.polynomial.legendre.Legendre.basis(l)(np.asarray(mu))
+            return (2 * l + 1) / 2 * float(jnp.sum(w * v * jnp.asarray(P)))
         rows[r] = (0.5 * float(jnp.sum(w * h_rr)), 0.5 * float(jnp.sum(w * h_tan)),
-                   0.5 * float(jnp.sum(w * f.lam.reshape(-1))))
+                   0.5 * float(jnp.sum(w * lam)),
+                   amp(h_rr, 1), amp(h_rr, 2), amp(lam, 1), amp(lam, 2))
     return rows
 
 
@@ -109,12 +117,15 @@ def main():
         o = "  ".join(f"{k}={float(jnp.sqrt(jnp.mean(raw_out[k] ** 2))):.2e}" for k in keys)
         prof = "  ".join(f"{r:g}: {rows[r][0]:.5f}/{rows[r][1]:.5f}/{rows[r][2]:.5f}"
                          for r in (2.0, 50.0, 99.0))
+        quad = "  ".join(f"{r:g}: h_rr l2 {rows[r][4]:+.1e}, lam l2 {rows[r][6]:+.1e}"
+                         for r in (2.0, 50.0, 99.0))
         if ref is not None:
             err = "  ".join(f"{r:g}: {rows[r][0]-ref[r][0]:+.1e}/{rows[r][1]-ref[r][1]:+.1e}/"
                             f"{rows[r][2]-ref[r][2]:+.1e}" for r in (2.0, 50.0, 99.0))
         else:
             err = "no exact reference"
         print(f"{os.path.basename(run_dir.rstrip('/')):34s} {b:26s} {o:26s} {prof}")
+        print(f"{'':34s} ANGULAR content (a mean of 1.00 with a large l=2 is not a decayed metric): {quad}")
         print(f"{'':34s} departure from the SPHERICAL reference (h_rr / h_tan / lam), "
               f"NOT an error -- the reference has no quadrupole:  {err}")
         print(f"{'':34s} outer BC rms: " + "  ".join(f"{k}={float(jnp.sqrt(jnp.mean(v ** 2))):.2e}"
