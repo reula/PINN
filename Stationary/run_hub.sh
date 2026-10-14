@@ -246,7 +246,12 @@ POSTLOG="$LOGDIR/$NAME.post.log"
 PIDFILE="$OUTDIR/run.pid"
 RESUME_SH="$OUTDIR/resume.sh"
 
-ENVS=(MPLBACKEND=Agg OMP_NUM_THREADS="$TRAIN_THREADS" MPLCONFIGDIR="$MPLCONFIGDIR")
+# XLA_PYTHON_CLIENT_PREALLOCATE=false and JAX_ENABLE_X64=1 used to be inherited from whatever
+# shell launched the run.  That is how a batch ended up preallocating the default 75% of the
+# card (nvidia-smi: 13 362 MiB held at 0% util -- the pool, not a leak) and how a run can
+# silently fall back to float32.  Both are set here, by the launcher, so they always hold.
+ENVS=(MPLBACKEND=Agg OMP_NUM_THREADS="$TRAIN_THREADS" MPLCONFIGDIR="$MPLCONFIGDIR"
+      XLA_PYTHON_CLIENT_PREALLOCATE=false JAX_ENABLE_X64=1)
 [ -n "${JAX_PLATFORMS:-}" ] && ENVS+=("JAX_PLATFORMS=$JAX_PLATFORMS")
 
 TRAIN=(env "${ENVS[@]}" "$PY" -m stationary.train
