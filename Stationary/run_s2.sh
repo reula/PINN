@@ -47,6 +47,16 @@ if [ "${_DETACHED:-0}" != "1" ]; then
 fi
 
 echo "=== ${TAG} $(date -u '+%Y-%m-%d %H:%M:%S UTC')  HEAD $(git rev-parse --short HEAD 2>/dev/null)"
+# The card, before anything: three attempts of this run died with RESOURCE_EXHAUSTED on a 16 MiB
+# allocation while another job held the device.
+if command -v nvidia-smi > /dev/null 2>&1; then
+    USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1)
+    echo "gpu memory in use: ${USED:-?} MiB"
+    if [ -n "${USED:-}" ] && [ "$USED" -gt "${GPU_FREE_MB:-1500}" ] && [ "${FORCE:-0}" != "1" ]; then
+        echo "!! ${USED} MiB already in use: another job is on the card.  Wait, or FORCE=1."
+        exit 1
+    fi
+fi
 if pgrep -f "stationary.train" > /dev/null && [ "${FORCE:-0}" != "1" ]; then
     echo "!! a training run is already going; stop it or set FORCE=1 (two runs share the A30's" \
          "fp64 units and both crawl)"; exit 1
@@ -55,8 +65,10 @@ if [ -f "$RUN/train.exit" ] && [ "${FORCE:-0}" != "1" ]; then
     echo "!! $RUN already finished (exit $(cat "$RUN/train.exit")); use TAG=... for a new one" \
          "or FORCE=1 to overwrite"; exit 1
 fi
-RHO_OUT=100 TAG="$TAG" bash run_phi_hybrid.sh --only G --steps "$STEPS" --n-coll "$NCOLL" \
-    --n-bnd "$NBND" --n-bnd-outer "$NBND" --radial log --lbfgs-steps "$LBFGS" \
-    --outer-shell-fracs "$SHELLS" $EXTRA \
+# env only: the launcher owns the flags, so job.sh records ONE set of them (S2's carried two,
+# the launcher's and this script's, and only the last won).
+STEPS="$STEPS" LBFGS="$LBFGS" NCOLL="$NCOLL" NBND="$NBND" SHELLS="$SHELLS" \
+    RADIAL="${RADIAL:-log}" RHO_OUT=100 TAG="$TAG" \
+    bash run_phi_hybrid.sh --only G $EXTRA \
     || { echo "!! launch failed"; exit 1; }
 echo "=== launched $(date -u '+%H:%M:%S UTC'); the wrapper writes train.exit and then the report"

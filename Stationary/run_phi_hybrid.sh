@@ -48,6 +48,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
 PY="${PY:-$HERE/.venv/bin/python}"
+# Tunables, so that a wrapper can override them ONCE instead of appending duplicate flags
+# (S2's job.sh carried both sets and only the last won: a confusing record).
+STEPS="${STEPS:-5000}"
+LBFGS="${LBFGS:-30000}"
+QNBLOCK="${QNBLOCK:-250}"
+NCOLL="${NCOLL:-27768}"
+NBND="${NBND:-4548}"
+SHELLS="${SHELLS:-1.0,0.9,0.8,0.7}"
+RADIAL="${RADIAL:-hybrid}"
+RADIAL_LOG_FRAC="${RADIAL_LOG_FRAC:-0.25}"
+export STEPS LBFGS QNBLOCK NCOLL NBND SHELLS RADIAL RADIAL_LOG_FRAC
 if [ ! -x "$PY" ]; then
     echo "run_hub.sh needs the project's python (jax lives there, not in PATH):" >&2
     echo "  PY=\$PWD/.venv/bin/python $0" >&2
@@ -73,15 +84,15 @@ export XLA_PYTHON_CLIENT_PREALLOCATE="${XLA_PYTHON_CLIENT_PREALLOCATE:-false}"
 export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-/tmp/jaxcache-$USER}"
 
 BASE=(
-    --arch axisym_hybrid --steps 5000 --lbfgs-steps 30000 --qn-block 250
-    --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
+    --arch axisym_hybrid --steps "$STEPS" --lbfgs-steps "$LBFGS" --qn-block "$QNBLOCK"
+    --n-coll "$NCOLL" --n-bnd "$NBND" --n-bnd-outer "$NBND" --ckpt-every 500
     --R0 0.5773502691896258 --rho-in 1.0 --inner-radius 1.0
     --vtk-physical-inner 1.0
     --lam0 0.33333333333333337 --lam-inf 1.0 --lam-bc-S2 -0.08333333333333333
     --outer-bc robin --robin-orders h=3,lam=3 --no-robin-G
     --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1   # no inner_h/outer_h=0: the metric's\n                              #   boundary data are imposed (see the defaults in problem.py)
     --pin-lam-robin --pin-h-robin --ref-solution --ref-asymptotic 1.0
-    --outer-shell-fracs 1.0,0.9,0.8,0.7
+    --outer-shell-fracs "$SHELLS"
      --decay-feature --log-resources --vtk
 )
 
