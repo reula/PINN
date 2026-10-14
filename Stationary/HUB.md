@@ -8,11 +8,30 @@ JupyterLab terminal, your notebook kernels and any process you start from them a
 live inside one single-user container. A notebook kernel dies with the server; a
 terminal process dies with that terminal's session. So:
 
-| where you start it | survives a browser disconnect | survives a server restart |
-|---|---|---|
-| notebook cell | no | no |
-| terminal, plain `&` | only if `nohup`ed | no |
-| `./run_hub.sh ...` (this repo) | yes | yes, from the last checkpoint |
+| where you start it | survives a browser disconnect | survives a Jupyter server *process* restart | survives the container being recreated |
+|---|---|---|---|
+| notebook cell | no | no | no |
+| terminal, plain `&` | only if `nohup`ed | no | no |
+| terminal, `setsid nohup ...` | yes | yes | **no** |
+| `./run_hub.sh ...` (this repo) | yes | yes | **no** -- resume from the last checkpoint |
+
+Two different events were hiding behind one column, and they have different answers.
+A **server process restart** is a `SIGHUP` to the server's process group; a process
+launched with `setsid` has left that group, is reparented, and keeps running. A
+**container recreation** -- what "stop/start server" does on many spawners, and what
+a culled-then-respawned single-user server does -- tears down every process in it,
+`setsid` included, so nothing survives.
+
+Measured, on this hub, in a sibling project: an eight-run batch launched with
+`setsid nohup` was lost after a dropped connection. `logs/batch.log` froze at the
+run's start, the working directories stopped being written, and nothing in the
+checkout changed for hours afterwards. `setsid` was working as documented; the
+container had gone.
+
+So: **do not treat detachment as durability.** What actually protects a long run is
+being able to resume it, which is why `run_hub.sh` writes `resume.sh` and checkpoints
+every 500 steps. After any lost connection, assume the job is dead, check whether
+anything is still being written, and relaunch -- do not sit and wait.
 
 A 20 000-step Adam phase takes **~1–2 h** here (`runs/m2R4_realrobin` = 7 435 s,
 `runs/m2R3_symhybrid` = 7 866 s), so this matters: never launch one from a notebook.
@@ -149,7 +168,8 @@ Everything after the script name is forwarded verbatim to
 `python -m stationary.train`. The script:
 
 * detaches the job into its own session (`setsid` + `nohup`) so it does not die
-  with your terminal,
+  with your terminal, nor with a restart of the Jupyter server process (but a
+  container recreation takes it -- see the table at the top of this file),
 * writes results to `<repo>/runs/<timestamp>` and the log to `<repo>/logs/` (both
   inside the checkout: everything stays with the project; `logs/` is gitignored while
   `runs/` is tracked on purpose),
@@ -853,7 +873,9 @@ to both runs (`--vtk`, `--lbfgs-steps 16000`, …), `TAG=_trial` suffixes the ru
 `FORCE=1` redoes a finished one, and `TAG=_trial ./run_quad_chain.sh --steps 3 --lbfgs-steps 1
 --n-coll 128 --n-bnd 32 --width 8 --depth 2 --no-figures` is the ~6-minute plumbing trial.
 Since it only waits, run it under `nohup`/`tmux` if the terminal may close; the runs
-themselves are detached and survive regardless.
+themselves are detached and survive a lost terminal -- though not the container being
+recreated, so see the table at the top of this file before assuming a run is still
+alive.
 
 ## 7. The two production runs (separate, run in sequence)
 
