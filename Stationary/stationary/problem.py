@@ -378,6 +378,12 @@ class Config:
     # satisfied the condition sat between rho = 99 and 100, so shells that close in are what
     # bite.  1.0 is the outer sphere itself and is skipped.
     outer_shell_fracs: tuple = ()
+    # The scalar outer condition acts on the Geroch-Hansen potential P = (1-lam^2)/(4 lam)
+    # and drops the dipolar power from its kernel (--robin-lam-lambda / --keep-lam-dipole opt
+    # out).  In lambda the l = 0 rho^-2 term is 2M^2, so dropping that power there would
+    # forbid a physical term; in P the rho^-2 power is the dipole alone.
+    robin_lam_potential: bool = True
+    robin_lam_drop_dipole: bool = True
     outer_shell_ratio: float = 2.0     # radii rho_out / ratio, / ratio^2, ...
     drop_robin_ls: tuple = ()
     # The same for the INNER datum (--drop-inner-l 1): the inner data on these runs carry no

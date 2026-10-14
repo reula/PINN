@@ -52,6 +52,45 @@ def robin_operator(field_fun, x, base, order, inf_val=0.0):
     return cur(x)
 
 
+def gh_potential(lam):
+    """The Geroch-Hansen potential P = (1 - lam^2)/(4 lam).
+
+    Its expansion is the multipole expansion: for lam = e^{2U} with U harmonic,
+    P = -sinh(2U)/2 = -U - (2/3)U^3 + ..., so P's l = 0 part has powers rho^-1, rho^-3, ...
+    and NO rho^-2 term.  In lambda itself the l = 0 rho^-2 term is 2M^2 (from the exponential),
+    so a radial condition acting on lambda cannot drop the dipolar factor without also killing a
+    physical term; on P the rho^-2 power IS the dipole alone.
+    """
+    return (1.0 - lam ** 2) / (4.0 * lam)
+
+
+def robin_operator_exps(field_fun, x, exps, inf_val=0.0):
+    """prod_{a in exps} (rho d_rho + a) applied to (field - inf_val) at x.
+
+    Same operator as `robin_operator`, with the exponents given explicitly so the KERNEL can be
+    chosen instead of being the consecutive window base ... base+order-1.  Dropping the exponent 2
+    is what removes the dipolar power rho^-2 from the kernel: it stops being annihilated, so the
+    condition forces that coefficient to vanish.
+    """
+    cur = lambda y: field_fun(y) - inf_val
+    for k in exps:
+        prev = cur
+
+        def cur(y, prev=prev, k=k):
+            r = jnp.linalg.norm(y)
+            n = y / r
+            d = jnp.einsum("a,...a->...", n, jax.jacfwd(prev)(y))
+            return r * d + k * prev(y)
+
+    return cur(x)
+
+
+def drop_power(exps, power=2.0):
+    """The same window with one power removed from the kernel and one higher appended."""
+    kept = [a for a in exps if abs(a - float(power)) > 1e-12]
+    return list(exps) if len(kept) == len(exps) else kept + [max(exps) + 1.0]
+
+
 def robin_coefficients(base: float, order: int) -> list[float]:
     """Coefficients c_j of prod_i (rho d_rho + base + i) = sum_j c_j rho^j d_rho^j.
 
@@ -311,15 +350,33 @@ def outer_bc_raw(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict
         if cfg.robin_source and exact_fields is None:
             raise ValueError("robin_source needs exact_fields (set --ref-solution)")
 
+        # The SCALAR condition acts on the Geroch-Hansen potential, not on lambda: P's l = 0 part
+        # carries no rho^-2 (lambda = e^{2U} puts 2M^2 there), so P's rho^-2 power is the dipole
+        # alone and the dipolar factor can be dropped from the kernel without touching the mass.
+        # The metric condition is left alone: its rho^-2 content (g2 - 1 = -M^2/rho^2 + ...) is
+        # physical too, and the dipole there is a gauge mode, to be handled by a centre-of-mass
+        # condition rather than by a decay kernel.
+        use_gh = bool(getattr(cfg, "robin_lam_potential", True))
+        exps_lam = [pl + i for i in range(orders["lam"])]
+        if use_gh and bool(getattr(cfg, "robin_lam_drop_dipole", True)):
+            exps_lam = drop_power(exps_lam, 2.0)
+        if use_gh:
+            lam_field = lambda y: gh_potential(point_fields(y).lam)
+            lam_ref = lambda y: gh_potential(exact_fields(y).lam) if exact_fields else None
+            lam_target = gh_potential(jnp.asarray(lam_inf))
+        else:
+            lam_field = lambda y: point_fields(y).lam
+            lam_ref = lambda y: exact_fields(y).lam if exact_fields else None
+            lam_target = lam_inf
+
         def one(x):
             f = point_fields(x)
             rh = robin_operator(lambda y: point_fields(y).h, x, ph, orders["h"], I3)
-            rl = robin_operator(lambda y: point_fields(y).lam, x, pl, orders["lam"], lam_inf)
+            rl = robin_operator_exps(lam_field, x, exps_lam, lam_target)
             sh = sl = 0.0
             if cfg.robin_source:
                 sh = robin_operator(lambda y: exact_fields(y).h, x, ph, orders["h"], I3)
-                sl = robin_operator(lambda y: exact_fields(y).lam, x, pl, orders["lam"],
-                                    lam_inf)
+                sl = robin_operator_exps(lam_ref, x, exps_lam, lam_target)
             if cfg.robin_include_G:
                 rG = robin_operator(lambda y: point_fields(y).G, x, pG, orders["G"],
                                     jnp.zeros((3, 3, 3)))

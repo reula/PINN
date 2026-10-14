@@ -1637,6 +1637,13 @@ def parse_args(argv=None):
                    help="explicit ladder as fractions of rho_out, e.g. 1.0,0.9,0.8,0.7 (the measured "
                         "layer sat between rho = 99 and 100, so keep the shells close in); 1.0 is "
                         "the outer sphere itself and is skipped")
+    p.add_argument("--robin-lam-lambda", action="store_false", dest="robin_lam_potential",
+                   help="impose the scalar outer condition on lambda itself instead of on the "
+                        "Geroch-Hansen potential (legacy behaviour; note lambda's l=0 rho^-2 term "
+                        "is the physical 2M^2)")
+    p.add_argument("--keep-lam-dipole", action="store_false", dest="robin_lam_drop_dipole",
+                   help="keep the dipolar power in the scalar kernel (default: dropped, so P's "
+                        "dipole must vanish)")
     p.add_argument("--drop-robin-l", action="append", type=int, default=None, dest="drop_robin_l",
                    help="multipole the outer condition must not act on (e.g. 1 for the dipole); "
                         "repeatable, and a diagnostic: that sector is then left free")
@@ -1874,6 +1881,10 @@ def parse_args(argv=None):
         cfg.outer_shell_ratio = float(a.outer_shell_ratio)
     if a.outer_shell_fracs:
         cfg.outer_shell_fracs = tuple(float(x) for x in a.outer_shell_fracs.replace(",", " ").split())
+    if getattr(a, "robin_lam_potential", True) is False:
+        cfg.robin_lam_potential = False
+    if getattr(a, "robin_lam_drop_dipole", True) is False:
+        cfg.robin_lam_drop_dipole = False
     if a.drop_inner_l:
         cfg.drop_inner_ls = tuple(int(l) for l in a.drop_inner_l)
     if a.drop_robin_l:

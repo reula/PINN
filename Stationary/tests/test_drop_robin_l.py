@@ -21,6 +21,8 @@ I3 = jnp.eye(3)
 
 
 def _cfg(drop):
+    # The default scalar condition (on the Geroch-Hansen potential, dipolar power dropped) is
+    # what the runs impose, so it is what is tested here.
     c = Config(outer_bc="robin", robin_order=3, robin_orders={"h": 3, "G": 3, "lam": 3},
                robin_include_G=False, lam_inf=1.0, rho_out=10.0, rho_in=1.0,
                drop_robin_ls=tuple(drop))
@@ -36,11 +38,16 @@ def _content(xs, R, l):
 def _residual(drop, lmax=3):
     cfg = _cfg(drop)
     apply_config(cfg)
-    # a lambda with l = 1 and l = 2 content that the Robin condition does not satisfy
+    # A lambda with l = 1 and l = 2 content that the Robin condition does not satisfy, SMALL and
+    # decaying: the scalar condition is imposed on the Geroch-Hansen potential, which is nonlinear
+    # in lambda, so a polynomial that wanders far from 1 makes P meaningless (and P diverges where
+    # lambda crosses zero).  With a small perturbation P = -delta_lambda/2 to leading order and the
+    # multipole content is preserved.
     def fields(x):
         r = jnp.linalg.norm(x)
+        mu = x[2] / r
         return Fields(I3, jnp.zeros((3, 3, 3)),
-                      1.0 + 0.2 * x[2] + 0.05 * (x[2] ** 2 - 0.5 * (x[0] ** 2 + x[1] ** 2)))
+                      1.0 + 0.2 * mu / r + 0.05 * (1.5 * mu ** 2 - 0.5) / r ** 2)
     xs = sample_sphere(jax.random.PRNGKey(0), 4096, cfg.rho_out)
     R = outer_bc_raw(fields, xs, cfg)["lam"]
     return xs, R
