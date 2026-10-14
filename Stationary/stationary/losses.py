@@ -23,6 +23,7 @@ import jax
 import jax.numpy as jnp
 
 from .geometry import (pack_gamma, pack_sym, radial_derivative_residual_batch,
+                       radial_derivative_residuals_batch,
                        residuals_batch, scaled_residuals_batch)
 from .problem import lam_inner_bc, sample_sphere
 
@@ -145,6 +146,27 @@ def pde_radial_raw(point_fields, xs, cfg):
     if not float(getattr(cfg, "w_lam_eq_radial", 0.0) or 0.0):
         return None
     return radial_derivative_residual_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref)
+
+
+def pde_radial_groups_raw(point_fields, xs, cfg) -> dict:
+    """The rho-scaled radial derivative of EVERY group's residual, or {}.
+
+    Nothing is differentiated unless `cfg.pde_radial` (--pde-radial), so every existing run and
+    test is unaffected.  `compat` is left out on purpose: it holds identically in the metric-only
+    scheme and is not in the loss there, so there is nothing for its derivative to constrain.
+
+    The weight is not decided here: the callers add these arrays to their own group, so the term
+    inherits the equation's weight (see `total_loss`, `residual_vector` and `group_terms`).
+    """
+    if not bool(getattr(cfg, "pde_radial", False)):
+        return {}
+    out = radial_derivative_residuals_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref)
+    return {k: v for k, v in out.items() if k != "compat"}
+
+
+def pde_radial_groups_terms(point_fields, xs, cfg) -> dict:
+    """Mean squared rho-scaled radial derivative, per equation group."""
+    return {k: jnp.mean(v ** 2) for k, v in pde_radial_groups_raw(point_fields, xs, cfg).items()}
 
 
 def pde_radial_terms(point_fields, xs, cfg) -> dict:
@@ -627,9 +649,10 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     inner = inner_bc_terms(pf, batch["inner"], cfg, exact_fields)
     for k, v in inner.items():
         parts[f"inner_{k}"] = v
-    if batch.get("outer_extra") is not None:
-        parts["outer_extra"] = sum(outer_bc_terms(pf, batch["outer_extra"], cfg, exact_fields,
-                                                  lam_inf).values())
+    extra = (outer_bc_terms(pf, batch["outer_extra"], cfg, exact_fields, lam_inf)
+             if batch.get("outer_extra") is not None else {})
+    if extra:
+        parts["outer_extra"] = sum(extra.values())
     outer = outer_bc_terms(pf, batch["outer"], cfg, exact_fields, lam_inf)
     for k, v in outer.items():
         parts[f"outer_{k}"] = v
@@ -648,6 +671,11 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     loss = loss + sum(v * weights.get(f"inner_{k}", weights["inner"]) for k, v in inner.items())
     # per-field override where --eq-weights set one, group weight otherwise
     loss = loss + sum(v * weights.get(f"outer_{k}", weights["outer"]) for k, v in outer.items())
+    # The ladder of shells (train.make_batch).  It was in `parts` and in `residual_vector` but NOT
+    # here, so SSBroyden -- whose objective is this function -- never felt it: the run "on four
+    # shells" trained exactly as if there were one, and the 0.22 it reported for bc_out was a
+    # diagnostic of a condition that was not being imposed.  Same weights as the outer group.
+    loss = loss + sum(v * weights.get(f"outer_{k}", weights["outer"]) for k, v in extra.items())
     if pin:
         # its own weight: the pins are data, not a decay condition, and the run that needs
         # them is exactly the one where w_outer could not see the level at all

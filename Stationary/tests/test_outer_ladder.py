@@ -12,13 +12,14 @@ rho = 50, 90 and 99 but 4.8e-05 at rho = 100.0, while the metric kept a constant
 from __future__ import annotations
 
 import jax
+import pytest
 import jax.numpy as jnp
 import numpy as np
 
 from stationary.geometry import apply_config
 from stationary.losses import I3, robin_operator
 from stationary.problem import Config, sample_sphere
-from stationary.train import exact_asset, make_batch
+from stationary.train import exact_asset, make_batch, make_model
 
 jax.config.update("jax_enable_x64", True)
 
@@ -84,3 +85,26 @@ def test_explicit_fractions_put_the_shells_where_they_are_asked_for():
     r = np.unique(np.round(np.asarray(jnp.linalg.norm(b["outer_extra"], axis=-1)), 6))
     assert np.allclose(r, [70.0, 80.0, 90.0]), r
     assert b["outer_extra"].shape[0] == 3 * cfg.n_bnd_outer
+
+
+def test_the_ladder_is_in_the_loss_and_not_only_in_the_diagnostics():
+    """The residual vector includes the ladder; total_loss must too, or the run never feels it.
+
+    Measured before the fix: a real run reported bc_out = 0.22 (four orders above its single-shell
+    value) while its loss sat at 1.1e-05, because `parts["outer_extra"]` was computed for the log
+    and the residual vector but never added to the sum.
+    """
+    from stationary.losses import residual_vector, total_loss
+    from stationary.train import make_batch
+
+    cfg = _cfg(shells=2)
+    apply_config(cfg)
+    model = make_model(cfg)
+    state = {"net": model.init(jax.random.PRNGKey(0), jnp.ones((4, 3)))}
+    batch = make_batch(jax.random.PRNGKey(1), cfg)
+    assert batch.get("outer_extra") is not None
+    loss, parts = total_loss(state, batch, cfg, model)
+    r = residual_vector(state, batch, cfg, model)
+    assert "outer_extra" in parts
+    assert float(jnp.sum(r ** 2)) == pytest.approx(float(loss), rel=1e-9), (float(loss),
+                                                                            float(jnp.sum(r ** 2)))
