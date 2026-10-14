@@ -44,12 +44,23 @@ def _means(batched, rhos, n_th=64):
 
 
 def profile(run_dir, rhos=(2.0, 10.0, 50.0, 99.0), n_th=64):
-    """The run's own l = 0 profiles AND its error against the exact reference.
+    """The run's own l = 0 profiles, and their departure from the SPHERICAL reference.
 
-    The second half matters: `h_rr` is NOT supposed to be 1 in the inner region -- the exact Weyl
-    metric in these variables is 0.9155 at rho = 2 (the mass term) and only approaches 1 outward --
-    so a raw "h_rr - 1 = -8.6e-02" reads as a large error when it is the correct value.  Measured on
-    pq_r100_phihyb025_R0: h_rr(net) - h_rr(exact) = -1.3e-03 at rho = 2 and +1.6e-04 at rho = 99.
+    Three cautions, all of which bit us at least once.
+
+    (1) `h_rr` is NOT supposed to be 1 in the inner region: the Weyl metric in these variables is
+        0.9155 at rho = 2 (the mass term) and only approaches 1 outward, so "h_rr - 1 = -8.6e-02"
+        is the correct value, not an error.
+
+    (2) That reference is SPHERICAL and these runs impose a QUADRUPOLE inner datum
+        (lam_bc_S2 = -1/12), which the reference cannot carry -- `train.build` prints exactly that
+        warning.  So the departure is NOT an error either: near the source it is dominated by the
+        quadrupole's back-reaction (measured: 3.4e-03 in lambda at rho = 2, consistent with the
+        second-order size S2^2 ~ 7e-03), and it is only in the far field, where that back-reaction
+        has died away, that the numbers can be read as accuracy.
+
+    (3) Therefore the accuracy statement for a run has to come from the EQUATIONS -- the bulk
+        residual printed above -- and from the boundary data, not from this column.
     """
     from stationary.evaluate import load_run
 
@@ -57,7 +68,7 @@ def profile(run_dir, rhos=(2.0, 10.0, 50.0, 99.0), n_th=64):
     net = _means(lambda x: model.apply(state["net"], x), rhos, n_th)
     try:
         from stationary.train import exact_asset
-        ref = _means(jax.vmap(exact_asset(cfg)), rhos, n_th)
+        ref = _means(jax.vmap(exact_asset(cfg)), rhos, n_th)   # spherical: no S2, so compare with care
     except Exception:
         ref = None
     return net, ref, cfg
@@ -104,7 +115,8 @@ def main():
         else:
             err = "no exact reference"
         print(f"{os.path.basename(run_dir.rstrip('/')):34s} {b:26s} {o:26s} {prof}")
-        print(f"{'':34s} ERROR vs exact (h_rr / h_tan / lam):  {err}")
+        print(f"{'':34s} departure from the SPHERICAL reference (h_rr / h_tan / lam), "
+              f"NOT an error -- the reference has no quadrupole:  {err}")
         print(f"{'':34s} outer BC rms: " + "  ".join(f"{k}={float(jnp.sqrt(jnp.mean(v ** 2))):.2e}"
                                                      for k, v in outer.items()))
 
