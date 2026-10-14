@@ -283,6 +283,9 @@ class Config:
     wolfe_maxls: int = 30              # zoom line-search steps (optax path)
     dsgnar_chunk: int = 64             # tangents per batched JVP; 0 = all at once (GPU OOM)
     dsgnar_row_chunk: int = 0          # CountSketch rows per block; 0 = off (unneeded at M ~ 2e3)
+    dsgnar_audit_stops: bool = False   # audit every 'radius below threshold' stop against the
+                                       # exact Jacobian (optim/stall_audit.py, README 6.11);
+                                       # appends to <outdir>/dsgnar_stop_audits.jsonl
     # ---- trust-region Newton with an exact dense Hessian (arXiv:2105.07552) ----
     tr_maxiter: int = 300              # outer iterations (the paper caps at 5000)
     tr_delta0: float = 1.0             # initial trust radius   (scipy default)

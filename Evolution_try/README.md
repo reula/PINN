@@ -876,6 +876,16 @@ best runs each stalled once or twice and recovered.  What is not established is 
 trigger.  `scripts/dsgnar_sketch_audit.py` is the instrument for it, pointed at a
 *stalling* state rather than a converged one, which is the next experiment.
 
+That instrument now runs at the stall itself: `--set dsgnar_audit_stops=true` audits every
+DSGNAR phase that stops on `radius below threshold`, at its final parameters and on the
+batch it stopped on, against the exact Jacobian (`wave_pinn/optim/stall_audit.py`), and
+appends one record per stop to `runs/<label>/dsgnar_stop_audits.jsonl`.  Each record says
+whether an *exact* Levenberg-Marquardt step could have gone on (`best_exact_ratio` << 1: the
+sketch stalled; ~1: a genuine stationary point of that sampled objective), plus the
+spectrum of `J`, the gradient and the sketched step's alignment.  Converged stops are
+recorded too, as the control.  `../Stationary/run_batch_sketch.sh` re-runs
+`dsgnar_hard_nc2201` with it on.
+
 One cell in twenty is stall-*broken* rather than stall-limited:
 `dsgnar_soft_all_nc2201_s1100` at `1.174e-02`, where window 9 stalled and the single
 retry did not rescue it.  Read that row as an artifact.

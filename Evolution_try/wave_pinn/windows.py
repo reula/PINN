@@ -64,6 +64,7 @@ from .features import feature_dim
 from .losses import Objective
 from .model import ansatz_u, init_params, n_parameters
 from .optim import run_optimizer
+from .optim import stall_audit as _stall_audit
 from .problem import exact_solution, initial_data
 from .sampling import make_batch
 from .train import configure_jax
@@ -348,6 +349,10 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
             # see the note in train.run: rounds need a redraw even when mid-phase
             # redrawing is off, and gating this on resample_every disabled the rounds
             wants_resample = bool(cfg.resample_every) or int(cfg.resample_rounds) > 1
+            _stall_audit.CONTEXT.clear()
+            _stall_audit.CONTEXT.update({"window": k + 1, "attempt": attempt,
+                                         "best_loss_so_far": (best_loss if best_loss < float("inf")
+                                                              else None)})
             flat, history, infos, phase_histories = run_optimizer(
                 objective, flat0, cfg, verbose=verbose,
                 resample=(resample if wants_resample else None))

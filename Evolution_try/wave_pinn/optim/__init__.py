@@ -144,6 +144,13 @@ def run_optimizer(objective: Objective, flat0, cfg: Config,
             # sample it was just given.  This is the stability number: for a
             # converged, sample-independent solution it goes to zero, and if it
             # does not, the solution is fitting the collocation points.
+            if (phase == "dsgnar" and getattr(cfg, "dsgnar_audit_stops", False)
+                    and info.get("stopped") == "radius below threshold"):
+                # README 6.11: catch the stall on the batch it happened on
+                from ..config import resolve_outdir
+                from .stall_audit import audit_stop
+                audit_stop(objective, flat, cfg, info, resolve_outdir(cfg), round_index=r,
+                           verbose=verbose)
             nb = max(float(jnp.linalg.norm(before)), 1e-300)
             rel_change = float(jnp.linalg.norm(flat - before)) / nb
             step += n_it

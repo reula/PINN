@@ -310,8 +310,10 @@ def test_the_model_decrease_is_in_the_units_of_the_objective(monkeypatch):
             return float(_lss(flat))
 
     Linear.n = n
-    monkeypatch.setattr(dsgnar, "count_sketch",
-                        lambda mat, vec, key, s, k_hashes=1, row_chunk=0: (mat, vec))
+    # one hash, sign +1, row i -> bucket i: with M = s that IS the identity sketch
+    monkeypatch.setattr(dsgnar, "count_sketch_draws",
+                        lambda key, rows, s, k, dtype: (jnp.ones((1, rows), dtype=dtype),
+                                                        jnp.arange(rows)[None, :]))
     cfg = Config(dsgnar_steps=1, dsgnar_sketch=n, dsgnar_delta0=0.1, dsgnar_calibrate=False,
                  seed=0, n_coll=8, n_bnd=4)
     obj = Linear()
@@ -319,3 +321,33 @@ def test_the_model_decrease_is_in_the_units_of_the_objective(monkeypatch):
     assert info["accepted"] == 1, info
     assert hist[1]["frac"] == 1.0, hist[1]
     assert abs(hist[1]["rho"] - 1.0) < 1e-8, hist[1]["rho"]
+
+
+@pytest.mark.parametrize("s_cols, chunk", [(10, 0), (10, 4), (7, 3)])
+def test_the_fused_sketch_is_the_two_step_sketch(s_cols, chunk):
+    """`sketched_jvp_columns` == `count_sketch(jvp_columns(...).T, ...)` with the same key.
+
+    The fused path pushes each block of tangents through the JVP and sketches it at once, so
+    the M x s column matrix is never held (it is what capped s at d/18 on this problem).  It
+    must be the SAME sketch: same hash draws, same columns, only the grouping of sums differs.
+    """
+    from stationary.dsgnar import (apply_count_sketch, count_sketch, count_sketch_draws,
+                                   jvp_columns, sketched_jvp_columns)
+    n, M, s, K = 9, 37, s_cols, 3
+    A = jax.random.normal(jax.random.PRNGKey(1), (M, n))
+
+    def res_fn(flat):
+        return jnp.tanh(A @ flat) + 0.1 * (A @ flat) ** 2
+
+    flat = 0.3 * jax.random.normal(jax.random.PRNGKey(2), (n,))
+    basis = jax.random.normal(jax.random.PRNGKey(3), (s_cols, n))
+    key = jax.random.PRNGKey(4)
+    r = res_fn(flat)
+
+    want_j, want_r = count_sketch(jvp_columns(res_fn, flat, basis, 0).T, r, key, s, k_hashes=K)
+    signs, buckets = count_sketch_draws(key, M, s, K, r.dtype)
+    got_j = sketched_jvp_columns(res_fn, flat, basis, signs, buckets, s, chunk)
+    got_r = apply_count_sketch(r[:, None], signs, buckets, s)[:, 0]
+    assert got_j.shape == (s, s_cols)
+    assert float(jnp.max(jnp.abs(got_j - want_j))) < 1e-12
+    assert float(jnp.max(jnp.abs(got_r - want_r))) < 1e-12

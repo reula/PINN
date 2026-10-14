@@ -821,3 +821,35 @@ class TestWindows(unittest.TestCase):
                         1e-14)
         ut = jax.vmap(lambda xx: jax.grad(lambda tt: ansatz_u(params, cfg, tt, xx))(0.0))(x)
         self.assertLess(float(jnp.max(jnp.abs(ut - v0))), 1e-13)
+
+
+class TestStallAudit(unittest.TestCase):
+    """optim/stall_audit.py: the record a DSGNAR radius stop leaves behind (README 6.11)."""
+
+    def test_audit_writes_a_record_and_the_exact_model_is_exact(self):
+        from wave_pinn.optim import stall_audit
+        cfg = Config(n_coll=128, n_neurons=8, n_layers=2, sampler="random", dsgnar_chunk=32)
+        key = jax.random.PRNGKey(0)
+        params = init_params(cfg, key)
+        obj = Objective(cfg, make_batch(cfg, key), params)
+        flat = jax.flatten_util.ravel_pytree(params)[0]
+        info = {"sketch": 16, "hashes": 4, "final_lambda": 1e-6,
+                "stopped": "radius below threshold"}
+        stall_audit.CONTEXT.clear()
+        stall_audit.CONTEXT.update({"window": 3, "attempt": 1})
+        with tempfile.TemporaryDirectory() as d:
+            rec = stall_audit.audit_stop(obj, flat, cfg, info, d, round_index=2, verbose=False)
+            with open(os.path.join(d, "dsgnar_stop_audits.jsonl")) as fh:
+                lines = [json.loads(l) for l in fh]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual((lines[0]["window"], lines[0]["attempt"], lines[0]["round"]), (3, 1, 2))
+        self.assertEqual(rec["M"], 128)
+        # the quadratic model of an exact LM step, at tiny step length, matches the loss:
+        # the decrease along f*p is f * (linear term) to leading order, so the measured
+        # loss at the smallest fraction must sit close to loss - 0.01 * (linear decrease)
+        small = rec["exact_lm"][-1]                            # lam = 1: a short step
+        self.assertGreater(small["model_decrease"], 0.0)
+        self.assertLess(small["loss@0.01"], rec["loss"])
+        self.assertEqual(len(rec["sketched"]), 4)
+        for row in rec["sketched"]:
+            self.assertTrue(-1.0 - 1e-12 <= row["cos_median"] <= 1.0 + 1e-12)

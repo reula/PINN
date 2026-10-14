@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# One detached batch, two DSGNAR experiments, strictly one run at a time:
+#
+#   E. Evolution_try, the open stall (its README 6.11).  dsgnar_hard_nc2201 re-run with
+#      --set dsgnar_audit_stops=true: every DSGNAR phase that stops on "radius below
+#      threshold" is audited against the EXACT Jacobian on the batch it stopped on
+#      (wave_pinn/optim/stall_audit.py).  The question: could an exact Gauss-Newton step
+#      have gone on?  The hard hand-over at n_coll 2201 is the cell with the most stalls
+#      (11-15 retried windows in the original batch).
+#
+#   S. Stationary, the sketch size.  Evolution_try measured s = d/3 -> d/2 as worth ~1000x;
+#      Stationary has run at s = 128 = d/18 because the M x s column matrix did not fit.
+#      The fused JVP + CountSketch (dsgnar.sketched_jvp_columns) removes that matrix, so
+#      s ~ d/2 is now affordable.  From ONE Adam warm-up, four arms:
+#        S0  Adam warm-up                      (writes params_adam.pkl; no quasi-Newton)
+#        S1  SSBroyden                          the baseline
+#        S2  DSGNAR s = 128,  K = 8             the current recipe (DSGNAR.md section 7)
+#        S3  DSGNAR s = 512,  K = 8
+#        S4  DSGNAR s = 1100, K = 8             ~ d/2 (d = 2285)
+#
+#   bash run_batch_sketch.sh            # launch, detached (safe to close the terminal)
+#   DRY=1 bash run_batch_sketch.sh      # print the plan, launch nothing
+#   tail -f logs/batch_sketch.driver.log
+#   cat logs/batch_sketch.summary.txt   # written at the end
+#
+# Resumable: a run whose report exists is skipped (Evolution: runs/<label>/report.md,
+# Stationary: runs/<label>/report.json).  Delete a run directory to redo it.
+#
+# The card: the A30 is shared, and two jobs on it is a measured OOM.  The batch WAITS
+# (polling every POLL seconds) until no other training process holds it, rather than
+# failing as run_s2.sh does -- it is meant to be queued behind a production run.
+#
+# Env: ADAM_STEPS (5000)  QN_STEPS (3000)  DSG_STEPS (150)  SKETCHES ("128 512 1100")
+#      HASHES (8)  ONLY (E | S | empty = both)  POLL (300)  GPU_FREE_MB (1500)
+#      RUN_HOURS (6, per-run backstop)  FORCE_START (1 = skip the wait)
+# ---------------------------------------------------------------------------
+set -u
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"            # .../Stationary
+EVO="$(cd "$HERE/../Evolution_try" && pwd)"
+cd "$HERE"
+mkdir -p logs
+DRIVER="$HERE/logs/batch_sketch.driver.log"
+SUMMARY="$HERE/logs/batch_sketch.summary.txt"
+
+ADAM_STEPS="${ADAM_STEPS:-5000}"
+QN_STEPS="${QN_STEPS:-3000}"
+DSG_STEPS="${DSG_STEPS:-150}"
+SKETCHES="${SKETCHES:-128 512 1100}"
+HASHES="${HASHES:-8}"
+ONLY="${ONLY:-}"
+POLL="${POLL:-300}"
+GPU_FREE_MB="${GPU_FREE_MB:-1500}"
+RUN_HOURS="${RUN_HOURS:-6}"
+DRY="${DRY:-0}"
+
+SPY="${PY:-$HERE/.venv/bin/python}"
+# shellcheck source=/dev/null
+source "$EVO/scripts/env.sh"
+EPY="$(find_python)" || { echo "FATAL: no interpreter with jax for Evolution_try" >&2; exit 1; }
+
+export JAX_ENABLE_X64=1
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-/tmp/jaxcache-$USER}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$HERE/.mplcache}"
+
+E_LABEL="dsgnar_hard_nc2201_audit"
+S_ADAM="runs/sk_adam"
+# the recipe of run_dsgnar.sh (the pq_c100 shell), shared by every Stationary arm
+S_RECIPE=(--arch axisym_hybrid
+          --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
+          --R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0
+          --vtk-physical-inner 1.0
+          --lam0 0.33333333333333337 --lam-inf 1.0 --lam-bc-S2 -0.08333333333333333
+          --outer-bc robin --robin-orders h=3,lam=3 --no-robin-G
+          --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1
+          --pin-lam-robin --pin-h-robin --ref-solution --ref-asymptotic 1.0
+          --outer-shell-fracs 1.0,0.9,0.8,0.7
+          --resample-every 500 --decay-feature --log-resources --no-figures)
+
+plan() {
+    echo "=== batch_sketch  $(date -u '+%Y-%m-%d %H:%M:%S UTC')  HEAD $(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)"
+    echo "    stationary python : $SPY"
+    echo "    evolution  python : $EPY"
+    [ "$ONLY" != "S" ] && echo "    E   $EVO/runs/$E_LABEL   (T=20, 10 windows, hard, n_coll 2201, audits on)"
+    if [ "$ONLY" != "E" ]; then
+        echo "    S0  $S_ADAM                 Adam $ADAM_STEPS steps"
+        echo "    S1  runs/sk_ssbroyden           SSBroyden $QN_STEPS iterations"
+        for s in $SKETCHES; do
+            echo "    S*  runs/sk_dsgnar_s$s$(printf '%*s' $((10 - ${#s})) '')DSGNAR $DSG_STEPS iterations, s=$s, K=$HASHES"
+        done
+    fi
+}
+
+if [ "$DRY" = "1" ]; then plan; exit 0; fi
+
+if [ "${_DETACHED:-0}" != "1" ]; then
+    _DETACHED=1 nohup setsid bash "$0" "$@" > "$DRIVER" 2>&1 &
+    sleep 1
+    echo "launched detached (safe to close this terminal)"
+    echo "  driver  : $DRIVER"
+    echo "  summary : $SUMMARY   (at the end)"
+    plan
+    exit 0
+fi
+
+plan
+
+# ---- wait for the card ------------------------------------------------------------
+card_busy() {
+    if pgrep -f "stationary.train|wave_pinn.cli" > /dev/null; then return 0; fi
+    if command -v nvidia-smi > /dev/null 2>&1; then
+        local used
+        used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1)
+        [ -n "${used:-}" ] && [ "$used" -gt "$GPU_FREE_MB" ] && return 0
+    fi
+    return 1
+}
+wait_card() {
+    [ "${FORCE_START:-0}" = "1" ] && return
+    local waited=0
+    while card_busy; do
+        [ $waited -eq 0 ] && echo "    $(date -u '+%H:%M:%S') the card is busy (another training run, or memory in use); waiting"
+        sleep "$POLL"; waited=$((waited + POLL))
+    done
+    [ $waited -gt 0 ] && echo "    $(date -u '+%H:%M:%S') card free after $((waited / 60)) min"
+}
+
+run() {          # run <label> <log> <cmd...>  -- foreground, with a time backstop
+    local label="$1" log="$2"; shift 2
+    wait_card
+    echo "--- $label  start $(date -u '+%H:%M:%S UTC')   log: $log"
+    local t0; t0=$(date +%s)
+    timeout "$((RUN_HOURS * 3600))" "$@" > "$log" 2>&1
+    local rc=$?
+    echo "--- $label  exit $rc after $(( ($(date +%s) - t0) / 60 )) min"
+    return $rc
+}
+
+# ---- E: the Evolution_try stall audit ----------------------------------------------
+if [ "$ONLY" != "S" ]; then
+    if [ -f "$EVO/runs/$E_LABEL/report.md" ]; then
+        echo "--- E done already, skipping ($EVO/runs/$E_LABEL/report.md)"
+    else
+        ( cd "$EVO" && run "E $E_LABEL" "$EVO/logs/$E_LABEL.log" \
+            "$EPY" -m wave_pinn.cli --label "$E_LABEL" --outdir "$EVO/runs/$E_LABEL" \
+            --set T=20 --set windows=10 --set ansatz=t2 \
+            --set window_ic=hard --set w_ic=100 \
+            --set n_coll=2201 --set sampler=random --set resample_every=0 \
+            --set "snapshot_times=[0,2,4,6,8,10,12,14,16,18,20]" \
+            --set optimizer=dsgnar --set dsgnar_steps=300 --set dsgnar_sketch=0 \
+            --set dsgnar_delta0=1.0 --set dsgnar_delta_min=1e-14 --set resample_rounds=5 \
+            --set dsgnar_audit_stops=true )
+    fi
+fi
+
+# ---- S: the Stationary sketch-size comparison --------------------------------------
+s_run() {        # s_run <name> <flags...>
+    local name="$1"; shift
+    if [ -f "runs/$name/report.json" ]; then
+        echo "--- $name done already, skipping"; return 0
+    fi
+    run "$name" "logs/$name.log" "$SPY" -m stationary.train --outdir "runs/$name" \
+        "${S_RECIPE[@]}" "$@"
+}
+
+if [ "$ONLY" != "E" ]; then
+    s_run sk_adam --steps "$ADAM_STEPS" --lbfgs-steps 0
+    if [ ! -f "$S_ADAM/params_adam.pkl" ]; then
+        echo "!! no $S_ADAM/params_adam.pkl: the warm-up failed, so the Stationary arms cannot start"
+    else
+        s_run sk_ssbroyden --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
+            --lbfgs-steps "$QN_STEPS" --qn-method ssbroyden
+        for s in $SKETCHES; do
+            s_run "sk_dsgnar_s$s" --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
+                --lbfgs-steps 30000 --qn-method dsgnar --dsgnar-steps "$DSG_STEPS" \
+                --dsgnar-sketch "$s" --dsgnar-hashes "$HASHES" --dsgnar-chunk 16
+        done
+    fi
+fi
+
+# ---- summary ---------------------------------------------------------------------
+{
+echo "=== batch_sketch summary  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+"$SPY" - "$HERE" <<'EOF'
+import json, os, sys
+root = sys.argv[1]
+print("\nStationary (same Adam start; loss is the total objective, rms_* against the exact reference)")
+print(f"{'run':<20} {'final loss':>12} {'wall (s)':>9} {'rms_dh':>10} {'rms_dlam':>10} {'max_dlam':>10}  stopped")
+for name in ["sk_adam", "sk_ssbroyden"] + sorted(
+        (d for d in os.listdir(os.path.join(root, "runs")) if d.startswith("sk_dsgnar_s")),
+        key=lambda d: int(d.rsplit("s", 1)[1])):
+    p = os.path.join(root, "runs", name, "report.json")
+    if not os.path.exists(p):
+        print(f"{name:<20} (no report)"); continue
+    r = json.load(open(p))
+    stop = r.get("qn_stopped_at", "")
+    print(f"{name:<20} {r.get('final_loss', float('nan')):>12.4e} {r.get('wall_seconds', 0):>9.0f} "
+          f"{r.get('rms_dh', float('nan')):>10.3e} {r.get('rms_dlam', float('nan')):>10.3e} "
+          f"{r.get('max_dlam', float('nan')):>10.3e}  {stop}")
+EOF
+"$EPY" - "$EVO/runs/$E_LABEL" <<'EOF'
+import json, os, sys
+d = sys.argv[1]
+p = os.path.join(d, "dsgnar_stop_audits.jsonl")
+print(f"\nEvolution_try stall audits ({p})")
+if not os.path.exists(p):
+    print("  (none)"); sys.exit(0)
+recs = [json.loads(l) for l in open(p)]
+print(f"{'win':>3} {'att':>3} {'rnd':>3} {'loss':>10} {'best so far':>11} {'|grad|':>9} "
+      f"{'rank1e-10':>9} {'exact LM best':>13} {'cos sk':>7} {'acc/rej':>8}")
+for r in recs:
+    ph = r["phase"]
+    best = r.get("best_loss_so_far")
+    print(f"{r.get('window', '?'):>3} {r.get('attempt', '?'):>3} {r.get('round', '?'):>3} "
+          f"{r['loss']:>10.3e} {(best if best is not None else float('nan')):>11.3e} "
+          f"{r['grad_norm']:>9.2e} {r['spectrum']['rank']['1e-10']:>9} "
+          f"{r['best_exact_ratio']:>13.2e} {r['sketched'][0]['cos_median']:>+7.3f} "
+          f"{ph.get('accepted')}/{ph.get('rejected')}")
+print("\n'exact LM best' = the lowest loss an exact Levenberg-Marquardt step reaches from the stop,")
+print("as a fraction of the stop's loss (<< 1: the sketch stalled, not the problem).")
+EOF
+[ -f "$EVO/runs/$E_LABEL/report.md" ] && { echo; sed -n '1,40p' "$EVO/runs/$E_LABEL/report.md"; }
+} > "$SUMMARY" 2>&1
+echo "=== done $(date -u '+%H:%M:%S UTC'); summary in $SUMMARY"

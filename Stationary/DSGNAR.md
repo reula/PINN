@@ -409,6 +409,22 @@ the conclusion is that this optimiser, tuned on a 2201-parameter smooth wave pro
 transfer to this objective, and the levers that have evidence here are the batch noise (more
 points) and the missing conditions (the multipole pin) -- not the optimiser.
 
+## 7b. The sketch size, unblocked: the fused JVP + CountSketch
+
+Evolution_try measured the column sketch as the dominant knob there (`s = d/3 -> d/2` worth
+~1000x, and the sketched model honest to 1.0-3.3x), while this problem has run at `s = 128 =
+d/18` -- where the model over-predicted 12x and needed `K = 8` and the calibration as crutches.
+What capped `s` was memory: the `M x s` column matrix `J Omega S`, ~3.7 GiB at `s = 1100` and
+the production row count.  `dsgnar.sketched_jvp_columns` removes it: each block of `chunk`
+tangents goes through the JVP and is CountSketched at once (the sketch is linear and acts column
+by column), so the live workspace is `M x chunk` whatever `s` is.  Same hash draws, same columns
+(`tests/test_dsgnar.py::test_the_fused_sketch_is_the_two_step_sketch`); `--dsgnar-row-chunk` is
+now unused by the phase.
+
+`run_batch_sketch.sh` measures it: one Adam warm-up, then SSBroyden and DSGNAR at
+`s = 128, 512, 1100` (K = 8) from the same parameters, summary in
+`logs/batch_sketch.summary.txt`.
+
 ## 8. Open questions
 
 1. Does `--dsgnar-delta0 1e-3` (a smaller lifted first step) turn the 28-iteration stall into

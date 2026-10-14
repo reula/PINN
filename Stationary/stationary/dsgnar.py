@@ -289,6 +289,56 @@ def jvp_columns(res_fn, flat_now, basis, chunk: int = 0):
     return jax.lax.map(lambda b: jax.vmap(jvp)(b), blocks).reshape(s + pad, -1)[:s]
 
 
+def count_sketch_draws(key, rows: int, s: int, k_hashes: int, dtype):
+    """The ``K`` sign vectors and bucket indices of :func:`count_sketch`, drawn once.
+
+    Identical draws to ``count_sketch(mat, vec, key, s, k_hashes)`` -- same key splits, same
+    order -- so the fused path below sketches with the very same ``C``.  Shapes ``(K, rows)``.
+    """
+    signs, buckets = [], []
+    for _ in range(k_hashes):
+        key, k_sign, k_bucket = jax.random.split(key, 3)
+        signs.append(jax.random.rademacher(k_sign, (rows,), dtype=dtype) / jnp.sqrt(k_hashes))
+        buckets.append(jax.random.randint(k_bucket, (rows,), 0, s))
+    return jnp.stack(signs), jnp.stack(buckets)
+
+
+def apply_count_sketch(mat, signs, buckets, s: int):
+    """``C @ mat`` for ``mat`` of shape ``(rows, c)``, with pre-drawn hashes: ``(s, c)``."""
+    out = jnp.zeros((s, mat.shape[1]), dtype=mat.dtype)
+    for k in range(signs.shape[0]):
+        out = out + jax.ops.segment_sum(mat * signs[k][:, None], buckets[k], num_segments=s)
+    return out
+
+
+def sketched_jvp_columns(res_fn, flat_now, basis, signs, buckets, s: int, chunk: int = 0):
+    """``C J (Omega S)`` in one pass: ``(s_cols, n) -> (s, s_cols)``, never holding ``M x s``.
+
+    :func:`jvp_columns` followed by :func:`count_sketch` materialises the ``M x s`` column
+    matrix ``J Omega S`` -- at the production row count (~4.2e5) that is 0.4 GiB at
+    ``s = 128`` and ~3.7 GiB at ``s = 1100 ~ d/2``, which is what kept the sketch at d/18
+    here while Evolution_try measured ``d/3 -> d/2`` as worth three orders of magnitude.
+    CountSketch is linear and acts column by column, so each block of ``chunk`` tangents
+    can be pushed through the JVP and sketched immediately: the live workspace is
+    ``M x chunk``, independent of ``s``.  Same draws, same columns -- the result equals the
+    two-step path up to the grouping of sums (tests/test_dsgnar.py).
+    """
+    _, jvp = jax.linearize(res_fn, flat_now)
+    n_cols = int(basis.shape[0])
+    chunk = int(chunk) if chunk and chunk < n_cols else n_cols
+    pad = (-n_cols) % chunk
+    if pad:
+        basis = jnp.concatenate([basis, jnp.zeros((pad, basis.shape[1]), dtype=basis.dtype)], 0)
+    blocks = basis.reshape((n_cols + pad) // chunk, chunk, basis.shape[1])
+
+    def one(b):
+        cols = jax.vmap(jvp)(b)                          # (chunk, M)
+        return apply_count_sketch(cols.T, signs, buckets, s)   # (s, chunk)
+
+    sk = jax.lax.map(one, blocks)                        # (n_blocks, s, chunk)
+    return jnp.transpose(sk, (1, 0, 2)).reshape(s, n_cols + pad)[:, :n_cols]
+
+
 # --------------------------------------------------------------------------
 # Algorithm 3, first half: the secular Newton solve   (reference _solve_subproblems)
 # --------------------------------------------------------------------------
@@ -539,10 +589,13 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     # evaluations, same numbers, one workspace.
     loss_batch = jax.jit(lambda flats: jax.lax.map(loss_fn, flats))
     chunk = int(getattr(cfg, "dsgnar_chunk", 0) or 0)
+    # no longer used by the phase: the fused sketch never forms the M x s matrix whose
+    # CountSketch this blocked; kept in `info` so old and new records stay comparable
     row_chunk = int(getattr(cfg, "dsgnar_row_chunk", 0) or 0)
     k_hashes = max(1, int(getattr(cfg, "dsgnar_hashes", N_HASHES) or N_HASHES))
-    sketched_jacobian = jax.jit(lambda flat_now, basis: jvp_columns(res_fn, flat_now, basis,
-                                                                    chunk))
+    # J~ = C J (Omega S) without the M x s intermediate; see sketched_jvp_columns
+    sketched_jacobian = jax.jit(lambda f, b, sg, bk: sketched_jvp_columns(res_fn, f, b, sg, bk,
+                                                                          s, chunk))
 
     target_stage1 = float(cfg.dsgnar_stage1_ratio)
     target_stage2 = float(cfg.dsgnar_stage2_ratio)
@@ -595,7 +648,8 @@ def dsgnar_phase(objective, flat0, cfg: Config,
             res_fn = objective._residual
             loss_fn = objective._loss
             loss_batch = jax.jit(lambda flats: jax.lax.map(loss_fn, flats))
-            sketched_jacobian = jax.jit(lambda f, b: jvp_columns(res_fn, f, b, chunk))
+            sketched_jacobian = jax.jit(lambda f, b, sg, bk: sketched_jvp_columns(
+                res_fn, f, b, sg, bk, s, chunk))
             inv_m = 1.0 / float(objective.residual(flat).shape[0])
             scale = 0.5 * inv_m
             loss = objective.loss(flat)
@@ -612,9 +666,9 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         # its transpose has one row per residual point, which is what C eats; the
         # same hash draws then give r~ as well, keeping the two sketches identical.
         tic = time.time()
-        j_cols = sketched_jacobian(flat, B).T         # (M, s) = J (Omega S)
-        j_sketch, r_tilde = count_sketch(j_cols, residual, k_ck, s, k_hashes=k_hashes,
-                                        row_chunk=row_chunk)
+        signs, buckets = count_sketch_draws(k_ck, int(residual.shape[0]), s, k_hashes, dtype)
+        j_sketch = sketched_jacobian(flat, B, signs, buckets)          # (s, s)
+        r_tilde = apply_count_sketch(residual[:, None], signs, buckets, s)[:, 0]
         t_jvp += time.time() - tic
 
         # --- Algorithm 1 line 4: one SVD serves every lambda ------------------
