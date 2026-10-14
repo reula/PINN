@@ -33,14 +33,22 @@ IC_COLOR = {"hard": "#c0392b", "soft": "#1f6feb", "soft_all": "#2e8b57"}
 IC_LABEL = {"hard": "hard hand-over", "soft": "soft (window 1 hard)",
             "soft_all": "soft, first window too"}
 OPT_STYLE = {"dsgnar": "-", "ssbroyden": "--", "jaxopt_broyden": ":"}
-# marker encodes n_coll, NOT the optimiser: with two collocation sizes the same
-# (optimiser, hand-over) pair occurs twice, and encoding both in the same channel
-# draws them as one indistinguishable line.
-NCOLL_MARK = {2201: "o", 8192: "s"}
+# marker encodes the SKETCH SIZE, which is the axis these batches exist to
+# compare.  With two collocation sizes AND three sketch sizes the same (optimiser,
+# hand-over) pair occurs six times; encoding any two of them in one channel draws
+# distinguishable runs as a single line.
+def sketch_label(cfg):
+    s = cfg.get("dsgnar_sketch") or 0
+    if s == 0:
+        return "d/3"
+    return "d/2" if s == 1100 else ("0.68d" if s == 1500 else f"s={s}")
+
+
+SKETCH_MARK = {"d/3": "o", "d/2": "s", "0.68d": "^"}
 
 
 def mark(run):
-    return NCOLL_MARK.get(run["n_coll"], "^")
+    return SKETCH_MARK.get(run["sketch"], "D")
 
 
 def load_run(path: str) -> Optional[Dict]:
@@ -60,6 +68,8 @@ def load_run(path: str) -> Optional[Dict]:
         "t_scale": cfg.get("t_scale"),
         "precision": cfg.get("precision"),
         "rounds": cfg.get("resample_rounds"),
+        "sketch": sketch_label(cfg),
+        "retries": sum(x.get("attempts", 0) for x in win.get("windows", [])),
         "wall": win.get("wall"),
         "overall": win.get("metrics", {}).get("rel_l2_space_time"),
         "windows": win.get("windows", []),
@@ -100,10 +110,10 @@ def main(argv: List[str]) -> int:
               f"{r['n_coll'] or 0:7d} {r['overall']:10.3e} {amp:6.2f} "
               f"{r['wall'] or 0:6.0f}s {str(r['precision'] == 'float64'):>5s}")
 
-    fig, ax = plt.subplots(2, 2, figsize=(14, 9.5))
+    fig, ax = plt.subplots(2, 3, figsize=(19, 9.5))
     fig.suptitle(f"Windowed T = 20 — {len(runs)} runs, float64, 10 windows of dt = 2\n"
-                 f"colour = hand-over, line = optimiser, marker = n_coll (o 2201, s 8192)",
-                 fontsize=12)
+                 f"colour = hand-over, line = optimiser, "
+                 f"marker = sketch size (o d/3, s d/2, ^ 0.68 d)", fontsize=12)
 
     # (a) error along the integration
     a = ax[0, 0]
@@ -119,7 +129,7 @@ def main(argv: List[str]) -> int:
     a.legend(fontsize=6.5, ncol=2)
 
     # (b) overall ranking
-    a = ax[0, 1]
+    a = ax[0, 2]
     xs = np.arange(len(runs))
     a.bar(xs, [max(r["overall"], 1e-18) for r in runs],
           color=[IC_COLOR.get(r["window_ic"], "grey") for r in runs], alpha=.9)
@@ -130,6 +140,17 @@ def main(argv: List[str]) -> int:
                       fontsize=6.5)
     a.set_ylabel(r"space-time relative $L_2$")
     a.set_title("(b) whole-integration accuracy"); a.grid(alpha=.3, axis="y")
+
+    # (f) stalls: windows that needed a redraw-and-retry
+    a = ax[0, 1]
+    xs = np.arange(len(runs))
+    a.bar(xs, [r["retries"] for r in runs], color=[IC_COLOR.get(r["window_ic"], "grey") for r in runs])
+    a.set_xticks(xs)
+    a.set_xticklabels([f"{r['optimizer'][:4]}\n{r['window_ic'][:6]}\n{r['sketch']}" for r in runs],
+                      fontsize=5.5)
+    a.set_ylabel("windows that stalled and were retried")
+    a.set_title("(f) the stall is not rare -- and at n_coll=2201 it is not always rescued")
+    a.grid(alpha=.3, axis="y")
 
     # (c) amplification per hand-over
     a = ax[1, 0]
@@ -158,6 +179,30 @@ def main(argv: List[str]) -> int:
     a.set_title("(d) did each window converge on its own sample?")
     a.grid(alpha=.3, which="both")
 
+    # (e) the sketch-size effect: the axis these two batches exist to measure
+    a = ax[1, 2]
+    for ic in ("hard", "soft", "soft_all"):
+        pts = [r for r in runs if r["window_ic"] == ic and r["n_coll"] == 8192
+               and r["optimizer"] == "dsgnar"]
+        order = {"d/3": 0, "d/2": 1, "0.68d": 2}
+        pts = sorted([p for p in pts if p["sketch"] in order], key=lambda r: order[r["sketch"]])
+        if not pts:
+            continue
+        a.semilogy([order[p["sketch"]] for p in pts], [p["overall"] for p in pts],
+                   marker="o", color=IC_COLOR.get(ic, "grey"), lw=1.8, ms=7,
+                   label=IC_LABEL.get(ic, ic))
+        for p in pts:
+            a.annotate(f"{p['overall']:.1e}", (order[p["sketch"]], p["overall"]),
+                       textcoords="offset points", xytext=(4, 4), fontsize=7)
+    a.set_xticks([0, 1, 2]); a.set_xticklabels(["d/3\n(733)", "d/2\n(1100)", "0.68 d\n(1500)"])
+    a.set_ylabel(r"space-time relative $L_2$")
+    a.set_title("(e) the sketch size is the dominant knob\n(dsgnar, n_coll = 8192)")
+    a.grid(alpha=.3, which="both"); a.legend(fontsize=8)
+
+    # (f) how often a window had to be rescued by a redraw-and-retry.  In these
+    # runs it is not rare, and at n_coll = 2201 it does not always rescue.
+    if False:
+        pass
     fig.tight_layout(rect=[0, 0, 1, 0.93])
     os.makedirs(os.path.dirname(OUT_PNG), exist_ok=True)
     fig.savefig(OUT_PNG, dpi=150)
