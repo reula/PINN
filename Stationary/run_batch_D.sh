@@ -4,6 +4,10 @@
 #
 #     nohup setsid bash run_batch_D.sh > logs/batch_D.driver.log 2>&1 &
 #
+# Relaunching after an interruption: SKIP_DONE=1 leaves cells that already exited 0
+# alone and runs the rest:
+#     SKIP_DONE=1 nohup setsid bash run_batch_D.sh > logs/batch_D.driver.log 2>&1 &
+#
 # All cells share: correct Ricci source (--ricci-lam-source 1), the metric's pins and weights as in
 # the PREDECESSOR family that predates the zero-source switch (--pin-h-robin, w_inner = w_outer =
 # 100, --reweight-every 500, --qn-block 250), and 500 Adam steps then up to 30000 SSBroyden.
@@ -44,6 +48,12 @@ P=(--lam-eq-form log --radial hybrid --radial-log-frac 0.25 --n-coll 27768 --n-b
 
 launch_and_wait () {   # name, extra flags...
     local name=$1; shift
+    # SKIP_DONE=1 resumes a batch: a cell that already exited 0 is left alone, so relaunching
+    # after the driver dies (or after a cleanup killed it) does not redo the finished cells.
+    if [ "${SKIP_DONE:-0}" = "1" ] && [ "$(cat "runs/$name/train.exit" 2>/dev/null)" = "0" ]; then
+        echo "=== $name  already finished (exit 0), skipping"
+        return
+    fi
     echo "=== $name  launched $(date)"
     bash run_hub.sh --outdir "runs/$name" "${COMMON[@]}" "$@"
     local waited=0
