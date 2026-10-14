@@ -76,21 +76,45 @@ def dipole_killing_exps(exps):
     return kept + [max(exps) + 1]
 
 
-def _legendre_mode(R, xs, l):
-    """The l-th Legendre component of the per-point array R, as an array ((2l+1)/N sum R P_l)."""
-    mu = xs[:, 2] / jnp.linalg.norm(xs, axis=-1)
-    Pl = _legendre(l, mu)
-    coeff = (2 * l + 1) / R.shape[0] * jnp.sum(R * Pl[:, None], axis=0)
-    return coeff[None, :] * Pl[:, None]
+def _gl_sphere(r, n_gl=48):
+    """Gauss-Legendre nodes in mu at radius r, with the (2l+1)/2 weights of the l = 1 projection.
+
+    phi = 0 suffices: the outer residual is axisymmetric (m = 0).
+    """
+    mu, w = np.polynomial.legendre.leggauss(n_gl)
+    mu = jnp.asarray(mu)
+    w = jnp.asarray(w)
+    sin_th = jnp.sqrt(1.0 - mu ** 2)
+    xs = jnp.stack([r * sin_th, jnp.zeros_like(mu), r * mu], axis=-1)
+    return xs, mu, w
 
 
-def kill_dipole_part(R_std, R_mod, xs, l=1):
+def kill_dipole_part(res_std_fun, res_mod_fun, xs, l=1, n_gl=48):
     """R_std everywhere except the l-th mode, where the modified kernel's version is used.
 
     Legal because the Euler operator is RADIAL: it commutes with the angular projection, so
     B_tilde[P_l R] = P_l[B_tilde R] and the two can be exchanged mode by mode.
+
+    The mode's coefficient is taken on a GAUSS-LEGENDRE sphere, not from the sample.  The unbiased
+    estimator on the sampled points has O(1/sqrt(N)) noise, and since the l = 0 part of the field
+    dominates the residual, that noise is proportional to the WHOLE field: measured on a pure-l = 0
+    rho^-2 field with N = 1024 points it put 14% of the modified kernel's own action back into the
+    loss, which would have driven the monopole's rho^-2 coefficient to compensate.  With GL nodes
+    the l = 0 part contributes exactly zero (int P_1 dmu/2 = 0 is exact for n_gl >= 1) and the
+    projection becomes deterministic.
     """
-    return R_std - _legendre_mode(R_std, xs, l) + _legendre_mode(R_mod, xs, l)
+    r = jnp.linalg.norm(xs, axis=-1)
+    mu = xs[:, 2] / r
+    out = res_std_fun(xs)
+    for rad in jnp.unique(jnp.round(r, 6)):
+        sel = jnp.abs(r - rad) < 1e-4
+        nodes, mu_g, w_g = _gl_sphere(float(rad), n_gl)
+        Pl_g = _legendre(l, mu_g)
+        c_std = (2 * l + 1) / 2 * jnp.sum(jax.vmap(res_std_fun)(nodes) * (Pl_g * w_g)[:, None], axis=0)
+        c_mod = (2 * l + 1) / 2 * jnp.sum(jax.vmap(res_mod_fun)(nodes) * (Pl_g * w_g)[:, None], axis=0)
+        delta = (c_mod - c_std)[None, :] * _legendre(l, mu)[:, None]
+        out = out + jnp.where(sel[:, None], delta, 0.0)
+    return out
 
 
 def robin_coefficients(base: float, order: int) -> list[float]:
@@ -361,17 +385,23 @@ def outer_bc_raw(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict
                                         jnp.array([rl - sl])])
             return jnp.concatenate([pack_sym(rh - sh) * OFFW, jnp.array([rl - sl])])
 
-        R = jax.vmap(lambda x: residual(x, exps_h, exps_l))(xs)
-        if kill:
-            Rm = jax.vmap(lambda x: residual(x,
-                                             dipole_killing_exps(exps_h) if "h" in kill else exps_h,
-                                             dipole_killing_exps(exps_l) if "lam" in kill else exps_l)
-                          )(xs)
-            if "h" in kill:
-                R = R.at[:, :6].set(kill_dipole_part(R[:, :6], Rm[:, :6], xs, l=1))
-            if "lam" in kill:
-                R = R.at[:, -1].set(kill_dipole_part(R[:, -1][:, None], Rm[:, -1][:, None],
-                                                     xs, l=1)[:, 0])
+        std = lambda x: residual(x, exps_h, exps_l)
+        if not kill:
+            R = jax.vmap(std)(xs)
+        else:
+            mod = lambda x: residual(x,
+                                     dipole_killing_exps(exps_h) if "h" in kill else exps_h,
+                                     dipole_killing_exps(exps_l) if "lam" in kill else exps_l)
+            # project per component: h occupies the first six slots, lam the last one
+            def part(fun, lo, hi):
+                return kill_dipole_part(lambda z: fun(z)[lo:hi], lambda z: mod(z)[lo:hi], xs, l=1)
+            R = std(xs) if False else jax.vmap(std)(xs)
+            if "h" in kill and "lam" in kill:
+                R = jnp.concatenate([part(std, 0, 6), part(std, -1, None)], axis=-1)
+            elif "h" in kill:
+                R = jnp.concatenate([part(std, 0, 6), R[:, -1:]], axis=-1)
+            else:
+                R = jnp.concatenate([R[:, :-1], part(std, -1, None)], axis=-1)
         drop = getattr(cfg, "drop_robin_ls", ()) or ()
         drop_h = getattr(cfg, "drop_h_ls", ()) or ()      # modes removed from the METRIC alone
         out = {"h": _drop_legendre_modes(R[:, :6], xs, tuple(drop) + tuple(drop_h)),
