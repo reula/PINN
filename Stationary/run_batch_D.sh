@@ -23,6 +23,10 @@
 set -u
 cd "$(dirname "$0")"
 mkdir -p logs
+# Belt and braces now that the batch failed exactly this way once: run_hub.sh picks this up,
+# and the driver refuses to march on if a cell does not reach exit 0.
+export PY="${PY:-$PWD/.venv/bin/python}"
+[ -x "$PY" ] || { echo "no interpreter at $PY -- aborting"; exit 1; }
 # The physics flags are NOT repeated here on purpose: problem.py now defaults to them
 # (ricci_lam_source = 1, pin_h_robin = True, w_inner = w_outer = 100, reweight_every = 500,
 # qn_block = 250, resample_every = 500), so a launcher cannot forget them again.  What is left
@@ -47,7 +51,13 @@ launch_and_wait () {   # name, extra flags...
         sleep 60; waited=$((waited + 60))
         if [ "$waited" -gt 21600 ]; then echo "=== $name: no exit after 6 h, moving on"; return; fi
     done
-    echo "=== $name  done $(date)  exit=$(cat runs/$name/train.exit)"
+    local st; st=$(cat "runs/$name/train.exit")
+    echo "=== $name  done $(date)  exit=$st"
+    if [ "$st" != "0" ]; then
+        echo "=== $name exited $st -- ABORTING the batch (fix and delete runs/$name/train.exit to retry)"
+        tail -25 "logs/$name.log"
+        exit 1
+    fi
     grep -aE "final loss|gauge +rms|lam_eq +rms|ricci +rms" "runs/$name/report.txt" 2>/dev/null | head -4
 }
 

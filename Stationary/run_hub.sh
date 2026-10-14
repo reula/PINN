@@ -34,7 +34,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
-PY="${PY:-python}"
+# The interpreter: the checkout's own venv by default.  A bare `python` here is what broke the
+# first batch -- `python -m stationary.train` died with "No module named jax" in every cell,
+# 3 s each, because run_hub.sh was the one launcher that still defaulted to `python`.
+PY="${PY:-$HERE/.venv/bin/python}"
 CKPT_EVERY="${CKPT_EVERY:-500}"
 TRAIN_THREADS="${TRAIN_THREADS:-4}"
 # postprocessing (figures + report) gets the same cap unless told otherwise; exported so
