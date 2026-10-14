@@ -281,7 +281,11 @@ class Config:
     # that skipped or shortened Adam never reweighted at all
     # (runs/production_quad_quarter_pin_r400 asked for 1500, ran 8000 quasi-Newton
     # iterations, and logged no [reweight] line).
-    reweight_every: int = 500   # gradient-norm adaptive reweighting period (0 = off)
+    reweight_every: int = 0     # gradient-norm adaptive reweighting period, OFF by default:
+                                # the rule's output changed after the runs it was tuned on
+                                # (it now sets lam_eq = 0.707 where pq_u100_s2_12 got 4, a
+                                # 5.7x different objective, and the new runs stall at 2e-02)
+                                # so it must be opted into: --reweight-every 500
     reweight_max_ratio_inv: float = 0.5   # per-update cap: weights move by at most 2x
     # Cumulative band: over a whole run a PDE weight may not move further than this
     # factor from its configured value.  Without it the rule w ~ 1/||grad term|| drifts:
