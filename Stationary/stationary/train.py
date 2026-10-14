@@ -1637,6 +1637,10 @@ def parse_args(argv=None):
                    help="explicit ladder as fractions of rho_out, e.g. 1.0,0.9,0.8,0.7 (the measured "
                         "layer sat between rho = 99 and 100, so keep the shells close in); 1.0 is "
                         "the outer sphere itself and is skipped")
+    p.add_argument("--kill-dipole", type=str, default=None, dest="kill_dipole",
+                   help="comma-separated fields whose dipole must VANISH: the outer Robin condition "
+                        "is run with rho^-2 out of its kernel (h, or h,lam).  Unlike --drop-*-l 1, "
+                        "which exempts the dipole and leaves it free")
     p.add_argument("--drop-l-h", action="append", type=int, default=None, dest="drop_l_h",
                    help="Legendre mode to remove from the METRIC's conditions only (both spheres), "
                         "e.g. 1 to kill the dipole in h while lambda's dipole stays constrained")
@@ -1877,6 +1881,8 @@ def parse_args(argv=None):
         cfg.outer_shell_ratio = float(a.outer_shell_ratio)
     if a.outer_shell_fracs:
         cfg.outer_shell_fracs = tuple(float(x) for x in a.outer_shell_fracs.replace(",", " ").split())
+    if a.kill_dipole:
+        cfg.kill_dipole = tuple(x.strip() for x in a.kill_dipole.split(",") if x.strip())
     if a.drop_l_h:
         cfg.drop_h_ls = tuple(int(x) for x in a.drop_l_h)
     if a.drop_inner_l:
