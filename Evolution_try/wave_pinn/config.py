@@ -42,6 +42,7 @@ CHOICES: Dict[str, tuple] = {
     "tr_hessian": ("exact", "gauss_newton"),
     "wolfe_method": ("bfgs", "lbfgs", "ncg"),
     "qn_linesearch": ("backtracking", "wolfe"),
+    "dsgnar_pick": ("rho", "best"),
     "window_ic": ("hard", "soft", "soft_all"),
     "overwrite": ("archive", "wipe", "fail"),
     "precision": ("float64", "float32"),
@@ -221,6 +222,12 @@ class Config:
                                        # predicted decrease is noise-limited at K=4, which
                                        # is what stalled every run of the sibling problem
                                        # (0.94% of the loss in 15 iterations against 87.8%)
+    dsgnar_pick: str = "rho"            # how the final step is chosen among the 25 probes:
+                                       # "rho" targets the ratio (the paper) and "best"
+                                       # takes the lowest measured loss.  MEASURED and
+                                       # rejected: "best" halves the loss and makes the
+                                       # error worse (rel L2 4.249e-01 against 3.216e-01
+                                       # over 45 iterations at T=2, s=733).
     dsgnar_calibrate: bool = False      # divide the model's predicted decrease by the
                                        # median measured/predicted ratio over the probes
                                        # (clamped >= 1).  OFF by default, and the reason is

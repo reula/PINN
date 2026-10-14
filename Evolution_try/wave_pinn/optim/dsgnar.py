@@ -680,19 +680,35 @@ def dsgnar_phase(objective: Objective, flat0, cfg: Config,
 
         # --- final (PCHIP) radius and its lambda ------------------------------
         rho_host = np.asarray(rhos, dtype=np.float64)
-        delta_star = lambda_solve(probe_radii, rho_host, target_rho, r_lo, r_hi)
-        lam_star = float(solve_subproblems(sing, g, jnp.atleast_1d(delta_star),
-                                           n_newton, omega)[0])
-        # Reuse the probe prediction when the PCHIP radius happens to be one of
-        # the probe radii; otherwise evaluate the model once more rather than
-        # opening a trust-region radius whose denominator is not the one used to
-        # choose it.
-        match = jnp.argmin(jnp.abs(probe_lams - lam_star))
-        if bool(jnp.abs(probe_lams[match] - lam_star) <= 1.0e-12 * max(lam_star, omega)):
-            final_sk, final_pred = probe_sk[match], probe_pred[match]
+        if str(getattr(cfg, "dsgnar_pick", "rho")).lower() == "best":
+            # The alternative, and the measurement that rejects it.  The 25 probes
+            # already evaluate the TRUE loss, so taking the lowest one is free -- and
+            # it does lower the loss faster, by about 2x.  It also makes the error
+            # WORSE: measured at T=2, s=733, 45 iterations, rho-targeting reached
+            # loss 1.025e-03 with rel L2 3.216e-01, and picking the best probe reached
+            # 4.977e-04 with 4.249e-01.  Choosing the step that lowers the SAMPLED
+            # loss most leaves the solution further from the truth, which is this
+            # project's recurring lesson with n_coll = n_params.  rho* is not a
+            # search for the lowest loss; it is a search for the largest step the
+            # model still predicts, and the loss left on the table is the price.
+            best = int(jnp.argmin(jnp.where(finite, probe_losses, jnp.inf)))
+            final_sk, final_pred = probe_sk[best], probe_pred[best]
+            delta_star = float(probe_radii[best])
+            lam_star = float(probe_lams[best])
         else:
-            final_sk, final_pred = step_and_pred(sing, g, v_t, lam_star)
-            final_pred = final_pred * scale
+            delta_star = lambda_solve(probe_radii, rho_host, target_rho, r_lo, r_hi)
+            lam_star = float(solve_subproblems(sing, g, jnp.atleast_1d(delta_star),
+                                               n_newton, omega)[0])
+            # Reuse the probe prediction when the PCHIP radius happens to be one of
+            # the probe radii; otherwise evaluate the model once more rather than
+            # opening a trust-region radius whose denominator is not the one used to
+            # choose it.
+            match = jnp.argmin(jnp.abs(probe_lams - lam_star))
+            if bool(jnp.abs(probe_lams[match] - lam_star) <= 1.0e-12 * max(lam_star, omega)):
+                final_sk, final_pred = probe_sk[match], probe_pred[match]
+            else:
+                final_sk, final_pred = step_and_pred(sing, g, v_t, lam_star)
+                final_pred = final_pred * scale
         final_pred = final_pred / calib          # same calibration as the probes
         final_step = lift_srct(final_sk, srct, n)
 
@@ -795,6 +811,7 @@ def dsgnar_phase(objective: Objective, flat0, cfg: Config,
         "sketch": s,
         "hashes": k_hashes,
         "calibrate": bool(getattr(cfg, "dsgnar_calibrate", True)),
+        "pick": str(getattr(cfg, "dsgnar_pick", "rho")),
         "calibration_final": float(calib),
         "backtrack": bt,
         "tangent_chunk": tan_chunk,

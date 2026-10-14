@@ -954,6 +954,31 @@ loss surface, and since the phase refuses a failed block's inverse Hessian -- it
 describes a point the method never left -- the run stalls after about fifty
 iterations per block and stops four orders of magnitude short.
 
+**Can DSGNAR use it?**  Yes, and there is room -- but the room is a trap.
+DSGNAR's 25 probes *are* 25 exact loss evaluations, and the step its `ϱ*` rule picks
+is routinely 2-8x above the best of them: measured over 15 iterations at
+`T = 2`, `s = 733`, between 10 and 24 of its own 25 probes had a lower measured loss
+than the one it chose.  So the natural experiment is to pick the lowest instead of
+targeting the ratio.  It lowers the loss faster, by about 2x, and it makes the answer
+worse:
+
+| selection among the 25 probes | final loss | rel `L2` |
+|---|---|---|
+| `ϱ*` targeting (the paper, and the default) | 1.025e-03 | **3.216e-01** |
+| lowest measured loss | **4.977e-04** | 4.249e-01 |
+
+45 iterations, `T = 2`, `s = 733`.  `ϱ*` is not a search for the lowest loss; it is a
+search for the **largest step the model still predicts**, and the loss left on the
+table is the price of that.  Chasing the sampled loss instead is the sample-fitting
+trap this project keeps meeting at `n_coll = n_params`.
+
+So the honest answer to "can DSGNAR use a Wolfe search" is: it already has a stronger
+device -- 25 exact evaluations along the LM path, whose directions vary with `λ`, not
+2-3 evaluations along one direction -- and the one line-search-shaped change that was
+tried on it (`dsgnar_backtrack_steps`, scanning fractions of the selected step) was
+measured to hurt, being in the warm-start table the only configuration that stopped
+early.  `dsgnar_pick` exposes the alternative so the claim can be re-run.
+
 So *"a proper Wolfe search beats backtracking"* is not a general fact, and it is
 worth stating why the two experiments disagree.  For jaxopt's gradient-based
 quasi-Newton methods, backtracking's `0.8^15` shrink floor is what killed the first

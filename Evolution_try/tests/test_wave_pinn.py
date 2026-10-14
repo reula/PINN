@@ -442,6 +442,27 @@ class TestDsgnarMachinery(unittest.TestCase):
             # only over-optimism is corrected, so the factor can never be below 1
             self.assertGreaterEqual(info["calibration_final"], 1.0)
 
+    def test_the_probe_selection_rule_is_configurable_and_reported(self):
+        """rho* targeting, or the lowest-loss probe -- and the second one loses.
+
+        DSGNAR's 25 probes are 25 EXACT loss evaluations, and its rho*-targeted step
+        is routinely 2-8x above the best of them: 10-24 of the 25 have a lower
+        measured loss.  So there is room, and using it makes the error worse --
+        measured over 45 iterations at T=2, s=733, rho-targeting reached loss
+        1.025e-03 with rel L2 3.216e-01, picking the best probe 4.977e-04 with
+        4.249e-01.  rho* is not a search for the lowest loss; it is a search for the
+        largest step the model still predicts, and the loss left on the table is the
+        price of that.
+        """
+        from wave_pinn.optim.dsgnar import dsgnar_phase
+        for rule in ("rho", "best"):
+            cfg = Config(T=2.0, n_coll=48, dsgnar_sketch=11, dsgnar_steps=3,
+                         sampler="uniform", log_every=1000, dsgnar_pick=rule)
+            obj = Objective(cfg, make_batch(cfg, jax.random.PRNGKey(5)), self.params)
+            out, _, info = dsgnar_phase(obj, self.flat, cfg, verbose=False)
+            self.assertEqual(info["pick"], rule)
+            self.assertTrue(np.isfinite(obj.loss(out)), msg=rule)
+
     def test_dsgnar_calibration_is_off_by_default_and_switchable(self):
         """The ablation needs the old behaviour to exist on demand, and the default
         is the configuration the evidence supports -- which for the calibration is
