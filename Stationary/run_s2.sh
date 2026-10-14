@@ -16,7 +16,11 @@
 #     its dipole is a gauge mode -- a centre-of-mass condition, later;
 #   * correct Ricci source, metric and lambda pins on, w_inner = w_outer = 100, reweighting off.
 #
-# Overrides: TAG=... STEPS=... LBFGS=... NCOLL=... NBND=... EXTRA="--fourier 8" FORCE=1
+# Overrides: TAG=... STEPS=... LBFGS=... NCOLL=... NBND=... SHELLS=1.0,0.9,0.8 FORCE=1
+#            EXTRA="--fourier 8"
+#
+# If the card is full: SHELLS=1.0,0.9 (three shells) halves the outer cost, NCOLL=16384
+# halves the collocation cost.  S2 died with RESOURCE_EXHAUSTED on a 16 MiB allocation.
 set -u
 cd "$(dirname "$0")"
 TAG="${TAG:-_S2}"
@@ -25,6 +29,7 @@ LBFGS="${LBFGS:-20000}"
 NCOLL="${NCOLL:-32768}"
 NBND="${NBND:-2048}"
 EXTRA="${EXTRA:-}"
+SHELLS="${SHELLS:-1.0,0.9,0.8,0.7}"      # the outer-condition ladder, as fractions of rho_out
 RUN="runs/pq_r100_phihyb025${TAG}"
 DRIVER="logs/run${TAG}.driver.log"
 mkdir -p logs
@@ -51,6 +56,7 @@ if [ -f "$RUN/train.exit" ] && [ "${FORCE:-0}" != "1" ]; then
          "or FORCE=1 to overwrite"; exit 1
 fi
 RHO_OUT=100 TAG="$TAG" bash run_phi_hybrid.sh --only G --steps "$STEPS" --n-coll "$NCOLL" \
-    --n-bnd "$NBND" --n-bnd-outer "$NBND" --radial log --lbfgs-steps "$LBFGS" $EXTRA \
+    --n-bnd "$NBND" --n-bnd-outer "$NBND" --radial log --lbfgs-steps "$LBFGS" \
+    --outer-shell-fracs "$SHELLS" $EXTRA \
     || { echo "!! launch failed"; exit 1; }
 echo "=== launched $(date -u '+%H:%M:%S UTC'); the wrapper writes train.exit and then the report"
