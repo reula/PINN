@@ -37,8 +37,10 @@ CHOICES: Dict[str, tuple] = {
     "init": ("glorot", "lecun", "siren", "zeros", "uniform"),
     "sampler": ("uniform", "random", "grid_random", "lhs"),
     "optimizer": ("adam", "ssbroyden", "adam+ssbroyden", "dsgnar", "adam+dsgnar",
-                  "trustregion", "adam+trustregion", "jaxopt_broyden"),
+                  "trustregion", "adam+trustregion", "jaxopt_broyden",
+                  "jaxopt_bfgs", "jaxopt_lbfgs", "jaxopt_ncg", "optax_lbfgs"),
     "tr_hessian": ("exact", "gauss_newton"),
+    "wolfe_method": ("bfgs", "lbfgs", "ncg"),
     "window_ic": ("hard", "soft", "soft_all"),
     "overwrite": ("archive", "wipe", "fail"),
     "precision": ("float64", "float32"),
@@ -250,6 +252,18 @@ class Config:
     # length rather than delta_star -- shrinks the radius faster and reaches
     # delta_min sooner.  K = 8 costs double the sketch work for no measured gain.
     # "Mixed evidence does not earn a default" is the whole of the reasoning.
+    # ------------------------------------------------- the Wolfe family
+    # Measured negative control: a strong-Wolfe zoom line search fixes the
+    # backtracking Broyden's explosion (x1e5-x1e9) and then stalls -- 300
+    # iterations reach loss 3.3e-04 with a relative error of 0.42, against
+    # DSGNAR's 2.2e-14 and 6.8e-06 in 186.  Explicit curvature is doing the
+    # work on this problem; a gradient-only quasi-Newton method stops
+    # somewhere else, not merely later.  See optim/wolfe.py.
+    wolfe_method: str = "bfgs"          # bfgs | lbfgs | ncg (jaxopt, zoom line search)
+    wolfe_steps: int = 300
+    wolfe_memory: int = 10             # LBFGS history
+    wolfe_tol: float = 1e-16           # gradient-norm tolerance
+    wolfe_maxls: int = 30              # zoom line-search steps (optax path)
     dsgnar_chunk: int = 64             # tangents per batched JVP; 0 = all at once (GPU OOM)
     dsgnar_row_chunk: int = 0          # CountSketch rows per block; 0 = off (unneeded at M ~ 2e3)
     # ---- trust-region Newton with an exact dense Hessian (arXiv:2105.07552) ----

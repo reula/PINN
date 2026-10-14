@@ -306,6 +306,17 @@ Every row is a config field; nothing here needs a code change to switch.
   the **exact dense Hessian**, which is what makes it different from DSGNAR: the
   Gauss-Newton part `J^T J` plus `Σ_i r_i ∇²r_i`, and that second term is what
   makes the model indefinite.  See §6.7.
+* **Broyden the root finder** (`jaxopt_broyden`, opt-in). `jaxopt`'s limited-memory
+  rank-1 method for `r(θ) = 0` rather than for `min ‖r‖²`.  This is the only Broyden
+  in the JAX ecosystem -- `jax.scipy.optimize.minimize` has one method, `BFGS`, and
+  no Broyden -- and it is the right shape for a hard-constrained ansatz, where
+  `r = 0` is achievable rather than a proxy.  It diverges here, and §6.12 shows that
+  the cause is its backtracking line search rather than its step direction.
+* **The Wolfe family** (`jaxopt_bfgs`, `jaxopt_lbfgs`, `jaxopt_ncg`, `optax_lbfgs`).
+  Quasi-Newton methods on a strong-Wolfe zoom line search, which is what the
+  Broyden would need and cannot have.  They progress smoothly and are still ten
+  orders of magnitude behind DSGNAR to convergence; §6.12 has the numbers, and
+  `optim/wolfe.py` is labelled a measured negative control rather than a contender.
 
 ### Stopping criteria
 
@@ -869,6 +880,62 @@ One cell in twenty is stall-*broken* rather than stall-limited:
 `dsgnar_soft_all_nc2201_s1100` at `1.174e-02`, where window 9 stalled and the single
 retry did not rescue it.  Read that row as an artifact.
 
+
+### 6.12 The Wolfe family, and what the Broyden's failure actually was
+
+The Broyden negative control (`optim/jaxopt_broyden.py`) diverged by nine orders of
+magnitude, and
+the natural reading was that its step direction is useless.  That reading was wrong,
+and finding out why was worth the afternoon.
+
+`jaxopt.Broyden` uses `linesearch="backtracking"` -- *"for now only backtracking"*,
+its own docstring.  Backtracking shrinks by `decrease_factor` at most `maxls` times:
+`0.8^15 = 0.035` by default.  The Broyden's first step is `-r`, and here `|r| = 48`
+against `|theta| = 10`, so it has to shrink by far more than a factor of 28.  Every
+Broyden configuration tried either exploded or stood still because the line search
+could not shrink enough -- not because the direction had nothing in it.
+
+A **strong-Wolfe zoom** search brackets and bisects and has no such floor.
+`jaxopt.BFGS`, `LBFGS` and `NonlinearCG` all default to `linesearch="zoom"`, and
+`optax.lbfgs` takes `optax.scale_by_zoom_linesearch`.  Measured, `T = 2`,
+`n_coll = 2201`, 60 iterations, from a random start (`1.068e+00`) and from 1000 Adam
+steps (`2.408e-03`):
+
+| method | from init | from Adam |
+|---|---|---|
+| `jaxopt.BFGS` (zoom) | **1.685e-03** | **7.233e-04** |
+| `jaxopt.LBFGS` (zoom) | 4.696e-03 | 1.121e-03 |
+| `jaxopt.NonlinearCG` (zoom) | 3.283e-02 | 1.990e-03 |
+| `optax.lbfgs` + zoom | 1.027e-02 | 1.193e-03 |
+| `jaxopt.Broyden` (backtracking) | 6.759e+05 | 2.115e+09 |
+
+So the line search is the whole of it: the same family, given a Wolfe search, makes
+smooth progress where the Broyden explodes.  But it is **not competitive with
+DSGNAR**, and the way it fails is more interesting than the margin.  Run to
+convergence:
+
+| method | iterations | loss | rel `L2` | wall |
+|---|---|---|---|---|
+| `jaxopt.BFGS` (zoom) | 300 | 3.328e-04 | 4.232e-01 | 71 s |
+| `optax.lbfgs` + zoom | 300 | 1.043e-03 | 6.532e-01 | 241 s |
+| **DSGNAR, `s = 733`** | **186** | **2.243e-14** | **6.756e-06** | 1449 s |
+
+Ten orders of magnitude in the loss and sixty thousand in the error, in *more*
+iterations.  And a loss of `3.3e-04` with a relative error of `0.42` is the
+sample-fitting regime again -- with `n_coll = n_params` a gradient method can drive
+the sampled residual down while the solution stays wrong between the points (the
+same effect as §8's loss-versus-error note; 40 iterations of `jaxopt_lbfgs` reach a
+loss of `9.6e-03` at a rel `L2` of `5.4`).
+
+The conclusion is narrower than "DSGNAR is better", and more useful: **explicit
+curvature is what does the work here.**  DSGNAR builds a model of `J` from sketched
+Jacobian-vector products; a quasi-Newton method that only ever sees gradients is not
+merely slower, it stops at a different place.
+
+All four are wired in as optimiser choices (`jaxopt_bfgs`, `jaxopt_lbfgs`,
+`jaxopt_ncg`, `optax_lbfgs`), so the claim is re-runnable rather than a story:
+`optim/wolfe.py` carries the numbers, and the module is labelled as a measured
+negative control rather than a contender.
 
 ---
 

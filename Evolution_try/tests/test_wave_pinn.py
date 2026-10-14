@@ -243,6 +243,47 @@ class TestSubagentFreeOptimisers(unittest.TestCase):
         self.assertAlmostEqual(hist[-1]["loss"], obj.loss(flat), places=12)
 
 
+class TestWolfeFamily(unittest.TestCase):
+    """The Wolfe-condition quasi-Newton methods: a measured negative control.
+
+    Tried because the Broyden's failure looked like a line-search problem, and it
+    was: `jaxopt.Broyden` uses backtracking ("for now only backtracking", its own
+    docstring), which can shrink a step by `0.8^15 = 0.035` at most, while its first
+    step is `-r` with `|r| = 48` against `|theta| = 10`.  A strong-Wolfe zoom search
+    has no such floor, and the same class of method then progresses smoothly.
+    """
+
+    def setUp(self):
+        self.cfg = Config(T=2.0, n_coll=48, dsgnar_sketch=11, wolfe_steps=4,
+                          resample_every=0, resample_rounds=1, log_every=1000)
+        key = jax.random.PRNGKey(3)
+        self.params = init_params(self.cfg, key)
+        self.obj = Objective(self.cfg, make_batch(self.cfg, key), self.params)
+        self.flat, _ = jax.flatten_util.ravel_pytree(self.params)
+
+    def test_both_wolfe_paths_reduce_the_loss_and_name_their_line_search(self):
+        from wave_pinn.optim.wolfe import optax_lbfgs_phase, wolfe_phase
+        before = self.obj.loss(self.flat)
+        for name, fn, cfg in (("jaxopt", wolfe_phase, self.cfg.replace(wolfe_method="lbfgs")),
+                              ("optax", optax_lbfgs_phase, self.cfg)):
+            out, hist, info = fn(self.obj, self.flat, cfg, verbose=False)
+            self.assertLess(self.obj.loss(out), before, msg=name)
+            self.assertIn("Wolfe", info["line_search"], msg=name)
+            self.assertEqual(info["iterations"], 4)
+            self.assertGreater(len(hist), 1)
+
+    def test_an_unknown_wolfe_method_is_rejected(self):
+        from wave_pinn.optim.wolfe import wolfe_phase
+        with self.assertRaises(ValueError):
+            wolfe_phase(self.obj, self.flat, self.cfg.replace(wolfe_method="nope"),
+                        verbose=False)
+
+    def test_the_phase_names_select_the_method(self):
+        from wave_pinn.optim import _phases
+        for name in ("jaxopt_bfgs", "jaxopt_lbfgs", "jaxopt_ncg", "optax_lbfgs"):
+            self.assertEqual(_phases(name), [name])
+
+
 class TestDsgnarMachinery(unittest.TestCase):
     """The places where a DSGNAR port goes wrong silently.
 

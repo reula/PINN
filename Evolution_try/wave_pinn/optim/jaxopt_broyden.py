@@ -21,6 +21,17 @@ Two structural requirements, both about the method rather than the code:
   its two penalty rows per edge point the system is over-determined, and the phase
   selects ``n`` rows at an even stride.  Which ``n`` equations you impose is part of
   a root-finding formulation, so the choice is reported.
+**Why it diverges here, and what that turned out to be.**  Every configuration
+tried either exploded (`1e9` after 20 iterations) or stood still, and the cause is
+the line search: `jaxopt.Broyden` takes `linesearch="backtracking"` -- *"for now only
+backtracking"*, its own docstring -- and backtracking shrinks by `decrease_factor`
+at most `maxls` times, `0.8^15 = 0.035` by default.  Its first step is `-r`, with
+`|r| = 48` against `|theta| = 10`, so it would need to shrink by far more than that.
+A **strong-Wolfe zoom** search has no such floor, and `wolfe.py` measures the same
+class of method with one: it progresses smoothly.  So the direction is not hopeless;
+this solver's line search is, and jaxopt offers no alternative for the Broyden.  See
+`wolfe.py` for the numbers and for why the family is still not competitive.
+
 * **No redrawing inside the phase.**  The secant history *is* the approximate
   Jacobian of the residual it was built from.  Redrawing the collocation points
   mid-run does not merely fail to help: it silently invalidates the model.  Use
