@@ -7,6 +7,20 @@ plus a faithful port of the Gauss–Newton optimiser from the paper in `docs/`.
 This directory is self-contained: everything it needs is here, including a
 vendored copy of the `Crunch` SSBroyden implementation.
 
+**The result, in one line.** Marching the problem in ten slabs of `dt = 2`, with each
+window's initial data enforced as a penalty rather than built into the ansatz, and
+DSGNAR at a sketch size of `0.68 d`, reaches a space-time relative `L2` of
+**`6.3e-09`** at `T = 20`.  `d/2` is the measured cost/accuracy sweet spot; on that
+same `soft_all` cell it gives `1.8e-06`, so the last step to `0.68 d` is worth another
+288x on the chain even though it is worth only 6x on a single `T = 2` window. The four *global* solves tried first -- `t2` and `t2sat`,
+SSBroyden and DSGNAR -- give 0.91, 3.48, 23.9 and 4.99. Eight to nine orders of
+magnitude, and §6.9-6.11 say which of those decisions did the work, which did not,
+and what is still wrong.
+
+Two knobs matter and both were measured rather than inherited: the hand-over
+(§6.9) and the sketch size (§6.10).  Two that the literature and a sibling project
+suggested matter do **not** transfer here, and §6.9 records the retractions.
+
 ---
 
 ## 1. The problem
@@ -196,6 +210,12 @@ bash scripts/run_reference.sh          # the reference SSBroyden solve
 bash scripts/run_dsgnar.sh             # DSGNAR on the same problem
 bash scripts/sweep_features.sh         # the feature-map sweep
 
+# the DSGNAR sketch: measure before choosing s, then run the batch
+$PY scripts/dsgnar_sketch_audit.py --k 4 --keys 6 --s 733 1100 1500 --skip-cold
+bash scripts/run_sketch_curve.sh                      # T=2 to convergence, 3 sizes
+DSGNAR_SKETCH=1100 FOCUSED=1 bash scripts/batch_runs.sh
+$PY scripts/report_batch.py                           # BATCH_REPORT.md + the figure
+
 PY=.venv/bin/python                    # or let env.sh find one; see above
 $PY -m wave_pinn.cli --label my_try --set optimizer=adam+ssbroyden \
     --set features=periodic --set n_coll=4096
@@ -210,10 +230,27 @@ restarts from a previous run's configuration.  `--dry-run` prints the resolved
 config without running anything.  Set `CRUNCH_ROOT` to use a different `Crunch`
 checkout instead of the vendored copy.
 
-**Git hygiene.**  `runs/` is tracked, so a run started here leaves the working tree
-dirty and the *next* `git pull` will complain.  Either commit the runs you want to
-keep (from the machine that produced them), or point a throwaway run elsewhere with
-`--outdir /path/outside/the/checkout`.
+**`s` is the knob to set first.**  The sketch size is worth three orders of
+magnitude here (§6.10), and `s = d/3`, the package default and the bottom of the
+paper's recommended range, is the wrong end of it.  `dsgnar_sketch=1100` (`d/2`) is
+the measured sweet spot; `scripts/dsgnar_sketch_audit.py` costs ten minutes and needs
+no GPU, so it is worth running before any long batch.
+
+**Git hygiene.**  `runs/` is **gitignored and machine-local** -- it is produced where
+the GPU is, and committing it from another machine makes the producing machine's next
+`git pull` abort with *"untracked working tree files would be overwritten"*, which is
+a dead end rather than a merge conflict.  The repository's record of results is the
+derived `BATCH_REPORT.md` and `plots/`, which `scripts/report_batch.py` regenerates
+from whatever `runs/` holds.  `logs/` is local in the same way.
+
+**Surviving a disconnect.**  `scripts/hub_run.sh` and the batch scripts detach with
+`setsid nohup`, which survives a browser disconnect and a Jupyter *server process*
+restart.  It does **not** survive the single-user container being recreated (what
+"stop/start server" often does), and a lost batch there leaves nothing running.  The
+batch scripts are resumable, so the cure is to relaunch; but the signal to watch is
+the **run's own** `logs/<label>.log`, which grows every 25 DSGNAR iterations --
+`logs/batch.log` and the launcher's output only change at run boundaries and can be
+silent for hours while everything is fine.
 
 
 ---
@@ -344,7 +381,7 @@ Each phase reports the count it actually performed in `info["resamples"]`.
 redrawing costs six orders of magnitude in the loss — `1.05e-09` with nine redraws
 against `4.48e-15` with none.  That comparison was confounded: the run with the
 redraws was also the run whose time feature was divided by the global `T` instead
-of the window width (see the windows section).  With that fixed, redraws make no
+of the window width (the bug in section 6.9).  With that fixed, redraws make no
 measurable difference at this phase length: the two finished windowed runs
 performed 6-8 redraws per window and reached `1.5e-14` (hard hand-over, window 1,
 245 iterations) and `7.8e-15` (soft, 238 iterations), against `2.37e-14` for a
@@ -625,7 +662,7 @@ forward-over-reverse passes both grow, and the method's value here is the
 diagnostic in the table above rather than the solution it produces.
 
 
-### 6.8 Two attempts to make T = 20 work
+### 6.8 Two attempts to make T = 20 work by staying global
 
 **A saturating weight.**  The `t^2` in front of the network is what amplifies the
 error at large `t`, so `ansatz="t2sat"` replaces it with `t^2/(tau^2 + t^2)`, which
@@ -681,11 +718,156 @@ hand-over inherits the previous window's error.
 
 So the recommendation stands, with a price tag attached: **window the problem, and
 use DSGNAR inside the windows**, because it is the only one of the three that
-reaches `1e-6` on a `T = 2`-sized problem in a couple of hundred iterations.  The
-run is a few hours, not a few minutes, and it is the natural next step.
+reaches `1e-6` on a `T = 2`-sized problem in a couple of hundred iterations.
 
-    python -m wave_pinn.cli --set T=20 --set windows=10 --set ansatz=t2sat \
-        --set optimizer=dsgnar --set dsgnar_steps=200 --set n_coll=2201
+That was the state of things when this section was written, and it took two more
+decisions -- neither of them in this section -- to turn "the natural next step" into
+a result eight orders of magnitude better than everything above.  They are next.
+
+### 6.9 The third attempt works: slab marching plus a soft hand-over
+
+Two things had to change, and they turned out to be the two that matter.
+
+**The hand-over has to be a penalty, not a constraint.**  Writing a window's ansatz
+*relative to* the previous window's solution puts that solution's error inside the
+ansatz, where the window's own residual cannot see it: the window then minimises the
+loss subject to an initial condition that is already wrong, and the error is carried
+forward however well it solves its own problem.  `window_ic="soft"` makes the
+hand-over two penalty rows per edge point instead, pulling `u` and `u_t` onto the
+values the previous window left at the shared edge.  The network can then trade an
+initial-condition mismatch against the residual -- so it can *correct* what it
+inherited rather than propagate it.  Measured, that is the difference between an
+amplification of `x3-4` per hand-over (`hard`) and `x1.3-1.8` (`soft`), and it is
+worth two to three orders of magnitude at `T = 20`.
+
+**The time feature has to be scaled to the window, not to `T`.**  The network's time
+input is `t / t_scale`.  With `t_scale = T = 20` and a window of width 2, every
+window had to fit its whole evolution into `[0, 0.1]` of the input coordinate, at
+ten times the effective frequency; window 1 came out at `2.9e-04` where the identical
+`T = 2` problem gives `5e-06`.  `t_scale` is the window width now.  That bug was
+worth 300x on the first window alone and is the reason an earlier windowed attempt
+looked like it was degrading without limit.
+
+**What it gives.**  Twenty windowed `T = 20` runs, ten windows of `dt = 2`,
+float64 throughout, in `BATCH_REPORT.md` and `plots/batch_report.png`.  The
+space-time relative `L2` of `dsgnar` at `n_coll = 8192`:
+
+| hand-over | `s = d/3` (733) | `s = d/2` (1100) | `s = 0.68 d` (1500) | gain |
+|---|---|---|---|---|
+| `hard` | 1.877e-03 | 1.958e-05 | 2.674e-06 | 700x |
+| `soft` | 9.980e-06 | 7.110e-07 | 1.642e-08 | 608x |
+| **`soft_all`** | 2.861e-06 | 1.829e-06 | **6.344e-09** | 451x |
+
+and at `n_coll = 2201`, `soft_all` improves from `7.834e-06` (`d/3`) to
+`2.399e-07` (`0.68 d`).  SSBroyden, for comparison, sits at `8.4e-03` in its best
+cell -- about 2900x worse than `dsgnar` at the same settings, for a tenth of the
+time.
+
+The best run this project has produced is therefore **`6.3e-09`** against the four
+*global* `T = 20` solves at 0.91, 3.48, 23.9 and 4.99 -- eight to nine orders of
+magnitude, from marching in ten slabs and letting each window's initial data be a
+penalty rather than a constraint.  Aggregated over the ten windows, the error along
+the chain stays between `1e-08` and `4e-08` instead of climbing to `10^-2`.
+
+`window_ic="soft_all"` goes one step further and softens the *first* window too,
+where the initial condition is the physical one rather than a hand-over.  That was
+worth trying because the first window seeds every error that follows, and it is the
+best column of the table -- but it is a genuine change to the problem statement:
+`u(0,x) = u0(x)` is then satisfied to the penalty's accuracy rather than exactly, so
+`hard` and `soft` remain the honest configurations and `soft_all` is an experiment.
+
+### 6.10 The sketch size dominates every other knob here
+
+`docs/dsgnar_spec.md` reproduces the paper's recommendation of `s` between a third
+and a half of the parameter count, and asks that `s` "comfortably exceed the
+numerical rank of `J`".  For this problem the second sentence is the operative one
+and the first is not satisfied:
+
+```
+exact J at T = 2, n_coll = 2201, from scripts/dsgnar_sketch_audit.py
+  singular values     6.997e+02 down to 4.557e-18, ratio 1.5e20
+  numerical rank      619 at 1e-8 of the largest
+                      914 at 1e-10
+                     1233 at 1e-12        against s = 733 = d/3
+  cosine between the lifted DSGNAR step and the exact Gauss-Newton step
+    s =  733 (d/3)   0.42      s = 1100 (d/2)  0.62      s = 1500 (0.68 d)  0.75
+```
+
+`d/3` is below the numerical rank, so the column sketch truncates real curvature
+directions and the lifted step is less than half aligned with Gauss-Newton.  The
+audit costs about ten minutes and needs no GPU: `J` is 38.7 MB here, and
+`jvp_columns` produces all 2201 columns in under a second.
+
+That is not cosmetic.  `scripts/run_sketch_curve.sh` measures the other end of it,
+`T = 2` to convergence on the A30:
+
+| s | s/d | final loss | rel `L2` | wall |
+|---|---|---|---|---|
+| 733 | 33% | 2.283e-14 | 4.580e-06 | 144 s |
+| 1100 | 49% | 2.897e-20 | 4.167e-09 | 215 s |
+| 1500 | 68% | 5.412e-23 | 6.963e-10 | 276 s |
+
+`d/3 -> d/2` costs 1.49x the time and buys **1099x**; `d/2 -> 0.68 d` costs another
+1.28x and buys 6x.  So the paper's range spans three orders of magnitude on this
+problem, the bottom of it is the wrong end, and **`d/2` is where the money is** --
+past it the per-window solve stops being what limits the answer, because the
+hand-over amplification takes over.
+
+The practical consequence for anything already reported: the twelve-cell batch in
+§6.5-6.8 was run at `s = d/3`, so its *absolute* DSGNAR numbers are far from what
+the method does here.  Its *comparisons* -- `soft_all` over `soft` over `hard`, more
+points over fewer, DSGNAR over SSBroyden -- are between runs sharing the handicap
+and stand.
+
+**Three retractions, recorded because two of them were asserted here first.**
+
+* *"Redrawing the collocation points costs six orders of magnitude in the loss."*
+  Wrong: the comparison (`1.05e-09` with nine redraws against `4.48e-15` with none)
+  was confounded, because the run with the redraws was also the run whose time
+  feature was divided by the global `T` instead of the window width -- the bug in
+  §6.9.  With that fixed, redraws make no measurable difference at these phase
+  lengths: 6-8 redraws per window still reached `1.5e-14` and `7.8e-15`.  §5.3
+  carries the correction.
+* *"`K = 4` is what made every stall."*  That is the sibling project's measurement,
+  on its problem at `s = 128`, where the sketched model over-predicts the decrease
+  by a factor 12.  It does not transfer: here the over-prediction is 1.0-3.3, `K = 4`
+  and `K = 8` give the same step alignment (`0.315` against `0.303`), and the T=2
+  accuracy is indistinguishable.  `K` is exposed and defaults to the paper's 4.
+* *"Calibrating the predicted decrease will fix the convergence."*  Also theirs, and
+  also not transferable: with nothing to correct, dividing by a noisy near-unity
+  factor mostly adds variance to the radius choice -- it helped in some
+  configurations and hurt in others, and in the warm-start test it was the only
+  configuration that stopped early.  Implemented, tested, **off by default**, with
+  the whole measurement table beside the knob in `config.py`.
+
+The general lesson is in §8, and it is the one worth carrying elsewhere: a fix
+measured on one problem at one sketch size is a hypothesis about another, not a
+result.
+
+### 6.11 The remaining defect: the stall
+
+One failure mode is still not understood and is not rare.  A window's DSGNAR phase
+can walk its trust region down to `delta_min` **while the loss is orders of
+magnitude above the floor this same configuration reaches in other windows** --
+measured, window 7 of `dsgnar_soft_nc2201` stopping at `7.6e-07` against a best of
+`1.9e-15`, and one earlier attempt hung outright there with `rho = -4.9e13`.  Panel
+(f) of the report counts the windows that had to be redrawn and re-run: **11 to 15**
+in the hard runs, present in most others.  `window_retries` (default 2) catches it
+by redrawing the collocation points and restarting from a fresh initialisation, and
+keeps the better of the attempts; that rescued a cell from `3.719e-02` to
+`2.505e-05` in one re-run.
+
+What is established: it is not the stop rule (stopping on `radius below threshold`
+after converging to `2.2e-14` is correct behaviour), it is not the hash count (K = 4
+and K = 8 give the same step alignment), it is not the prediction (the sketched model
+decrease is honest to within 13%), and it is not fixed by the sketch size -- the two
+best runs each stalled once or twice and recovered.  What is not established is the
+trigger.  `scripts/dsgnar_sketch_audit.py` is the instrument for it, pointed at a
+*stalling* state rather than a converged one, which is the next experiment.
+
+One cell in twenty is stall-*broken* rather than stall-limited:
+`dsgnar_soft_all_nc2201_s1100` at `1.174e-02`, where window 9 stalled and the single
+retry did not rescue it.  Read that row as an artifact.
 
 
 ---
@@ -715,6 +897,28 @@ What they pin down:
 * **Precision.** Everything runs in `float64` (`precision="float64"`), which JAX
   must be told about *before* any array is created. The high-accuracy claims in
   this line of work are meaningless in `float32`.
+* **A knob that cannot fail loudly will eventually be wrong unnoticed.** Four times
+  in this project a setting was accepted and ignored: `resample_every` was not a
+  period but a front-loaded schedule; a hard-coded `8` in the same formula was an
+  unstated assumption about how early a phase stops; `resample_rounds` was silently
+  reduced to one round whenever mid-phase redrawing was off; and the focused batch
+  reused the full batch's labels, so runs at a new sketch size would have been
+  reported as "done, will skip" and never executed. None of them crashed, and none
+  of them showed up in a dry run. The rule that follows: a new option is finished
+  when something asserts it took effect, and a run's label carries every dimension
+  that changes its meaning.
+* **The loss is a poor proxy for progress, in both directions.** A bigger sketch
+  reaches a lower loss *and* a lower error; but at a fixed small budget the
+  configuration with the lower training loss had a *worse* error (`3.0e-03` against
+  `1.1e-02` in loss, `9.3e-01` against `7.0e-01` in error). Two configurations can
+  only be ranked on the error, at a budget where both have stopped moving.
+* **GPU and CPU agree on the loss, not on the error.** The same `T = 2` run gave
+  losses agreeing to 2% across machines while the errors moved by up to 1.5x: the
+  error is far more sensitive to reduction order. Do not read a 1.5x error
+  difference between two machines as a configuration change.
+* **`runs/` and `logs/` are machine-local** (both gitignored). The record that
+  travels is `BATCH_REPORT.md` and `plots/`; the run directories stay where the GPU
+  is, and `scripts/report_batch.py` rebuilds the former from the latter.
 * **Residual normalisation.** The raw residual of this problem is `O(u0'')`,
   i.e. `O(1/σ²) ≈ 10²` for `σ = 0.2`, so the *unscaled* mean-squared residual at
   the initial parameters is about `7000`. `residual_norm="auto"` divides the PDE

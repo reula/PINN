@@ -1308,3 +1308,92 @@ All checks used pure NumPy 2.3.5 (JAX is not installed in this environment); scr
 7. `UpdateWeights` (Algorithm 4) and `UpdateTargetRatio` (Algorithm 5).
 8. Outer loop with `Δ_min` termination, hybrid precision, and (for time-dependent problems) slab
    time marching with the `θ_prev + 0.01·θ_fresh` warm start.
+
+---
+
+## 17. Deviations in this implementation, and what was measured
+
+This section is not part of the paper's transcription.  It records where
+`wave_pinn/optim/dsgnar.py` departs from it, and -- more useful -- which of those
+departures were measured to matter here and which were not.
+
+### 17.1 The `pred` convention, and why it turns out not to matter
+
+§3.4 above documents that the paper's two algorithm boxes disagree about `pred`, and
+that the reference code's `pred = Σ g²(σ²+2λ)/(σ²+λ)²` equals **exactly twice** the
+model decrease in the `½‖r + Jp‖²` convention.  This port follows the reference code.
+
+Two things follow, and both were checked numerically rather than argued:
+
+* `ϱ = act_red / pred` is **dimensionally correct as written.**  The objective is
+  `mean(r²)`, so its decrease is `2·scale·[m(0) − m(p)]` for `scale = 1/M`, which is
+  precisely `pred·scale`.  Measured at `T = 2`, `n_coll = 2201`: `pred/exact` ranged
+  over 1.03-1.13 across `λ ∈ [1e-8, 1e2]`.  There is no units bug.
+* Therefore the paper's literal `ϱ* = 0.075` and this port's `0.15` are not the same
+  target, and this port's is the looser of the two.  That is a deviation, it is
+  deliberate (the spec's §3.4 recommendation), and it is *not* what makes the trust
+  region collapse -- a looser target shrinks the radius less, not more.
+
+### 17.2 Three knobs ported from a sibling project, all off by default
+
+The sibling project (`Stationary/`) found, on its own problem at `s = 128`, that the
+sketched model over-predicts the decrease by a factor ~12, that this walks its trust
+region `3⁻²⁸` to `Δ_min` in about 28 iterations, and that `K = 4` is the dominant
+cause.  All three of its fixes are implemented here, tested, and **disabled by
+default**, because none of them transfers:
+
+| knob | what it does | default | why off here |
+|---|---|---|---|
+| `dsgnar_calibrate` | divides `pred` by the median measured/predicted ratio over the probes, clamped `≥ 1` | `False` | the over-prediction here is 1.0-3.3, not 12; correcting a noisy near-unity factor adds variance.  Mixed evidence: helped in some configurations, hurt in others, and in the warm-start test it was the only one that stopped early |
+| `dsgnar_hashes` | `K`, the CountSketch hash count | `4` (the paper's) | `K = 4` and `K = 8` give the same step alignment here, `0.315` against `0.303` at `λ = 1e-8` |
+| `dsgnar_backtrack_steps` | scans `1, ½, ¼ …` of the lifted step and takes the first length that lowers the loss | `-1` (off) | its radius rule follows the accepted length instead of `Δ*`, so it shrinks the radius faster and reaches `Δ_min` sooner; in the warm-start table it is the only configuration that stops early |
+
+The pattern explaining all three: their over-optimism is a factor 12 because `s = 128`
+is a severe compression of their problem, while `s = d/3` here is a mild one.  `K` and
+the calibration are treating *their* sketch's variance and bias; this problem's limit
+is elsewhere (§17.3).
+
+### 17.3 The limit is the column sketch, and the paper's range is not the optimum
+
+`jvp_columns` with `basis = I` forms the exact Jacobian -- 38.7 MB at `n = 2201`, under
+a second -- and `scripts/dsgnar_sketch_audit.py` compares the lifted DSGNAR step with
+the exact Gauss-Newton step:
+
+```
+exact J at T = 2, n_coll = 2201
+  singular values   6.997e+02 … 4.557e-18        ratio 1.5e20
+  numerical rank    619 (1e-8)   914 (1e-10)   1233 (1e-12)      against s = 733
+  cos(lifted step, exact GN step)
+    s = 733 (d/3)   0.42      s = 1100 (d/2)   0.62      s = 1500 (0.68 d)   0.75
+```
+
+§2.1 quotes the paper's advice that `s` should "comfortably exceed the numerical rank
+of `J`" and should lie in `[d/3, d/2]`.  On this problem the first is not satisfied by
+the second: `d/3` is *below* the rank, so the column sketch truncates curvature
+directions and the lifted step is under half aligned.  The cost of that, T = 2 to
+convergence on an A30:
+
+| s | s/d | final loss | rel `L2` | wall |
+|---|---|---|---|---|
+| 733 | 33% | 2.283e-14 | 4.580e-06 | 144 s |
+| 1100 | 49% | 2.897e-20 | 4.167e-09 | 215 s |
+| 1500 | 68% | 5.412e-23 | 6.963e-10 | 276 s |
+
+`d/3 → d/2` costs 1.49x the time and buys **1099x**.  So `[d/3, d/2]` spans three
+orders of magnitude here and the bottom of it is the wrong end -- a caveat worth
+attaching to the recommendation for any PINN residual, whose Jacobian is far more
+ill-conditioned than the paper's examples (condition number 1e20 here, with 914 of
+2201 directions above a 1e-10 relative threshold).
+
+### 17.4 A stop rule that is not a convergence test
+
+`Δ < 10·Δ_min` terminates a phase (the paper says `Δ < Δ_min`; the margin is this
+port's).  That is a *step-size* rule, not a convergence test, and it can fire while
+the loss sits orders of magnitude above the floor the same configuration reaches
+elsewhere -- measured, `7.6e-07` against a best of `1.9e-15` in one window, and an
+outright hang preceded by `ϱ = -4.9e13`.  The wrapper defends against this two ways:
+`rounds_loss_floor` stops the converge/redraw rounds once a round lands at the
+numerical floor (further rounds would optimise rounding noise, where the model is
+singular), and `window_retries` redraws and re-runs a window whose final loss exceeds
+`window_stall_factor` times the best so far, keeping the better of the attempts.
+Neither is a diagnosis; §6.11 of the README describes what is and is not known.
