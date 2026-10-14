@@ -1605,6 +1605,9 @@ def parse_args(argv=None):
     p.add_argument("--drop-robin-l", action="append", type=int, default=None, dest="drop_robin_l",
                    help="multipole the outer condition must not act on (e.g. 1 for the dipole); "
                         "repeatable, and a diagnostic: that sector is then left free")
+    p.add_argument("--no-pin-h-robin", action="store_false", dest="pin_h_robin",
+                   help="turn OFF the metric's averaged order-1 Robin pin (it is ON by default): "
+                        "without it the amplitude of h is nearly unpinned and it drifts")
     p.add_argument("--drop-inner-l", action="append", type=int, default=None, dest="drop_inner_l",
                    help="multipole the INNER datum must not act on (e.g. 1 for the dipole): the "
                         "inner data have no dipole, so this frees the sector there too")
@@ -1828,6 +1831,8 @@ def parse_args(argv=None):
         cfg.dsgnar_chunk = a.dsgnar_chunk
     if a.log_every is not None:
         cfg.log_every = int(a.log_every)
+    if getattr(a, "pin_h_robin", None) is False:
+        cfg.pin_h_robin = False
     if a.drop_inner_l:
         cfg.drop_inner_ls = tuple(int(l) for l in a.drop_inner_l)
     if a.drop_robin_l:

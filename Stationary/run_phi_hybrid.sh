@@ -4,7 +4,7 @@
 #
 # Everything else is the pq_c100_vac3 setting, unchanged, as asked:
 #   * metric boundary conditions untouched (eq_weights inner_h = 0, outer_h = 0);
-#   * the Ricci equation solved WITHOUT its lambda source (--ricci-lam-source 0);
+#   * the Ricci equation WITH its lambda source (the default: Ricci_ab = d_a lam d_b lam/2lam^2);
 #   * the averaged Robin pins kept (--pin-lam-robin), since they behaved;
 #   * rho in [1, 100], inner areal radius 1, lambda_0 = 1/3, S2 = -1/12, Robin h=3/lam=3,
 #     n_coll 27768, 5000 Adam + 30000 SSBroyden, x64.
@@ -73,15 +73,15 @@ export XLA_PYTHON_CLIENT_PREALLOCATE="${XLA_PYTHON_CLIENT_PREALLOCATE:-false}"
 export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-/tmp/jaxcache-$USER}"
 
 BASE=(
-    --arch axisym_hybrid --steps 5000 --lbfgs-steps 30000 --qn-block 1500
+    --arch axisym_hybrid --steps 5000 --lbfgs-steps 30000 --qn-block 250
     --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
     --R0 0.5773502691896258 --rho-in 1.0 --inner-radius 1.0
     --vtk-physical-inner 1.0
     --lam0 0.33333333333333337 --lam-inf 1.0 --lam-bc-S2 -0.08333333333333333
     --outer-bc robin --robin-orders h=3,lam=3 --no-robin-G
-    --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1,inner_h=0,outer_h=0
-    --ricci-lam-source 0 --pin-lam-robin --ref-solution --ref-asymptotic 1.0
-    --reweight-every 0 --decay-feature --log-resources --vtk
+    --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1   # no inner_h/outer_h=0: the metric's\n                              #   boundary data are imposed (see the defaults in problem.py)
+    --pin-lam-robin --pin-h-robin --ref-solution --ref-asymptotic 1.0
+    --reweight-every 500 --decay-feature --log-resources --vtk
 )
 
 run_one() {

@@ -124,7 +124,10 @@ class Config:
     radial_log_frac: float = 0.5
 
     # --------------------------------------------------- weights / scaling
-    ricci_lam_source: float = 1.0     # 0 -> solve Ricci = 0, dropping only lambda's source
+    ricci_lam_source: float = 1.0     # THE correct source: Ricci_ab = d_a lam d_b lam / 2 lam^2.
+                                      # 0 -> solve Ricci = 0, dropping lambda's back-reaction,
+                                      # for which h = I3 is an exact solution (a spectator
+                                      # metric); --ricci-lam-source 0 is the explicit opt-out
     # Which form of the lambda equation is imposed (see geometry.set_lam_eq_form):
     #   "lambda"  Delta_h lam - (1/lam) |d lam|^2_h = 0
     #   "log"     the same equation for phi = log lam, Delta_h phi = 0
@@ -157,8 +160,10 @@ class Config:
     # the chart is a no-op here; what a [0.01, 1] recipe really changes is the ratio
     # (100 instead of 10), i.e. how far outside the source the outer sphere sits.
     scale_ref: float | None = None   # None -> use local rho; else a fixed length
-    w_inner: float = 10.0
-    w_outer: float = 10.0
+    w_inner: float = 100.0     # the boundary weights of the working family
+    # (was 10; 100 is what the correct-source predecessor runs used, and the NEW defaults below
+    # -- pin_h_robin, ricci_lam_source = 1 -- are the settings a run should not have to remember)
+    w_outer: float = 100.0
 
     # ------------------------------------------------ asymptotic-value pins at rho_out
     # A Robin condition is a DIFFERENTIAL combination, and its kernel contains the leading
@@ -234,7 +239,10 @@ class Config:
     # amplitude, so it fixes the SHAPE and the level, not the size of the deviation.  And it is
     # the averaged value only -- the pointwise order-3 condition above is untouched and is what
     # constrains the angular content.
-    pin_h_robin: bool = False
+    pin_h_robin: bool = True    # ON by default: without it the metric's overall
+                                # amplitude is a near-flat direction and h drifts to a
+                                # constant multiple of I3 (measured: h_rr -> 0.56 and
+                                # 0.85 at rho = 99).  --no-pin-h-robin opts out
     # The decay powers the two averaged metric conditions use, as `{"h_rr": b, "g2": b}`.
     # None means the measured defaults (3, 2).  THEY ARE A PARAMETER BECAUSE THEY ARE AN
     # ASSUMPTION: those two numbers were measured on the SPHERICALLY SYMMETRIC reference, and
@@ -273,7 +281,7 @@ class Config:
     # that skipped or shortened Adam never reweighted at all
     # (runs/production_quad_quarter_pin_r400 asked for 1500, ran 8000 quasi-Newton
     # iterations, and logged no [reweight] line).
-    reweight_every: int = 2000  # gradient-norm adaptive reweighting period (0 = off)
+    reweight_every: int = 500   # gradient-norm adaptive reweighting period (0 = off)
     reweight_max_ratio_inv: float = 0.5   # per-update cap: weights move by at most 2x
     # Cumulative band: over a whole run a PDE weight may not move further than this
     # factor from its configured value.  Without it the rule w ~ 1/||grad term|| drifts:
@@ -376,7 +384,7 @@ class Config:
     make_vtk: bool = False
     vtk_n_half: int = 20           # points per half axis (geometric -> clusters at rho_in)
     vtk_physical_inner: float = 1.0  # the inner radius in the coordinates to write out
-    qn_block: int = 100
+    qn_block: int = 250
     qn_gtol: float = 1e-9
     plateau_tol: float = 1e-4
     plateau_patience: int = 3

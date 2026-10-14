@@ -45,8 +45,13 @@ def main():
         cfg.n_coll = int(args.points)
     pf = point_fields(model, state["net"])
     xs = make_batch(jax.random.PRNGKey(int(cfg.seed)), cfg)["coll"]
-    raw = np.asarray(residuals_batch(pf, xs)[args.group])
-    sca = np.asarray(pde_raw(pf, xs, cfg)[args.group])
+    def per_point(v):
+        """A group can have several components per point (gauge has three): colour by the norm."""
+        v = np.asarray(v)
+        return np.linalg.norm(v, axis=-1) if v.ndim > 1 else v
+
+    raw = per_point(residuals_batch(pf, xs)[args.group])
+    sca = per_point(pde_raw(pf, xs, cfg)[args.group])
     X = np.asarray(xs)
     R, Z = np.hypot(X[:, 0], X[:, 1]), X[:, 2]
 

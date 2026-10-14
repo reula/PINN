@@ -86,9 +86,9 @@ ARGS=(
     --vtk-physical-inner 1.0
     --lam0 0.33333333333333337 --lam-inf 1.0 --lam-bc-S2 -0.08333333333333333
     --outer-bc robin --robin-orders h=3,lam=3 --no-robin-G
-    --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1,inner_h=0,outer_h=0
-    --ricci-lam-source 0 --pin-lam-robin --ref-solution --ref-asymptotic 1.0
-    --reweight-every 0 --resample-every 500 --decay-feature --log-resources --vtk
+    --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1
+    --pin-lam-robin --pin-h-robin --ref-solution --ref-asymptotic 1.0
+    --reweight-every 500 --resample-every 500 --decay-feature --log-resources --vtk
 )
 
 echo "DSGNAR polish:  init $INIT"
