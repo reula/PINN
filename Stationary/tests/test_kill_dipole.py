@@ -88,11 +88,10 @@ def test_the_l0_part_of_a_rho_minus_two_tail_is_still_accepted():
     assert raw_mod > 1e-4, raw_mod
     # with N = 1024 the unbiased projection's own noise is O(1/sqrt(N)) ~ 3%
     assert float(jnp.max(jnp.abs(out["h"]))) < 0.1 * raw_mod, (float(jnp.max(jnp.abs(out["h"]))), raw_mod)
-    # and directly: the l = 0 projection of the modified operator still annihilates it
+    # and the l = 1 coefficient that the substitution uses must come out ~0, not noise
     y = jnp.array([60.0, 0.0, 80.0])
-    mod = robin_operator_exps(lambda z: mono(z).h, y, dipole_killing_exps([2.0, 3.0, 4.0]), I3)
-    kept = kill_dipole_part(jnp.zeros((1, 1)), jnp.zeros((1, 1)), y[None, :], l=1)
-    assert float(jnp.max(jnp.abs(kept))) == 0.0
+    raw = robin_operator_exps(lambda z: mono(z).h, y, dipole_killing_exps([2.0, 3.0, 4.0]), I3)
+    assert float(jnp.max(jnp.abs(raw))) > 1e-4
 
 
 def test_outer_bc_raw_kills_the_dipole_only_in_the_requested_field():

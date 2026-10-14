@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from .geometry import (pack_gamma, pack_sym, radial_derivative_residual_batch,
                        residuals_batch, scaled_residuals_batch)
@@ -105,7 +106,7 @@ def kill_dipole_part(res_std_fun, res_mod_fun, xs, l=1, n_gl=48):
     """
     r = jnp.linalg.norm(xs, axis=-1)
     mu = xs[:, 2] / r
-    out = res_std_fun(xs)
+    out = jax.vmap(res_std_fun)(xs)
     for rad in jnp.unique(jnp.round(r, 6)):
         sel = jnp.abs(r - rad) < 1e-4
         nodes, mu_g, w_g = _gl_sphere(float(rad), n_gl)
@@ -395,7 +396,7 @@ def outer_bc_raw(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict
             # project per component: h occupies the first six slots, lam the last one
             def part(fun, lo, hi):
                 return kill_dipole_part(lambda z: fun(z)[lo:hi], lambda z: mod(z)[lo:hi], xs, l=1)
-            R = std(xs) if False else jax.vmap(std)(xs)
+            R = jax.vmap(std)(xs)
             if "h" in kill and "lam" in kill:
                 R = jnp.concatenate([part(std, 0, 6), part(std, -1, None)], axis=-1)
             elif "h" in kill:
