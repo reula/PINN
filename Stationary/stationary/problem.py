@@ -378,13 +378,6 @@ class Config:
     # satisfied the condition sat between rho = 99 and 100, so shells that close in are what
     # bite.  1.0 is the outer sphere itself and is skipped.
     outer_shell_fracs: tuple = ()
-    # Modes removed from the METRIC's conditions only (both spheres): --drop-l-h 1 kills the
-    # dipole in h while leaving lambda's dipole constrained.
-    drop_h_ls: tuple = ()
-    # Fields whose DIPOLE is KILLED rather than exempted: the outer Robin condition is run
-    # with the dipolar power rho^-2 removed from its kernel, so the l = 1 amplitude must
-    # vanish.  ('h',) or ('h', 'lam').  Distinct from drop_*_ls, which leaves it FREE.
-    kill_dipole: tuple = ()
     outer_shell_ratio: float = 2.0     # radii rho_out / ratio, / ratio^2, ...
     drop_robin_ls: tuple = ()
     # The same for the INNER datum (--drop-inner-l 1): the inner data on these runs carry no

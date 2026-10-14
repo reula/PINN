@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 from .geometry import (pack_gamma, pack_sym, radial_derivative_residual_batch,
                        residuals_batch, scaled_residuals_batch)
@@ -31,17 +30,16 @@ I3 = jnp.eye(3)
 OFFW = jnp.array([1.0, jnp.sqrt(2.0), jnp.sqrt(2.0), 1.0, jnp.sqrt(2.0), 1.0])
 
 
-def robin_operator_exps(field_fun, x, exps, inf_val=0.0):
-    """prod_{a in exps} (rho d_rho + a) applied to (field - inf_val) at x.
+def robin_operator(field_fun, x, base, order, inf_val=0.0):
+    """prod_{i<order} (rho d_rho + base+i) applied to (field - inf_val) at x.
 
-    Same machinery as `robin_operator`, but with the exponents given explicitly, so the kernel can
-    be chosen rather than being the consecutive window base ... base+order-1.  That is what killing
-    the dipole needs (see `_with_dipole_killed`): the factor a = 2 is the one that annihilates
-    rho^-2, the dipolar power, and removing it turns "the l = 1 tail may be rho^-2" into "the l = 1
-    rho^-2 coefficient must VANISH".
+    (rho d_rho + a) annihilates exactly rho^-a, and these Euler operators commute, so
+    the product annihilates the powers rho^-base ... rho^-(base+order-1) and lets the
+    next multipoles through.  `order=1` is the familiar first-order decay condition.
     """
     cur = lambda y: field_fun(y) - inf_val
-    for k in exps:
+    for i in range(order):
+        k = base + i
         prev = cur
 
         def cur(y, prev=prev, k=k):
@@ -51,71 +49,6 @@ def robin_operator_exps(field_fun, x, exps, inf_val=0.0):
             return r * d + k * prev(y)
 
     return cur(x)
-
-
-def robin_operator(field_fun, x, base, order, inf_val=0.0):
-    """prod_{i<order} (rho d_rho + base+i) applied to (field - inf_val) at x.
-
-    (rho d_rho + a) annihilates exactly rho^-a, and these Euler operators commute, so
-    the product annihilates the powers rho^-base ... rho^-(base+order-1) and lets the
-    next multipoles through.  `order=1` is the familiar first-order decay condition.
-    """
-    return robin_operator_exps(field_fun, x, [base + i for i in range(order)], inf_val)
-
-
-def dipole_killing_exps(exps):
-    """The same kernel with the DIPOLAR power rho^-2 removed (and one higher power added).
-
-    (rho d_rho + 2) annihilates rho^-2, so as long as 2 is among the exponents the condition
-    happily accepts a dipole tail.  Dropping that factor and appending the next exponent keeps the
-    window's shape but makes rho^-2 the one power the condition forces to zero -- which is what
-    "kill the dipole" means, as opposed to "exempt the dipole", which leaves it unconstrained.
-    """
-    kept = [a for a in exps if abs(a - 2.0) > 1e-12]
-    if len(kept) == len(exps):
-        return list(exps)                      # 2 is not in the window: nothing to kill
-    return kept + [max(exps) + 1]
-
-
-def _gl_sphere(r, n_gl=48):
-    """Gauss-Legendre nodes in mu at radius r, with the (2l+1)/2 weights of the l = 1 projection.
-
-    phi = 0 suffices: the outer residual is axisymmetric (m = 0).
-    """
-    mu, w = np.polynomial.legendre.leggauss(n_gl)
-    mu = jnp.asarray(mu)
-    w = jnp.asarray(w)
-    sin_th = jnp.sqrt(1.0 - mu ** 2)
-    xs = jnp.stack([r * sin_th, jnp.zeros_like(mu), r * mu], axis=-1)
-    return xs, mu, w
-
-
-def kill_dipole_part(res_std_fun, res_mod_fun, xs, l=1, n_gl=48):
-    """R_std everywhere except the l-th mode, where the modified kernel's version is used.
-
-    Legal because the Euler operator is RADIAL: it commutes with the angular projection, so
-    B_tilde[P_l R] = P_l[B_tilde R] and the two can be exchanged mode by mode.
-
-    The mode's coefficient is taken on a GAUSS-LEGENDRE sphere, not from the sample.  The unbiased
-    estimator on the sampled points has O(1/sqrt(N)) noise, and since the l = 0 part of the field
-    dominates the residual, that noise is proportional to the WHOLE field: measured on a pure-l = 0
-    rho^-2 field with N = 1024 points it put 14% of the modified kernel's own action back into the
-    loss, which would have driven the monopole's rho^-2 coefficient to compensate.  With GL nodes
-    the l = 0 part contributes exactly zero (int P_1 dmu/2 = 0 is exact for n_gl >= 1) and the
-    projection becomes deterministic.
-    """
-    r = jnp.linalg.norm(xs, axis=-1)
-    mu = xs[:, 2] / r
-    out = jax.vmap(res_std_fun)(xs)
-    for rad in jnp.unique(jnp.round(r, 6)):
-        sel = jnp.abs(r - rad) < 1e-4
-        nodes, mu_g, w_g = _gl_sphere(float(rad), n_gl)
-        Pl_g = _legendre(l, mu_g)
-        c_std = (2 * l + 1) / 2 * jnp.sum(jax.vmap(res_std_fun)(nodes) * (Pl_g * w_g)[:, None], axis=0)
-        c_mod = (2 * l + 1) / 2 * jnp.sum(jax.vmap(res_mod_fun)(nodes) * (Pl_g * w_g)[:, None], axis=0)
-        delta = (c_mod - c_std)[None, :] * _legendre(l, mu)[:, None]
-        out = out + jnp.where(sel[:, None], delta, 0.0)
-    return out
 
 
 def robin_coefficients(base: float, order: int) -> list[float]:
@@ -241,8 +174,7 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
 
         R = jax.vmap(one)(xs)
         drop = getattr(cfg, "drop_inner_ls", ()) or ()
-        drop_h = getattr(cfg, "drop_h_ls", ()) or ()      # modes removed from the METRIC alone
-        return {"h": _drop_legendre_modes(R[:, :6], xs, tuple(drop) + tuple(drop_h)),
+        return {"h": _drop_legendre_modes(R[:, :6], xs, drop),
                 "lam": _drop_legendre_modes(R[:, 6][:, None], xs, drop)[:, 0]}
 
     def one(x):
@@ -261,11 +193,10 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
 
     R = jax.vmap(one)(xs)
     drop = getattr(cfg, "drop_inner_ls", ()) or ()
-    drop_h = getattr(cfg, "drop_h_ls", ()) or ()      # modes removed from the METRIC alone
     out = {"lam": _drop_legendre_modes(R[:, 0][:, None], xs, drop)[:, 0],
-           "h_tan": _drop_legendre_modes(R[:, 2:], xs, tuple(drop) + tuple(drop_h))}
+           "h_tan": _drop_legendre_modes(R[:, 2:], xs, drop)}
     if cfg.inner_h_rr is not None:
-        out["h_rr"] = _drop_legendre_modes(R[:, 1][:, None], xs, tuple(drop) + tuple(drop_h))[:, 0]
+        out["h_rr"] = _drop_legendre_modes(R[:, 1][:, None], xs, drop)[:, 0]
     return out
 
 
@@ -358,22 +289,15 @@ def outer_bc_raw(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict
         if cfg.robin_source and exact_fields is None:
             raise ValueError("robin_source needs exact_fields (set --ref-solution)")
 
-        # "Kill the dipole" = run the SAME condition with the dipolar power rho^-2 no longer in
-        # its kernel, so the l = 1 amplitude has to VANISH instead of being free.  The Euler
-        # operator is radial, so it commutes with the angular projection and the two can be
-        # exchanged mode by mode.
-        kill = tuple(getattr(cfg, "kill_dipole", ()) or ())
-        exps_h = [ph + i for i in range(orders["h"])]
-        exps_l = [pl + i for i in range(orders["lam"])]
-
-        def residual(x, eh, el):
-            """The packed outer residual at x, with the kernels given explicitly."""
-            rh = robin_operator_exps(lambda y: point_fields(y).h, x, eh, I3)
-            rl = robin_operator_exps(lambda y: point_fields(y).lam, x, el, lam_inf)
+        def one(x):
+            f = point_fields(x)
+            rh = robin_operator(lambda y: point_fields(y).h, x, ph, orders["h"], I3)
+            rl = robin_operator(lambda y: point_fields(y).lam, x, pl, orders["lam"], lam_inf)
             sh = sl = 0.0
             if cfg.robin_source:
-                sh = robin_operator_exps(lambda y: exact_fields(y).h, x, eh, I3)
-                sl = robin_operator_exps(lambda y: exact_fields(y).lam, x, el, lam_inf)
+                sh = robin_operator(lambda y: exact_fields(y).h, x, ph, orders["h"], I3)
+                sl = robin_operator(lambda y: exact_fields(y).lam, x, pl, orders["lam"],
+                                    lam_inf)
             if cfg.robin_include_G:
                 rG = robin_operator(lambda y: point_fields(y).G, x, pG, orders["G"],
                                     jnp.zeros((3, 3, 3)))
@@ -386,26 +310,9 @@ def outer_bc_raw(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict
                                         jnp.array([rl - sl])])
             return jnp.concatenate([pack_sym(rh - sh) * OFFW, jnp.array([rl - sl])])
 
-        std = lambda x: residual(x, exps_h, exps_l)
-        if not kill:
-            R = jax.vmap(std)(xs)
-        else:
-            mod = lambda x: residual(x,
-                                     dipole_killing_exps(exps_h) if "h" in kill else exps_h,
-                                     dipole_killing_exps(exps_l) if "lam" in kill else exps_l)
-            # project per component: h occupies the first six slots, lam the last one
-            def part(fun, lo, hi):
-                return kill_dipole_part(lambda z: fun(z)[lo:hi], lambda z: mod(z)[lo:hi], xs, l=1)
-            R = jax.vmap(std)(xs)
-            if "h" in kill and "lam" in kill:
-                R = jnp.concatenate([part(std, 0, 6), part(std, -1, None)], axis=-1)
-            elif "h" in kill:
-                R = jnp.concatenate([part(std, 0, 6), R[:, -1:]], axis=-1)
-            else:
-                R = jnp.concatenate([R[:, :-1], part(std, -1, None)], axis=-1)
+        R = jax.vmap(one)(xs)
         drop = getattr(cfg, "drop_robin_ls", ()) or ()
-        drop_h = getattr(cfg, "drop_h_ls", ()) or ()      # modes removed from the METRIC alone
-        out = {"h": _drop_legendre_modes(R[:, :6], xs, tuple(drop) + tuple(drop_h)),
+        out = {"h": _drop_legendre_modes(R[:, :6], xs, drop),
                "lam": _drop_legendre_modes(R[:, -1][:, None], xs, drop)[:, 0]}
         if cfg.robin_include_G:
             out["G"] = _drop_legendre_modes(R[:, 6:24], xs, drop)
