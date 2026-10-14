@@ -24,10 +24,14 @@ jax.config.update("jax_enable_x64", True)
 
 
 def _cfg(shells=1):
+    # R0 is NOT optional: without it the Weyl solution is a different (degenerate) one, whose
+    # Robin residual is O(10) while the run's reference sits at 1e-10 (cost me two wrong readings).
     c = Config(arch="sym_hybrid", width=6, depth=2, fourier=0, rho_in=1.0, rho_out=100.0,
                inner_radius=1.0, lam0=1.0 / 3.0, lam_bc_S2=-1.0 / 12.0, lam_inf=1.0,
+               R0=1.0 / 3.0 ** 0.5, ref_asymptotic=1.0, decay_feature=True,
                n_coll=64, n_bnd=32, n_bnd_outer=32, outer_bc="robin", robin_order=3,
                robin_orders={"h": 3, "G": 3, "lam": 3}, robin_include_G=False,
+               robin_exps={"h": 2.0, "G": 3.0, "lam": 1.0},
                ref_solution=True, outer_shells=shells)
     c.__post_init__()
     return c
