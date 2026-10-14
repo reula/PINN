@@ -243,6 +243,35 @@ class TestSubagentFreeOptimisers(unittest.TestCase):
         self.assertAlmostEqual(hist[-1]["loss"], obj.loss(flat), places=12)
 
 
+class TestSsbroydenLineSearches(unittest.TestCase):
+    """Crunch ships the same ssbroyden2 update twice, differing only in the search."""
+
+    def test_both_line_searches_load_and_the_unknown_one_does_not(self):
+        from wave_pinn.optim.ssbroyden import load_minimize
+        for kind in ("backtracking", "wolfe"):
+            minimize, where = load_minimize(kind)
+            self.assertIsNotNone(minimize, msg=f"{kind}: {where}")
+            self.assertTrue(callable(minimize), msg=kind)
+        minimize, why = load_minimize("nope")
+        self.assertIsNone(minimize)
+        self.assertIn("unknown linesearch", why)
+
+    def test_the_phase_records_which_line_search_it_used(self):
+        from wave_pinn.optim.ssbroyden import ssbroyden_phase
+        cfg = Config(T=2.0, n_coll=32, sampler="uniform", qn_steps=2, qn_block=1,
+                     resample_every=0, resample_rounds=1, log_every=1000)
+        key = jax.random.PRNGKey(7)
+        params = init_params(cfg, key)
+        obj = Objective(cfg, make_batch(cfg, key), params)
+        flat, _ = jax.flatten_util.ravel_pytree(params)
+        _, _, info = ssbroyden_phase(obj, flat, cfg, verbose=False)
+        self.assertEqual(info["linesearch"], "backtracking")
+        cfg_w = cfg.replace(qn_linesearch="wolfe")
+        obj_w = Objective(cfg_w, make_batch(cfg_w, key), params)
+        _, _, info_w = ssbroyden_phase(obj_w, flat, cfg_w, verbose=False)
+        self.assertEqual(info_w["linesearch"], "wolfe")
+
+
 class TestWolfeFamily(unittest.TestCase):
     """The Wolfe-condition quasi-Newton methods: a measured negative control.
 

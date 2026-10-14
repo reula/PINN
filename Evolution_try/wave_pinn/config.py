@@ -41,6 +41,7 @@ CHOICES: Dict[str, tuple] = {
                   "jaxopt_bfgs", "jaxopt_lbfgs", "jaxopt_ncg", "optax_lbfgs"),
     "tr_hessian": ("exact", "gauss_newton"),
     "wolfe_method": ("bfgs", "lbfgs", "ncg"),
+    "qn_linesearch": ("backtracking", "wolfe"),
     "window_ic": ("hard", "soft", "soft_all"),
     "overwrite": ("archive", "wipe", "fail"),
     "precision": ("float64", "float32"),
@@ -140,6 +141,15 @@ class Config:
     qn_steps: int = 4000               # quasi-Newton / DSGNAR iteration budget
     qn_block: int = 250                # quasi-Newton iterations per block (0 = one single block)
     qn_gtol: float = 1.0e-12           # gradient tolerance handed to the line search
+    qn_linesearch: str = "backtracking" # Crunch ships the SAME ssbroyden2 update twice,
+                                       # differing only in the line search: vendored
+                                       # backtracking, or JAX's strong-Wolfe with a zoom
+                                       # phase (bfgs.py).  MEASURED and the Wolfe path loses:
+                                       # T=2, n_coll=4096, 3000 iterations, same seed --
+                                       # backtracking 2753 it, loss 8.263e-09, rel L2 6.702e-04;
+                                       # wolfe 500 it, loss 1.229e-04, rel L2 2.218e-01, with every
+                                       # block returning status 3 (zoom failed) against 11 of 12
+                                       # succeeding the other way.  The default stays put.
     qn_initial_scale: bool = True      # SSBroyden tau_k^A first-step rescaling
     qn_rescale_after_adam: bool = True # use initial_scale on the first quasi-Newton block only
     plateau_tol: float = 0.0           # relative-improvement tolerance; 0 disables the plateau stop

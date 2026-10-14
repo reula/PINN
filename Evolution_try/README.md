@@ -937,6 +937,32 @@ All four are wired in as optimiser choices (`jaxopt_bfgs`, `jaxopt_lbfgs`,
 `optim/wolfe.py` carries the numbers, and the module is labelled as a measured
 negative control rather than a contender.
 
+**The same question asked of SSBroyden gives the opposite answer.**  Crunch ships
+the *same* `ssbroyden2` self-scaling update twice, differing only in the line
+search -- `minimize_backtracking` and `minimize` (whose `bfgs.py` imports
+`jax._src.scipy.optimize.line_search`) -- and this project had wired up only the
+backtracking one.  `qn_linesearch` now selects between them.  Measured, `T = 2`,
+`n_coll = 4096`, 3000 iterations, same seed, frozen sample:
+
+| line search | iterations | loss | rel `L2` | wall | blocks that succeeded |
+|---|---|---|---|---|---|
+| **backtracking** (the default) | 2753 | **8.263e-09** | **6.702e-04** | 186 s | 11 / 12 (`status 1`) |
+| wolfe | 500 | 1.229e-04 | 2.218e-01 | 80 s | **0 / 12** (`status 3`) |
+
+Every Wolfe block returns `status 3`: JAX's zoom search fails on this problem's
+loss surface, and since the phase refuses a failed block's inverse Hessian -- it
+describes a point the method never left -- the run stalls after about fifty
+iterations per block and stops four orders of magnitude short.
+
+So *"a proper Wolfe search beats backtracking"* is not a general fact, and it is
+worth stating why the two experiments disagree.  For jaxopt's gradient-based
+quasi-Newton methods, backtracking's `0.8^15` shrink floor is what killed the first
+step, and a zoom search with no such floor progressed.  For SSBroyden's update on
+this problem, backtracking never needed to shrink far and the JAX Wolfe
+implementation fails at every block instead.  Same idea, different implementation,
+opposite outcome -- which is the argument for having both behind a knob and
+measuring rather than reasoning from one case to the other.
+
 ---
 
 ## 7. Tests

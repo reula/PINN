@@ -56,15 +56,60 @@ def crunch_root() -> Optional[str]:
     return None
 
 
-def load_minimize():
-    """Import Crunch's backtracking ``minimize``; ``(None, reason)`` when unavailable."""
+def load_minimize(kind: str = "backtracking"):
+    """Import one of Crunch's two ``minimize`` entry points; ``(None, reason)`` if absent.
+
+    Crunch ships the SAME self-scaling Broyden update twice, differing only in the
+    line search:
+
+    * ``minimize_backtracking`` -> ``bfgs_backtracking`` -> the vendored
+      ``line_search_backtracking``: shrink by a factor, a bounded number of times.
+      ``0.8^15 = 0.035`` at most with the defaults.
+    * ``minimize`` -> ``bfgs`` -> ``jax._src.scipy.optimize.line_search``, which is
+      JAX's own implementation of the **strong-Wolfe** conditions with a zoom phase.
+
+    This project wired up the first one, and only the first, which matters more than
+    it sounds: the sibling Broyden experiment showed that a backtracking search is
+    exactly what limits a quasi-Newton step whose scale is far from the parameter
+    scale (``jaxopt.Broyden``'s first step is ``-r`` with ``|r| = 48`` against
+    ``|theta| = 10``, and it exploded).  ``qn_linesearch`` selects between them.
+
+    Note the second path imports a PRIVATE JAX module.  It is present in 0.9.2 and in
+    0.11.1, which is what matters here, but it is the kind of import that a JAX
+    release is free to move -- hence the graceful fallback rather than a hard
+    requirement.
+
+    **Measured, and the Wolfe path loses badly.**  T = 2, n_coll = 4096, 3000
+    iterations, same seed, frozen sample:
+
+        backtracking   2753 it   loss 8.263e-09   rel L2 6.702e-04   186 s
+        wolfe           500 it   loss 1.229e-04   rel L2 2.218e-01    80 s
+
+    Every one of the twelve blocks returned status 3 (the zoom line search failed)
+    on the Wolfe path, against eleven of twelve returning status 1 (budget) on the
+    backtracking path.  Since the phase refuses a failed block's inverse Hessian --
+    it describes a point the method never left -- the Wolfe run stalls after about
+    fifty iterations per block and stops at a loss four orders of magnitude higher.
+
+    So "a proper Wolfe search is better than backtracking" is not a general fact.
+    For jaxopt's gradient-based quasi-Newton methods it was true (see ``wolfe.py``:
+    backtracking exploded by nine orders and zoom progressed); for THIS update, on
+    THIS problem, JAX's Wolfe implementation fails on every block and the vendored
+    backtracking one succeeds.  The default is therefore unchanged, and the knob
+    exists so the comparison can be re-run rather than taken on trust.
+    """
     root = crunch_root()
     if root is None:
         return None, "no Crunch checkout found (set CRUNCH_ROOT)"
     if root not in sys.path:
         sys.path.insert(0, root)
+    module = {"backtracking": "Crunch.Optimizers.minimize_backtracking",
+              "wolfe": "Crunch.Optimizers.minimize"}.get(str(kind).lower())
+    if module is None:
+        return None, f"unknown linesearch {kind!r} (use 'backtracking' or 'wolfe')"
     try:
-        from Crunch.Optimizers.minimize_backtracking import minimize  # noqa: WPS433
+        import importlib
+        minimize = importlib.import_module(module).minimize     # noqa: WPS433
         return minimize, root
     except Exception as exc:                                    # pragma: no cover
         for mod in [m for m in list(sys.modules)
@@ -85,7 +130,8 @@ def ssbroyden_phase(objective: Objective, flat0, cfg: Config,
     one per block, with a final entry for the last accepted point.
     ``info`` records whether Crunch was found and why the phase stopped.
     """
-    minimize, where = load_minimize()
+    kind = str(getattr(cfg, "qn_linesearch", "backtracking"))
+    minimize, where = load_minimize(kind)
     if minimize is None:
         raise RuntimeError(f"SSBroyden unavailable: {where}")
 
@@ -187,6 +233,7 @@ def ssbroyden_phase(objective: Objective, flat0, cfg: Config,
                 stale = 0
 
     info = {"optimizer": "ssbroyden", "crunch_root": where, "n_parameters": n,
+            "linesearch": kind,
             "H_gb": gb, "iterations": total_nit, "stopped": stopped,
             "wall": time.time() - t0, "blocks": len(history) - 1,
             "resamples": resample_count,
