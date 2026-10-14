@@ -25,27 +25,42 @@ import numpy as np
 jax.config.update("jax_enable_x64", True)
 
 
-def profile(run_dir, rhos=(2.0, 10.0, 50.0, 99.0), n_th=64):
-    """Spherical-mean (l = 0) profiles of h_rr, h_tan and lambda on a few shells."""
-    from stationary.evaluate import load_run
-
-    cfg, model, state = load_run(run_dir)
-    params = state["net"]
+def _means(batched, rhos, n_th=64):
+    """Spherical-mean (l = 0) profiles of h_rr, h_tan, lambda for a BATCHED field function."""
     mu, w = np.polynomial.legendre.leggauss(n_th)
     mu_j = jnp.asarray(mu)
     sin_th = jnp.sqrt(1.0 - mu_j ** 2)
     rows = {}
     for r in rhos:
         x = jnp.stack([float(r) * sin_th, jnp.zeros_like(sin_th), float(r) * mu_j], axis=-1)
-        f = model.apply(params, x)
-        h = f.h
+        f = batched(x)
         n = x / float(r)
-        h_rr = jnp.einsum("ni,nij,nj->n", n, h, n)
-        h_tan = 0.5 * (jnp.einsum("nii->n", h) - h_rr)
+        h_rr = jnp.einsum("ni,nij,nj->n", n, f.h, n)
+        h_tan = 0.5 * (jnp.einsum("nii->n", f.h) - h_rr)
         # the l = 0 Legendre projection is (2*0+1)/2 * int dmu = (1/2) sum w .
         rows[r] = (0.5 * float(jnp.sum(w * h_rr)), 0.5 * float(jnp.sum(w * h_tan)),
                    0.5 * float(jnp.sum(w * f.lam.reshape(-1))))
     return rows
+
+
+def profile(run_dir, rhos=(2.0, 10.0, 50.0, 99.0), n_th=64):
+    """The run's own l = 0 profiles AND its error against the exact reference.
+
+    The second half matters: `h_rr` is NOT supposed to be 1 in the inner region -- the exact Weyl
+    metric in these variables is 0.9155 at rho = 2 (the mass term) and only approaches 1 outward --
+    so a raw "h_rr - 1 = -8.6e-02" reads as a large error when it is the correct value.  Measured on
+    pq_r100_phihyb025_R0: h_rr(net) - h_rr(exact) = -1.3e-03 at rho = 2 and +1.6e-04 at rho = 99.
+    """
+    from stationary.evaluate import load_run
+
+    cfg, model, state = load_run(run_dir)
+    net = _means(lambda x: model.apply(state["net"], x), rhos, n_th)
+    try:
+        from stationary.train import exact_asset
+        ref = _means(jax.vmap(exact_asset(cfg)), rhos, n_th)
+    except Exception:
+        ref = None
+    return net, ref, cfg
 
 
 def main():
@@ -63,7 +78,7 @@ def main():
 
     keys = ("gauge", "lam_eq", "ricci")
     print("%-34s %-26s %-26s %s" % ("run", "BULK rms (collocation)", "OUTER rms (rho_out)",
-                                    "l=0 profile:  rho : h_rr-1 / h_tan-1 / lam"))
+                                    "l=0 profile:  rho : h_rr / h_tan / lam"))
     for run_dir in args.runs:
         try:
             cfg, model, state = load_run(run_dir)
@@ -78,12 +93,18 @@ def main():
         xs_out = sample_sphere(jax.random.PRNGKey(0), 2048, cfg.rho_out)
         outer = outer_bc_terms(pf, xs_out, cfg, exact_asset(cfg), lam_inf=1.0)
         raw_out = residuals_batch(pf, xs_out)
-        rows = profile(run_dir)
+        rows, ref, cfg = profile(run_dir)
         b = "  ".join(f"{k}={float(jnp.sqrt(jnp.mean(bulk[k] ** 2))):.2e}" for k in keys)
         o = "  ".join(f"{k}={float(jnp.sqrt(jnp.mean(raw_out[k] ** 2))):.2e}" for k in keys)
-        prof = "  ".join(f"{r:g}: {rows[r][0]-1:+.1e}/{rows[r][1]-1:+.1e}/{rows[r][2]:.4f}"
+        prof = "  ".join(f"{r:g}: {rows[r][0]:.5f}/{rows[r][1]:.5f}/{rows[r][2]:.5f}"
                          for r in (2.0, 50.0, 99.0))
+        if ref is not None:
+            err = "  ".join(f"{r:g}: {rows[r][0]-ref[r][0]:+.1e}/{rows[r][1]-ref[r][1]:+.1e}/"
+                            f"{rows[r][2]-ref[r][2]:+.1e}" for r in (2.0, 50.0, 99.0))
+        else:
+            err = "no exact reference"
         print(f"{os.path.basename(run_dir.rstrip('/')):34s} {b:26s} {o:26s} {prof}")
+        print(f"{'':34s} ERROR vs exact (h_rr / h_tan / lam):  {err}")
         print(f"{'':34s} outer BC rms: " + "  ".join(f"{k}={float(jnp.sqrt(jnp.mean(v ** 2))):.2e}"
                                                      for k, v in outer.items()))
 
