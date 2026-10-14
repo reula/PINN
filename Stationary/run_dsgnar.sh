@@ -28,7 +28,7 @@
 #     DRY=1 bash run_dsgnar.sh                               # print, launch nothing
 #
 # Env: INIT (default runs/pq_c100_vac3/params.pkl), OUT, SKETCH (128), CHUNK (16),
-#      ROWCHUNK (4096), STEPS (60),
+#      ROWCHUNK (4096), HASHES (8), STEPS (60),
 #      PROBE (0), TAG (suffix for OUT), plus any extra arguments forwarded to run_hub.sh.
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -50,6 +50,7 @@ TAG="${TAG:-}"
 SKETCH_STR="${SKETCH}"
 CHUNK="${CHUNK:-16}"
 ROWCHUNK="${ROWCHUNK:-4096}"
+HASHES="${HASHES:-8}"          # CountSketch hashes: K = 4 (the code default) stalls here, DSGNAR.md section 7
 
 if [ "$PROBE" = "1" ]; then
     STEPS="${STEPS:-5}"
@@ -80,6 +81,7 @@ ARGS=(
     --dsgnar-sketch "$SKETCH_STR"
     --dsgnar-chunk "$CHUNK"
     --dsgnar-row-chunk "$ROWCHUNK"
+    --dsgnar-hashes "$HASHES"
     --init-from "$INIT"
     --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
     --R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0
@@ -94,7 +96,7 @@ ARGS=(
 
 echo "DSGNAR polish:  init $INIT"
 echo "                out  $OUT"
-echo "                $STEPS iteration(s), sketch s = $SKETCH_STR, JVP chunk $CHUNK, CountSketch rows/block $ROWCHUNK"
+echo "                $STEPS iteration(s), sketch s = $SKETCH_STR, JVP chunk $CHUNK, CountSketch rows/block $ROWCHUNK, hashes $HASHES"
 echo "                (each iteration = $SKETCH_STR JVPs in blocks of $CHUNK + one ${SKETCH_STR}x${SKETCH_STR} SVD)"
 
 if [ "$DRY" = "1" ]; then

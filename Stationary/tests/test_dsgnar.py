@@ -51,7 +51,8 @@ def _squared_norm(state, batch, cfg, model, exact_fields, **kw):
     (),                                                        # plain Robin, no pins
     ("--pin-lam-robin",),                                      # an AVERAGED pin
     ("--ref-solution", "--ref-asymptotic", "1.0", "--pin-lam",
-     "--pin-h-tan", "--pin-h-rr"),                             # VALUE pins
+     "--pin-h-tan", "--pin-h-rr", "--no-pin-h-robin"),         # VALUE pins (and no averaged one:
+                                                               # --pin-h-robin is ON by default now)
     ("--ref-solution", "--ref-asymptotic", "1.0", "--pin-h-robin"),
     ("--ref-solution", "--ref-asymptotic", "1.0", "--pin-lam-robin", "--pin-h-robin"),
     ("--w-lam-eq-radial", "1.0"),                              # the radial-derivative term
@@ -269,3 +270,52 @@ def test_the_radius_floor_anchors_to_the_high_water_mark():
     assert info["stopped"] == "budget", info                          # the floor holds it up
     assert info["iterations"] == 40
     assert min(h["radius"] for h in hist) >= 1.0e-3 * 1.0 - 1e-15
+
+
+def test_the_model_decrease_is_in_the_units_of_the_objective(monkeypatch):
+    """With an EXACT model the accepted step's ratio is 1, not 1/2.
+
+    The objective handed to the phase is `0.5 * mean(r**2)` (`FlatObjective`), so the model
+    decrease must carry `1/(2M)`.  It carried `1/M`, which over-predicted every decrease by
+    exactly two and halved every rho.  Here the residual is linear (`r = A x - b`), the
+    parameter sketch keeps every direction (`s = n`, and the SRCT is orthogonal) and the row
+    sketch is replaced by the identity (`M = s`), so the Gauss-Newton model IS the objective
+    and the measured ratio has to be 1 to round-off.
+    """
+    from stationary import dsgnar
+    from stationary.problem import Config
+
+    n = 4
+    A = jnp.array([[3.0, 1.0, 0.0, 0.5],
+                   [0.0, 2.0, 1.0, 0.0],
+                   [1.0, 0.0, 4.0, 1.0],
+                   [0.0, 0.5, 0.0, 1.5]])
+    b = jnp.array([1.0, -2.0, 0.5, 3.0])
+
+    def _res(flat):
+        return A @ jnp.asarray(flat, dtype=jnp.float64) - b
+
+    def _lss(flat):
+        return 0.5 * jnp.mean(_res(flat) ** 2)
+
+    class Linear:
+        dtype = jnp.float64
+        _residual = staticmethod(jax.jit(_res))
+        _loss = staticmethod(jax.jit(_lss))
+
+        def residual(self, flat):
+            return _res(flat)
+
+        def loss(self, flat):
+            return float(_lss(flat))
+
+    Linear.n = n
+    monkeypatch.setattr(dsgnar, "count_sketch",
+                        lambda mat, vec, key, s, k_hashes=1, row_chunk=0: (mat, vec))
+    cfg = Config(dsgnar_steps=1, dsgnar_sketch=n, dsgnar_delta0=0.1, dsgnar_calibrate=False,
+                 seed=0, n_coll=8, n_bnd=4)
+    obj = Linear()
+    _, hist, info = dsgnar.dsgnar_phase(obj, jnp.zeros(n), cfg, verbose=False)
+    assert info["accepted"] == 1, info
+    assert hist[1]["frac"] == 1.0, hist[1]
+    assert abs(hist[1]["rho"] - 1.0) < 1e-8, hist[1]["rho"]

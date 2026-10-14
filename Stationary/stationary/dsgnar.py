@@ -36,20 +36,20 @@ the next trust-region radius.
 
 Deviations from the paper and from the reference code
 -----------------------------------------------------
-1. **Loss units.**  This project's objective is ``L = mean(r**2) = ||r||^2 / M``,
-   whereas the paper and the reference code use ``1/2 ||r||^2``.  The sketched
-   quadratic model therefore carries a ``1/M``::
+1. **Loss units.**  The objective handed in is ``L = 0.5 * mean(r**2) = ||r||^2 / (2M)``
+   (``flat_objective.FlatObjective`` scales the residual by ``sqrt(2M)`` to make that equal
+   to ``total_loss``), whereas the paper and the reference code use ``1/2 ||r||^2``.  The
+   sketched quadratic model therefore carries a ``1/(2M)``::
 
-       pred(lam) = (1/M) sum_i g_i^2 (S_i^2 + 2 lam) / (S_i^2 + lam)^2
+       pred(lam) = (1/(2M)) sum_i g_i^2 (S_i^2 + 2 lam) / (S_i^2 + lam)^2
 
    with ``g = S * (U^T r~)``.  This is exactly ``m(0) - m(p~(lam))`` for
-   ``m(p) = (1/M) ||r~ + J~ p||^2``, i.e. the textbook Eq. 14 denominator, and it
-   is *twice* the reference code's ``pred``.  Consequently the config's
-   ``dsgnar_stage1_ratio = 0.15`` and ``dsgnar_stage2_ratio = 0.5`` -- which are
-   stated in textbook units -- are used unchanged and are NOT the reference
-   code's ``0.075``: the two expressions differ by exactly the factor of two.
-   Because acceptance tests only the *sign* of ``rho``, this choice affects the
-   radius schedule but not whether a descent step is taken.
+   ``m(p) = (1/(2M)) ||r~ + J~ p||^2``, i.e. the reference code's ``pred`` divided by
+   ``M``, and the config's ``dsgnar_stage1_ratio = 0.15`` / ``dsgnar_stage2_ratio = 0.5``
+   are ratios of the actual to this decrease.  (Until 2026-10 the factor here was ``1/M``,
+   from an earlier ``mean(r**2)`` convention, which over-predicted every decrease by
+   exactly 2 and halved every ``rho``; the calibration below had been absorbing it.)
+
 2. **Resampling.**  ``C``, ``D``, ``Pi`` and ``S`` are redrawn every iteration
    from a PRNG key carried in the loop's state.  This follows Algorithm 1
    line 2 and the reference code; section 3.2.2 of the paper instead describes a
@@ -321,16 +321,9 @@ def solve_subproblems(sing, g, radii, n_newton: int = N_NEWTON, omega: float = 0
 def step_and_pred(sing, g, v_t, lam):
     """LM step ``p~(lam) = -V (g / (Sigma^2 + lam))`` and the model decrease.
 
-    The returned reduction is *unscaled*: the caller multiplies by ``1/M``.
-    This project's objective is ``mean(r**2)``, so the sketched model is
-    ``m(p) = (1/M) ||r~ + J~ p||^2`` and
-
-        ``m(0) - m(p~) = (1/M) sum g_i^2 (S_i^2 + 2 lam) / (S_i^2 + lam)^2``
-
-    which is exactly the textbook Eq. 14 denominator (see the module docstring).
-    The reference code omits the ``1/M`` because its loss already carries a ``1/2``
-    and its model is ``(1/2)||r~ + J~ p||^2``; the two conventions differ by a
-    factor of two, which is why the config's ratios are the textbook ones.
+    The returned reduction is ``||r~||^2 - ||r~ + J~ p~||^2``, *unscaled*: the
+    caller multiplies by ``1/(2M)``, the units of the objective
+    ``0.5 * mean(r**2)`` it divides (see the module docstring).
 
     The negative convention of Algorithm 1 line 6 (and the reference code) is
     used, not the positive one of Algorithm 3 line 10; only the former is a
@@ -529,7 +522,10 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     s = min(s, n)
     q = N_PROBES
     n_newton = N_NEWTON
-    scale = 1.0 / float(objective.residual(jnp.asarray(flat0, dtype)).shape[0])
+    # 1/M per residual row; the model decrease of the objective 0.5 * mean(r**2) is
+    # 0.5 * inv_m * (||r~||^2 - ||r~ + J~ p||^2), which is what `scale` multiplies.
+    inv_m = 1.0 / float(objective.residual(jnp.asarray(flat0, dtype)).shape[0])
+    scale = 0.5 * inv_m
 
     res_fn = objective._residual                      # jitted scalar-to-residual map
     loss_fn = objective._loss                         # jitted scalar loss
@@ -600,7 +596,8 @@ def dsgnar_phase(objective, flat0, cfg: Config,
             loss_fn = objective._loss
             loss_batch = jax.jit(lambda flats: jax.lax.map(loss_fn, flats))
             sketched_jacobian = jax.jit(lambda f, b: jvp_columns(res_fn, f, b, chunk))
-            scale = 1.0 / float(objective.residual(flat).shape[0])
+            inv_m = 1.0 / float(objective.residual(flat).shape[0])
+            scale = 0.5 * inv_m
             loss = objective.loss(flat)
 
         # --- Algorithm 1 line 2: fresh sketch operators this iteration --------
@@ -632,8 +629,8 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         probe_lams = solve_subproblems(sing, g, probe_radii, n_newton, omega)
 
         # --- Algorithm 3 lines 10-12: lift and evaluate every probe -----------
-        # The model decrease comes back unscaled; `scale = 1/M` puts it in the
-        # units of the mean-squared objective the ratio divides.
+        # The model decrease comes back unscaled; `scale = 1/(2M)` puts it in the
+        # units of the objective 0.5 * mean(r**2) the ratio divides.
         probe_sk, probe_pred = jax.vmap(lambda lam: step_and_pred(sing, g, v_t, lam))(probe_lams)
         probe_pred = probe_pred * scale
         probe_steps = jax.vmap(lambda p: lift_srct(p, srct, n))(probe_sk)
@@ -785,7 +782,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
 
         wall = time.time() - t0
         history.append({"step": step_offset + step, "loss": loss,
-                        "resid": float(jnp.linalg.norm(residual)) * float(np.sqrt(scale)),
+                        "resid": float(jnp.linalg.norm(residual)) * float(np.sqrt(inv_m)),
                         "rho": float(final_rho), "lam": lam_star, "radius": radius,
                         "accepted": accepted, "frac": used, "wall": wall})
         if callback:
@@ -808,7 +805,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         "hashes": k_hashes,
         "probes": q,
         "n_parameters": n,
-        "n_residuals": int(round(1.0 / scale)),
+        "n_residuals": int(round(1.0 / inv_m)),
         "loss_final": float(loss),
         "accepted": accepted_count,
         "rejected": rejected_count,
