@@ -241,13 +241,18 @@ def make_batch(key, cfg: Config):
         "inner": sample_sphere(k2, cfg.n_bnd, cfg.rho_in),
         "outer": sample_sphere(k3, cfg.n_bnd_outer or cfg.n_bnd, cfg.rho_out),
     }
-    extra = int(getattr(cfg, "outer_shells", 1) or 1) - 1
-    if extra > 0:
+    fracs = tuple(float(f) for f in (getattr(cfg, "outer_shell_fracs", ()) or ()) if float(f) != 1.0)
+    if fracs:
+        # explicit radii, e.g. (1.0, 0.9, 0.8, 0.7) -> the three shells inside rho_out
+        radii = [cfg.rho_out * f for f in fracs]
+    else:
+        extra = int(getattr(cfg, "outer_shells", 1) or 1) - 1
         ratio = float(getattr(cfg, "outer_shell_ratio", 2.0) or 2.0)
-        keys = jax.random.split(k3, extra)
+        radii = [cfg.rho_out / ratio ** (i + 1) for i in range(max(extra, 0))]
+    if radii:
+        keys = jax.random.split(k3, len(radii))
         batch["outer_extra"] = jnp.concatenate([
-            sample_sphere(keys[i], cfg.n_bnd_outer or cfg.n_bnd, cfg.rho_out / ratio ** (i + 1))
-            for i in range(extra)])
+            sample_sphere(keys[i], cfg.n_bnd_outer or cfg.n_bnd, r) for i, r in enumerate(radii)])
     return batch
 
 
@@ -1628,6 +1633,13 @@ def parse_args(argv=None):
                         "bulk stays wrong")
     p.add_argument("--outer-shell-ratio", type=float, default=None, dest="outer_shell_ratio",
                    help="spacing of that ladder (default 2: rho_out/2, /4, ...)")
+    p.add_argument("--outer-shell-fracs", type=str, default=None, dest="outer_shell_fracs",
+                   help="explicit ladder as fractions of rho_out, e.g. 1.0,0.9,0.8,0.7 (the measured "
+                        "layer sat between rho = 99 and 100, so keep the shells close in); 1.0 is "
+                        "the outer sphere itself and is skipped")
+    p.add_argument("--drop-l-h", action="append", type=int, default=None, dest="drop_l_h",
+                   help="Legendre mode to remove from the METRIC's conditions only (both spheres), "
+                        "e.g. 1 to kill the dipole in h while lambda's dipole stays constrained")
     p.add_argument("--drop-robin-l", action="append", type=int, default=None, dest="drop_robin_l",
                    help="multipole the outer condition must not act on (e.g. 1 for the dipole); "
                         "repeatable, and a diagnostic: that sector is then left free")
@@ -1863,6 +1875,10 @@ def parse_args(argv=None):
         cfg.outer_shells = int(a.outer_shells)
     if a.outer_shell_ratio is not None:
         cfg.outer_shell_ratio = float(a.outer_shell_ratio)
+    if a.outer_shell_fracs:
+        cfg.outer_shell_fracs = tuple(float(x) for x in a.outer_shell_fracs.replace(",", " ").split())
+    if a.drop_l_h:
+        cfg.drop_h_ls = tuple(int(x) for x in a.drop_l_h)
     if a.drop_inner_l:
         cfg.drop_inner_ls = tuple(int(l) for l in a.drop_inner_l)
     if a.drop_robin_l:

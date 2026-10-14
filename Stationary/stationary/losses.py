@@ -174,7 +174,8 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
 
         R = jax.vmap(one)(xs)
         drop = getattr(cfg, "drop_inner_ls", ()) or ()
-        return {"h": _drop_legendre_modes(R[:, :6], xs, drop),
+        drop_h = getattr(cfg, "drop_h_ls", ()) or ()      # modes removed from the METRIC alone
+        return {"h": _drop_legendre_modes(R[:, :6], xs, tuple(drop) + tuple(drop_h)),
                 "lam": _drop_legendre_modes(R[:, 6][:, None], xs, drop)[:, 0]}
 
     def one(x):
@@ -194,9 +195,9 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
     R = jax.vmap(one)(xs)
     drop = getattr(cfg, "drop_inner_ls", ()) or ()
     out = {"lam": _drop_legendre_modes(R[:, 0][:, None], xs, drop)[:, 0],
-           "h_tan": _drop_legendre_modes(R[:, 2:], xs, drop)}
+           "h_tan": _drop_legendre_modes(R[:, 2:], xs, tuple(drop) + tuple(drop_h))}
     if cfg.inner_h_rr is not None:
-        out["h_rr"] = _drop_legendre_modes(R[:, 1][:, None], xs, drop)[:, 0]
+        out["h_rr"] = _drop_legendre_modes(R[:, 1][:, None], xs, tuple(drop) + tuple(drop_h))[:, 0]
     return out
 
 
@@ -312,7 +313,8 @@ def outer_bc_raw(point_fields, xs, cfg, exact_fields=None, lam_inf=None) -> dict
 
         R = jax.vmap(one)(xs)
         drop = getattr(cfg, "drop_robin_ls", ()) or ()
-        out = {"h": _drop_legendre_modes(R[:, :6], xs, drop),
+        drop_h = getattr(cfg, "drop_h_ls", ()) or ()      # modes removed from the METRIC alone
+        out = {"h": _drop_legendre_modes(R[:, :6], xs, tuple(drop) + tuple(drop_h)),
                "lam": _drop_legendre_modes(R[:, -1][:, None], xs, drop)[:, 0]}
         if cfg.robin_include_G:
             out["G"] = _drop_legendre_modes(R[:, 6:24], xs, drop)

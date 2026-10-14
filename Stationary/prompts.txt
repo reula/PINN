@@ -24,3 +24,7 @@ factors in d_rho instead of in theta = rho d_rho: they do not commute,
 See Laplace_Robin.md section 2, and tests/test_pipeline.py::
 test_robin_operator_expansions_match_the_documented_forms, which pins the n = 1..4
 expansions to the implementation.
+
+
+production_run_quad: we now want to make a production run. Every thing is as before, except that \lambda = \lambda_0 - \lambda_0*(1-\eps)(z^2 - (x^2+y^2)/2)/r^2, with \eps=0.1.
+I want to generate vtk files with 3D figures showing \lambda and other invariants for the next runs. I want to read these files with visIt

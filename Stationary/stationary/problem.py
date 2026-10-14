@@ -374,6 +374,13 @@ class Config:
     # approximation -- but at a single radius it is gameable (a thin layer at rho_out satisfied
     # it while the bulk carried a constant l = 2 metric part of ~6%).  1 = the old behaviour.
     outer_shells: int = 1
+    # Or an EXPLICIT list of fractions of rho_out, e.g. (1.0, 0.9, 0.8, 0.7): the layer that
+    # satisfied the condition sat between rho = 99 and 100, so shells that close in are what
+    # bite.  1.0 is the outer sphere itself and is skipped.
+    outer_shell_fracs: tuple = ()
+    # Modes removed from the METRIC's conditions only (both spheres): --drop-l-h 1 kills the
+    # dipole in h while leaving lambda's dipole constrained.
+    drop_h_ls: tuple = ()
     outer_shell_ratio: float = 2.0     # radii rho_out / ratio, / ratio^2, ...
     drop_robin_ls: tuple = ()
     # The same for the INNER datum (--drop-inner-l 1): the inner data on these runs carry no

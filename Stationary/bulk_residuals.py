@@ -117,7 +117,8 @@ def main():
         o = "  ".join(f"{k}={float(jnp.sqrt(jnp.mean(raw_out[k] ** 2))):.2e}" for k in keys)
         prof = "  ".join(f"{r:g}: {rows[r][0]:.5f}/{rows[r][1]:.5f}/{rows[r][2]:.5f}"
                          for r in (2.0, 50.0, 99.0))
-        quad = "  ".join(f"{r:g}: h_rr l2 {rows[r][4]:+.1e}, lam l2 {rows[r][6]:+.1e}"
+        quad = "  ".join(f"{r:g}: h_rr l1 {rows[r][3]:+.1e} l2 {rows[r][4]:+.1e}, "
+                         f"lam l1 {rows[r][5]:+.1e} l2 {rows[r][6]:+.1e}"
                          for r in (2.0, 50.0, 99.0))
         if ref is not None:
             err = "  ".join(f"{r:g}: {rows[r][0]-ref[r][0]:+.1e}/{rows[r][1]-ref[r][1]:+.1e}/"

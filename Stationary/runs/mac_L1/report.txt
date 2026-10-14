@@ -1,0 +1,183 @@
+
+------------------------------------------------------------------------------
+RUN / CODE
+------------------------------------------------------------------------------
+run dir        : runs/mac_L1
+params file    : params.pkl
+git HEAD       : ca5a7bc  (+10 uncommitted files)
+BC-weight fix  : PRESENT (reweighting touches interior groups only)
+precision      : float64   <- trained in float64 (x64): ~1e-16 round-off headroom
+steps          : 1000 Adam + SSBroyden (4500 of a 4000 cap)   wall 11.1 min
+final loss     : 4.3839e-07
+
+------------------------------------------------------------------------------
+CONFIG
+------------------------------------------------------------------------------
+arch           : axisym_hybrid   width 16 x depth 4, fourier 0
+domain         : rho in [1, 100]   inner sphere areal radius 1   radial sampling hybrid
+loss form      : scaled by rho^exp, scale_ref None (local rho); lambda equation form 'log'
+exact solution : R0 = 0.57735   ref_solution True   ref_asymptotic 1.0   robin_source False
+inner data     : lambda_0 = 0.333333   ->  lambda -> k = 1.000000   S1 = 0   S2 = -0.0833333   (h_rr: free)
+outer BC       : robin, lambda_inf = 1, Robin orders {'h': 3, 'lam': 3}, base exponents {'h': 2, 'G': 3, 'lam': 1}, Gamma condition included: False
+loss weights   : w_inner = 10, w_outer = 10, reweight_every = 0
+sampling       : n_coll 1024 interior (hybrid-radial shell), n_bnd 256 inner + 256 outer, scale_ref None
+batch refresh  : resample_every = 500 (one batch for every 500 iterations; the log shows 3 resample line(s) and 0 reweight line(s))
+                 reweight_every = 0   (off: fixed weights)
+optimiser      : Adam then ssbroyden   blocks of 1500, plateau 0.0001 over 3 blocks (loss AND outer Robin)
+
+------------------------------------------------------------------------------
+LOSS TRAJECTORY (first, middle, last logged)
+------------------------------------------------------------------------------
+    step           loss    pde_ricci    pde_gauge   pde_lam_eq    inner_lam  inner_h_tan      outer_h    outer_lam      pin_lam
+       1      5.492e+00    9.562e-05    1.585e-04    4.821e-04    4.486e-01    2.667e-05    9.016e-02    8.701e-03    1.683e-04
+    1000      4.015e-02    4.972e-04    2.044e-03    2.255e-02    1.481e-03    1.203e-05    4.307e-07    3.788e-06    9.207e-07
+    5500      4.384e-07    2.403e-07    1.370e-07    2.952e-08    3.803e-10    2.266e-09    3.984e-10    1.018e-10    1.686e-12
+
+------------------------------------------------------------------------------
+INNER BOUNDARY  (imposed vs network)
+------------------------------------------------------------------------------
+    theta     imposed      network        diff
+     0.00     0.2500000      0.2499405   -5.95e-05
+     0.70     0.3018771      0.3019001    2.31e-05
+     1.57     0.3750000      0.3750225    2.25e-05
+inner sphere areal radius: 1.00000074   (r^2 = 1.000001, imposed 1)   h_rr there 0.581573
+inner BC residuals (rms): lam=2.14e-05  h_tan=5.08e-05
+
+------------------------------------------------------------------------------
+OUTER BOUNDARY
+------------------------------------------------------------------------------
+    theta      lambda(rho_out)     distance from lambda_inf = 1
+     0.00          0.9890171           -1.098e-02
+     0.70          0.9890090           -1.099e-02
+     1.57          0.9885744           -1.143e-02
+outer BC residuals (robin, rms): h=2.11e-05  lam=1.05e-05
+    terms of the lam combination (base 1, order 3):  1 rho^3 d3 = 7.12e-02   9 rho^2 d2 = 2.08e-01   18 rho^1 d1 = 2.08e-01   6 rho^0 d0 = 6.94e-02
+    terms of the h combination (base 2, order 3):  1 rho^3 d3 = 5.25e-01   12 rho^2 d2 = 8.00e-02   36 rho^1 d1 = 2.89e-02   24 rho^0 d0 = 5.98e-01
+    (each entry is the rms of ONE term of that sum: a residual far below its own terms means they cancel, which is how a wrong far-field level hides)
+far-field VALUES (rms of candidate - reference at rho_out): lam=3.92e-05 (ref 0.9885193)
+    weighted by w_pin = 100; lam is pinned through its spherical MEAN, so an l >= 1 tail at rho_out is not penalised (see the multipoles below).
+
+------------------------------------------------------------------------------
+LAMBDA vs RHO
+------------------------------------------------------------------------------
+       rho      lam(th=0)   lam(th=90)
+    1.0000      0.2499405    0.3750225
+    1.7783      0.4790508    0.5365475
+    3.1623      0.6763420    0.6972511
+    5.6234      0.8066758    0.8153598
+   10.0000      0.8871005    0.8914120
+   17.7828      0.9351119    0.9373936
+   31.6228      0.9632023    0.9643002
+   56.2341      0.9794955    0.9797641
+  100.0000      0.9890171    0.9885744
+
+------------------------------------------------------------------------------
+MULTIPOLES OF lambda AT rho = 100 (physical)
+------------------------------------------------------------------------------
+    lambda - lambda_inf = sum_lm S_lm Y_lm / rho^(l+1),   S_lm CONSTANT,
+    reported WITHOUT a rho factor.  S_10 is the spurious dipole: the inner data
+    impose S_1 = 0, so a nonzero value is an origin/level artifact.
+    l=0: S_00 = -4.100845e+00   (inner data -2.363272e+00, exact -4.069809e+00)
+    l=1: S_10 =  1.831769e+01   (inner data  1.332268e-15, exact  3.469447e-13)   <-- SPURIOUS DIPOLE (inner data 0, exact 0): an origin/level artifact, not a property of the source
+    l=2: S_20 = -4.611504e+02   (inner data -1.321109e-01, exact -4.259373e-10)
+    l=3: S_30 = -1.580933e+03   (inner data -7.382983e-15, exact  7.025630e-09)
+    l=0 mean lambda at rho_out = 0.9884317   (lambda_inf 1; S_00 = mean x sqrt(4 pi) x rho_out)
+    decay: slope of log|S_l0| vs log rho over rho = 1 2.512 6.31 15.85 39.81 100   (expected 0)
+      l=0: slope  0.106   |S_l0| in [2.363e+00, 4.101e+00]
+      l=1: slope  2.875   |S_l0| in [8.465e-06, 1.832e+01]
+      l=2: slope  1.781   |S_l0| in [1.321e-01, 4.612e+02]
+      l=3: slope  3.907   |S_l0| in [1.263e-05, 1.581e+03]
+    SPURIOUS DIPOLE: |S_10| at rho_out = 1.832e+01, drift over the table = 100.0%   (physical tail: S_10 = 0)
+    table: rho PHYSICAL (chart x 1, rho_in_phys = 1); rho = 1 2.512 6.31 15.85 39.81 100
+      l  m      S_lm at those rho           drift     exact S_lm    inner data    ratio
+      0  +0  -2.363e+00 -3.320e+00 -3.777e+00 -3.982e+00 -4.068e+00 -4.101e+00    42.4%   -4.070e+00   -2.363e+00      1.74
+      1  +0   8.465e-06  3.508e-03  8.712e-03  8.680e-02  1.181e+00  1.832e+01   100.0%    3.469e-13    1.332e-15        --
+      2  +0  -1.321e-01 -5.167e-01 -1.982e+00 -1.155e+01 -7.298e+01 -4.612e+02   100.0%   -4.259e-10   -1.321e-01   3490.63
+      3  +0  -1.263e-05 -3.626e-04 -4.517e-02  1.617e-01  1.299e+01 -1.581e+03   100.8%    7.026e-09   -7.383e-15        --
+      (not listed above: l=1,m=-1, l=1,m=+1, l=2,m=-2, l=2,m=-1, l=2,m=+1, l=2,m=+2, l=3,m=-3, l=3,m=-2, l=3,m=-1, l=3,m=+1, l=3,m=+2, l=3,m=+3 -- below 1e-6 of the largest S_lm, i.e. the network's noise floor)
+      drift = (max-min)/max over these radii: 0 is a correct tail.  ratio = max|S_lm| / the inner data's value (only when the data impose it).
+
+------------------------------------------------------------------------------
+MULTIPOLES OF THE GEROCH-HANSEN POTENTIAL (1-lambda)(1+lambda)/(4 lambda)
+------------------------------------------------------------------------------
+    l=0: S_00 =  2.062447e+00   (inner data  2.399947e+00)
+    l=1: S_10 = -9.267762e+00   (inner data -2.220446e-16)   <-- dipole (should vanish)
+    l=2: S_20 =  2.335156e+02   (inner data  3.610643e-01)
+    l=3: S_30 =  7.887810e+02   (inner data  3.774758e-15)
+    S_00 = sqrt(4 pi) rho_out x (mean P) = the mass-like level; every other
+    number is the coefficient in front of Y_lm/rho^(l+1) of P, with no rho factor.
+    decay: slope of log|S_l0(P)| vs log rho   (expected 0; a nonzero slope is a
+    tail that is not a multipole expansion, whatever the amplitude looks like)
+      l=0: slope -0.028   |S_l0| in [2.062e+00, 2.400e+00]
+      l=1: slope  2.583   |S_l0| in [1.968e-05, 9.268e+00]
+      l=2: slope  1.464   |S_l0| in [3.610e-01, 2.335e+02]
+      l=3: slope  3.788   |S_l0| in [2.817e-05, 7.888e+02]
+      l  m      S_lm at those rho           drift    inner data    ratio
+      0  +0   2.400e+00  2.154e+00  2.080e+00  2.067e+00  2.064e+00  2.062e+00    14.1%    2.400e+00      1.00
+      1  +0  -1.968e-05 -3.167e-03 -5.344e-03 -4.688e-02 -6.085e-01 -9.268e+00   100.0%   -2.220e-16        --
+      2  +0   3.610e-01  4.612e-01  1.214e+00  6.236e+00  3.759e+01  2.335e+02    99.8%    3.611e-01    646.74
+      3  +0   2.817e-05 -5.797e-05  2.710e-02 -9.713e-02 -6.987e+00  7.888e+02   100.9%    3.775e-15        --
+      (not listed above: l=1,m=-1, l=1,m=+1, l=2,m=-2, l=2,m=-1, l=2,m=+1, l=2,m=+2, l=3,m=-3, l=3,m=-2, l=3,m=-1, l=3,m=+1, l=3,m=+2, l=3,m=+3 -- below 1e-6 of the largest S_lm, i.e. the network's noise floor)
+      drift = (max-min)/max over these radii: 0 is a correct tail.  ratio = max|S_lm| / the inner data's value (only when the data impose it).
+
+------------------------------------------------------------------------------
+PDE RESIDUALS (raw units)
+------------------------------------------------------------------------------
+    compat     rms 9.018e-22   max 1.016e-20
+    gauge      rms 1.230e-06   max 3.263e-06
+    lam_eq     rms 3.384e-08   max 7.865e-08
+    ricci      rms 1.677e-07   max 5.590e-07
+
+------------------------------------------------------------------------------
+VS SPHERICAL REFERENCE (departure only, not an error)
+------------------------------------------------------------------------------
+    reference lambda(rho_in) = 0.3333333   (run imposed 0.333333)
+    over the shell   max |dh| = 1.792e-01   max |dGamma| = 5.609e-01   max |dlambda| = 7.679e-02
+    at rho_out       max |dh| = 5.017e-02   max |dlambda| = 1.267e-03
+    reference vs the imposed inner data: lam=1.49e-03  h_tan=1.89e-32   <- INCONSISTENT: no metric can satisfy both sets of data
+    NOTE: the inner data are not spherically symmetric (S1 = 0, S2 = -0.0833333) while the reference is,
+          so the max |dh| / max |dGamma| / max |dlambda| lines above are DEPARTURE from
+          the spherical solution, not errors of this run: no metric can satisfy both.
+          The multipole amplitudes and their fitted decay powers below are the check
+          that applies to these runs.
+
+------------------------------------------------------------------------------
+CHART-INDEPENDENT (geometric invariants)
+------------------------------------------------------------------------------
+    CAUTION: lambda has angular content (l=1,2,3 amplitudes sum to 2.31e-03):
+             this solution is NOT spherically symmetric, and the relations
+             below assume it is.  Indicative only (meaningless for the dipole).
+    family read off the solution: R0 = 0.566627   k = 0.999816     (the run's data imply R0 = 0.577350, k = 1.000000)
+    max |R - 2 R0^2/r_a^4| = 4.960e+00   max |lambda - lambda_family| = 3.550e-02
+         r_a       lambda             R     2 R0^2/r_a^4   lambda_family
+        1.0000    0.3750227   5.6023e+00   6.4219e-01      0.3395275
+       13.6077    0.9194648   2.1480e-05   1.8728e-05      0.9199458
+       26.2361    0.9573647   4.4641e-07   1.3553e-06      0.9575523
+       38.8624    0.9710090   1.6547e-07   2.8152e-07      0.9710828
+       51.4881    0.9780375   5.7135e-08   9.1369e-08      0.9780510
+       64.1140    0.9823249  -3.0799e-08   3.8003e-08      0.9822992
+       76.7406    0.9852132   3.9963e-08   1.8515e-08      0.9851601
+       89.3680    0.9872905  -6.1435e-08   1.0067e-08      0.9872178
+
+------------------------------------------------------------------------------
+GEOMETRY (gauge-invariant scalars, README section 11)
+------------------------------------------------------------------------------
+    reading vacuum: 24 of 24 sample points off the axis
+    vacuum defect |R_ab|/sqrt|K|  median 5.011e-03   max 3.541e-02      (0 for exact vacuum)
+    rank-one defect / R^2       median 4.475e-01                  (0 for a solution of the system)
+    eigenvalue defect / |R|     median 6.304e-01                  (0 same; this one needs lambda too)
+    Pontryagin |C.C~| max       9.699e-26                        (0: static)
+    speciality |S-1| median     2.431e-05   type D at 79% of the points
+    Kretschmann vs reference    median 4.676e-02   max 1.646e-01   (gauge invariant error)
+    Hawking mass profile  (m_H flat at the total mass = the source is inside; m_lapse = r_a(1-lambda)/2 converges only as rho -> infinity)
+         rho    m_Hawking    r_areal    M_lapse       m_H(ref)
+     50.5000  5.62910e-01   51.11620    0.58252
+     75.2500  5.53152e-01   75.88238    0.58238
+     95.0500  5.45864e-01   95.69551    0.58228    5.77350e-01
+    inner sphere at rho = 1: r_areal = 1.00000 scalar reading, 1.74394 vacuum reading   (the CONFIG 'inner_radius' = 1 is the scalar one)
+
+------------------------------------------------------------------------------
+REWEIGHTING HISTORY (from the log, if found)
+------------------------------------------------------------------------------
+    log: /Users/reula/Julia/PINN/Stationary/logs/mac_L1.log
+    no [reweight] lines (reweighting off, or log rotated)

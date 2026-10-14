@@ -40,6 +40,7 @@ COMMON=(--arch axisym_hybrid --width 20 --depth 6 --steps 500 --lbfgs-steps 3000
         --ref-solution --ref-asymptotic 1.0 --lam-bc-S2 -0.08333333333333333
         --outer-bc robin --robin-exps 2,3,1 --robin-orders h=3,lam=3 --no-robin-G --lam-inf 1.0
         --decay-feature --pin-lam-robin --pin-h-robin --w-pin 100
+        --outer-shell-fracs 1.0,0.9,0.8,0.7 --drop-l-h 1   # condition on 4 spheres; no dipole in h
         --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1
         --ckpt-every 500 --log-resources --vtk --vtk-physical-inner 0.01 --log-every 200)
 DROP=(--drop-robin-l 1 --drop-inner-l 1)

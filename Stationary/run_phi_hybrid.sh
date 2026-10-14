@@ -81,6 +81,7 @@ BASE=(
     --outer-bc robin --robin-orders h=3,lam=3 --no-robin-G
     --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1   # no inner_h/outer_h=0: the metric's\n                              #   boundary data are imposed (see the defaults in problem.py)
     --pin-lam-robin --pin-h-robin --ref-solution --ref-asymptotic 1.0
+    --outer-shell-fracs 1.0,0.9,0.8,0.7 --drop-l-h 1
      --decay-feature --log-resources --vtk
 )
 
