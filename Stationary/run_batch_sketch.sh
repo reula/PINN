@@ -50,7 +50,7 @@
 # (polling every POLL seconds) until no other training process holds it.
 #
 # Env: ADAM_STEPS (5000)  QN_STEPS (20000, a cap: SSBroyden stops on its plateau)
-#      DSG_STEPS (300)  DSG_RESAMPLE (100, DSGNAR's redraw period)  ONLY (E | S | empty = both)  POLL (300)  GPU_FREE_MB (1500)
+#      DSG_STEPS (300)  DSG_RESAMPLE (100, DSGNAR's redraw period)  ONLY (S default | E | empty = both)  POLL (300)  GPU_FREE_MB (1500)
 #      RUN_HOURS (6, per-run backstop)  FORCE_START (1 = skip the wait)
 # ---------------------------------------------------------------------------
 set -u
@@ -68,7 +68,9 @@ DSG_STEPS="${DSG_STEPS:-300}"
 # reached by a 300-iteration DSGNAR phase, which would then fit one frozen sample.  Each redraw
 # costs one recompile (~1 min); 100 gives three samples per run.
 DSG_RESAMPLE="${DSG_RESAMPLE:-100}"
-ONLY="${ONLY:-}"
+# Stationary only by default: the Evolution_try runs moved to Mendieta (SLURM, one GPU each, all at
+# once: Evolution_try/scripts/mendieta_submit.sh).  ONLY= (empty) still runs both parts here.
+ONLY="${ONLY-S}"
 POLL="${POLL:-300}"
 GPU_FREE_MB="${GPU_FREE_MB:-1500}"
 RUN_HOURS="${RUN_HOURS:-6}"

@@ -96,6 +96,16 @@ Useful commands:
 Dependencies chain jobs without waiting at the terminal, e.g. the optimiser arms after the Adam
 warm-up: `sbatch --dependency=afterok:<adam_jobid> arm.sh`.
 
+## 5b. What runs here
+
+The Evolution_try DSGNAR experiments (2026-10-15): one job per run, all submitted at once by
+
+    bash ~/Julia/PINN/Evolution_try/scripts/mendieta_submit.sh      # DRY=1 to only print
+
+(`scripts/mendieta_run.sbatch` is the job; it refuses to start if JAX does not see the GPU, since
+a silent CPU fallback would take days).  The Stationary runs stay on the hub
+(`Stationary/run_batch_sketch.sh`, now Stationary-only by default).
+
 ## 6. Differences from the hub
 
 | | JupyterHub (HUB.md) | Mendieta |
