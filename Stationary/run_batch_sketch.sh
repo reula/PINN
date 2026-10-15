@@ -73,13 +73,18 @@ export MPLCONFIGDIR="${MPLCONFIGDIR:-$HERE/.mplcache}"
 
 E1_LABEL="dsgnar_soft_all_nc2201_audit"
 E2_LABEL="dsgnar_hard_nc2201_s1500_audit"
-S_ADAM="runs/sk_adam"
+# sk16k_*: the problem size of the production runs S2/S4, which fit the hub's 13.5 GiB share.
+# The first attempt (sk_*) used run_dsgnar.sh's 27768 / 4548, sized before the four outer
+# shells existed: SSBroyden's compiled loss+grad asked for 22.9 GiB, DSGNAR's probe losses
+# for 13.4 GiB at every s -- the objective, not the sketch, did not fit.
+SP="sk16k"
+S_ADAM="runs/${SP}_adam"
 done_s() { [ -f "$HERE/runs/$1/report.json" ] && echo "   [done]"; }
 done_e() { [ -f "$EVO/runs/$1/report.md" ] && echo "   [done]"; }
 
 # the recipe of run_dsgnar.sh (the pq_c100 shell), shared by every Stationary arm
 S_RECIPE=(--arch axisym_hybrid
-          --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
+          --n-coll 16384 --n-bnd 1024 --n-bnd-outer 1024 --ckpt-every 500
           --R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0
           --vtk-physical-inner 1.0
           --lam0 0.33333333333333337 --lam-inf 1.0 --lam-bc-S2 -0.08333333333333333
@@ -94,10 +99,10 @@ plan() {
     echo "    stationary python : $SPY"
     echo "    evolution  python : $EPY"
     if [ "$ONLY" != "E" ]; then
-        echo "    S0  $S_ADAM                 Adam $ADAM_STEPS steps$(done_s sk_adam)"
-        echo "    S1  runs/sk_ssbroyden           SSBroyden $QN_STEPS iterations$(done_s sk_ssbroyden)"
+        echo "    S0  $S_ADAM               Adam $ADAM_STEPS steps (no plateau stop)$(done_s ${SP}_adam)"
+        echo "    S1  runs/${SP}_ssbroyden         SSBroyden $QN_STEPS iterations$(done_s ${SP}_ssbroyden)"
         for s in $SKETCHES; do
-            echo "    S*  runs/sk_dsgnar_s$s$(printf '%*s' $((10 - ${#s})) '')DSGNAR $DSG_STEPS iterations, s=$s, K=$HASHES$(done_s "sk_dsgnar_s$s")"
+            echo "    S*  runs/${SP}_dsgnar_s$s$(printf '%*s' $((10 - ${#s})) '')DSGNAR $DSG_STEPS iterations, s=$s, K=$HASHES$(done_s "${SP}_dsgnar_s$s")"
         done
     fi
     if [ "$ONLY" != "S" ]; then
@@ -110,7 +115,8 @@ if [ "$DRY" = "1" ]; then plan; exit 0; fi
 
 if [ "${_DETACHED:-0}" != "1" ]; then
     if pgrep -f "_DETACHED_BATCH_SKETCH" > /dev/null; then
-        echo "a batch_sketch driver is already running; not starting a second one"; exit 1
+        echo "a batch_sketch driver is already running: this one will WAIT for it to finish,"
+        echo "then do whatever is left (finished runs are skipped)"
     fi
     _DETACHED=1 nohup setsid bash "$0" _DETACHED_BATCH_SKETCH "$@" >> "$DRIVER" 2>&1 &
     sleep 1
@@ -121,6 +127,12 @@ if [ "${_DETACHED:-0}" != "1" ]; then
     exit 0
 fi
 
+# queue behind an earlier driver: two drivers would race for the same runs
+while pgrep -f "_DETACHED_BATCH_SKETCH" | grep -vx "$$" > /dev/null; do
+    [ "${_queued:-0}" = 0 ] && echo "    $(date -u '+%H:%M:%S') another batch_sketch driver is running; queued behind it"
+    _queued=1
+    sleep "$POLL"
+done
 plan
 
 # ---- wait for the card ------------------------------------------------------------
@@ -165,14 +177,14 @@ s_run() {        # s_run <name> <flags...>
 }
 
 if [ "$ONLY" != "E" ]; then
-    s_run sk_adam --steps "$ADAM_STEPS" --lbfgs-steps 0
+    s_run "${SP}_adam" --steps "$ADAM_STEPS" --lbfgs-steps 0 --plateau-min-iters -1
     if [ ! -f "$S_ADAM/params_adam.pkl" ]; then
         echo "!! no $S_ADAM/params_adam.pkl: the warm-up failed, so the Stationary arms cannot start"
     else
-        s_run sk_ssbroyden --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
+        s_run "${SP}_ssbroyden" --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
             --lbfgs-steps "$QN_STEPS" --qn-method ssbroyden
         for s in $SKETCHES; do
-            s_run "sk_dsgnar_s$s" --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
+            s_run "${SP}_dsgnar_s$s" --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
                 --lbfgs-steps 30000 --qn-method dsgnar --dsgnar-steps "$DSG_STEPS" \
                 --dsgnar-sketch "$s" --dsgnar-hashes "$HASHES" --dsgnar-chunk 16
         done
@@ -206,20 +218,20 @@ fi
 # ---- summary ---------------------------------------------------------------------
 {
 echo "=== batch_sketch summary  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-"$SPY" - "$HERE" <<'PYEOF'
+"$SPY" - "$HERE" "$SP" <<'PYEOF'
 import json, os, sys
-root = sys.argv[1]
+root, sp = sys.argv[1], sys.argv[2]
 print("\nStationary (same Adam start; loss is the total objective, rms_* against the exact reference)")
 print(f"{'run':<20} {'final loss':>12} {'wall (s)':>9} {'rms_dh':>10} {'rms_dlam':>10} {'max_dlam':>10}  stopped")
-for name in ["sk_adam", "sk_ssbroyden"] + sorted(
-        (d for d in os.listdir(os.path.join(root, "runs")) if d.startswith("sk_dsgnar_s")),
+for name in [f"{sp}_adam", f"{sp}_ssbroyden"] + sorted(
+        (d for d in os.listdir(os.path.join(root, "runs")) if d.startswith(f"{sp}_dsgnar_s")),
         key=lambda d: int(d.rsplit("s", 1)[1])):
     p = os.path.join(root, "runs", name, "report.json")
     if not os.path.exists(p):
-        print(f"{name:<20} (no report)"); continue
+        print(f"{name:<22} (no report)"); continue
     r = json.load(open(p))
     stop = r.get("qn_stopped_at", "")
-    print(f"{name:<20} {r.get('final_loss', float('nan')):>12.4e} {r.get('wall_seconds', 0):>9.0f} "
+    print(f"{name:<22} {r.get('final_loss', float('nan')):>12.4e} {r.get('wall_seconds', 0):>9.0f} "
           f"{r.get('rms_dh', float('nan')):>10.3e} {r.get('rms_dlam', float('nan')):>10.3e} "
           f"{r.get('max_dlam', float('nan')):>10.3e}  {stop}")
 PYEOF
