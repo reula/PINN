@@ -223,6 +223,21 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
     whatever the exact reference carries there, which is what a manufactured check of a
     non-spherical solution needs -- the Weyl two-black-hole configuration has neither a
     round inner metric nor that polynomial lambda.
+
+    THE METRIC CONDITION IS ON THE INDUCED METRIC ONLY: `P h P` with `P = I - n n`, the
+    tangential block.  `h_rr` and the mixed components `h_rA` are NOT boundary data and must not
+    be imposed -- in either mode.  Until 2026-10-15 this imposed `h - h_rr n n = c (I - n n)`,
+    whose mixed part silently set `h_rA = 0` on the sphere as well.  For the spherical solution
+    `h_rA` vanishes by symmetry, so nothing showed; for any l >= 1 datum it is one condition too
+    many per mode: in harmonic gauge the l = 2 sector has five decaying constants and the inner
+    sphere already fixes five (the lambda datum, the trace and trace-free parts of the induced
+    metric, the two gauge components), so with `h_rA = 0` added no decaying solution exists.  The
+    spectral reference solve (stationary/linref.py) under the old condition showed what that
+    looks like: Newton stalled at a residual floor (loss 1.8e-5 at l <= 6, 24 radial modes) and
+    kept a NON-DECAYING l = 2 metric part (h_rr's P_2 coefficient ~ -0.045 from rho = 10 to 100)
+    -- the "forbidden rho^0 mode" of PERTURBATION.md, section 3, which the networks carried too.  `h_rA` is a coordinate
+    statement that nothing in the problem asks for, and the harmonic gauge already uses up the
+    coordinate freedom.  `model._blend_inner` (the hard version) projects the same way.
     """
     if cfg.inner_bc == "reference":
         if exact_fields is None:
@@ -230,7 +245,10 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
 
         def one(x):
             f, e = point_fields(x), exact_fields(x)
-            return jnp.concatenate([pack_sym(f.h - e.h) * OFFW,
+            n = x / jnp.linalg.norm(x)
+            P = I3 - jnp.outer(n, n)
+            # the induced metric only (see the docstring): never h_rr, never h_rA
+            return jnp.concatenate([pack_sym(P @ (f.h - e.h) @ P) * OFFW,
                                     jnp.array([f.lam - e.lam])])
 
         R = jax.vmap(one)(xs)
@@ -245,7 +263,11 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
         nn = jnp.outer(n, n)
         h_rr = n @ f.h @ n
         c = cfg.inner_radius**2 / rho**2          # round metric of areal radius inner_radius
-        M = f.h - h_rr * nn - c * (I3 - nn)
+        P = I3 - nn
+        # The INDUCED metric P h P, and nothing else: h_rA is not boundary data (docstring).  The
+        # rr and rA entries of M vanish identically; they stay in the packed rows so the row
+        # count -- and every residual-vector consumer -- is unchanged.
+        M = P @ f.h @ P - c * P
         hrr_ref = 1.0 if cfg.inner_h_rr is None else cfg.inner_h_rr
         return jnp.concatenate([
             jnp.array([f.lam - lam_inner_bc(x, cfg), h_rr - hrr_ref]),
@@ -274,6 +296,10 @@ def inner_datum_of(cfg, exact_fields=None):
 
     Both inner_bc modes return direction-only data, so a run can switch the inner condition from
     soft to hard without touching anything else.
+
+    Only the TANGENTIAL block of `h_datum` is boundary data: `model._blend_inner` imposes `P h P`
+    and leaves `h_rr` and `h_rA` to the network (see `inner_bc_raw`).  The full tensor is returned
+    because it is what a hybrid datum needs to be, but its rr and rA parts are never imposed.
     """
     if getattr(cfg, "inner_bc", "spherical") == "reference":
         if exact_fields is None:

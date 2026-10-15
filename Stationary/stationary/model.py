@@ -47,10 +47,14 @@ def _blend_inner(x, h, lam, rho_in, hard_inner):
     The fields are blended with the datum taken at the same direction (see
     `losses.inner_datum_of`), with a weight that vanishes on the inner sphere:
 
-        m(r) = 1 - rho_in / r,   h = h_d(n) + m (h_net - h_d(n)),   lam likewise,
+        m(r) = 1 - rho_in / r,   P = I - n n,
+        h = h_net + (1 - m) P (h_d(n) - h_net) P,       lam = lam_d + m (lam_net - lam_d),
 
-    so on the inner sphere the fields ARE the datum, to roundoff, and outward the network takes
-    over (the datum leaks with weight rho_in/r -- 1% at rho_out = 100).  Both blends are convex
+    so on the inner sphere the INDUCED metric P h P and lambda ARE the datum, to roundoff, while
+    h_rr and the mixed components h_rA stay the network's: they are not boundary data (see
+    `losses.inner_bc_raw` -- blending the whole tensor, as this did until 2026-10-15, imposed
+    h_rr = 1 and h_rA = 0 as well, which over-determines every l >= 1 mode and leaves no decaying
+    solution).  Outward the network takes over (the datum leaks with weight rho_in/r -- 1% at rho_out = 100).  Both blends are convex
     combinations because 0 <= m < 1 outside the inner sphere, so lambda stays positive even
     though the network's own lambda is not bounded below by anything.
 
@@ -66,7 +70,10 @@ def _blend_inner(x, h, lam, rho_in, hard_inner):
     m = 1.0 - rho_in / r                             # (N,1), zero on the inner sphere
     lam_2d = jnp.reshape(lam, (-1, 1))
     lam_d = jnp.reshape(lam_d, (-1, 1))
-    h_out = h_d + m[..., None] * (h - h_d)
+    n = x / r                                        # (N,3)
+    P = jnp.eye(3) - n[..., :, None] * n[..., None, :]
+    # only the tangential block is pulled onto the datum; h_rr and h_rA are the network's
+    h_out = h + (1.0 - m)[..., None] * (P @ (h_d - h) @ P)
     lam_out = lam_d + m * (lam_2d - lam_d)
     return h_out, (lam_out.reshape(-1) if lam.ndim == 1 else lam_out)
 

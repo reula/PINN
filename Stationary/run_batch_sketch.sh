@@ -10,10 +10,14 @@
 #      0.075/0.5, delta_min 1e-8.  From ONE Adam warm-up:
 #        S0  Adam warm-up                       (writes params_adam.pkl; no quasi-Newton)
 #        S1  SSBroyden, to its plateau          the baseline
-#        S2  DSGNAR s = 1100, --dsgnar-paper    the paper, as written
-#        S3  DSGNAR s = 1100, paper, no reweighting   (is the reweighting what helps/hurts?)
-#        S4  DSGNAR s = 1100, this repo's recipe (K = 8, calibration, line scan)
-#        S5  DSGNAR s = 512,  paper, no reweighting   (the sketch size)
+#        S2  DSGNAR s = 1100, paper, no reweighting
+#        S3  DSGNAR s = 1100, --dsgnar-paper    the paper, as written (with reweighting)
+#        S4  DSGNAR s = 512,  paper, no reweighting   (the sketch size)
+#        R   the nonlinear spectral reference (stationary/linref.py) and every arm against it
+#      ib16k_*: the inner condition is the INDUCED metric only (2026-10-15).  Every earlier
+#      Stationary run -- sk_*, sk16k_*, the pq_* production runs -- also imposed h_rA = 0 on the
+#      inner sphere, which over-determines the quadrupole problem (losses.inner_bc_raw); none of
+#      them is comparable with these.
 #
 #   E. Evolution_try, the open stall (its README 6.11).  Every DSGNAR phase that stops on
 #      "radius below threshold" is audited against the EXACT Jacobian on the batch it stopped
@@ -86,11 +90,10 @@ E2_LABEL="dsgnar_hard_nc2201_s1500_audit"
 # The first attempt (sk_*) used run_dsgnar.sh's 27768 / 4548, sized before the four outer
 # shells existed: SSBroyden's compiled loss+grad asked for 22.9 GiB, DSGNAR's probe losses
 # for 13.4 GiB at every s -- the objective, not the sketch, did not fit.
-SP="sk16k"
+SP="ib16k"
 # the DSGNAR arms: "<name>|<flags>"
-ARMS=("${SP}_paper_s1100|--dsgnar-sketch 1100 --dsgnar-paper"
-      "${SP}_paperNW_s1100|--dsgnar-sketch 1100 --dsgnar-paper --dsgnar-reweight 0"
-      "${SP}_recipe_s1100|--dsgnar-sketch 1100 --dsgnar-hashes 8"
+ARMS=("${SP}_paperNW_s1100|--dsgnar-sketch 1100 --dsgnar-paper --dsgnar-reweight 0"
+      "${SP}_paper_s1100|--dsgnar-sketch 1100 --dsgnar-paper"
       "${SP}_paperNW_s512|--dsgnar-sketch 512 --dsgnar-paper --dsgnar-reweight 0")
 S_ADAM="runs/${SP}_adam"
 done_s() { [ -f "$HERE/runs/$1/report.json" ] && echo "   [done]"; }
@@ -208,6 +211,15 @@ if [ "$ONLY" != "E" ]; then
                 --lbfgs-steps 30000 --qn-method dsgnar --dsgnar-steps "$DSG_STEPS" \
                 --dsgnar-chunk 16 --log-every 10 --resample-every "$DSG_RESAMPLE" ${arm#*|}
         done
+        # R: the nonlinear spectral reference, solved once per run directory (same BVP, same
+        # inner condition), and each run against it -- a reference that SOLVES the quadrupole
+        # problem, unlike --ref-solution (spherical).  Writes <run>/linref_nonlinear.{npz,json}.
+        for name in "${SP}_ssbroyden" "${ARMS[@]%%|*}"; do
+            [ -f "runs/$name/report.json" ] || continue
+            [ -f "runs/$name/linref_nonlinear.json" ] && { echo "--- linref $name done already"; continue; }
+            run "linref $name" "logs/${name}.linref.log" "$SPY" -m stationary.linref "runs/$name" \
+                --nonlinear --ls 0,2,4,6,8 --n-radial 36 --n-coll 2500 --n-bnd 400 --iters 6
+        done
     fi
 fi
 
@@ -253,8 +265,10 @@ echo "=== batch_sketch summary  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 "$SPY" - "$HERE" "$SP" <<'PYEOF'
 import json, os, sys
 root, sp = sys.argv[1], sys.argv[2]
-print("\nStationary (same Adam start; loss is the total objective, rms_* against the exact reference)")
-print(f"{'run':<20} {'final loss':>12} {'wall (s)':>9} {'rms_dh':>10} {'rms_dlam':>10} {'max_dlam':>10}  stopped")
+print("\nStationary (same Adam start; loss at the original weights; 'vs reference' = against the")
+print("nonlinear spectral reference of linref.py -- NOT the report's rms_d*, which measure the")
+print("distance to the SPHERICAL solution)")
+print(f"{'run':<22} {'final loss':>12} {'wall (s)':>9}  stopped")
 for name in [f"{sp}_adam", f"{sp}_ssbroyden"] + sorted(
         d for d in os.listdir(os.path.join(root, "runs"))
         if d.startswith(sp + "_") and d not in (f"{sp}_adam", f"{sp}_ssbroyden")):
@@ -263,9 +277,14 @@ for name in [f"{sp}_adam", f"{sp}_ssbroyden"] + sorted(
         print(f"{name:<22} (no report)"); continue
     r = json.load(open(p))
     stop = r.get("qn_stopped_at", "")
-    print(f"{name:<22} {r.get('final_loss', float('nan')):>12.4e} {r.get('wall_seconds', 0):>9.0f} "
-          f"{r.get('rms_dh', float('nan')):>10.3e} {r.get('rms_dlam', float('nan')):>10.3e} "
-          f"{r.get('max_dlam', float('nan')):>10.3e}  {stop}")
+    lr = os.path.join(root, "runs", name, "linref_nonlinear.json")
+    if os.path.exists(lr):
+        c = json.load(open(lr))["compare"]
+        ref = f"vs reference: rms dh {c['rms_dh']:.2e}, rms dlam {c['rms_dlam']:.2e}"
+    else:
+        ref = "(no reference comparison)"
+    print(f"{name:<22} {r.get('final_loss', float('nan')):>12.4e} {r.get('wall_seconds', 0):>9.0f}  "
+          f"{stop}  {ref}")
 PYEOF
 "$EPY" - "$EVO/runs" <<'PYEOF'
 import json, os, sys

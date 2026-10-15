@@ -137,8 +137,16 @@ Inner sphere (`rho = rho_in`), as specified by the user:
   dlambda`), so `k` is a free normalisation; **every run uses `k = 1`**.  An explicit
   `--lam0` still selects another branch, and the run then prints the `k` it implies.
 * the induced metric is the round metric of **areal radius `inner_radius`** (default 2, the
-  radius in the problem statement), implemented as
-  `h - h_rr n n - (inner_radius^2/rho^2)(I - n n) = 0`.
+  radius in the problem statement), implemented as `P h P = (inner_radius^2/rho^2) P` with
+  `P = I - n n` -- the tangential block, **and nothing else**.  Neither `h_rr` nor the mixed
+  components `h_rA` are boundary data.  Until 2026-10-15 the condition read
+  `h - h_rr n n - (inner_radius^2/rho^2)(I - n n) = 0`, whose mixed part also forced `h_rA = 0`:
+  harmless for the spherical solution (`h_rA` vanishes by symmetry) but one condition too many
+  for every `l >= 1` mode (by counting the decaying constants of the l = 2 sector in harmonic
+  gauge), so a quadrupole datum had no decaying solution -- under that condition the spectral
+  reference (`stationary/linref.py`) stalled at a residual floor and kept a non-decaying `l = 2`
+  metric part, the "forbidden mode" of PERTURBATION.md.  The hard version (`--hard-inner-bc`) blended
+  the whole tensor and imposed `h_rr = 1` too; it now projects the same way.
 
 No condition is imposed on `h_rr`: that round-metric condition already fixes the scaling
 freedom `h -> s^2 h`, and pinning `h_rr` as well over-determines the radial gauge — the
