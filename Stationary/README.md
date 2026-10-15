@@ -1326,3 +1326,9 @@ degenerate surface in these coordinates, so it needs its own treatment), Geroch-
 multipoles, geodesic observables (ISCO, photon ring, epicyclic frequencies), a `geometry.json`
 next to the run and the half-plane curvature panel of `plane.py`.  `ROTATING_PLAN.md` §P2
 tracks this.
+
+## Radial-derivative terms
+
+`--pde-radial` adds the radial derivative of each equation group's residual to the
+loss, with the group's own weight.  Implemented and off by default; the design, the
+cost and how to judge it are in [RADIAL_DERIVATIVES.md](RADIAL_DERIVATIVES.md).
