@@ -193,6 +193,9 @@ run() {          # run <label> <log> <cmd...>  -- foreground, with a time backst
 # ---- S: the Stationary sketch-size comparison --------------------------------------
 s_run() {        # s_run <name> <flags...>
     local name="$1"; shift
+    # wait FIRST, then decide: a run left going by a stopped driver finishes during the wait, and
+    # must then be skipped, not started again on top of its own results
+    wait_card
     if [ -f "runs/$name/report.json" ]; then
         echo "--- $name done already, skipping"; return 0
     fi
@@ -228,6 +231,7 @@ fi
 # ---- E: the Evolution_try stall audits ---------------------------------------------
 e_run() {        # e_run <label> <window_ic> <sketch> [extra --set flags...]
     local lab="$1" ic="$2" sk="$3"; shift 3
+    wait_card
     if [ -f "$EVO/runs/$lab/report.md" ]; then
         echo "--- $lab done already, skipping"; return 0
     fi
