@@ -28,7 +28,7 @@
 #        E1  soft_all, n_coll 2201, s = d/3   -- the hand-over whose error does NOT grow:
 #                                                 are its stops sketch-limited too?
 #        E2  hard,     n_coll 2201, s = 1500  -- s above rank(J): the rising floor should go
-#      Before them, the paper's rules one at a time (Evolution README 6.12), on the soft_all
+#      Before them, the paper's rules one at a time (Evolution README 6.13), on the soft_all
 #      cell (baseline: runs/dsgnar_soft_all_nc2201, 7.8e-06) and all four on the hard cell
 #      (baseline: runs/dsgnar_hard_nc2201, 7.7e-03), audits on throughout:
 #        P*  warm start | overshoot rejection | targets 0.075 + delta_min 1e-8 | reweighting | all

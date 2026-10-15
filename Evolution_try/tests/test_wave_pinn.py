@@ -856,7 +856,7 @@ class TestStallAudit(unittest.TestCase):
 
 
 class TestPaperOptions(unittest.TestCase):
-    """The DSGNAR options ported from the paper (README 6.12)."""
+    """The DSGNAR options ported from the paper (README 6.13)."""
 
     def test_blocks_cover_the_residual(self):
         cfg = Config(n_coll=64, n_neurons=8, n_layers=2, sampler="random")

@@ -1000,6 +1000,61 @@ measuring rather than reasoning from one case to the other.
 
 ---
 
+### 6.13 The paper re-read, and the stall caught in the act (2026-10-15)
+
+**The stall audit.**  `--set dsgnar_audit_stops=true` (`wave_pinn/optim/stall_audit.py`) audits every
+DSGNAR phase that stops on `radius below threshold`, at its final parameters and on the batch it
+stopped on, against the EXACT Jacobian, and appends one JSON record per stop to
+`runs/<label>/dsgnar_stop_audits.jsonl`: the loss, the gradient, the spectrum and numerical rank of
+J, the loss reached by exact Levenberg-Marquardt steps at seven lambdas and four step fractions,
+and the sketched step's alignment with them.  The question each record answers: *could an exact
+Gauss-Newton step have gone on?*
+
+First measurement: `dsgnar_hard_nc2201` re-run with audits (hub, 2026-10-14; the container died in
+window 10, 110 stops recorded):
+
+| window | stop loss | rank(J) at 1e-10 | exact LM best / loss | cos(sketched, exact) |
+|---|---|---|---|---|
+| 1 | 2e-15 .. 1e-14 | 824 | 0.81 | +0.28 |
+| 2-5 | 1e-12 .. 1e-10 | 936-1137 | 0.82-0.87 | +0.19..+0.30 |
+| 6-7 | 2e-11 .. 6e-8 | 1117-1232 | 0.82-0.91 | +0.19..+0.24 |
+| 8-9 | 3e-9 .. 2e-8 | 1252-1501 | 0.81-0.87 | +0.12..+0.20 |
+| 10 | 1.1e-7 .. 1.5e-7 | 1324 | 0.87 | +0.11 |
+
+* at EVERY stop an exact LM step (lambda 1e-4 .. 1e-2) still lowers the loss by 13-19%, while the
+  sketched step at any lambda raises even the exact Gauss-Newton model (110 of 110), and its
+  cosine with the exact step is 0.1-0.3: the stop is the sketch's, not the problem's;
+* the hard hand-over's floor RISES with the window, and so does rank(J) (824 -> ~1500, against
+  s = 733): corr(log stop loss, rank) = +0.84.  The retries land at the same level (windows 8, 9:
+  5.8e-9 / 6.0e-9 / 1.1e-8 and 8.0e-9 / 8.8e-9 / 5.7e-9), so the "stalled, retry" rule, which
+  compares with window 1's floor, spends two attempts per late window for nothing;
+* that is the HARD hand-over.  The soft and soft_all hand-overs keep every window at 1e-15..1e-21
+  (BATCH_REPORT.md), and the first soft_all audit (killed in window 3) already showed rank(J) ~
+  465-650 < s at stops that look the same (exact LM best ~0.9, cos ~0.3): rank alone is not the
+  whole story.  The full soft_all audit and the hard cell at s = 1500 are running on Mendieta.
+
+**The paper's rules, now switches** (all off by default; re-read from arXiv:2607.02194 itself):
+
+| paper | here before | switch |
+|---|---|---|
+| time marching from the previous interval's parameters, "slightly perturbed" (4.4) | fresh init every window | `window_warm_start=0.01` (relative noise) |
+| a step whose ratio overshoots the target by > 0.1 is rejected and the radius expanded (3.4) | any decrease accepted | `dsgnar_reject_overshoot=true` |
+| stage-1 target 0.075 in double precision, Delta_min = 1e-8 (4.2) | 0.15, 1e-14 | `dsgnar_stage1_ratio`, `dsgnar_delta_min` |
+| per-condition reweighting, UpdateWeights alpha = 0.05 (App. A.1) | never called | `dsgnar_reweight_alpha=0.05` (conditions: pde, periodic_u/ux, ic_u, ic_ut, l2) |
+| one sketch for the whole run (3.2.2; Algorithm 1 itself redraws) | redrawn each iteration | `dsgnar_fixed_sketch=true` |
+
+Already as in the paper here: no line scan (`dsgnar_backtrack_steps=-1`), no calibration.  The
+reweighting is a per-row scale passed to the jitted maps as an argument (no recompile); the
+history's `loss` stays at the original weights.  Not ported: SIREN with trainable frequencies,
+the first ten iterations in single precision, N >> s collocation points (the paper uses
+32768 + 16384 points for s = 4000-5000; here 2201 for s = 733).
+
+**The ablation** (Mendieta, one A30 per run, submitted 2026-10-15 by
+`scripts/mendieta_submit.sh`; see ../Mendieta.md): on the soft_all cell each rule alone
+(`pp_soft_all_warm`, `_overshoot`, `_targets`, `_reweight`) and all four (`pp_soft_all_all`), all
+four on the hard cell (`pp_hard_all`); baselines `dsgnar_soft_all_nc2201` (7.8e-06) and
+`dsgnar_hard_nc2201` (7.7e-03).  Results: pending.
+
 ## 7. Tests
 
 ```bash

@@ -7,7 +7,7 @@
 #   DRY=1 bash .../mendieta_submit.sh                                    # print, submit nothing
 #   squeue -u $USER ;  tail -f ~/Julia/PINN/Evolution_try/logs/slurm_<label>_<jobid>.out
 #
-# The runs (README 6.11-6.12): the paper's rules one at a time on the soft_all cell, all four on
+# The runs (README 6.11, 6.13): the paper's rules one at a time on the soft_all cell, all four on
 # the soft_all and hard cells, then the two stall audits.  Baselines are the earlier batch's
 # runs/dsgnar_soft_all_nc2201 (7.8e-06) and runs/dsgnar_hard_nc2201 (7.7e-03), on the hub.
 # A run whose runs/<label>/report.md exists is skipped (also re-checked inside the job).

@@ -287,7 +287,7 @@ class Config:
     wolfe_maxls: int = 30              # zoom line-search steps (optax path)
     dsgnar_chunk: int = 64             # tangents per batched JVP; 0 = all at once (GPU OOM)
     dsgnar_row_chunk: int = 0          # CountSketch rows per block; 0 = off (unneeded at M ~ 2e3)
-    # What the paper does and this phase did not (README 6.12).  All off by default.
+    # What the paper does and this phase did not (README 6.13).  All off by default.
     dsgnar_reweight_alpha: float = 0.0 # UpdateWeights exponent per condition (paper: 0.05);
                                        # the conditions are pde / periodic / ic_u / ic_ut / l2
     dsgnar_fixed_sketch: bool = False  # one sketch for the whole phase (paper 3.2.2)
