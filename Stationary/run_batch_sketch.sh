@@ -2,13 +2,6 @@
 # ---------------------------------------------------------------------------
 # One detached batch, two DSGNAR experiments, strictly one run at a time:
 #
-#   E. Evolution_try, the open stall (its README 6.11).  dsgnar_hard_nc2201 re-run with
-#      --set dsgnar_audit_stops=true: every DSGNAR phase that stops on "radius below
-#      threshold" is audited against the EXACT Jacobian on the batch it stopped on
-#      (wave_pinn/optim/stall_audit.py).  The question: could an exact Gauss-Newton step
-#      have gone on?  The hard hand-over at n_coll 2201 is the cell with the most stalls
-#      (11-15 retried windows in the original batch).
-#
 #   S. Stationary, the sketch size.  Evolution_try measured s = d/3 -> d/2 as worth ~1000x;
 #      Stationary has run at s = 128 = d/18 because the M x s column matrix did not fit.
 #      The fused JVP + CountSketch (dsgnar.sketched_jvp_columns) removes that matrix, so
@@ -19,17 +12,31 @@
 #        S3  DSGNAR s = 512,  K = 8
 #        S4  DSGNAR s = 1100, K = 8             ~ d/2 (d = 2285)
 #
-#   bash run_batch_sketch.sh            # launch, detached (safe to close the terminal)
+#   E. Evolution_try, the open stall (its README 6.11).  Every DSGNAR phase that stops on
+#      "radius below threshold" is audited against the EXACT Jacobian on the batch it stopped
+#      on (--set dsgnar_audit_stops=true, wave_pinn/optim/stall_audit.py).  The first attempt
+#      (dsgnar_hard_nc2201_audit, 2026-10-14, killed in window 10 with 110 records) found the
+#      HARD hand-over's stops sketch-limited: s = 733 below rank(J), which grew 824 -> 1500 with
+#      the window, and the stop loss tracked it (corr 0.84).  Two runs test that:
+#        E1  soft_all, n_coll 2201, s = d/3   -- the hand-over whose error does NOT grow:
+#                                                 are its stops sketch-limited too?
+#        E2  hard,     n_coll 2201, s = 1500  -- s above rank(J): the rising floor should go
+#
+#   bash run_batch_sketch.sh            # launch, detached; prints what is left to do
 #   DRY=1 bash run_batch_sketch.sh      # print the plan, launch nothing
 #   tail -f logs/batch_sketch.driver.log
 #   cat logs/batch_sketch.summary.txt   # written at the end
 #
-# Resumable: a run whose report exists is skipped (Evolution: runs/<label>/report.md,
-# Stationary: runs/<label>/report.json).  Delete a run directory to redo it.
+# Resumable, which is what makes it a batch on a JupyterHub: closing the browser can get the
+# server culled, and that kills every process in its container, setsid included (HUB.md, top).
+# Nothing survives that; what this script guarantees is that the SAME command continues where
+# it stopped -- a run whose report exists is skipped (Stationary: runs/<label>/report.json,
+# Evolution: runs/<label>/report.md) and an interrupted run is restarted from its beginning.
+# No run here is longer than ~1.5 h, so a death costs at most that one run.  After any
+# interruption, relaunch with the same command.
 #
 # The card: the A30 is shared, and two jobs on it is a measured OOM.  The batch WAITS
-# (polling every POLL seconds) until no other training process holds it, rather than
-# failing as run_s2.sh does -- it is meant to be queued behind a production run.
+# (polling every POLL seconds) until no other training process holds it.
 #
 # Env: ADAM_STEPS (5000)  QN_STEPS (3000)  DSG_STEPS (150)  SKETCHES ("128 512 1100")
 #      HASHES (8)  ONLY (E | S | empty = both)  POLL (300)  GPU_FREE_MB (1500)
@@ -39,7 +46,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"            # .../Stationary
 EVO="$(cd "$HERE/../Evolution_try" && pwd)"
 cd "$HERE"
-mkdir -p logs
+mkdir -p logs "$EVO/logs"
 DRIVER="$HERE/logs/batch_sketch.driver.log"
 SUMMARY="$HERE/logs/batch_sketch.summary.txt"
 
@@ -64,8 +71,12 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-/tmp/jaxcache-$USER}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$HERE/.mplcache}"
 
-E_LABEL="dsgnar_hard_nc2201_audit"
+E1_LABEL="dsgnar_soft_all_nc2201_audit"
+E2_LABEL="dsgnar_hard_nc2201_s1500_audit"
 S_ADAM="runs/sk_adam"
+done_s() { [ -f "$HERE/runs/$1/report.json" ] && echo "   [done]"; }
+done_e() { [ -f "$EVO/runs/$1/report.md" ] && echo "   [done]"; }
+
 # the recipe of run_dsgnar.sh (the pq_c100 shell), shared by every Stationary arm
 S_RECIPE=(--arch axisym_hybrid
           --n-coll 27768 --n-bnd 4548 --n-bnd-outer 4548 --ckpt-every 500
@@ -82,22 +93,28 @@ plan() {
     echo "=== batch_sketch  $(date -u '+%Y-%m-%d %H:%M:%S UTC')  HEAD $(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)"
     echo "    stationary python : $SPY"
     echo "    evolution  python : $EPY"
-    [ "$ONLY" != "S" ] && echo "    E   $EVO/runs/$E_LABEL   (T=20, 10 windows, hard, n_coll 2201, audits on)"
     if [ "$ONLY" != "E" ]; then
-        echo "    S0  $S_ADAM                 Adam $ADAM_STEPS steps"
-        echo "    S1  runs/sk_ssbroyden           SSBroyden $QN_STEPS iterations"
+        echo "    S0  $S_ADAM                 Adam $ADAM_STEPS steps$(done_s sk_adam)"
+        echo "    S1  runs/sk_ssbroyden           SSBroyden $QN_STEPS iterations$(done_s sk_ssbroyden)"
         for s in $SKETCHES; do
-            echo "    S*  runs/sk_dsgnar_s$s$(printf '%*s' $((10 - ${#s})) '')DSGNAR $DSG_STEPS iterations, s=$s, K=$HASHES"
+            echo "    S*  runs/sk_dsgnar_s$s$(printf '%*s' $((10 - ${#s})) '')DSGNAR $DSG_STEPS iterations, s=$s, K=$HASHES$(done_s "sk_dsgnar_s$s")"
         done
+    fi
+    if [ "$ONLY" != "S" ]; then
+        echo "    E1  Evolution_try/runs/$E1_LABEL     soft_all, s = d/3, audits$(done_e "$E1_LABEL")"
+        echo "    E2  Evolution_try/runs/$E2_LABEL   hard, s = 1500, audits$(done_e "$E2_LABEL")"
     fi
 }
 
 if [ "$DRY" = "1" ]; then plan; exit 0; fi
 
 if [ "${_DETACHED:-0}" != "1" ]; then
-    _DETACHED=1 nohup setsid bash "$0" "$@" > "$DRIVER" 2>&1 &
+    if pgrep -f "_DETACHED_BATCH_SKETCH" > /dev/null; then
+        echo "a batch_sketch driver is already running; not starting a second one"; exit 1
+    fi
+    _DETACHED=1 nohup setsid bash "$0" _DETACHED_BATCH_SKETCH "$@" >> "$DRIVER" 2>&1 &
     sleep 1
-    echo "launched detached (safe to close this terminal)"
+    echo "launched detached; relaunch the same command after any interruption"
     echo "  driver  : $DRIVER"
     echo "  summary : $SUMMARY   (at the end)"
     plan
@@ -137,23 +154,6 @@ run() {          # run <label> <log> <cmd...>  -- foreground, with a time backst
     return $rc
 }
 
-# ---- E: the Evolution_try stall audit ----------------------------------------------
-if [ "$ONLY" != "S" ]; then
-    if [ -f "$EVO/runs/$E_LABEL/report.md" ]; then
-        echo "--- E done already, skipping ($EVO/runs/$E_LABEL/report.md)"
-    else
-        ( cd "$EVO" && run "E $E_LABEL" "$EVO/logs/$E_LABEL.log" \
-            "$EPY" -m wave_pinn.cli --label "$E_LABEL" --outdir "$EVO/runs/$E_LABEL" \
-            --set T=20 --set windows=10 --set ansatz=t2 \
-            --set window_ic=hard --set w_ic=100 \
-            --set n_coll=2201 --set sampler=random --set resample_every=0 \
-            --set "snapshot_times=[0,2,4,6,8,10,12,14,16,18,20]" \
-            --set optimizer=dsgnar --set dsgnar_steps=300 --set dsgnar_sketch=0 \
-            --set dsgnar_delta0=1.0 --set dsgnar_delta_min=1e-14 --set resample_rounds=5 \
-            --set dsgnar_audit_stops=true )
-    fi
-fi
-
 # ---- S: the Stationary sketch-size comparison --------------------------------------
 s_run() {        # s_run <name> <flags...>
     local name="$1"; shift
@@ -179,10 +179,34 @@ if [ "$ONLY" != "E" ]; then
     fi
 fi
 
+# ---- E: the Evolution_try stall audits ---------------------------------------------
+e_run() {        # e_run <label> <window_ic> <sketch>
+    local lab="$1" ic="$2" sk="$3"
+    if [ -f "$EVO/runs/$lab/report.md" ]; then
+        echo "--- $lab done already, skipping"; return 0
+    fi
+    # an interrupted attempt left its audit records behind; start the file afresh
+    rm -f "$EVO/runs/$lab/dsgnar_stop_audits.jsonl"
+    ( cd "$EVO" && run "$lab" "$EVO/logs/$lab.log" \
+        "$EPY" -m wave_pinn.cli --label "$lab" --outdir "$EVO/runs/$lab" \
+        --set T=20 --set windows=10 --set ansatz=t2 \
+        --set window_ic="$ic" --set w_ic=100 \
+        --set n_coll=2201 --set sampler=random --set resample_every=0 \
+        --set "snapshot_times=[0,2,4,6,8,10,12,14,16,18,20]" \
+        --set optimizer=dsgnar --set dsgnar_steps=300 --set dsgnar_sketch="$sk" \
+        --set dsgnar_delta0=1.0 --set dsgnar_delta_min=1e-14 --set resample_rounds=5 \
+        --set dsgnar_audit_stops=true )
+}
+
+if [ "$ONLY" != "S" ]; then
+    e_run "$E1_LABEL" soft_all 0
+    e_run "$E2_LABEL" hard 1500
+fi
+
 # ---- summary ---------------------------------------------------------------------
 {
 echo "=== batch_sketch summary  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-"$SPY" - "$HERE" <<'EOF'
+"$SPY" - "$HERE" <<'PYEOF'
 import json, os, sys
 root = sys.argv[1]
 print("\nStationary (same Adam start; loss is the total objective, rms_* against the exact reference)")
@@ -198,28 +222,35 @@ for name in ["sk_adam", "sk_ssbroyden"] + sorted(
     print(f"{name:<20} {r.get('final_loss', float('nan')):>12.4e} {r.get('wall_seconds', 0):>9.0f} "
           f"{r.get('rms_dh', float('nan')):>10.3e} {r.get('rms_dlam', float('nan')):>10.3e} "
           f"{r.get('max_dlam', float('nan')):>10.3e}  {stop}")
-EOF
-"$EPY" - "$EVO/runs/$E_LABEL" <<'EOF'
+PYEOF
+for lab in dsgnar_hard_nc2201_audit "$E1_LABEL" "$E2_LABEL"; do
+"$EPY" - "$EVO/runs/$lab" <<'PYEOF'
 import json, os, sys
+import numpy as np
 d = sys.argv[1]
 p = os.path.join(d, "dsgnar_stop_audits.jsonl")
 print(f"\nEvolution_try stall audits ({p})")
 if not os.path.exists(p):
     print("  (none)"); sys.exit(0)
 recs = [json.loads(l) for l in open(p)]
-print(f"{'win':>3} {'att':>3} {'rnd':>3} {'loss':>10} {'best so far':>11} {'|grad|':>9} "
-      f"{'rank1e-10':>9} {'exact LM best':>13} {'cos sk':>7} {'acc/rej':>8}")
+print(f"{'win':>3} {'att':>3} {'n':>2} {'loss min..max':>21} {'rank1e-10':>9} {'s':>5} "
+      f"{'exact LM best':>13} {'cos sk':>7}")
+groups = {}
 for r in recs:
-    ph = r["phase"]
-    best = r.get("best_loss_so_far")
-    print(f"{r.get('window', '?'):>3} {r.get('attempt', '?'):>3} {r.get('round', '?'):>3} "
-          f"{r['loss']:>10.3e} {(best if best is not None else float('nan')):>11.3e} "
-          f"{r['grad_norm']:>9.2e} {r['spectrum']['rank']['1e-10']:>9} "
-          f"{r['best_exact_ratio']:>13.2e} {r['sketched'][0]['cos_median']:>+7.3f} "
-          f"{ph.get('accepted')}/{ph.get('rejected')}")
-print("\n'exact LM best' = the lowest loss an exact Levenberg-Marquardt step reaches from the stop,")
-print("as a fraction of the stop's loss (<< 1: the sketch stalled, not the problem).")
-EOF
-[ -f "$EVO/runs/$E_LABEL/report.md" ] && { echo; sed -n '1,40p' "$EVO/runs/$E_LABEL/report.md"; }
+    groups.setdefault((r.get("window"), r.get("attempt")), []).append(r)
+for (w, a), rs in sorted(groups.items()):
+    L = [r["loss"] for r in rs]
+    print(f"{w:>3} {a:>3} {len(rs):>2} {min(L):>10.2e}..{max(L):<10.2e} "
+          f"{int(np.median([r['spectrum']['rank']['1e-10'] for r in rs])):>9} {rs[0]['s']:>5} "
+          f"{np.median([r['best_exact_ratio'] for r in rs]):>13.3f} "
+          f"{np.median([r['sketched'][0]['cos_median'] for r in rs]):>+7.3f}")
+L = np.log10([r["loss"] for r in recs]); K = [r["spectrum"]["rank"]["1e-10"] for r in recs]
+if len(recs) > 2:
+    print(f"corr(log10 loss, rank) = {np.corrcoef(L, K)[0, 1]:+.2f} over {len(recs)} stops")
+print("'exact LM best' = the lowest loss an exact Levenberg-Marquardt step reaches from the stop,")
+print("as a fraction of the stop's loss; 'cos sk' = the sketched step's alignment with it.")
+PYEOF
+[ -f "$EVO/runs/$lab/report.md" ] && { echo; sed -n '1,40p' "$EVO/runs/$lab/report.md"; }
+done
 } > "$SUMMARY" 2>&1
 echo "=== done $(date -u '+%H:%M:%S UTC'); summary in $SUMMARY"
