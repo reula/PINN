@@ -465,3 +465,28 @@ First local check (n_coll 512, s = 300, 6 iterations from 30 Adam steps): with c
 the measured ratio tracked the 0.075 target (0.067-0.079), lambda fell 9.7e3 -> 18 -- the paper's
 first stage -- 6/6 accepted, loss 31.4 -> 18.1.  `run_batch_sketch.sh` measures it at production
 size against SSBroyden.
+
+### 9.1 First production measurement -- on the OLD inner condition (2026-10-15, hub, `sk16k_*`)
+
+From one Adam warm-up (5000 steps, loss 7.3e-2), n_coll 16384, n_bnd 1024, four outer shells.  These
+runs imposed `h_rA = 0` on the inner sphere (fixed in 0773b6a, see PERTURBATION.md section 5), so the
+problem had a floor near 2e-5 and none of the losses below is comparable with later runs; the
+directories are in `runs/_old_inner_condition/` on the hub.  What carries over is the behaviour of
+the trust region:
+
+| run | final loss | wall | notes |
+|---|---|---|---|
+| SSBroyden | 3.1e-5 | 22 min, 4500 it. | stopped on plateau -- at the problem's floor |
+| DSGNAR s = 1100, `--dsgnar-paper` | 2.7e-4 | 35 min, 208 it. | 205/208 accepted; ratio held at the 0.075 target (0.069-0.083) WITHOUT calibration; lambda 5.5e3 -> 0.2 (the paper's first stage); the reweighting then spread the 12 condition weights to 5e-7 .. 4 and the loss at the original weights stalled at ~2.8e-4 from iteration 100 |
+| DSGNAR s = 1100, paper, no reweighting | 7.2e-4 at it. 70 | (killed with the container) | the loss halving every ~10 iterations; ~9 s per iteration, 90% of it the 1100 JVPs |
+
+So at s = d/2 the sketched model is honest enough that the paper's rule works as written (no
+calibration, no line scan), and the per-condition reweighting is the part that does NOT transfer to
+a 12-condition problem whose conditions differ by orders of magnitude.
+
+### 9.2 On the corrected problem (`ib16k_*`, hub, from 2026-10-15)
+
+`run_batch_sketch.sh`: Adam -> SSBroyden; DSGNAR s = 1100 paper without and with reweighting, s = 512
+paper without; each graded against the nonlinear spectral reference (PERTURBATION.md section 5).
+First number: SSBroyden reached **1.9e-8** at 18250 iterations (it had stalled at 3.1e-5 on the old
+problem).  Results: pending.
