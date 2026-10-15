@@ -632,6 +632,8 @@ def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> di
     # reweighting cannot see would let it drive lam_eq's weight down while the unseen term
     # carries the loss.  Its value is not used as a diagnostic anywhere (the loss parts are).
     out["lam_eq"] = out["lam_eq"] + sum(pde_radial_terms(pf, batch["coll"], cfg).values())
+    for k, v in pde_radial_groups_terms(pf, batch["coll"], cfg).items():
+        out[k] = out.get(k, 0.0) + v
     out["inner"] = sum(inner_bc_terms(pf, batch["inner"], cfg, exact_fields).values())
     # The outer group carries the Robin conditions AND the value pins: the plateau rule and
     # the per-block log watch this number, and a run is not converged while a pin is unmet.
@@ -691,6 +693,10 @@ def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
     pde = pde_raw(pf, batch["coll"], cfg)
     for k in equation_keys(model):
         add(f"pde_{k}", weights[k], pde[k])
+    # --pde-radial: the same weight as the group, because these are that group's residual,
+    # differentiated -- see RADIAL_DERIVATIVES.md.
+    for k, v in pde_radial_groups_raw(pf, batch["coll"], cfg).items():
+        add(f"pde_{k}_radial", weights[k], v)
     rad = pde_radial_raw(pf, batch["coll"], cfg)
     if rad is not None:
         add("pde_lam_eq_radial", float(cfg.w_lam_eq_radial), rad)
@@ -736,6 +742,8 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     parts = {}
     for k, v in pde_terms(pf, batch["coll"], cfg).items():
         parts[f"pde_{k}"] = v
+    for k, v in pde_radial_groups_terms(pf, batch["coll"], cfg).items():
+        parts[f"pde_{k}"] = parts.get(f"pde_{k}", 0.0) + v
     rad = pde_radial_terms(pf, batch["coll"], cfg)
     for k, v in rad.items():
         parts[f"pde_{k}"] = v

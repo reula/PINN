@@ -273,6 +273,10 @@ class Config:
     # 1/length^3, and scale_exps['lam_eq'] = 2), makes the loss see exactly that content.
     # 0 (the default) turns the term off entirely: nothing is even differentiated.
     w_lam_eq_radial: float = 0.0
+    # --pde-radial: add the RADIAL DERIVATIVE of every equation group's residual at the
+    # collocation points, carrying the group's OWN weight (one extra rho for dimensions;
+    # no compat).  Off by default.  See RADIAL_DERIVATIVES.md.
+    pde_radial: bool = False
 
     pde_ramp_steps: int = 0     # ramp the PDE weights in over this many steps (0 = off)
     # Period in OPTIMISER ITERATIONS, counted on one counter that Adam and the

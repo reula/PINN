@@ -1647,6 +1647,11 @@ def parse_args(argv=None):
     p.add_argument("--drop-robin-l", action="append", type=int, default=None, dest="drop_robin_l",
                    help="multipole the outer condition must not act on (e.g. 1 for the dipole); "
                         "repeatable, and a diagnostic: that sector is then left free")
+    p.add_argument("--pde-radial", action="store_true", dest="pde_radial",
+                   help="also penalise the RADIAL DERIVATIVE of each equation group at the "
+                        "collocation points, with the same weight as the group (one extra rho "
+                        "for dimensions, no compat).  For residuals the loss cannot see the "
+                        "variation of between sampled points; see RADIAL_DERIVATIVES.md")
     p.add_argument("--no-pin-h-robin", action="store_false", dest="pin_h_robin",
                    help="turn OFF the metric's averaged order-1 Robin pin (it is ON by default): "
                         "without it the amplitude of h is nearly unpinned and it drifts")
@@ -1918,6 +1923,8 @@ def parse_args(argv=None):
         cfg.dsgnar_chunk = a.dsgnar_chunk
     if a.log_every is not None:
         cfg.log_every = int(a.log_every)
+    if getattr(a, "pde_radial", False):
+        cfg.pde_radial = True
     if getattr(a, "pin_h_robin", None) is False:
         cfg.pin_h_robin = False
     if a.outer_shells is not None:
