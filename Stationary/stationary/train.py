@@ -1666,6 +1666,25 @@ def parse_args(argv=None):
                         "does (default: never shrink on success; the model's ratio is not "
                         "trustworthy enough here, and the safeguarded length makes a large radius "
                         "safe)")
+    p.add_argument("--dsgnar-paper", action="store_true", dest="dsgnar_paper",
+                   help="the paper's settings (arXiv:2607.02194, DSGNAR.md section 9): reweighting "
+                        "per condition (alpha 0.05), overshoot rejection, no line scan, no "
+                        "calibration, the paper's radius rule (no floor, shrink on accept), "
+                        "K = 4, targets 0.075/0.5, delta_min 1e-8.  Flags given explicitly win")
+    p.add_argument("--dsgnar-reweight", type=float, default=None, dest="dsgnar_reweight_alpha",
+                   help="per-condition reweighting exponent inside the DSGNAR phase (paper 0.05; "
+                        "0 = off)")
+    p.add_argument("--dsgnar-fixed-sketch", action="store_true", dest="dsgnar_fixed_sketch",
+                   help="draw the sketch once for the whole phase (paper section 3.2.2)")
+    p.add_argument("--dsgnar-reject-overshoot", action="store_true",
+                   dest="dsgnar_reject_overshoot",
+                   help="reject steps whose ratio overshoots the target by > 0.1 and expand "
+                        "the radius (paper section 3.4)")
+    p.add_argument("--dsgnar-no-line-scan", action="store_true", dest="dsgnar_no_line_scan",
+                   help="evaluate the step once, no 1, 1/2, ... scan (the paper's rule)")
+    p.add_argument("--dsgnar-stage1-ratio", type=float, default=None, dest="dsgnar_stage1_ratio")
+    p.add_argument("--dsgnar-stage2-ratio", type=float, default=None, dest="dsgnar_stage2_ratio")
+    p.add_argument("--dsgnar-delta-min", type=float, default=None, dest="dsgnar_delta_min")
     p.add_argument("--dsgnar-hashes", type=int, default=None, dest="dsgnar_hashes",
                    help="CountSketch hash functions (default 4).  The row sketch's variance "
                         "falls like 1/K and the sketched model's predicted decrease is measured "
@@ -1861,6 +1880,32 @@ def parse_args(argv=None):
         cfg.lbfgs_steps = a.lbfgs_steps
     if a.qn_method is not None:
         cfg.qn_method = a.qn_method
+    if getattr(a, "dsgnar_paper", False):
+        # the preset first, so that any flag given explicitly below overrides it
+        cfg.dsgnar_reweight_alpha = 0.05
+        cfg.dsgnar_reject_overshoot = True
+        cfg.dsgnar_line_scan = False
+        cfg.dsgnar_calibrate = False
+        cfg.dsgnar_grow_on_accept = False
+        cfg.dsgnar_radius_floor = 0.0
+        cfg.dsgnar_hashes = 4
+        cfg.dsgnar_stage1_ratio = 0.075
+        cfg.dsgnar_stage2_ratio = 0.5
+        cfg.dsgnar_delta_min = 1.0e-8
+    if a.dsgnar_reweight_alpha is not None:
+        cfg.dsgnar_reweight_alpha = a.dsgnar_reweight_alpha
+    if a.dsgnar_fixed_sketch:
+        cfg.dsgnar_fixed_sketch = True
+    if a.dsgnar_reject_overshoot:
+        cfg.dsgnar_reject_overshoot = True
+    if a.dsgnar_no_line_scan:
+        cfg.dsgnar_line_scan = False
+    if a.dsgnar_stage1_ratio is not None:
+        cfg.dsgnar_stage1_ratio = a.dsgnar_stage1_ratio
+    if a.dsgnar_stage2_ratio is not None:
+        cfg.dsgnar_stage2_ratio = a.dsgnar_stage2_ratio
+    if a.dsgnar_delta_min is not None:
+        cfg.dsgnar_delta_min = a.dsgnar_delta_min
     if a.dsgnar_steps is not None:
         cfg.dsgnar_steps = a.dsgnar_steps
     if a.dsgnar_sketch is not None:

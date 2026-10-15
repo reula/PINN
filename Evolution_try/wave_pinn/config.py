@@ -77,6 +77,10 @@ class Config:
     ansatz: str = "t2"                 # "t2": u0 + t v0 + t^2 N | "t2sat": u0 + t v0 + t^2/(tau^2+t^2) N | "t": u0 + t N
     ansatz_tau: float = 1.0            # the saturation scale in "t2sat"
     windows: int = 1                   # time slabs; 1 = one global solve on [0, T]
+    window_warm_start: float = 0.0     # > 0: start window k > 1 from window k-1's parameters
+                                       # plus Gaussian noise of this size relative to their RMS
+                                       # (paper 4.4, "a slightly perturbed version of the
+                                       # previous interval's parameters"); 0 = fresh init
     window_ic: str = "hard"            # how a window inherits the previous one:
                                        # "hard": build it into the ansatz (depth one,
                                        #   needs the edge as a differentiable function)
@@ -283,6 +287,11 @@ class Config:
     wolfe_maxls: int = 30              # zoom line-search steps (optax path)
     dsgnar_chunk: int = 64             # tangents per batched JVP; 0 = all at once (GPU OOM)
     dsgnar_row_chunk: int = 0          # CountSketch rows per block; 0 = off (unneeded at M ~ 2e3)
+    # What the paper does and this phase did not (README 6.12).  All off by default.
+    dsgnar_reweight_alpha: float = 0.0 # UpdateWeights exponent per condition (paper: 0.05);
+                                       # the conditions are pde / periodic / ic_u / ic_ut / l2
+    dsgnar_fixed_sketch: bool = False  # one sketch for the whole phase (paper 3.2.2)
+    dsgnar_reject_overshoot: bool = False  # reject rho > target + 0.1 and expand the radius (3.4)
     dsgnar_audit_stops: bool = False   # audit every 'radius below threshold' stop against the
                                        # exact Jacobian (optim/stall_audit.py, README 6.11);
                                        # appends to <outdir>/dsgnar_stop_audits.jsonl

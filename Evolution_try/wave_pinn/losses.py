@@ -59,27 +59,40 @@ def raw_residual(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
 
 
 def residual_vector(params, cfg: Config, batch: Batch, ic=None, t0: float = 0.0,
-                    t_scale=None, ansatz=None, soft_ic=None):
+                    t_scale=None, ansatz=None, soft_ic=None, _blocks=None):
     """The residual vector ``r(theta)`` handed to the optimisers.
 
     Only the PDE rows are normalised, by the fixed constant ``batch.scale``
     (see :func:`wave_pinn.sampling.residual_scale`); the optional penalty rows
     already carry their own weights.
+
+    ``_blocks``, if a list, receives one ``(label, n_rows)`` per CONDITION, in
+    order -- what DSGNAR's per-condition reweighting acts on.  Static shapes, so
+    ``jax.eval_shape`` fills it without evaluating anything.
     """
     u = make_u_fn(params, cfg, ic=ic, t0=t0, t_scale=t_scale, ansatz=ansatz)
-    pde = pde_residual(cfg, u, batch.t, batch.x) / batch.scale
-    rows = [pde]
+    rows = []
+
+    def push(label, row):
+        rows.append(row)
+        if _blocks is not None:
+            _blocks.append((label, int(row.size)))
+
+    push("pde", pde_residual(cfg, u, batch.t, batch.x) / batch.scale)
     if cfg.w_periodic > 0.0 and batch.t_b.size:
         d_val, d_der = periodicity_defect(cfg, u, batch.t_b, batch.x_left, batch.x_right)
         w = jnp.sqrt(cfg.w_periodic)
-        rows.append(w * d_val)
-        rows.append(w * d_der)
+        push("periodic_u", w * d_val)
+        push("periodic_ux", w * d_der)
     if soft_ic is not None:
         x_edge, u_target, v_target, w_ic = soft_ic
-        rows.append(ic_penalty_rows(u, t0, x_edge, u_target, v_target, w_ic))
+        ic_rows = ic_penalty_rows(u, t0, x_edge, u_target, v_target, w_ic)
+        half = ic_rows.shape[0] // 2
+        push("ic_u", ic_rows[:half])
+        push("ic_ut", ic_rows[half:])
     if cfg.w_l2 > 0.0:
         flat, _ = jax.flatten_util.ravel_pytree(params)
-        rows.append(jnp.sqrt(cfg.w_l2) * flat)
+        push("l2", jnp.sqrt(cfg.w_l2) * flat)
     return rows[0] if len(rows) == 1 else jnp.concatenate(rows)
 
 
@@ -133,6 +146,13 @@ class Objective:
         def _residual(flat):
             return residual_vector(self.unflatten(flat), cfg, batch, ic=ic, t0=self.t0,
                                    t_scale=t_scale, ansatz=ansatz, soft_ic=soft_ic)
+
+        # the conditions, in residual order: [(label, n_rows)] (static shapes only)
+        blocks = []
+        jax.eval_shape(lambda f: residual_vector(self.unflatten(f), cfg, batch, ic=ic,
+                                                 t0=self.t0, t_scale=t_scale, ansatz=ansatz,
+                                                 soft_ic=soft_ic, _blocks=blocks), flat0)
+        self.blocks = blocks
 
         self._loss = _loss
         self._pde_loss = _pde_loss

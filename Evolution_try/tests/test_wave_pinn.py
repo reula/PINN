@@ -853,3 +853,32 @@ class TestStallAudit(unittest.TestCase):
         self.assertEqual(len(rec["sketched"]), 4)
         for row in rec["sketched"]:
             self.assertTrue(-1.0 - 1e-12 <= row["cos_median"] <= 1.0 + 1e-12)
+
+
+class TestPaperOptions(unittest.TestCase):
+    """The DSGNAR options ported from the paper (README 6.12)."""
+
+    def test_blocks_cover_the_residual(self):
+        cfg = Config(n_coll=64, n_neurons=8, n_layers=2, sampler="random")
+        key = jax.random.PRNGKey(0)
+        params = init_params(cfg, key)
+        obj = Objective(cfg, make_batch(cfg, key), params)
+        flat = jax.flatten_util.ravel_pytree(params)[0]
+        self.assertEqual(sum(b[1] for b in obj.blocks), int(obj.residual(flat).shape[0]))
+        self.assertEqual(obj.blocks[0][0], "pde")
+
+    def test_options_run_and_report(self):
+        from wave_pinn.optim.dsgnar import dsgnar_phase
+        cfg = Config(n_coll=64, n_neurons=8, n_layers=2, sampler="random", dsgnar_steps=3,
+                     dsgnar_sketch=16, dsgnar_fixed_sketch=True, dsgnar_reject_overshoot=True,
+                     dsgnar_reweight_alpha=0.05, w_l2=1e-6)
+        key = jax.random.PRNGKey(1)
+        params = init_params(cfg, key)
+        obj = Objective(cfg, make_batch(cfg, key), params)
+        flat = jax.flatten_util.ravel_pytree(params)[0]
+        _, hist, info = dsgnar_phase(obj, flat, cfg, verbose=False)
+        self.assertTrue(info["fixed_sketch"] and info["reject_overshoot"])
+        self.assertEqual(set(info["condition_weights"]), {"pde", "l2"})
+        self.assertAlmostEqual(np.mean(list(info["condition_weights"].values())), 1.0, places=12)
+        # the history's loss is the loss at the ORIGINAL weights
+        self.assertAlmostEqual(hist[0]["loss"], obj.loss(flat), places=14)

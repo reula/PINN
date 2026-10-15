@@ -578,7 +578,6 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     scale = 0.5 * inv_m
 
     res_fn = objective._residual                      # jitted scalar-to-residual map
-    loss_fn = objective._loss                         # jitted scalar loss
     dct = _dct_matrix(n, dtype)                       # constant: built once, not per iteration
     # The 25 trust-region probes are evaluated SEQUENTIALLY, not in one vmap.  A vmap of the
     # loss over the probes materialises the whole residual computation -- every collocation
@@ -587,15 +586,46 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     # collocation count, i.e. the 8.87 GiB the GPU refused (the failure surfaced at
     # `rho_host = np.asarray(rhos)`, because the probe losses were computed lazily).  Same 25
     # evaluations, same numbers, one workspace.
-    loss_batch = jax.jit(lambda flats: jax.lax.map(loss_fn, flats))
     chunk = int(getattr(cfg, "dsgnar_chunk", 0) or 0)
     # no longer used by the phase: the fused sketch never forms the M x s matrix whose
     # CountSketch this blocked; kept in `info` so old and new records stay comparable
     row_chunk = int(getattr(cfg, "dsgnar_row_chunk", 0) or 0)
     k_hashes = max(1, int(getattr(cfg, "dsgnar_hashes", N_HASHES) or N_HASHES))
-    # J~ = C J (Omega S) without the M x s intermediate; see sketched_jvp_columns
-    sketched_jacobian = jax.jit(lambda f, b, sg, bk: sketched_jvp_columns(res_fn, f, b, sg, bk,
-                                                                          s, chunk))
+
+    # ---- per-condition weights (paper Algorithm 1 line 14, Appendix A.1) -----------------
+    # CountSketch mixes the rows of EVERY condition into the same s buckets, so the paper keeps
+    # the conditions on a comparable scale with a slow multiplicative update (alpha = 0.05).
+    # Applied here as a per-row scale `rs` on the residual, passed to the jitted maps as an
+    # ARGUMENT, so a change of weights costs no recompilation.  The objective each step is
+    # judged on is the reweighted one, as in the paper; the history keeps the loss at the
+    # ORIGINAL weights as well, which is the number comparable with the other optimisers.
+    alpha_w = float(getattr(cfg, "dsgnar_reweight_alpha", 0.0) or 0.0)
+    blocks = list(getattr(objective, "blocks", None) or [])
+    n_rows = int(round(1.0 / inv_m))
+    reweight = alpha_w > 0.0 and len(blocks) > 1 and sum(b[1] for b in blocks) == n_rows
+    cond_w = np.ones(len(blocks)) if reweight else None
+    sizes = [b[1] for b in blocks]
+    ones_rs = jnp.ones((n_rows,), dtype)
+
+    def rows_of(w):
+        return jnp.asarray(np.repeat(np.sqrt(w), sizes), dtype)
+
+    rs = rows_of(cond_w) if reweight else ones_rs
+
+    def build(res_fn):
+        """The jitted maps of one objective; `w` is the per-row scale."""
+        loss_s = jax.jit(lambda f, w: 0.5 * jnp.mean((res_fn(f) * w) ** 2))
+        batch_s = jax.jit(lambda flats, w: jax.lax.map(lambda x: loss_s(x, w), flats))
+        # J~ = C J (Omega S) without the M x s intermediate; see sketched_jvp_columns
+        jac_s = jax.jit(lambda f, b, sg, bk, w: sketched_jvp_columns(
+            lambda x: res_fn(x) * w, f, b, sg, bk, s, chunk))
+        return loss_s, batch_s, jac_s
+
+    loss_s, loss_batch, sketched_jacobian = build(res_fn)
+    fixed_sketch = bool(getattr(cfg, "dsgnar_fixed_sketch", False))
+    reject_overshoot = bool(getattr(cfg, "dsgnar_reject_overshoot", False))
+    line_scan = bool(getattr(cfg, "dsgnar_line_scan", True))
+    overshoot_count = 0
 
     target_stage1 = float(cfg.dsgnar_stage1_ratio)
     target_stage2 = float(cfg.dsgnar_stage2_ratio)
@@ -604,6 +634,8 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     omega = float(cfg.dsgnar_omega)
 
     key = jax.random.PRNGKey(int(cfg.seed))
+    # the paper's InitSketch (section 3.2.2): one sketch for the whole phase, if asked for
+    _, fixed_srct_key, fixed_ck_key = jax.random.split(jax.random.PRNGKey(int(cfg.seed) + 1), 3)
     flat = jnp.asarray(flat0, dtype=dtype)
     radius = float(cfg.dsgnar_delta0)
     # HIGH-WATER MARK of the trust region, and the reference for the floor below.  It must be the
@@ -619,12 +651,20 @@ def dsgnar_phase(objective, flat0, cfg: Config,
     lam_final = float(omega)
     step = 0
 
-    loss = objective.loss(flat)
-    history: List[Dict] = [{"step": step_offset, "loss": loss, "radius": radius,
+    loss = float(loss_s(flat, rs))                    # the objective steps are judged on
+    loss_base = float(loss_s(flat, ones_rs)) if reweight else loss
+    history: List[Dict] = [{"step": step_offset, "loss": loss_base, "radius": radius,
                             "lam": lam_final, "rho": 0.0, "resid": float("nan"),
                             "accepted": False, "wall": 0.0}]
     if callback:
-        callback(step_offset, loss, flat)
+        callback(step_offset, loss_base, flat)
+    if verbose and (reweight or fixed_sketch or reject_overshoot or not line_scan):
+        print(f"[dsgnar] paper options: reweight alpha={alpha_w if reweight else 0:g} over "
+              f"{len(blocks)} conditions, fixed sketch {fixed_sketch}, reject overshoot "
+              f"{reject_overshoot}, line scan {line_scan}, calibrate "
+              f"{bool(getattr(cfg, 'dsgnar_calibrate', True))}, targets "
+              f"{cfg.dsgnar_stage1_ratio:g}/{cfg.dsgnar_stage2_ratio:g}, delta_min "
+              f"{cfg.dsgnar_delta_min:g}", flush=True)
 
     lam_history: List[float] = []
     t0 = time.time()
@@ -646,20 +686,19 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         if resample_every and step > 0 and step % resample_every == 0:
             objective = resample()
             res_fn = objective._residual
-            loss_fn = objective._loss
-            loss_batch = jax.jit(lambda flats: jax.lax.map(loss_fn, flats))
-            sketched_jacobian = jax.jit(lambda f, b, sg, bk: sketched_jvp_columns(
-                res_fn, f, b, sg, bk, s, chunk))
+            loss_s, loss_batch, sketched_jacobian = build(res_fn)
             inv_m = 1.0 / float(objective.residual(flat).shape[0])
             scale = 0.5 * inv_m
-            loss = objective.loss(flat)
+            loss = float(loss_s(flat, rs))
 
         # --- Algorithm 1 line 2: fresh sketch operators this iteration --------
         key, k_srct, k_ck = jax.random.split(key, 3)
+        if fixed_sketch:
+            k_srct, k_ck = fixed_srct_key, fixed_ck_key
         srct = make_srct(k_srct, n, s)
         B = srct_columns(srct, n, s, dtype, dct_matrix=dct)   # (s, n); B.T is Omega S
 
-        residual = res_fn(flat)                       # r in R^M, in full
+        residual = res_fn(flat) * rs                  # r in R^M, in full (reweighted)
 
         # --- Algorithm 2 lines 10-12: J~ = C J (Omega S) and r~ = C r ---------
         # jvp_batch's output has the s sketch components along its first axis, so
@@ -667,7 +706,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         # same hash draws then give r~ as well, keeping the two sketches identical.
         tic = time.time()
         signs, buckets = count_sketch_draws(k_ck, int(residual.shape[0]), s, k_hashes, dtype)
-        j_sketch = sketched_jacobian(flat, B, signs, buckets)          # (s, s)
+        j_sketch = sketched_jacobian(flat, B, signs, buckets, rs)      # (s, s)
         r_tilde = apply_count_sketch(residual[:, None], signs, buckets, s)[:, 0]
         t_jvp += time.time() - tic
 
@@ -689,7 +728,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         probe_pred = probe_pred * scale
         probe_steps = jax.vmap(lambda p: lift_srct(p, srct, n))(probe_sk)
         tic = time.time()
-        probe_losses = loss_batch(flat[None, :] + probe_steps)
+        probe_losses = loss_batch(flat[None, :] + probe_steps, rs)
         t_probe += time.time() - tic
 
         finite = jnp.all(jnp.isfinite(probe_losses))
@@ -765,11 +804,13 @@ def dsgnar_phase(objective, flat0, cfg: Config,
             if fracs[-1] * bt > 0.0:
                 fracs.append(fracs[-1] * bt)
         fracs += [1.0e-3, 1.0e-2]
+        if not line_scan:
+            fracs = [1.0]                 # the paper: the step, evaluated once, nothing else
 
         new_loss, final_act, final_rho, used = loss, -np.inf, -np.inf, 0.0
         scan = []
         for f in fracs:
-            cand = float(loss_fn(flat + f * final_step))
+            cand = float(loss_s(flat + f * final_step, rs))
             scan.append((f, cand))
             if np.isfinite(cand) and cand < loss:
                 new_loss, final_act, used = cand, loss - cand, f
@@ -792,6 +833,13 @@ def dsgnar_phase(objective, flat0, cfg: Config,
 
         # --- Algorithm 1 lines 8-11: accept iff the objective strictly fell ---
         accepted = bool(final_act > 0.0)
+        # The paper (section 3.4, "Accepting the step"): a step whose ratio OVERSHOOTS the target
+        # by more than a small margin is rejected too, and the radius is EXPANDED -- an
+        # over-aggressive step says the trust region is too small, and taking it would trade
+        # the low-regularisation region the first stage is looking for for a quick decrease.
+        if accepted and reject_overshoot and final_rho > target_rho + RHO_HI_MARGIN:
+            accepted = False
+            overshoot_count += 1
         if accepted:
             flat = flat + used * final_step
             loss = new_loss
@@ -825,6 +873,18 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         step += 1
         lam_history.append(max(lam_final, omega))
 
+        # --- Algorithm 1 line 14: UpdateWeights from this iteration's residual -------------
+        if reweight:
+            r_np = np.asarray(residual, dtype=np.float64)
+            ells = np.array([float(np.sum(c * c)) for c in np.split(r_np, np.cumsum(sizes)[:-1])])
+            w_hat = cond_w * (np.mean(ells) / (ells + 1.0e-8)) ** alpha_w
+            cond_w = w_hat / np.mean(w_hat)
+            rs = rows_of(cond_w)
+            loss = float(loss_s(flat, rs))            # the objective just changed
+            loss_base = float(loss_s(flat, ones_rs))
+        else:
+            loss_base = loss
+
         # --- Algorithm 1 lines 12-15: stopping and the target-ratio update ----
         if radius < STOP_MARGIN * delta_min:
             stopped = "radius below threshold"
@@ -835,14 +895,15 @@ def dsgnar_phase(objective, flat0, cfg: Config,
                                              target_stage2, target_stage1)
 
         wall = time.time() - t0
-        history.append({"step": step_offset + step, "loss": loss,
+        history.append({"step": step_offset + step, "loss": loss_base, "loss_w": loss,
                         "resid": float(jnp.linalg.norm(residual)) * float(np.sqrt(inv_m)),
                         "rho": float(final_rho), "lam": lam_star, "radius": radius,
                         "accepted": accepted, "frac": used, "wall": wall})
         if callback:
-            callback(step_offset + step, loss, flat)
+            callback(step_offset + step, loss_base, flat)
         if verbose and (step % max(1, int(cfg.log_every)) == 0 or step == 1):
-            print(f"[dsgnar] step {step_offset + step:6d}  loss {loss:.6e}  "
+            wtxt = (f"  w {cond_w.min():.2g}..{cond_w.max():.2g}" if reweight else "")
+            print(f"[dsgnar] step {step_offset + step:6d}  loss {loss_base:.6e}{wtxt}  "
                   f"rho {float(final_rho):+.3f}  lam {lam_star:.3e}  radius {radius:.3e}  "
                   f"target {target_rho:.2f}  ({wall:.1f}s)", flush=True)
         if stopped != "budget":
@@ -860,7 +921,15 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         "probes": q,
         "n_parameters": n,
         "n_residuals": int(round(1.0 / inv_m)),
-        "loss_final": float(loss),
+        "loss_final": float(loss_base),
+        "loss_final_reweighted": float(loss),
+        "reweight_alpha": alpha_w if reweight else 0.0,
+        "condition_weights": ({b[0]: float(w) for b, w in zip(blocks, cond_w)} if reweight
+                              else None),
+        "fixed_sketch": fixed_sketch,
+        "reject_overshoot": reject_overshoot,
+        "overshoot_rejections": overshoot_count,
+        "line_scan": line_scan,
         "accepted": accepted_count,
         "rejected": rejected_count,
         "stage2_reached": bool(target_rho >= target_stage2),
@@ -871,7 +940,7 @@ def dsgnar_phase(objective, flat0, cfg: Config,
         "time_probe": t_probe,
     }
     if verbose:
-        print(f"[dsgnar] DSGNAR: loss {history[0]['loss']:.6e} -> {float(loss):.6e} in "
+        print(f"[dsgnar] DSGNAR: loss {history[0]['loss']:.6e} -> {float(loss_base):.6e} in "
               f"{step} iterations ({info['wall']:.1f}s); {stopped}; s={s}, "
               f"accepted {accepted_count}, rejected {rejected_count}, "
               f"stage2={info['stage2_reached']}", flush=True)

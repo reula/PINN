@@ -319,6 +319,13 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
                                t_scale=slab.width, ansatz=slab.ansatz_mode,
                                soft_ic=slab.soft_ic).unflatten(
                 jnp.asarray(np.load(path), dtype=jnp.float64))
+        warm = float(getattr(cfg, "window_warm_start", 0.0) or 0.0)
+        if warm > 0.0 and prev is not None and prev.params is not None:
+            # the paper's time marching: the previous interval's parameters, slightly perturbed
+            pflat, unravel = jax.flatten_util.ravel_pytree(prev.params)
+            rms = float(jnp.sqrt(jnp.mean(pflat ** 2)))
+            noise = jax.random.normal(jax.random.fold_in(key, 31337), pflat.shape, pflat.dtype)
+            params = unravel(pflat + warm * rms * noise)
         n_par = n_parameters(params)
         if verbose:
             print(f"\n[win {k+1}/{cfg.windows}] t in [{slab.t0:g}, {slab.t1:g}]  "

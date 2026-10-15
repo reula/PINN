@@ -351,3 +351,78 @@ def test_the_fused_sketch_is_the_two_step_sketch(s_cols, chunk):
     assert got_j.shape == (s, s_cols)
     assert float(jnp.max(jnp.abs(got_j - want_j))) < 1e-12
     assert float(jnp.max(jnp.abs(got_r - want_r))) < 1e-12
+
+
+def _linear_objective(A, b, blocks=None):
+    """A duck-typed objective with residual A x - b (exact Gauss-Newton model)."""
+    def _res(flat):
+        return A @ jnp.asarray(flat, dtype=jnp.float64) - b
+
+    def _lss(flat):
+        return 0.5 * jnp.mean(_res(flat) ** 2)
+
+    class Linear:
+        dtype = jnp.float64
+        _residual = staticmethod(jax.jit(_res))
+        _loss = staticmethod(jax.jit(_lss))
+
+        def residual(self, flat):
+            return _res(flat)
+
+        def loss(self, flat):
+            return float(_lss(flat))
+
+    Linear.n = int(A.shape[1])
+    obj = Linear()
+    obj.blocks = blocks
+    return obj
+
+
+def _identity_row_sketch(monkeypatch):
+    from stationary import dsgnar
+    monkeypatch.setattr(dsgnar, "count_sketch_draws",
+                        lambda key, rows, s, k, dtype: (jnp.ones((1, rows), dtype=dtype),
+                                                        jnp.arange(rows)[None, :]))
+
+
+def test_the_residual_blocks_cover_the_vector(tmp_path):
+    """FlatObjective.blocks: one (label, n_rows) per condition, summing to the vector's length."""
+    from stationary.flat_objective import FlatObjective
+    cfg = _cfg(tmp_path, ("--pin-lam-robin",))
+    model, state, exact_fields = build(cfg)
+    obj = FlatObjective(state, make_batch(jax.random.PRNGKey(0), cfg), cfg, model, exact_fields)
+    labels = [b[0] for b in obj.blocks]
+    assert sum(b[1] for b in obj.blocks) == obj.residual(obj.flat0).shape[0]
+    assert any(l.startswith("pde_") for l in labels) and any(l.startswith("inner_") for l in labels)
+    assert len(labels) == len(set(labels))
+
+
+def test_an_overshooting_step_is_rejected_and_the_radius_grows(monkeypatch):
+    """Paper 3.4: with an exact model the ratio is 1, far above the 0.15 target -- rejected."""
+    from stationary import dsgnar
+    from stationary.problem import Config
+    _identity_row_sketch(monkeypatch)
+    A = jnp.diag(jnp.array([3.0, 2.0, 4.0, 1.5]))
+    obj = _linear_objective(A, jnp.array([1.0, -2.0, 0.5, 3.0]))
+    cfg = Config(dsgnar_steps=1, dsgnar_sketch=4, dsgnar_delta0=0.1, dsgnar_calibrate=False,
+                 dsgnar_reject_overshoot=True, dsgnar_line_scan=False, seed=0, n_coll=8, n_bnd=4)
+    _, hist, info = dsgnar.dsgnar_phase(obj, jnp.zeros(4), cfg, verbose=False)
+    assert info["accepted"] == 0 and info["overshoot_rejections"] == 1, info
+    assert hist[1]["radius"] > 0.1                       # expanded, not shrunk
+
+
+def test_reweighting_moves_toward_the_lagging_condition(monkeypatch):
+    """UpdateWeights: the condition with the SMALLER loss gains weight; history keeps the base loss."""
+    from stationary import dsgnar
+    from stationary.problem import Config
+    _identity_row_sketch(monkeypatch)
+    A = jnp.diag(jnp.array([3.0, 2.0, 4.0, 1.5]))
+    b = jnp.array([10.0, -10.0, 0.01, 0.02])             # condition "a" big, "b" small
+    obj = _linear_objective(A, b, blocks=[("a", 2), ("b", 2)])
+    cfg = Config(dsgnar_steps=3, dsgnar_sketch=4, dsgnar_delta0=1e-3, dsgnar_calibrate=False,
+                 dsgnar_reweight_alpha=0.05, seed=0, n_coll=8, n_bnd=4)
+    _, hist, info = dsgnar.dsgnar_phase(obj, jnp.zeros(4), cfg, verbose=False)
+    w = info["condition_weights"]
+    assert w["b"] > w["a"], w
+    assert abs(0.5 * (w["a"] + w["b"]) - 1.0) < 1e-12    # mean weight 1
+    assert abs(hist[0]["loss"] - obj.loss(jnp.zeros(4))) < 1e-12

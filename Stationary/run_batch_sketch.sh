@@ -2,15 +2,18 @@
 # ---------------------------------------------------------------------------
 # One detached batch, two DSGNAR experiments, strictly one run at a time:
 #
-#   S. Stationary, the sketch size.  Evolution_try measured s = d/3 -> d/2 as worth ~1000x;
-#      Stationary has run at s = 128 = d/18 because the M x s column matrix did not fit.
-#      The fused JVP + CountSketch (dsgnar.sketched_jvp_columns) removes that matrix, so
-#      s ~ d/2 is now affordable.  From ONE Adam warm-up, four arms:
-#        S0  Adam warm-up                      (writes params_adam.pkl; no quasi-Newton)
-#        S1  SSBroyden                          the baseline
-#        S2  DSGNAR s = 128,  K = 8             the current recipe (DSGNAR.md section 7)
-#        S3  DSGNAR s = 512,  K = 8
-#        S4  DSGNAR s = 1100, K = 8             ~ d/2 (d = 2285)
+#   S. Stationary: can DSGNAR take these losses down?  Two changes are tested together.  The
+#      sketch: Evolution_try measured s = d/3 -> d/2 as worth ~1000x, and Stationary ran at
+#      s = 128 = d/18 because the M x s column matrix did not fit -- the fused JVP + CountSketch
+#      removes it.  And the paper's own rules (DSGNAR.md section 9, `--dsgnar-paper`): per-
+#      condition reweighting, overshoot rejection, no line scan, no calibration, targets
+#      0.075/0.5, delta_min 1e-8.  From ONE Adam warm-up:
+#        S0  Adam warm-up                       (writes params_adam.pkl; no quasi-Newton)
+#        S1  SSBroyden, to its plateau          the baseline
+#        S2  DSGNAR s = 1100, --dsgnar-paper    the paper, as written
+#        S3  DSGNAR s = 1100, paper, no reweighting   (is the reweighting what helps/hurts?)
+#        S4  DSGNAR s = 1100, this repo's recipe (K = 8, calibration, line scan)
+#        S5  DSGNAR s = 512,  paper, no reweighting   (the sketch size)
 #
 #   E. Evolution_try, the open stall (its README 6.11).  Every DSGNAR phase that stops on
 #      "radius below threshold" is audited against the EXACT Jacobian on the batch it stopped
@@ -21,6 +24,10 @@
 #        E1  soft_all, n_coll 2201, s = d/3   -- the hand-over whose error does NOT grow:
 #                                                 are its stops sketch-limited too?
 #        E2  hard,     n_coll 2201, s = 1500  -- s above rank(J): the rising floor should go
+#      Before them, the paper's rules one at a time (Evolution README 6.12), on the soft_all
+#      cell (baseline: runs/dsgnar_soft_all_nc2201, 7.8e-06) and all four on the hard cell
+#      (baseline: runs/dsgnar_hard_nc2201, 7.7e-03), audits on throughout:
+#        P*  warm start | overshoot rejection | targets 0.075 + delta_min 1e-8 | reweighting | all
 #
 #   bash run_batch_sketch.sh            # launch, detached; prints what is left to do
 #   DRY=1 bash run_batch_sketch.sh      # print the plan, launch nothing
@@ -38,8 +45,8 @@
 # The card: the A30 is shared, and two jobs on it is a measured OOM.  The batch WAITS
 # (polling every POLL seconds) until no other training process holds it.
 #
-# Env: ADAM_STEPS (5000)  QN_STEPS (3000)  DSG_STEPS (150)  SKETCHES ("128 512 1100")
-#      HASHES (8)  ONLY (E | S | empty = both)  POLL (300)  GPU_FREE_MB (1500)
+# Env: ADAM_STEPS (5000)  QN_STEPS (20000, a cap: SSBroyden stops on its plateau)
+#      DSG_STEPS (300)  DSG_RESAMPLE (100, DSGNAR's redraw period)  ONLY (E | S | empty = both)  POLL (300)  GPU_FREE_MB (1500)
 #      RUN_HOURS (6, per-run backstop)  FORCE_START (1 = skip the wait)
 # ---------------------------------------------------------------------------
 set -u
@@ -51,10 +58,12 @@ DRIVER="$HERE/logs/batch_sketch.driver.log"
 SUMMARY="$HERE/logs/batch_sketch.summary.txt"
 
 ADAM_STEPS="${ADAM_STEPS:-5000}"
-QN_STEPS="${QN_STEPS:-3000}"
-DSG_STEPS="${DSG_STEPS:-150}"
-SKETCHES="${SKETCHES:-128 512 1100}"
-HASHES="${HASHES:-8}"
+QN_STEPS="${QN_STEPS:-20000}"
+DSG_STEPS="${DSG_STEPS:-300}"
+# The recipe redraws every 500 iterations -- right for SSBroyden's tens of thousands, never
+# reached by a 300-iteration DSGNAR phase, which would then fit one frozen sample.  Each redraw
+# costs one recompile (~1 min); 100 gives three samples per run.
+DSG_RESAMPLE="${DSG_RESAMPLE:-100}"
 ONLY="${ONLY:-}"
 POLL="${POLL:-300}"
 GPU_FREE_MB="${GPU_FREE_MB:-1500}"
@@ -78,6 +87,11 @@ E2_LABEL="dsgnar_hard_nc2201_s1500_audit"
 # shells existed: SSBroyden's compiled loss+grad asked for 22.9 GiB, DSGNAR's probe losses
 # for 13.4 GiB at every s -- the objective, not the sketch, did not fit.
 SP="sk16k"
+# the DSGNAR arms: "<name>|<flags>"
+ARMS=("${SP}_paper_s1100|--dsgnar-sketch 1100 --dsgnar-paper"
+      "${SP}_paperNW_s1100|--dsgnar-sketch 1100 --dsgnar-paper --dsgnar-reweight 0"
+      "${SP}_recipe_s1100|--dsgnar-sketch 1100 --dsgnar-hashes 8"
+      "${SP}_paperNW_s512|--dsgnar-sketch 512 --dsgnar-paper --dsgnar-reweight 0")
 S_ADAM="runs/${SP}_adam"
 done_s() { [ -f "$HERE/runs/$1/report.json" ] && echo "   [done]"; }
 done_e() { [ -f "$EVO/runs/$1/report.md" ] && echo "   [done]"; }
@@ -100,12 +114,17 @@ plan() {
     echo "    evolution  python : $EPY"
     if [ "$ONLY" != "E" ]; then
         echo "    S0  $S_ADAM               Adam $ADAM_STEPS steps (no plateau stop)$(done_s ${SP}_adam)"
-        echo "    S1  runs/${SP}_ssbroyden         SSBroyden $QN_STEPS iterations$(done_s ${SP}_ssbroyden)"
-        for s in $SKETCHES; do
-            echo "    S*  runs/${SP}_dsgnar_s$s$(printf '%*s' $((10 - ${#s})) '')DSGNAR $DSG_STEPS iterations, s=$s, K=$HASHES$(done_s "${SP}_dsgnar_s$s")"
+        echo "    S1  runs/${SP}_ssbroyden         SSBroyden, cap $QN_STEPS iterations$(done_s ${SP}_ssbroyden)"
+        for arm in "${ARMS[@]}"; do
+            printf '    S*  %-30s DSGNAR %s it., %s%s\n' "runs/${arm%%|*}" "$DSG_STEPS" \
+                "${arm#*|}" "$(done_s "${arm%%|*}")"
         done
     fi
     if [ "$ONLY" != "S" ]; then
+        for lab in pp_soft_all_warm pp_soft_all_overshoot pp_soft_all_targets \
+                   pp_soft_all_reweight pp_soft_all_all pp_hard_all; do
+            printf '    P*  Evolution_try/runs/%-28s paper ablation%s\n' "$lab" "$(done_e "$lab")"
+        done
         echo "    E1  Evolution_try/runs/$E1_LABEL     soft_all, s = d/3, audits$(done_e "$E1_LABEL")"
         echo "    E2  Evolution_try/runs/$E2_LABEL   hard, s = 1500, audits$(done_e "$E2_LABEL")"
     fi
@@ -183,17 +202,18 @@ if [ "$ONLY" != "E" ]; then
     else
         s_run "${SP}_ssbroyden" --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
             --lbfgs-steps "$QN_STEPS" --qn-method ssbroyden
-        for s in $SKETCHES; do
-            s_run "${SP}_dsgnar_s$s" --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
+        for arm in "${ARMS[@]}"; do
+            # shellcheck disable=SC2086
+            s_run "${arm%%|*}" --steps 0 --init-from "$S_ADAM/params_adam.pkl" \
                 --lbfgs-steps 30000 --qn-method dsgnar --dsgnar-steps "$DSG_STEPS" \
-                --dsgnar-sketch "$s" --dsgnar-hashes "$HASHES" --dsgnar-chunk 16
+                --dsgnar-chunk 16 --log-every 10 --resample-every "$DSG_RESAMPLE" ${arm#*|}
         done
     fi
 fi
 
 # ---- E: the Evolution_try stall audits ---------------------------------------------
-e_run() {        # e_run <label> <window_ic> <sketch>
-    local lab="$1" ic="$2" sk="$3"
+e_run() {        # e_run <label> <window_ic> <sketch> [extra --set flags...]
+    local lab="$1" ic="$2" sk="$3"; shift 3
     if [ -f "$EVO/runs/$lab/report.md" ]; then
         echo "--- $lab done already, skipping"; return 0
     fi
@@ -207,10 +227,22 @@ e_run() {        # e_run <label> <window_ic> <sketch>
         --set "snapshot_times=[0,2,4,6,8,10,12,14,16,18,20]" \
         --set optimizer=dsgnar --set dsgnar_steps=300 --set dsgnar_sketch="$sk" \
         --set dsgnar_delta0=1.0 --set dsgnar_delta_min=1e-14 --set resample_rounds=5 \
-        --set dsgnar_audit_stops=true )
+        --set dsgnar_audit_stops=true "$@" )
 }
 
+PAPER_WARM=(--set window_warm_start=0.01)
+PAPER_OVER=(--set dsgnar_reject_overshoot=true)
+PAPER_TARG=(--set dsgnar_stage1_ratio=0.075 --set dsgnar_delta_min=1e-8)
+PAPER_RW=(--set dsgnar_reweight_alpha=0.05)
+PAPER_ALL=("${PAPER_WARM[@]}" "${PAPER_OVER[@]}" "${PAPER_TARG[@]}" "${PAPER_RW[@]}")
+
 if [ "$ONLY" != "S" ]; then
+    e_run pp_soft_all_warm      soft_all 0 "${PAPER_WARM[@]}"
+    e_run pp_soft_all_overshoot soft_all 0 "${PAPER_OVER[@]}"
+    e_run pp_soft_all_targets   soft_all 0 "${PAPER_TARG[@]}"
+    e_run pp_soft_all_reweight  soft_all 0 "${PAPER_RW[@]}"
+    e_run pp_soft_all_all       soft_all 0 "${PAPER_ALL[@]}"
+    e_run pp_hard_all           hard     0 "${PAPER_ALL[@]}"
     e_run "$E1_LABEL" soft_all 0
     e_run "$E2_LABEL" hard 1500
 fi
@@ -224,8 +256,8 @@ root, sp = sys.argv[1], sys.argv[2]
 print("\nStationary (same Adam start; loss is the total objective, rms_* against the exact reference)")
 print(f"{'run':<20} {'final loss':>12} {'wall (s)':>9} {'rms_dh':>10} {'rms_dlam':>10} {'max_dlam':>10}  stopped")
 for name in [f"{sp}_adam", f"{sp}_ssbroyden"] + sorted(
-        (d for d in os.listdir(os.path.join(root, "runs")) if d.startswith(f"{sp}_dsgnar_s")),
-        key=lambda d: int(d.rsplit("s", 1)[1])):
+        d for d in os.listdir(os.path.join(root, "runs"))
+        if d.startswith(sp + "_") and d not in (f"{sp}_adam", f"{sp}_ssbroyden")):
     p = os.path.join(root, "runs", name, "report.json")
     if not os.path.exists(p):
         print(f"{name:<22} (no report)"); continue
@@ -234,6 +266,21 @@ for name in [f"{sp}_adam", f"{sp}_ssbroyden"] + sorted(
     print(f"{name:<22} {r.get('final_loss', float('nan')):>12.4e} {r.get('wall_seconds', 0):>9.0f} "
           f"{r.get('rms_dh', float('nan')):>10.3e} {r.get('rms_dlam', float('nan')):>10.3e} "
           f"{r.get('max_dlam', float('nan')):>10.3e}  {stop}")
+PYEOF
+"$EPY" - "$EVO/runs" <<'PYEOF'
+import json, os, sys
+root = sys.argv[1]
+print("\nEvolution_try paper ablation (space-time rel L2 of the T = 20 chain; window losses)")
+for lab in ["dsgnar_soft_all_nc2201", "pp_soft_all_warm", "pp_soft_all_overshoot",
+            "pp_soft_all_targets", "pp_soft_all_reweight", "pp_soft_all_all",
+            "dsgnar_hard_nc2201", "pp_hard_all"]:
+    p = os.path.join(root, lab, "windows.json")
+    if not os.path.exists(p):
+        print(f"  {lab:<26} (no windows.json)"); continue
+    w = json.load(open(p))
+    rel = w.get("metrics", {}).get("rel_l2_space_time", float("nan"))
+    losses = " ".join(f"{r['final_loss']:.0e}" for r in w.get("windows", []))
+    print(f"  {lab:<26} {rel:.3e}   {losses}")
 PYEOF
 for lab in dsgnar_hard_nc2201_audit "$E1_LABEL" "$E2_LABEL"; do
 "$EPY" - "$EVO/runs/$lab" <<'PYEOF'

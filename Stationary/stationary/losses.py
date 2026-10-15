@@ -619,7 +619,7 @@ def group_terms(state, batch, cfg, model, exact_fields=None, lam_inf=None) -> di
 
 
 def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
-                    pde_scale=1.0, lam_inf=None) -> jnp.ndarray:
+                    pde_scale=1.0, lam_inf=None, _blocks=None) -> jnp.ndarray:
     """The residual vector whose SQUARED NORM is `total_loss`.
 
     Every term of the loss is a weighted mean of squares, so the loss is itself a sum of
@@ -638,6 +638,10 @@ def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
 
     `tests/test_dsgnar.py::test_the_residual_vector_squares_to_the_total_loss` asserts
     `jnp.sum(residual_vector(...)**2) == total_loss(...)[0]`.
+
+    `_blocks`, if a list, receives one `(label, n_rows)` per term, in order -- the CONDITIONS
+    a per-condition reweighting acts on (DSGNAR's UpdateWeights).  Sizes are static, so
+    `jax.eval_shape` fills it without evaluating anything.
     """
     from .model import point_fields as make_point_fields
 
@@ -649,34 +653,40 @@ def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
 
     rows = []
 
-    def add(w, v):
+    def push(label, row):
+        rows.append(row)
+        if _blocks is not None:
+            _blocks.append((label, int(row.size)))
+
+    def add(label, w, v):
         """One term: `w` its loss weight, `v` the unreduced components (any shape)."""
-        rows.append(jnp.sqrt(jnp.asarray(w) * float(pde_scale) / v.size) * v.reshape(-1))
+        push(label, jnp.sqrt(jnp.asarray(w) * float(pde_scale) / v.size) * v.reshape(-1))
 
     pde = pde_raw(pf, batch["coll"], cfg)
     for k in equation_keys(model):
-        add(weights[k], pde[k])
+        add(f"pde_{k}", weights[k], pde[k])
     rad = pde_radial_raw(pf, batch["coll"], cfg)
     if rad is not None:
-        add(float(cfg.w_lam_eq_radial), rad)
+        add("pde_lam_eq_radial", float(cfg.w_lam_eq_radial), rad)
     for k, v in inner_bc_raw(pf, batch["inner"], cfg, exact_fields).items():
-        rows.append(jnp.sqrt(jnp.asarray(weights.get(f"inner_{k}", weights["inner"]))
-                             / v.size) * v.reshape(-1))
+        push(f"inner_{k}", jnp.sqrt(jnp.asarray(weights.get(f"inner_{k}", weights["inner"]))
+                                    / v.size) * v.reshape(-1))
     for k, v in outer_bc_raw(pf, batch["outer"], cfg, exact_fields, lam_inf).items():
-        rows.append(jnp.sqrt(jnp.asarray(weights.get(f"outer_{k}", weights["outer"]))
-                             / v.size) * v.reshape(-1))
+        push(f"outer_{k}", jnp.sqrt(jnp.asarray(weights.get(f"outer_{k}", weights["outer"]))
+                                    / v.size) * v.reshape(-1))
     # the same condition on the inner shells of the ladder (see train.make_batch).  The PIN stays on
     # rho_out alone: it is an average and belongs at the outer sphere.
     if batch.get("outer_extra") is not None:
         for k, v in outer_bc_raw(pf, batch["outer_extra"], cfg, exact_fields, lam_inf).items():
-            rows.append(jnp.sqrt(jnp.asarray(weights.get(f"outer_{k}", weights["outer"]))
-                                 / v.size) * v.reshape(-1))
+            push(f"outer_extra_{k}",
+                 jnp.sqrt(jnp.asarray(weights.get(f"outer_{k}", weights["outer"]))
+                          / v.size) * v.reshape(-1))
     averaged, value = outer_pin_raw(pf, batch["outer"], cfg, exact_fields)
     w_pin = jnp.asarray(cfg.w_pin)
-    for v in averaged.values():
-        rows.append(jnp.sqrt(w_pin) * jnp.mean(v).reshape(1))
-    for v in value.values():
-        rows.append(jnp.sqrt(w_pin / v.size) * v.reshape(-1))
+    for k, v in averaged.items():
+        push(f"pin_mean_{k}", jnp.sqrt(w_pin) * jnp.mean(v).reshape(1))
+    for k, v in value.items():
+        push(f"pin_{k}", jnp.sqrt(w_pin / v.size) * v.reshape(-1))
     return jnp.concatenate(rows)
 
 

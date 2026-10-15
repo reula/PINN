@@ -359,6 +359,12 @@ class Config:
     # 266 of 600 iterations, c100 at 508 of 2000) with the line search still able to descend.
     dsgnar_radius_floor: float = 1.0e-3   # of the HIGH-WATER MARK of the radius, not of the
                                           # last accepted one (that decays with it)
+    # What the paper (Webb, Jerad & Cartis, arXiv:2607.02194) does and the phase above did not
+    # (DSGNAR.md section 9).  All off by default; `--dsgnar-paper` turns the paper's set on.
+    dsgnar_reweight_alpha: float = 0.0      # UpdateWeights exponent per condition (paper: 0.05)
+    dsgnar_fixed_sketch: bool = False       # one sketch for the whole phase (paper 3.2.2)
+    dsgnar_reject_overshoot: bool = False   # reject rho > target + 0.1, expand the radius (3.4)
+    dsgnar_line_scan: bool = True           # the 1, 1/2, ... scan; the paper has none
     # Impose the inner boundary data by construction rather than by a penalty: the fields
     # are blended with the datum (taken at the same direction) with weight 1 - rho_in/rho,
     # so they ARE the datum on the inner sphere.  The residual maps show the soft inner BC

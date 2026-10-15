@@ -435,3 +435,33 @@ now unused by the phase.
 3. Should the row sketch be subsampled (`--dsgnar-sketch-rows`) to buy a larger `s`?
 4. Does DSGNAR plus a per-multipole pin (`S_1 = 0` at `rho_out`, and optionally `S_2`) finally
    remove the spurious dipole, now that the pinned mode is inside the objective?
+
+## 9. What the paper does that this phase did not (arXiv:2607.02194, re-read 2026-10-15)
+
+Read against the PDF, not against the reference code.  All are switches, off by default;
+`--dsgnar-paper` turns on the paper's set (explicit flags still override it).
+
+| paper | here before | switch |
+|---|---|---|
+| per-condition reweighting, UpdateWeights, alpha = 0.05 (App. A.1) -- "essential", because CountSketch mixes every condition into the same s buckets | not applied inside the phase | `--dsgnar-reweight 0.05` |
+| a step whose ratio overshoots the target by more than a margin is REJECTED and the radius expanded (3.4) | any decrease accepted | `--dsgnar-reject-overshoot` |
+| the step is evaluated once | scan 1, 1/2, ... 1/16, 1e-2, 1e-3 | `--dsgnar-no-line-scan` |
+| no calibration (the model is honest at s ~ d/3) | median calibration | `--dsgnar-no-calibrate` |
+| radius to the PCHIP radius on accept, no floor | grow-only, floor 1e-3 of the high-water mark | `--dsgnar-shrink-on-accept --dsgnar-radius-floor 0` |
+| stage-1 target 0.075 in double precision, Delta_min = 1e-8 (4.2) | 0.15, 1e-14 | `--dsgnar-stage1-ratio`, `--dsgnar-delta-min` |
+| one sketch for the whole run (3.2.2; Algorithm 1 itself redraws -- the paper contradicts itself) | redrawn every iteration | `--dsgnar-fixed-sketch` |
+| K = 4 hashes, s in [d/3, d/2], N >> s collocation points | K = 8 (launcher), s = 128 | `--dsgnar-hashes`, `--dsgnar-sketch` |
+
+The reweighting is applied as a per-row scale passed to the jitted maps as an argument (no
+recompilation when the weights move); each step is judged on the reweighted objective, as in the
+paper, and the history's `loss` is the loss at the ORIGINAL weights, so `final_loss` stays
+comparable with SSBroyden.  The conditions are the terms of `losses.residual_vector`
+(`FlatObjective.blocks`, 12 on the pq recipe).
+
+Not ported: the first ten iterations in single precision (an early-divergence guard from a poor
+initialisation; the phase starts from an Adam warm-up), and the SIREN architecture.
+
+First local check (n_coll 512, s = 300, 6 iterations from 30 Adam steps): with calibration off
+the measured ratio tracked the 0.075 target (0.067-0.079), lambda fell 9.7e3 -> 18 -- the paper's
+first stage -- 6/6 accepted, loss 31.4 -> 18.1.  `run_batch_sketch.sh` measures it at production
+size against SSBroyden.

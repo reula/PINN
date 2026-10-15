@@ -47,6 +47,15 @@ class FlatObjective:
         def _loss(flat):
             return 0.5 * jnp.mean(_residual(flat) ** 2)
 
+        # The conditions, in residual order: [(label, n_rows)], for DSGNAR's per-condition
+        # reweighting.  Static shapes only -- nothing is evaluated.
+        blocks = []
+        jax.eval_shape(lambda f: residual_vector(self.unflatten(f), batch, cfg, model,
+                                                 exact_fields, weights=weights,
+                                                 pde_scale=pde_scale, lam_inf=lam_inf,
+                                                 _blocks=blocks), self.flat0)
+        self.blocks = blocks
+
         self._residual = _residual
         self._loss = _loss
         self.value_and_grad = jax.jit(jax.value_and_grad(_loss))
