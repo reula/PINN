@@ -134,8 +134,8 @@ if [ "$ONLY" = "G" ]; then
     # Compare raw residuals and the S_lm tables instead.
     tag="${RHO_OUT/./p}"
     ftag="${FRAC/./}"
-    run_one "pq_r${tag}_phihyb${ftag}" --rho-out "$RHO_OUT" --lam-eq-form log --radial hybrid \
-        --radial-log-frac "$FRAC"
+    run_one "pq_r${tag}_phihyb${ftag}" --rho-out "$RHO_OUT" --lam-eq-form log --radial "$RADIAL" \
+        --radial-log-frac "$RADIAL_LOG_FRAC"
 fi
 if [ -z "$ONLY" ] || [ "$ONLY" = "E" ]; then
     run_one pq_c100_vacE_phihyb50 --rho-out 100.0 --lam-eq-form log --radial hybrid --radial-log-frac 0.5
