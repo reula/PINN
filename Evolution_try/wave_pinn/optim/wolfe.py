@@ -76,7 +76,20 @@ def wolfe_phase(objective: Objective, flat, cfg: Config,
     function it was built from, so redrawing mid-phase invalidates it.  Use
     ``resample_rounds``, which restarts the solver on a fresh system.
     """
-    import jaxopt
+    try:
+        import jaxopt
+    except ImportError as exc:
+        # Every other optional dependency in this package degrades with a reason
+        # rather than a bare traceback (`load_minimize` returns (None, why)).  This
+        # one is reachable by a config choice, so it has to explain itself: the hub
+        # this project runs on does NOT have jaxopt, and a user who sets one of the
+        # jaxopt_* optimisers there deserves to be told that rather than shown
+        # "No module named 'jaxopt'".
+        raise ImportError(
+            "the Wolfe family needs `jaxopt`, which is not installed here.  It is an "
+            "optional dependency (`pip install jaxopt`); SSBroyden, DSGNAR and the "
+            "trust-region phase do not need it."
+        ) from exc
 
     t0 = time.time()
     flat = jnp.asarray(flat)

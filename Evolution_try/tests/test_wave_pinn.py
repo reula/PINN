@@ -272,6 +272,23 @@ class TestSsbroydenLineSearches(unittest.TestCase):
         self.assertEqual(info_w["linesearch"], "wolfe")
 
 
+def _importable(name):
+    try:
+        import importlib
+        importlib.import_module(name)
+        return True
+    except ImportError:
+        return False
+
+
+# jaxopt is OPTIONAL: the hub this project runs on does not have it, and the phases
+# that need it are a measured negative control rather than part of any result.  The
+# tests that exercise them therefore skip where it is missing instead of erroring --
+# which is how a red test suite on the hub for a dependency the project does not
+# require would otherwise hide a real failure.
+HAVE_JAXOPT = _importable("jaxopt")
+
+
 class TestWolfeFamily(unittest.TestCase):
     """The Wolfe-condition quasi-Newton methods: a measured negative control.
 
@@ -290,6 +307,7 @@ class TestWolfeFamily(unittest.TestCase):
         self.obj = Objective(self.cfg, make_batch(self.cfg, key), self.params)
         self.flat, _ = jax.flatten_util.ravel_pytree(self.params)
 
+    @unittest.skipUnless(HAVE_JAXOPT, "jaxopt is not installed (optional)")
     def test_both_wolfe_paths_reduce_the_loss_and_name_their_line_search(self):
         from wave_pinn.optim.wolfe import optax_lbfgs_phase, wolfe_phase
         before = self.obj.loss(self.flat)
@@ -301,11 +319,27 @@ class TestWolfeFamily(unittest.TestCase):
             self.assertEqual(info["iterations"], 4)
             self.assertGreater(len(hist), 1)
 
+    @unittest.skipUnless(HAVE_JAXOPT, "jaxopt is not installed (optional)")
     def test_an_unknown_wolfe_method_is_rejected(self):
         from wave_pinn.optim.wolfe import wolfe_phase
         with self.assertRaises(ValueError):
             wolfe_phase(self.obj, self.flat, self.cfg.replace(wolfe_method="nope"),
                         verbose=False)
+
+    def test_a_missing_jaxopt_says_what_to_install(self):
+        """The one test here that MUST run on both machines.
+
+        Simulating the absence with `sys.modules["jaxopt"] = None` is deterministic
+        and needs no environment juggling, so the graceful path is covered even where
+        jaxopt happens to be installed.
+        """
+        import sys
+        from unittest import mock
+        from wave_pinn.optim.wolfe import wolfe_phase
+        with mock.patch.dict(sys.modules, {"jaxopt": None}):
+            with self.assertRaises(ImportError) as ctx:
+                wolfe_phase(self.obj, self.flat, self.cfg, verbose=False)
+        self.assertIn("pip install jaxopt", str(ctx.exception))
 
     def test_the_phase_names_select_the_method(self):
         from wave_pinn.optim import _phases
