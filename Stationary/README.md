@@ -767,8 +767,8 @@ number in the diagnostics is **not** comparable between the two columns: `max ab
 chart rescales lengths by 75.
 
 **Files.**  `runs/weyl_prod/`: `report.txt`, `report.json`, `report_eval.json`,
-`diagnostics.png`, `lambda_inner.png`, `lambda_vs_rho.png`, `lambda_multipoles_outer.png`,
-`lambda_multipole_decay.png`, and `vtk/solution.vtk`.
+`diagnostics.png`, `lambda_inner.png`, `lambda_vs_rho.png`, `P_multipoles_outer.png`,
+`P_multipole_decay.png`, and `vtk/solution.vtk`.
 
 The VTK file is written by
 

@@ -595,6 +595,16 @@ Suggested minimal rename/documentation change: call them *harmonic tail coeffici
 existing `NEXT.md` table (network vs exact vs inner data) remains exactly as useful under the new
 name.
 
+**The figures use P only (2026-10-16).**  `make_figures` (`P_multipoles_outer.png`,
+`P_multipole_decay.png`) and `notebook_setup.show_run` expand the Geroch-Hansen potential
+$P=(1-\lambda^2)/(4\lambda)$, about $P_\infty=P(\lambda_\infty)$, on every sphere, and the
+dashed inner-data lines are $P$ of the imposed $\lambda$ (`multipoles.gh_inner_constants`).
+Before, these figures expanded $\lambda$ itself while the outer condition acted on $P$
+(`losses.gh_potential`), so the two disagreed from $l=2$ on.  These are the tail coefficients of
+$P$, still not the moments beyond linear order (the cubic term above).  `report.txt` still prints
+both tables, $\lambda$ and $P$; the helpers are `multipoles.gh_fields(point_fields)` (the same
+fields with `.lam` replaced by $P$) and `gh_inner_constants`.
+
 ### 6.2 A GH-moment module: what to implement, in order
 
 1. **Exact axisymmetric assets (cheap, closed form).**  For any `Rods` configuration, compute

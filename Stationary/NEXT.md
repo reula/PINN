@@ -42,7 +42,9 @@ ran -- before today, three defects in run_hub.sh made steps silently not run.
 `multipoles.multipole_table` formats them together with the exact reference through the same
 estimator.  `report.py` prints it (a table against rho, physical units) and
 `lambda_multipole_decay.png` plots S_lm against rho per (l, m), flat = correct power, with the
-inner-data values as dashed lines.  The plots are in PHYSICAL rho (cfg.vtk_physical_inner /
+inner-data values as dashed lines.  (Since 2026-10-16 that figure is `P_multipole_decay.png` and
+expands the Geroch-Hansen potential P = (1-lambda^2)/(4 lambda) instead of lambda, inner data
+included; `report.txt` still prints both tables.)  The plots are in PHYSICAL rho (cfg.vtk_physical_inner /
 rho_in = 200 for this run, so rho in [1, 200]); only the coordinate is converted, the fields are
 as the run computed them, exactly like vtk.py.
 

@@ -12,8 +12,8 @@
 # repeatedly; a run that crashed part-way can still be processed from its last checkpoint.
 #
 # Writes into the run directory:
-#   diagnostics.png, lambda_inner.png, lambda_multipoles_outer.png,
-#   lambda_multipole_decay.png, lambda_vs_rho.png, report.txt, plane/plane.png
+#   diagnostics.png, lambda_inner.png, P_multipoles_outer.png,
+#   P_multipole_decay.png, lambda_vs_rho.png, report.txt, plane/plane.png
 # (`plane/` is the (rho_cyl, z) half-plane of an axisymmetric run: lambda, the error in
 #  lambda, the metric error and the exact curvature -- the complete picture for such a run.
 #  stationary.plane skips itself, quietly and with exit 0, for a 3-D architecture.)

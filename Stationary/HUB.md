@@ -216,7 +216,7 @@ directory holds:
 |---|---|
 | `diagnostics.png` | loss history, λ(ρ), h_rr(ρ), tangential metric, errors, PDE residuals |
 | `lambda_vs_rho.png` | **λ against ρ** along several polar angles, exact solution overlaid |
-| `lambda_inner.png`, `lambda_multipoles_outer.png`, `lambda_multipole_decay.png` | inner-sphere λ map, outer-sphere multipoles, per-multipole decay |
+| `lambda_inner.png`, `P_multipoles_outer.png`, `P_multipole_decay.png` | inner-sphere λ map; outer-sphere multipoles and per-multipole decay of the GH potential P = (1-λ²)/(4λ) (before 2026-10-16: of λ, as `lambda_multipoles_outer.png`, `lambda_multipole_decay.png`) |
 | `report.txt` | **the one-screen text report** (same text as `python -m stationary.report`) |
 | `config.json`, `history.json`, `report.json`, `report_eval.json` | the numbers behind the figures |
 | `params.pkl`, `params_adam.pkl`, `ckpt.pkl` | final parameters and the resumable checkpoint |
@@ -1026,9 +1026,9 @@ check, not a resolution study — and spend the big configuration on the dipole.
 The analysis is produced by the run itself (figures + `report.txt`, see §4):
 `lambda_vs_rho.png` (λ against ρ at several angles, exact solution overlaid),
 `lambda_inner.png` (imposed `lambda` on the inner sphere vs the network),
-`lambda_multipoles_outer.png` (the `l = 0, 1, 2` angular dependences at `rho_final = 100`,
-with amplitudes), `lambda_multipole_decay.png` (amplitudes vs `rho` against the expected
-`-(l+1)`), and `report.txt`/`report.json` with the residuals, boundary values and
+`P_multipoles_outer.png` (the `l = 0, 1, 2` angular dependences of the GH potential
+P = (1-λ²)/(4λ) at `rho_final = 100`, with amplitudes), `P_multipole_decay.png` (P's amplitudes
+vs `rho` against the expected `-(l+1)`, and its S_lm against P of the inner data), and `report.txt`/`report.json` with the residuals, boundary values and
 multipole content.
 
 ## 8. Notebooks
@@ -1114,8 +1114,8 @@ figure-producing calls differ a lot in how many they make:
 | `run_hub.sh ...` / `postprocess.sh RUN` | 0 | writes the 5 files (profile included), displays nothing |
 
 So calling `evaluate()` in a notebook explains a screenful of plots: `diagnostics.png`
-(6 axes) plus `lambda_inner.png` (4), `lambda_multipoles_outer.png` (3) and
-`lambda_multipole_decay.png` (2) are each drawn and displayed as they are created. Use
+(6 axes) plus `lambda_inner.png` (4), `P_multipoles_outer.png` (3) and
+`P_multipole_decay.png` (2) are each drawn and displayed as they are created. Use
 `show_run` for a single three-axis summary, or pass `--no-plots` to `evaluate`.
 
 Every figure carries its provenance in the caption: the run directory, the architecture,

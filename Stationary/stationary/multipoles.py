@@ -1,9 +1,14 @@
 """Spherical-harmonic decomposition of a scalar field on a sphere, and figures.
 
-Provides the multipole content of lambda on any coordinate sphere, plus the two
-figures requested for the new problem: lambda on the inner sphere (the imposed
-boundary data against what the network produces) and the angular dependence of the
-first three multipoles of lambda on the outer sphere.
+Provides the multipole content of a scalar on any coordinate sphere, plus the figures:
+lambda on the inner sphere (the imposed boundary data against what the network produces),
+and the multipoles of the Geroch-Hansen potential P = (1 - lambda^2)/(4 lambda) on the outer
+sphere and against rho.  The multipole figures use P only, never lambda: P is the potential
+the moments are defined from (MULTIPOLES_GH_THORNE.md section 2), the one the outer scalar
+condition acts on (losses.gh_potential), and lambda's own coefficients differ from it from
+l = 2 on (lambda - 1 = 2U + 2U^2 + ..., P = -U - (2/3)U^3 - ...), so mixing the two compares
+different numbers.  The coefficients of P on coordinate spheres are still not the GH moments
+themselves beyond linear order (section 6.1 there); they are the tail coefficients of P.
 """
 from __future__ import annotations
 
@@ -101,6 +106,36 @@ def angular_profiles(coef: dict, lmax: int = 3, n_theta: int = 181):
         prof[l] = sum(coef[(l, m)] * real_sph_harm(l, m, mu, phi0)
                       for m in range(-l, l + 1))
     return jnp.asarray(th), prof
+
+
+class _Scalar:
+    """Stands in for point_fields(y) where only `.lam` is read, so the estimators below run on P."""
+    __slots__ = ("lam",)
+
+    def __init__(self, lam):
+        self.lam = lam
+
+
+def gh_fields(point_fields):
+    """point_fields with `.lam` replaced by the Geroch-Hansen potential P = (1 - lam^2)/(4 lam)."""
+    from .losses import gh_potential
+    return lambda y: _Scalar(gh_potential(point_fields(y).lam))
+
+
+def gh_inner_constants(cfg, lmax: int = 3, n_mu: int = 48, n_phi: int = 32, factor=None,
+                       lam_inf: float = 1.0):
+    """S_lm of P read off the IMPOSED inner data, in the units of `multipole_constants`.
+
+    P of the data lambda = lam_inner_bc, expanded about P_inf = P(lam_inf) and multiplied by
+    rho_in_phys^(l+1): the dashed lines the outer P coefficients are compared with.
+    """
+    from .losses import gh_potential
+    from .problem import lam_inner_bc, physical_factor
+    factor = physical_factor(cfg) if factor is None else float(factor)
+    c = multipole_constants(lambda q: _Scalar(gh_potential(lam_inner_bc(q, cfg))),
+                            [float(cfg.rho_in)], lmax, n_mu, n_phi,
+                            lam_inf=float(gh_potential(lam_inf)), factor=factor)
+    return {k: float(v[0]) for k, v in c["S"].items()}
 
 
 def multipole_constants(point_fields, rhos, lmax: int = 3, n_mu: int = 48, n_phi: int = 32,
@@ -284,55 +319,59 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3, exact_fields=Non
     fig.savefig(os.path.join(outdir, "lambda_inner.png"), dpi=120)
     plt.close(fig)
 
-    # ---------------- multipoles of lambda on the outer sphere
-    coef, power, (mu_o, phi_o, vals_o) = lambda_multipoles(point_fields, cfg.rho_out, lmax)
+    # ---------------- multipoles of the GH potential P on the outer sphere (P only, not lambda)
+    from .losses import gh_potential
+    pf_P = gh_fields(point_fields)
+    lam_inf = getattr(cfg, "lam_inf", None) or 1.0
+    P_inf = float(gh_potential(lam_inf))
+    coef, power, (mu_o, phi_o, vals_o) = lambda_multipoles(pf_P, cfg.rho_out, lmax)
     th_o, prof = angular_profiles(coef, lmax)
-    report["outer_coef"] = {f"l{l}_m{m}": v for (l, m), v in coef.items()}
-    report["outer_power"] = power
-    report["lambda_outer_mean"] = float(jnp.mean(vals_o))
+    report["outer_coef_P"] = {f"l{l}_m{m}": v for (l, m), v in coef.items()}
+    report["outer_power_P"] = power
+    report["P_outer_mean"] = float(jnp.mean(vals_o))
 
     fig, ax = plt.subplots(1, 3, figsize=(17, 5))
     for l in range(min(3, lmax + 1)):
         ax[0].plot(np.asarray(th_o), np.asarray(prof[l]), label=f"$l={l}$ (amp {np.sqrt(power[l]):.3e})")
-    ax[0].set_title(f"$\\lambda$ multipole angular dependence at $\\rho={cfg.rho_out:g}$")
-    ax[0].set_xlabel("$\\theta$"); ax[0].set_ylabel("$\\lambda_l(\\theta)$"); ax[0].legend()
+    ax[0].set_title(f"$P$ multipole angular dependence at $\\rho={cfg.rho_out:g}$")
+    ax[0].set_xlabel("$\\theta$"); ax[0].set_ylabel("$P_l(\\theta)$"); ax[0].legend()
     ls = list(range(min(3, lmax + 1)))
     ax[1].bar([str(l) for l in ls], [np.sqrt(power[l]) for l in ls])
-    ax[1].set_title("multipole amplitudes $\\sqrt{\\sum_m a_{lm}^2}$"); ax[1].set_xlabel("$l$")
+    ax[1].set_title("multipole amplitudes of $P$: $\\sqrt{\\sum_m a_{lm}^2}$"); ax[1].set_xlabel("$l$")
     th_mu = np.arccos(np.asarray(mu_o)[:, 0])
-    ax[2].plot(th_mu, np.asarray(vals_o[:, 0]), label="$\\lambda(\\theta,\\varphi=0)$")
+    ax[2].plot(th_mu, np.asarray(vals_o[:, 0]), label="$P(\\theta,\\varphi=0)$")
     ax[2].plot(np.asarray(th_o), np.asarray(sum(prof[l] for l in ls)), "--", label="$l\\leq2$ sum")
-    ax[2].set_title("reconstructed vs full $\\lambda$ at the outer sphere")
+    ax[2].set_title("reconstructed vs full $P$ at the outer sphere")
     ax[2].set_xlabel("$\\theta$"); ax[2].legend()
     for a in ax:
         a.grid(alpha=0.3)
-    fig.suptitle(f"multipoles of $\\lambda$ at the outer sphere $\\rho={cfg.rho_out:g}$   "
-                 f"|   inner data: $S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
+    fig.suptitle(f"multipoles of the Geroch-Hansen potential $P=(1-\\lambda^2)/(4\\lambda)$ at the "
+                 f"outer sphere $\\rho={cfg.rho_out:g}$   |   inner $\\lambda$ data: "
+                 f"$S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
                  f"$\\lambda_0={cfg.lam0:g}$   |   arch={cfg.arch}"
-                 f"\nmean $\\lambda$ there = {float(jnp.mean(vals_o)):.4f}",
+                 f"\nmean $P$ there = {float(jnp.mean(vals_o)):.4e}",
                  fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
-    fig.savefig(os.path.join(outdir, "lambda_multipoles_outer.png"), dpi=120)
+    fig.savefig(os.path.join(outdir, "P_multipoles_outer.png"), dpi=120)
     plt.close(fig)
 
     # ---------------- how each multipole decays with rho
     from .problem import physical_factor
     factor = physical_factor(cfg)
-    lam_inf = getattr(cfg, "lam_inf", None) or 1.0
     # SAMPLE THE WHOLE SHELL, from the inner sphere out.  It used to be
     # `max(2.0, rho_in*1.5)`, which for a run whose chart is the short scale -- pq_c200_vac is
     # [0.005, 1] -- starts ABOVE rho_out and fits the decay where the network only extrapolates.
     # Starting at rho_in also makes the drift printed here the same number as the table in
     # report.txt, which is where the inner-data comparison lives.
     rhos = np.geomspace(float(cfg.rho_in), float(cfg.rho_out), 14)
-    prof_r = multipole_radial_profile(point_fields, rhos, lmax, lam_inf=lam_inf)
-    const = multipole_constants(point_fields, rhos, lmax, lam_inf=lam_inf, factor=factor)
-    const["inner"] = inner_constants(cfg, lmax=lmax, factor=factor)
-    report["multipole_decay"] = {l: {"fitted_power": prof_r[l]["fitted_power"],
+    prof_r = multipole_radial_profile(pf_P, rhos, lmax, lam_inf=P_inf)
+    const = multipole_constants(pf_P, rhos, lmax, lam_inf=P_inf, factor=factor)
+    const["inner"] = gh_inner_constants(cfg, lmax=lmax, factor=factor, lam_inf=lam_inf)
+    report["multipole_decay_P"] = {l: {"fitted_power": prof_r[l]["fitted_power"],
                                      "expected_power": prof_r[l]["expected_power"],
                                      "amplitudes": prof_r[l]["amplitudes"]}
                                  for l in prof_r}
-    report["multipole_constants"] = {
+    report["multipole_constants_P"] = {
         "physical_factor": factor,
         "r_phys": const["r_phys"],
         "S_lm": {f"{l},{m}": v for (l, m), v in const["S"].items()},
@@ -345,37 +384,44 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3, exact_fields=Non
         m = a > 1e-15
         ax[0].loglog(np.asarray(rhos)[m] * factor, a[m], "o-",
                      label=f"$l={l}$: power {prof_r[l]['fitted_power']:.2f} (expect {prof_r[l]['expected_power']})")
-    ax[0].set_title("multipole amplitudes vs $\\rho$ (slope = decay power)")
+    ax[0].set_title("multipole amplitudes of $P$ vs $\\rho$ (slope = decay power)")
     ax[0].set_xlabel(r"$\rho$ (physical)"); ax[0].set_ylabel(r"amplitude"); ax[0].legend()
     # THE CONSTANT in front of Y_lm/rho^(l+1), per (l, m).  Flat = the tail has the expected
     # power; the dashed lines are the values the inner data impose, which they should equal.
     keys = sorted(const["S"])
     biggest = max((max(abs(float(x)) for x in const["S"][k]) for k in keys), default=0.0)
-    for i, (l, m) in enumerate(keys):
+    n_drawn = 0
+    for (l, m) in keys:
         v = np.asarray(const["S"][(l, m)])
         iv = float(const["inner"][(l, m)])
         # RELATIVE threshold: the off-axisymmetric components sit at the network's noise level
         # (1e-16..1e-13) and plotting them buries the three that carry the physics.
         if max(float(np.max(np.abs(v))), abs(iv)) < 1e-6 * biggest:
             continue
-        colour = f"C{i % 10}"
+        colour = f"C{n_drawn % 10}"   # counted over the DRAWN curves: by key index, l=1 and
+        n_drawn += 1                  # l=3 (m=0) both landed on C2
         drift = float(np.ptp(v)) / max(float(np.max(np.abs(v))), 1e-300)
         ax[1].plot(r_phys, v, "o-", ms=3, color=colour,
                    label=rf"$S_{{{l},{m}}}$" + (f"  drift {drift:.1%}" if len(v) > 1 else ""))
         ax[1].axhline(iv, ls="--", lw=1, color=colour)
     ax[1].set_xscale("log")
-    ax[1].set_title(r"$S_{lm}$ in $\lambda-\lambda_\infty=\sum S_{lm}Y_{lm}/\rho^{l+1}$"
-                    "\n(flat $=$ correct power; dashed $=$ the inner data)")
+    # symlog: a coefficient whose tail has the wrong power grows like rho^k and on a linear axis
+    # flattens every correct (flat) curve onto zero
+    inner_big = max((abs(float(x)) for x in const["inner"].values()), default=0.0)
+    ax[1].set_yscale("symlog", linthresh=max(1e-3 * inner_big, 1e-12))
+    ax[1].set_title(r"$S_{lm}$ in $P-P_\infty=\sum S_{lm}Y_{lm}/\rho^{l+1}$"
+                    "\n(flat $=$ correct power; dashed $=$ $P$ of the inner data)")
     ax[1].set_xlabel(r"$\rho$ (physical)"); ax[1].set_ylabel(r"$S_{lm}$")
     ax[1].legend(fontsize=7)
     for a in ax:
         a.grid(alpha=0.3)
-    fig.suptitle(f"decay of each multipole of $\\lambda$   |   $S_1={cfg.lam_bc_S1:g}$, "
+    fig.suptitle(f"decay of each multipole of $P=(1-\\lambda^2)/(4\\lambda)$   |   "
+                 f"inner $\\lambda$ data: $S_1={cfg.lam_bc_S1:g}$, "
                  f"$S_2={cfg.lam_bc_S2:g}$, $\\lambda_0={cfg.lam0:g}$   |   arch={cfg.arch}, "
                  f"$\\rho\\in[{cfg.rho_in * factor:g},{cfg.rho_out * factor:g}]$ physical "
                  f"(chart x {factor:g})", fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
-    fig.savefig(os.path.join(outdir, "lambda_multipole_decay.png"), dpi=120)
+    fig.savefig(os.path.join(outdir, "P_multipole_decay.png"), dpi=120)
     plt.close(fig)
 
     return report
@@ -383,9 +429,10 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3, exact_fields=Non
 
 def multipole_radial_profile(point_fields, rhos, lmax: int = 3, n_mu: int = 40,
                              n_phi: int = 24, lam_inf: float = 0.0):
-    """Amplitude sqrt(sum_m a_lm^2) of each multipole of lambda as a function of rho.
+    """Amplitude sqrt(sum_m a_lm^2) of each multipole of `.lam` as a function of rho.
 
-    For a decaying harmonic field the l-th multipole of lambda should fall off as
+    Called with `gh_fields(...)` it is the multipoles of P.  For a decaying harmonic field the
+    l-th multipole should fall off as
     rho^-(l+1); this is the direct check that the higher-order Robin condition lets the
     higher multipoles through with the correct power instead of forcing every field
     onto its leading decay law.

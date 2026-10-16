@@ -139,7 +139,7 @@ def plot_lambda_vs_rho(pf, cfg, thetas=(0.0, 0.7, 1.5707963), logx=True, save=No
 
 
 def show_run(run_dir, params_file="params.pkl", thetas=(0.0, 0.7), lmax=3, save=None):
-    """ONE figure for a run: lambda(rho) and the multipole content of lambda at rho_out.
+    """ONE figure for a run: lambda(rho) and the multipoles of the GH potential P at rho_out.
 
     Use this in a notebook instead of calling evaluate()/make_figures() there: those draw
     four separate multi-panel figures (15 axes in total) and a notebook displays every one
@@ -151,7 +151,7 @@ def show_run(run_dir, params_file="params.pkl", thetas=(0.0, 0.7), lmax=3, save=
     """
     import matplotlib.pyplot as plt
 
-    from stationary.multipoles import angular_profiles, lambda_multipoles  # absolute:
+    from stationary.multipoles import angular_profiles, gh_fields, lambda_multipoles  # absolute:
     # `%run notebook_setup.py` in a notebook has no package context
 
     plt.close("all")
@@ -185,8 +185,9 @@ def show_run(run_dir, params_file="params.pkl", thetas=(0.0, 0.7), lmax=3, save=
     ax[0].set_title(r"$\lambda$ vs $\rho$")
     ax[0].legend(fontsize=8)
 
-    # --- 2 and 3. multipoles of lambda at the outer sphere
-    coef, power, (mu_o, phi_o, vals_o) = lambda_multipoles(pf, cfg.rho_out, lmax)
+    # --- 2 and 3. multipoles of P = (1 - lambda^2)/(4 lambda) at the outer sphere: the GH
+    # potential, as in make_figures; lambda's own coefficients differ from it from l = 2 on
+    coef, power, (mu_o, phi_o, vals_o) = lambda_multipoles(gh_fields(pf), cfg.rho_out, lmax)
     th_o, prof = angular_profiles(coef, lmax)
     ls = list(range(min(3, lmax + 1)))
     amps = [float(jnp.sqrt(power[l])) for l in ls]
@@ -197,11 +198,11 @@ def show_run(run_dir, params_file="params.pkl", thetas=(0.0, 0.7), lmax=3, save=
         ax[1].set_ylim(min(nz) / 10, max(nz) * 10)
     ax[1].set_xlabel("multipole order")
     ax[1].set_ylabel("amplitude")
-    ax[1].set_title(fr"multipoles of $\lambda$ at $\rho={cfg.rho_out:g}$")
+    ax[1].set_title(fr"multipoles of $P=(1-\lambda^2)/(4\lambda)$ at $\rho={cfg.rho_out:g}$")
     for l in ls:
         ax[2].plot(th_o, prof[l], label=fr"$l={l}$  (amp {amps[l]:.2e})")
-    ax[2].set_xlabel(r"$\theta$"); ax[2].set_ylabel(r"$\lambda_l(\theta)$")
-    ax[2].set_title("angular dependence of each multipole")
+    ax[2].set_xlabel(r"$\theta$"); ax[2].set_ylabel(r"$P_l(\theta)$")
+    ax[2].set_title("angular dependence of each multipole of $P$")
     ax[2].legend(fontsize=8)
 
     for a in ax:

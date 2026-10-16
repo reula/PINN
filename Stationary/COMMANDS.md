@@ -84,8 +84,8 @@ GPU**: the same five steps took 236 s on CPU against ~17 min on the GPU, because
 reference-quadrature work rather than compiled graphs. If it dies on
 `<repo>/.jaxcache` with `Input/output error`, add `JAX_CACHE=0`.
 
-The training run writes `lambda_inner.png`, `lambda_multipole_decay.png`,
-`lambda_multipoles_outer.png` and `report.json` itself, **before** any post-processing — so the
+The training run writes `lambda_inner.png`, `P_multipole_decay.png`,
+`P_multipoles_outer.png` and `report.json` itself, **before** any post-processing — so the
 multipole figures do not need `--post`, and `report.json` existing is the proof that the run
 reached the end of `train()` rather than being killed.
 
