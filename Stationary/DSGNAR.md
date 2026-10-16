@@ -516,4 +516,37 @@ larger sketch (s = 1600-2000 of d = 2285).
 Round 2 on Mendieta (`mendieta_submit.sh`, submitted 2026-10-16), all from the same `ib16k_adam`
 parameters: DSGNAR s = 1100 with the stage-2 target at 0.075 (no switch) and at 0.15; s = 2000 at
 0.075; DSGNAR's stage 1 (100 iterations) handing over to SSBroyden; SSBroyden continued from its
-20000-iteration result for 40000 more.  Results: pending.
+20000-iteration result for 40000 more.
+
+Results (Mendieta A30, 2026-10-16; the hub's SSBroyden row above for comparison):
+
+| run | final loss | wall | iterations | stop |
+|---|---|---|---|---|
+| SSBroyden (hub, from round 1) | **1.74e-8** | 94 min | 20000 | the cap |
+| SSBroyden continued | 1.75e-8 | 11 min | 1000 of 40000 | plateau: no 1% gain in 3 blocks of 250 |
+| DSGNAR s = 2000, target 0.075 throughout | 9.4e-8 | 68 min | 234 | radius below threshold |
+| DSGNAR s = 1100, target 0.075 throughout | 1.8e-6 | 40 min | 211 | radius below threshold |
+| DSGNAR s = 1100, stage-2 target 0.15 | 2.2e-5 | 23 min | 129 | radius below threshold |
+| DSGNAR stage 1 only (100 it.) | 1.0e-4 | 17 min | 100 | the cap (hand-over to SSBroyden still queued) |
+
+Read off:
+
+1. **Removing the stage switch fixes the collapse but does not beat SSBroyden.**  With the target
+   at 0.075 throughout, s = 1100 gets 1.8e-6 (round 1 with the paper's switch: 4.1e-5), and
+   s = 2000 gets 9.4e-8, five times above SSBroyden's 1.74e-8, in 72% of its wall time (different
+   GPUs: hub vs A30).  A reachable stage-2 target (0.15) is worse than no switch.
+2. **The sketch size is again the dominant knob**: s = 1100 -> 2000 (0.48 d -> 0.88 d) is x20 in
+   the final loss.  At s = 2000 each iteration costs ~17 s, 93% of it the batched JVPs.
+3. **Every DSGNAR arm still ends by the radius, not by a budget**: at s = 2000 the last 20
+   iterations have lambda going 3.5e2 -> 8.3e6 and the radius 1.4e-3 -> 4e-6 while the accepted
+   steps keep their ratio on target (0.07-0.085, i.e. the measured decrease is ~1/13 of the
+   predicted one) but gain less and less (9.84e-8 -> 9.35e-8).  Holding the ratio at 0.075 takes an
+   ever smaller step: the sketched model is no longer informative at that loss level.
+4. **SSBroyden is at its floor at 1.7e-8**: 1000 more iterations moved it by 1%.  The loss is
+   dominated by the lambda equation (9.9e-9 of 1.75e-8).  So 1.7e-8 is where this network and
+   sample stop for a quasi-Newton method, and DSGNAR has not gone below it.
+
+So on Stationary DSGNAR is competitive in cost (s = 2000 in 68 min against 94 min) but not in the
+loss it reaches (9.4e-8 against 1.7e-8).  Still pending: the stage-1 -> SSBroyden hand-over, which
+asks whether DSGNAR's fast first 100 iterations (6.3e-2 -> 1e-4 in 17 min) shorten SSBroyden's
+path to the same floor.
