@@ -760,7 +760,10 @@ worth 300x on the first window alone and is the reason an earlier windowed attem
 looked like it was degrading without limit.
 
 **What it gives.**  Twenty windowed `T = 20` runs, ten windows of `dt = 2`,
-float64 throughout, in `BATCH_REPORT.md` and `plots/batch_report.png`.  The
+float64 throughout, in `BATCH_REPORT.md` and `plots/batch_report.png` (since
+2026-10-16 those hold all 30 windowed runs; the figure has one column per hand-over,
+with the best three runs coloured and the rest grey, and is embedded at the top of the
+report).  The
 space-time relative `L2` of `dsgnar` at `n_coll = 8192`:
 
 | hand-over | `s = d/3` (733) | `s = d/2` (1100) | `s = 0.68 d` (1500) | gain |

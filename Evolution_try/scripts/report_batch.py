@@ -7,9 +7,9 @@ With no arguments it discovers every ``runs/*/`` that holds a ``windows.json``,
 so a partial batch reports on what exists rather than failing, and the two
 hand-run T=20 windows are included alongside the batch without being named.
 
-The figure answers, in order: how the error grows along the integration, how the
-runs rank overall, how much each hand-over amplifies the error, and whether each
-window actually converged on its own sample.
+The figure has one column per hand-over, with three rows: how the error grows
+along the integration, how much each hand-over amplifies it, and how every run of
+that hand-over ranks.  The best three runs are coloured, the rest are grey.
 """
 
 from __future__ import annotations
@@ -29,14 +29,15 @@ RUNS = os.path.join(ROOT, "runs")
 OUT_PNG = os.path.join(ROOT, "plots", "batch_report.png")
 OUT_MD = os.path.join(ROOT, "BATCH_REPORT.md")
 
-IC_COLOR = {"hard": "#c0392b", "soft": "#1f6feb", "soft_all": "#2e8b57"}
 IC_LABEL = {"hard": "hard hand-over", "soft": "soft (window 1 hard)",
             "soft_all": "soft, first window too"}
-OPT_STYLE = {"dsgnar": "-", "ssbroyden": "--", "jaxopt_broyden": ":"}
-# marker encodes the SKETCH SIZE, which is the axis these batches exist to
-# compare.  With two collocation sizes AND three sketch sizes the same (optimiser,
-# hand-over) pair occurs six times; encoding any two of them in one channel draws
-# distinguishable runs as a single line.
+HANDOVER_ORDER = {"soft_all": 0, "soft": 1, "hard": 2}
+# the best three runs of each hand-over; validated categorical palette (dataviz skill)
+TOP_COLORS = ["#2a78d6", "#eb6834", "#1baf7a"]
+GREY = "#b4b2ac"
+AMP_CAP = 100.0
+
+
 def sketch_label(cfg):
     s = cfg.get("dsgnar_sketch") or 0
     if s in (0, 733):
@@ -44,11 +45,22 @@ def sketch_label(cfg):
     return "d/2" if s == 1100 else ("0.68d" if s == 1500 else f"s={s}")
 
 
-SKETCH_MARK = {"d/3": "o", "d/2": "s", "0.68d": "^"}
-
-
-def mark(run):
-    return SKETCH_MARK.get(run["sketch"], "D")
+def short(run) -> str:
+    """A label that tells the runs of one hand-over apart: optimiser, n_coll, sketch, switches."""
+    if run["optimizer"] != "dsgnar":
+        return f"{run['optimizer']} {run['n_coll']}"
+    lab = f"dsgnar {run['n_coll']} s={run['sketch']}"
+    ch = run["changes"]
+    if ch.count(",") >= 4:
+        ch = "all switches"
+    ch = ch.replace("target 0.075, Delta_min 1e-08", "paper's targets")
+    if ch != "--":
+        lab += f" ({ch})"
+    if run["name"].endswith("_audit"):
+        lab += " re-run"
+    if run["name"].startswith("T20win"):
+        lab += " hand-run"
+    return lab
 
 
 def changes(cfg) -> str:
@@ -130,100 +142,75 @@ def main(argv: List[str]) -> int:
               f"{r['n_coll'] or 0:7d} {r['overall']:10.3e} {amp:6.2f} "
               f"{r['wall'] or 0:6.0f}s {str(r['precision'] == 'float64'):>5s}")
 
-    fig, ax = plt.subplots(2, 3, figsize=(19, 9.5))
-    fig.suptitle(f"Windowed T = 20 — {len(runs)} runs, float64, 10 windows of dt = 2\n"
-                 f"colour = hand-over, line = optimiser, "
-                 f"marker = sketch size (o d/3, s d/2, ^ 0.68 d)", fontsize=12)
+    # One column per hand-over; within each, the best three runs are coloured and
+    # named, the rest are grey context.  With 30 runs, giving every run its own
+    # style made the legend and the bar labels unreadable.
+    ics = sorted({r["window_ic"] for r in runs}, key=lambda k: HANDOVER_ORDER.get(k, 9))
+    fig, ax = plt.subplots(3, len(ics), figsize=(6.4 * len(ics), 15),
+                           squeeze=False, gridspec_kw={"height_ratios": [1, 1, 1.5]})
+    # the first two rows share their y axis; the bar row cannot, it lists different runs
+    for row in (0, 1):
+        for col in range(1, len(ics)):
+            ax[row, col].sharey(ax[row, 0])
+            ax[row, col].tick_params(axis="y", labelleft=False)
+    fig.suptitle(f"Windowed T = 20: {len(runs)} runs, float64, 10 windows of dt = 2.  "
+                 f"Coloured: the best three of each hand-over; grey: the rest.  "
+                 f"Run-to-run variation is about x4.", fontsize=12)
+    for col, ic in enumerate(ics):
+        group = sorted((r for r in runs if r["window_ic"] == ic), key=lambda r: r["overall"])
+        top = {r["name"]: TOP_COLORS[k] for k, r in enumerate(group[:len(TOP_COLORS)])}
+        # grey first, so the coloured runs are drawn on top
+        drawn = [r for r in group if r["name"] not in top][::-1] + group[:len(top)][::-1]
 
-    # (a) error along the integration
-    a = ax[0, 0]
-    for r in runs:
-        if r["rel"] is None:
-            continue
-        a.semilogy(r["t"], np.maximum(r["rel"], 1e-16),
-                   marker=mark(r), ls=OPT_STYLE.get(r["optimizer"], "-"),
-                   color=IC_COLOR.get(r["window_ic"], "grey"), lw=1.5, ms=4, alpha=.9,
-                   label=f"{r['optimizer']}/{r['window_ic']}/{r['n_coll']}")
-    a.set_xlabel("t"); a.set_ylabel(r"relative $L_2$ error")
-    a.set_title("(a) error along the integration"); a.grid(alpha=.3, which="both")
-    a.legend(fontsize=6.5, ncol=2)
+        a = ax[0, col]
+        for r in drawn:
+            if r["rel"] is None:
+                continue
+            c = top.get(r["name"])
+            a.semilogy(r["t"], np.maximum(r["rel"], 1e-16), color=c or GREY,
+                       lw=2.0 if c else 1.0, alpha=1 if c else .6, zorder=3 if c else 1,
+                       label=short(r) if c else None)
+        a.plot([], [], color=GREY, lw=1.0, label=f"the other {len(group) - len(top)}")
+        a.set_title(f"{IC_LABEL.get(ic, ic)}: error along the integration", fontsize=11)
+        a.set_xlabel("t")
+        a.grid(alpha=.3, which="both"); a.legend(fontsize=8, loc="lower right")
 
-    # (b) overall ranking
-    a = ax[0, 2]
-    xs = np.arange(len(runs))
-    a.bar(xs, [max(r["overall"], 1e-18) for r in runs],
-          color=[IC_COLOR.get(r["window_ic"], "grey") for r in runs], alpha=.9)
-    for i, r in enumerate(runs):
-        a.text(i, max(r["overall"], 1e-18) * 1.6, f"{r['overall']:.0e}", ha="center", fontsize=6.5)
-    a.set_yscale("log"); a.set_xticks(xs)
-    a.set_xticklabels([f"{r['optimizer'][:4]}\n{r['window_ic']}\n{r['n_coll']}" for r in runs],
-                      fontsize=6.5)
-    a.set_ylabel(r"space-time relative $L_2$")
-    a.set_title("(b) whole-integration accuracy"); a.grid(alpha=.3, axis="y")
+        a = ax[1, col]
+        for r in drawn:
+            amps = [w.get("amplification") for w in r["windows"]]
+            amps = np.array([x if (x and np.isfinite(x)) else np.nan for x in amps])
+            c = top.get(r["name"])
+            k = np.arange(1, len(amps) + 1)
+            a.plot(k, np.minimum(amps, AMP_CAP), color=c or GREY, marker="o" if c else None,
+                   ms=3.5, lw=2.0 if c else 1.0, alpha=1 if c else .6, zorder=3 if c else 1)
+            for kk, x in zip(k, amps):
+                if x > AMP_CAP:   # a stalled window: off the scale, value written in
+                    a.annotate(f"x{x:.0e}", (kk, AMP_CAP), xytext=(-4, -12),
+                               textcoords="offset points", ha="right", fontsize=7.5,
+                               color="#52514e")
+        a.axhline(1.0, color="k", ls=":", lw=1.2)
+        # log scale, capped: a stalled window can reach x1e5 and flatten every other curve
+        a.set_yscale("log"); a.set_ylim(0.2, AMP_CAP * 1.3)
+        a.set_title("amplification at each hand-over (1 = error preserved)", fontsize=11)
+        a.set_xlabel("hand-over number"); a.grid(alpha=.3)
 
-    # (f) stalls: windows that needed a redraw-and-retry
-    a = ax[0, 1]
-    xs = np.arange(len(runs))
-    a.bar(xs, [r["retries"] for r in runs], color=[IC_COLOR.get(r["window_ic"], "grey") for r in runs])
-    a.set_xticks(xs)
-    a.set_xticklabels([f"{r['optimizer'][:4]}\n{r['window_ic'][:6]}\n{r['sketch']}" for r in runs],
-                      fontsize=5.5)
-    a.set_ylabel("windows that stalled and were retried")
-    a.set_title("(f) the stall is not rare -- and at n_coll=2201 it is not always rescued")
-    a.grid(alpha=.3, axis="y")
-
-    # (c) amplification per hand-over
-    a = ax[1, 0]
-    for r in runs:
-        amps = [w.get("amplification") for w in r["windows"]]
-        amps = [x if (x and np.isfinite(x)) else np.nan for x in amps]
-        a.plot(np.arange(1, len(amps) + 1), amps,
-               marker=mark(r), ls=OPT_STYLE.get(r["optimizer"], "-"),
-               color=IC_COLOR.get(r["window_ic"], "grey"), lw=1.4, ms=4, alpha=.9)
-    a.axhline(1.0, color="k", ls=":", lw=1.2)
-    # log scale: one stalled window reached x1709 and would flatten every other
-    # curve into the axis, hiding the question this panel exists to answer
-    a.set_yscale("log")
-    a.set_xlabel("hand-over number"); a.set_ylabel("error out / error in  (log)")
-    a.set_title("(c) amplification at each hand-over  (1 = the chain preserves the error)")
-    a.grid(alpha=.3)
-
-    # (d) per-window convergence
-    a = ax[1, 1]
-    for r in runs:
-        a.semilogy([w["t1"] for w in r["windows"]],
-                   np.maximum([w["final_loss"] for w in r["windows"]], 1e-16),
-                   marker=mark(r), ls=OPT_STYLE.get(r["optimizer"], "-"),
-                   color=IC_COLOR.get(r["window_ic"], "grey"), lw=1.4, ms=4, alpha=.9)
-    a.set_xlabel("t at the end of the window"); a.set_ylabel("final loss in the window")
-    a.set_title("(d) did each window converge on its own sample?")
-    a.grid(alpha=.3, which="both")
-
-    # (e) the sketch-size effect: the axis these two batches exist to measure
-    a = ax[1, 2]
-    for ic in ("hard", "soft", "soft_all"):
-        pts = [r for r in runs if r["window_ic"] == ic and r["n_coll"] == 8192
-               and r["optimizer"] == "dsgnar"]
-        order = {"d/3": 0, "d/2": 1, "0.68d": 2}
-        pts = sorted([p for p in pts if p["sketch"] in order], key=lambda r: order[r["sketch"]])
-        if not pts:
-            continue
-        a.semilogy([order[p["sketch"]] for p in pts], [p["overall"] for p in pts],
-                   marker="o", color=IC_COLOR.get(ic, "grey"), lw=1.8, ms=7,
-                   label=IC_LABEL.get(ic, ic))
-        for p in pts:
-            a.annotate(f"{p['overall']:.1e}", (order[p["sketch"]], p["overall"]),
-                       textcoords="offset points", xytext=(4, 4), fontsize=7)
-    a.set_xticks([0, 1, 2]); a.set_xticklabels(["d/3\n(733)", "d/2\n(1100)", "0.68 d\n(1500)"])
-    a.set_ylabel(r"space-time relative $L_2$")
-    a.set_title("(e) the sketch size is the dominant knob\n(dsgnar, n_coll = 8192)")
-    a.grid(alpha=.3, which="both"); a.legend(fontsize=8)
-
-    # (f) how often a window had to be rescued by a redraw-and-retry.  In these
-    # runs it is not rare, and at n_coll = 2201 it does not always rescue.
-    if False:
-        pass
-    fig.tight_layout(rect=[0, 0, 1, 0.93])
+        a = ax[2, col]
+        ys = np.arange(len(group))[::-1]
+        a.barh(ys, [r["overall"] for r in group], left=1e-10, height=.7,
+               color=[top.get(r["name"], GREY) for r in group],
+               hatch=None, edgecolor="none")
+        for y, r in zip(ys, group):
+            tag = f"{r['overall']:.1e}" + (f"   {r['retries']} retried" if r["retries"] else "")
+            a.text(r["overall"] * 1.4, y, tag, va="center", fontsize=7.5, color="#52514e")
+        a.set_xscale("log"); a.set_xlim(1e-10, 3)
+        a.set_yticks(ys); a.set_yticklabels([short(r) for r in group], fontsize=7.5)
+        a.tick_params(axis="y", labelleft=True)
+        a.set_xlabel(r"space-time relative $L_2$ over T = 20")
+        a.set_title("all runs of this hand-over, best at the top", fontsize=11)
+        a.grid(alpha=.3, axis="x")
+    ax[0, 0].set_ylabel(r"relative $L_2$ error")
+    ax[1, 0].set_ylabel("error out / error in")
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
     os.makedirs(os.path.dirname(OUT_PNG), exist_ok=True)
     fig.savefig(OUT_PNG, dpi=150)
     print(f"\nwrote {os.path.relpath(OUT_PNG, ROOT)}")
@@ -241,8 +228,11 @@ def main(argv: List[str]) -> int:
          "from the batch defaults (target 0.15, Delta_min 1e-14, fresh init per window, no "
          "overshoot rejection, no reweighting).  *retries* counts windows redrawn after a stall; "
          "*worst window* is the largest final window loss.  Within each hand-over, best first.",
+         "",
+         "![one column per hand-over: error along the integration, amplification at each "
+         "hand-over, and every run ranked; the best three coloured](plots/batch_report.png)",
          ""]
-    order = {"soft_all": 0, "soft": 1, "hard": 2}
+    order = HANDOVER_ORDER
     best = min(r["overall"] for r in runs if r["overall"] is not None)
     for ic in sorted({r["window_ic"] for r in runs}, key=lambda k: order.get(k, 9)):
         group = sorted((r for r in runs if r["window_ic"] == ic), key=lambda r: r["overall"])

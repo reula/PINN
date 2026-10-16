@@ -4,6 +4,8 @@
 
 **How to read it.**  The error is the space-time relative L2 of the whole T = 20 chain against the exact solution.  Run-to-run variation of one configuration is about **x4** (`dsgnar_soft_all_nc2201` 7.8e-06 against its re-run `dsgnar_soft_all_nc2201_audit` 3.0e-05), so only larger differences mean anything.  `s` is the column sketch (d = 2201 parameters; d/3 = 733).  *changes* are the switches of README 6.13 that differ from the batch defaults (target 0.15, Delta_min 1e-14, fresh init per window, no overshoot rejection, no reweighting).  *retries* counts windows redrawn after a stall; *worst window* is the largest final window loss.  Within each hand-over, best first.
 
+![one column per hand-over: error along the integration, amplification at each hand-over, and every run ranked; the best three coloured](plots/batch_report.png)
+
 ## Hand-over: soft_all
 
 | run | optimiser | n_coll | s | changes | rel L2 (T = 20) | worst window | retries | mean amplification | wall |
