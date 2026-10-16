@@ -58,9 +58,8 @@ Done on 2026-10-15 (uv 0.13.1, Python 3.13.16).  On the **login node** `import j
 Evolution_try needs no environment of its own: `Evolution_try/scripts/env.sh` falls back to
 `../Stationary/.venv/bin/python`.  Stationary's SSBroyden finds Crunch inside the checkout.
 
-**GPU check: pending.**  Job 1180327 (`short`, 1 GPU, 5 min) runs `nvidia-smi` and a float64 JAX
-matmul on the GPU; its output goes to `Stationary/logs/slurm_jaxtest_<jobid>.out`.  Until it has
-run, "JAX sees the A30" is expected from the driver version, not verified.
+**GPU check: passed** (job 1180327, 2026-10-15: `nvidia-smi` and a float64 JAX matmul on the A30,
+16 s).
 
 ## 5. Submitting a job
 
@@ -105,6 +104,17 @@ The Evolution_try DSGNAR experiments (2026-10-15): one job per run, all submitte
 (`scripts/mendieta_run.sbatch` is the job; it refuses to start if JAX does not see the GPU, since
 a silent CPU fallback would take days).  The Stationary runs stay on the hub
 (`Stationary/run_batch_sketch.sh`, now Stationary-only by default).
+
+The nonlinear spectral reference for finished Stationary runs (PERTURBATION.md section 5):
+
+    cd ~/Julia/PINN/Stationary
+    sbatch mendieta_linref.sbatch runs/<run> [runs/<run> ...]
+
+after copying each run's `config.json` and `params.pkl` from the hub (this `/home` is separate).
+
+**Verified 2026-10-15:** the GPU test job ran (16 s), and the eight Evolution_try jobs all ran in
+parallel on A30s, 1-2 h each -- the whole ablation in two hours instead of the ~12 h it would have
+taken in sequence on the hub.
 
 ## 6. Differences from the hub
 
