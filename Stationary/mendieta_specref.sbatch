@@ -8,8 +8,8 @@
 #
 # Each run directory needs config.json and params.pkl (copy them from the hub: Mendieta's /home is
 # its own).  Writes runs/<run>/specref_nonlinear.{npz,json} and the comparison in the job log.  A
-# run that already has specref_nonlinear.json is skipped.  LINREF_ARGS overrides the solve;
-# LINREF_TAG names a variant (see below).
+# run that already has specref_nonlinear.json is skipped.  SPECREF_ARGS overrides the solve;
+# SPECREF_TAG names a variant (see below).
 # ---------------------------------------------------------------------------
 #SBATCH -p multi
 #SBATCH -A ifeg
@@ -23,9 +23,9 @@ set -uo pipefail
 cd "${SLURM_SUBMIT_DIR:-$HOME/Julia/PINN/Stationary}"
 export JAX_ENABLE_X64=1 XLA_PYTHON_CLIENT_PREALLOCATE=false MPLBACKEND=Agg
 export JAX_COMPILATION_CACHE_DIR="$HOME/.cache/jax" MPLCONFIGDIR="$HOME/.cache/mpl"
-ARGS=${LINREF_ARGS:-"--nonlinear --ls 0,2,4,6,8 --n-radial 36 --n-coll 2500 --n-bnd 400 --iters 6"}
-# LINREF_TAG=<tag>: a variant, written as specref_nonlinear_<tag>.* (and skipped only if THAT exists)
-TAG=${LINREF_TAG:-}
+ARGS=${SPECREF_ARGS:-"--nonlinear --ls 0,2,4,6,8 --n-radial 36 --n-coll 2500 --n-bnd 400 --iters 6"}
+# SPECREF_TAG=<tag>: a variant, written as specref_nonlinear_<tag>.* (and skipped only if THAT exists)
+TAG=${SPECREF_TAG:-}
 [ -n "$TAG" ] && ARGS="$ARGS --tag $TAG"
 DONE="specref_nonlinear${TAG:+_$TAG}.json"
 
