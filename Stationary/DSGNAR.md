@@ -488,5 +488,27 @@ a 12-condition problem whose conditions differ by orders of magnitude.
 
 `run_batch_sketch.sh`: Adam -> SSBroyden; DSGNAR s = 1100 paper without and with reweighting, s = 512
 paper without; each graded against the nonlinear spectral reference (PERTURBATION.md section 5).
-First number: SSBroyden reached **1.9e-8** at 18250 iterations (it had stalled at 3.1e-5 on the old
-problem).  Results: pending.
+Results (hub, 2026-10-15; Adam 5000 steps to 6.3e-2, then each arm from the same parameters):
+
+| run | final loss | wall | iterations | stop |
+|---|---|---|---|---|
+| SSBroyden | **1.74e-8** | 94 min | 20000 (the cap) | still improving slowly |
+| DSGNAR s = 1100, paper, no reweighting | 4.1e-5 | 17 min | 100 | radius below Delta_min |
+| DSGNAR s = 1100, paper (reweighting) | 2.4e-4 | 28 min | 170 | radius below Delta_min |
+| DSGNAR s = 512, paper, no reweighting | 1.3e-3 | 5 min | 49 | radius below Delta_min |
+
+All three DSGNAR arms die the same way, at the **stage switch**.  Stage 1 works as the paper says
+(the measured ratio sits on the 0.075 target, lambda falls; s = 1100 went 6.3e-2 -> 4.1e-5 by
+iteration 90).  Then lambda turns up, the target jumps to 0.5, and no probe reaches it -- the
+measured ratios stay at 0.07-0.3 -- so LambdaSolve returns the smallest radius every iteration, the
+paper's radius rule divides the radius by 3 each time, and ~10 iterations later it is below
+Delta_min = 1e-8 and the phase stops.  On this problem the sketched model is not honest enough for a
+target of 0.5.  (In Evolution_try the same paper targets gave the project's best result -- README
+6.13 -- so the rule is right there and wrong here.)
+
+The nonlinear-reference comparisons of this batch failed on launch: the batch inherited the
+notebook's `MPLBACKEND` (matplotlib_inline), which a plain Python process rejects.  The batch now
+exports `MPLBACKEND=Agg`.
+
+Next: keep stage 1 (target 0.075 throughout, or a reachable stage-2 target such as 0.15), and a
+larger sketch (s = 1600-2000 of d = 2285).

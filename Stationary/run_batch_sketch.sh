@@ -85,6 +85,9 @@ export JAX_ENABLE_X64=1
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-/tmp/jaxcache-$USER}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$HERE/.mplcache}"
+# launched from a notebook, the batch inherits MPLBACKEND=module://matplotlib_inline..., which a
+# plain Python rejects at `import matplotlib` (what killed every linref step on 2026-10-15)
+export MPLBACKEND=Agg
 
 E1_LABEL="dsgnar_soft_all_nc2201_audit"
 E2_LABEL="dsgnar_hard_nc2201_s1500_audit"

@@ -1053,7 +1053,41 @@ the first ten iterations in single precision, N >> s collocation points (the pap
 `scripts/mendieta_submit.sh`; see ../Mendieta.md): on the soft_all cell each rule alone
 (`pp_soft_all_warm`, `_overshoot`, `_targets`, `_reweight`) and all four (`pp_soft_all_all`), all
 four on the hard cell (`pp_hard_all`); baselines `dsgnar_soft_all_nc2201` (7.8e-06) and
-`dsgnar_hard_nc2201` (7.7e-03).  Results: pending.
+`dsgnar_hard_nc2201` (7.7e-03).  All eight jobs ran in parallel, 1-2 h each (2026-10-15):
+
+| run | space-time rel L2, T = 20 | retries | late-window losses |
+|---|---|---|---|
+| baseline `dsgnar_soft_all_nc2201` (earlier batch) | 7.8e-06 | | 1e-15 .. 7e-15 |
+| baseline re-run (`dsgnar_soft_all_nc2201_audit`) | 3.0e-05 | 16 | 2e-13 .. 4e-15 |
+| **`pp_soft_all_targets`** (stage-1 target 0.075, Delta_min 1e-8) | **7.8e-09** | 7 | **1e-19 .. 1e-22, every window** |
+| `pp_soft_all_warm` (warm start, 1% noise) | 2.2e-06 | 6 | 1e-15 .. 2e-14 |
+| `pp_soft_all_reweight` | 8.9e-06 | 3 | 1e-13 .. 2e-12 |
+| `pp_soft_all_overshoot` | 4.0e-05 | 12 | 3e-15 .. 1e-13 |
+| `pp_soft_all_all` (all four) | 3.7e-04 | 4 | 1e-19 ... then window 10 at 2e-08, amplification x78000 |
+| baseline `dsgnar_hard_nc2201` (earlier batch) | 7.7e-03 | | rising to 3e-07 |
+| `pp_hard_all` (all four, hard) | 4.8e-05 | 13 | 1e-13 |
+| `dsgnar_hard_nc2201_s1500_audit` (hard, s = 1500, no paper rules) | 2.4e-05 | 13 | rising only to 5e-12 |
+
+Read with care:
+
+* **run-to-run variation is ~4x**: the baseline re-run landed at 3.0e-05 against 7.8e-06 for the
+  same configuration.  Only differences far beyond that mean anything;
+* **the paper's double-precision targets are the change that matters**: 7.8e-09 at s = d/3 and
+  n_coll 2201, a factor 1000 over the baseline -- the best result in this project so far (6.3e-09)
+  needed s = 0.68 d and n_coll 8192.  Which half does it (the 0.075 target or the 1e-8 stop) is not
+  yet separated;
+* warm start helps (x3.6); reweighting is neutral; **overshoot rejection hurts** (x5 worse, the most
+  retries), and all four together are worse than the targets alone -- the overshoot rule is the
+  suspect for the window-10 blow-up;
+* on the hard cell both "all four" and s = 1500 remove most of the rising floor (x160 and x320).
+
+Audits: the s = 1500 hard run has rank(J) 734-1224 < s and the sketched step's cosine with the exact
+one rises to +0.60 (from ~0.2 at s = 733) -- consistent with the rank reading of the hard floor.
+The soft_all re-run's 122 stops have rank 436-808, often below s = 733, and still cos ~0.3 with
+the exact LM step gaining ~10%: for soft_all, rank is not the whole story.
+
+Next: the targets with the warm start (no overshoot rule), the targets' two halves separately, and
+the targets on the hard cell at s = 1500.
 
 ## 7. Tests
 
