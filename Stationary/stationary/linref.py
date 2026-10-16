@@ -223,6 +223,86 @@ def compare(run_fields, ref_fields, exact_fields, cfg, n=4096, seed=999):
     return out
 
 
+def profiles(run_fields, ref_fields, exact_fields, cfg, n_rho=48, n_gl=32):
+    """Radial profiles on log-spaced spheres: P_2 coefficients and angular rms differences.
+
+    Returns arrays over rho: the P_2 coefficient of lambda and of h_rr for the network and the
+    reference, and the angular rms of |lam_net - lam_ref| and max_ij |h_net - h_ref| next to the
+    same for the perturbation itself (reference - spherical), which is the scale they are read on.
+    """
+    mu, w = np.polynomial.legendre.leggauss(n_gl)
+    P2 = 0.5 * (3 * mu ** 2 - 1)
+    rhos = np.geomspace(cfg.rho_in, cfg.rho_out, n_rho)
+
+    def at(x):
+        a, b, e = run_fields(x), ref_fields(x), exact_fields(x)
+        n = x / jnp.linalg.norm(x)
+        return (a.lam, b.lam, n @ a.h @ n, n @ b.h @ n,
+                jnp.abs(a.lam - b.lam), jnp.max(jnp.abs(a.h - b.h)),
+                jnp.abs(b.lam - e.lam), jnp.max(jnp.abs(b.h - e.h)))
+
+    f = jax.jit(jax.vmap(at))
+    out = {k: [] for k in ("lam2_net", "lam2_ref", "hrr2_net", "hrr2_ref",
+                           "dlam_rms", "dh_rms", "pert_lam_rms", "pert_h_rms")}
+    for rho in rhos:
+        xs = jnp.asarray(np.stack([rho * np.sqrt(1 - mu ** 2), np.zeros_like(mu), rho * mu], -1))
+        v = [np.asarray(t) for t in f(xs)]
+        coef = lambda g: 2.5 * np.sum(g * P2 * w)
+        ms = lambda g: np.sqrt(0.5 * np.sum(g ** 2 * w))      # angular rms (axisymmetric)
+        out["lam2_net"].append(coef(v[0])); out["lam2_ref"].append(coef(v[1]))
+        out["hrr2_net"].append(coef(v[2])); out["hrr2_ref"].append(coef(v[3]))
+        out["dlam_rms"].append(ms(v[4])); out["dh_rms"].append(ms(v[5]))
+        out["pert_lam_rms"].append(ms(v[6])); out["pert_h_rms"].append(ms(v[7]))
+    out = {k: np.asarray(v) for k, v in out.items()}
+    out["rho"] = rhos
+    return out
+
+
+def plot_profiles(prof, path, title):
+    """Four panels against rho (log-log): the run against the reference, and the size of the miss.
+
+    Network solid blue, reference / perturbation dashed orange (validated categorical pair; the
+    line style is the secondary encoding).  One quantity per axis.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    BLUE, ORANGE, INK, MUTED, GRID = "#2a78d6", "#eb6834", "#1f1f1e", "#6b6a64", "#e4e3de"
+    plt.rcParams.update({"font.size": 10, "axes.edgecolor": MUTED, "axes.labelcolor": INK,
+                         "xtick.color": MUTED, "ytick.color": MUTED, "text.color": INK})
+    rho = prof["rho"]
+    fig, axs = plt.subplots(2, 2, figsize=(11, 7.5), constrained_layout=True)
+    panels = [
+        (axs[0, 0], "|lambda P2 coefficient|", [("network", np.abs(prof["lam2_net"]), BLUE, "-"),
+                                                ("reference", np.abs(prof["lam2_ref"]), ORANGE, "--")]),
+        (axs[0, 1], "|h_rr P2 coefficient|", [("network", np.abs(prof["hrr2_net"]), BLUE, "-"),
+                                              ("reference", np.abs(prof["hrr2_ref"]), ORANGE, "--")]),
+        (axs[1, 0], "lambda: angular rms", [("network - reference", prof["dlam_rms"], BLUE, "-"),
+                                            ("perturbation (reference - spherical)",
+                                             prof["pert_lam_rms"], ORANGE, "--")]),
+        (axs[1, 1], "h: angular rms of max_ij |.|", [("network - reference", prof["dh_rms"], BLUE, "-"),
+                                                     ("perturbation (reference - spherical)",
+                                                      prof["pert_h_rms"], ORANGE, "--")]),
+    ]
+    for ax, ylabel, series in panels:
+        for label, y, color, ls in series:
+            ax.loglog(rho, np.maximum(y, 1e-18), ls, color=color, lw=2, label=label)
+        ax.set_xlabel("rho")
+        ax.set_ylabel(ylabel)
+        ax.grid(True, which="major", color=GRID, lw=0.8)
+        ax.legend(frameon=False, fontsize=9)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+    ax = axs[0, 0]
+    r3 = rho ** -3.0 * np.abs(prof["lam2_ref"][0]) * rho[0] ** 3
+    ax.loglog(rho, r3, ":", color=MUTED, lw=1, label="rho^-3 (linear theory)")
+    ax.legend(frameon=False, fontsize=9)
+    fig.suptitle(title, fontsize=11)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
 def main(argv=None):
     from .evaluate import load_run
     from .model import point_fields
@@ -237,6 +317,8 @@ def main(argv=None):
     ap.add_argument("--n-bnd", type=int, default=400)
     ap.add_argument("--iters", type=int, default=8)
     ap.add_argument("--params", default="params.pkl")
+    ap.add_argument("--reuse", action="store_true",
+                    help="reuse <run>/linref_<mode>.npz if present instead of solving again")
     a = ap.parse_args(argv)
 
     cfg, model, state, run_pf = None, None, None, None
@@ -248,11 +330,19 @@ def main(argv=None):
     cfg_s = cfg.__class__(**{**cfg.__dict__, "n_coll": a.n_coll, "n_bnd": a.n_bnd,
                              "n_bnd_outer": a.n_bnd})
     batch = make_batch(jax.random.PRNGKey(cfg.seed + 4242), cfg_s)
-    ref_model, c, info = solve(cfg_s, exact_fields, batch, ls=ls, n_radial=a.n_radial,
-                               nonlinear=a.nonlinear, iters=a.iters)
     tag = "nonlinear" if a.nonlinear else "linear"
-    np.savez(os.path.join(a.run, f"linref_{tag}.npz"), c=np.asarray(c), ls=np.asarray(ls),
-             n_radial=a.n_radial, info=json.dumps(info))
+    npz = os.path.join(a.run, f"linref_{tag}.npz")
+    if a.reuse and os.path.exists(npz):
+        z = np.load(npz)
+        ref_model = SpectralAxisym(cfg_s, exact_fields, ls=tuple(int(v) for v in z["ls"]),
+                                   n_radial=int(z["n_radial"]))
+        c, info = jnp.asarray(z["c"]), json.loads(str(z["info"]))
+        print(f"[linref] reusing {npz}")
+    else:
+        ref_model, c, info = solve(cfg_s, exact_fields, batch, ls=ls, n_radial=a.n_radial,
+                                   nonlinear=a.nonlinear, iters=a.iters)
+        np.savez(npz, c=np.asarray(c), ls=np.asarray(ls), n_radial=a.n_radial,
+                 info=json.dumps(info))
 
     run_fields = point_fields(model, state["net"])
     cmp_ = compare(run_fields, ref_model.fields_of(c), exact_fields, cfg)
@@ -265,8 +355,15 @@ def main(argv=None):
     for key, rows in cmp_["modes"].items():
         for rho, a_net, a_ref in rows:
             print(f"    {key:<9} {rho:8.2f}  {a_net:+.4e}  {a_ref:+.4e}")
+    prof = profiles(run_fields, ref_model.fields_of(c), exact_fields, cfg)
+    png = os.path.join(a.run, f"linref_{tag}.png")
+    plot_profiles(prof, png, f"{os.path.basename(os.path.normpath(a.run))} against the {tag} "
+                             f"reference (S2 = {cfg.lam_bc_S2:g}; loss of the reference "
+                             f"{info['steps'][-1]['loss']:.1e})")
+    print(f"[linref] figure: {png}")
     with open(os.path.join(a.run, f"linref_{tag}.json"), "w") as fh:
-        json.dump({"info": info, "compare": cmp_}, fh, indent=1)
+        json.dump({"info": info, "compare": cmp_,
+                   "profiles": {k: np.asarray(v).tolist() for k, v in prof.items()}}, fh, indent=1)
 
 
 if __name__ == "__main__":

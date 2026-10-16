@@ -165,6 +165,17 @@ the `P_l` coefficients of lambda and h_rr at rho = 1 ... 100).  The Jacobian is 
 all of it the first compilation; `run_batch_sketch.sh` runs the nonlinear one on the hub's GPU for
 every `ib16k_*` arm.
 
+### 5.2b The comparison figure
+
+Every `linref` call also writes `runs/<run>/linref_<mode>.png`: four panels against rho (log-log) --
+the `P_2` coefficient of lambda and of h_rr, network against reference (with a rho^-3 guide), and the
+angular rms of `lam_net - lam_ref` and of `max_ij |h_net - h_ref|`, each next to the size of the
+perturbation itself (reference - spherical), the scale the miss is read on.  The profiles are saved
+in `linref_<mode>.json` as well.  `--reuse` takes the coefficients from an existing
+`linref_<mode>.npz` instead of solving again: the reference depends only on the PROBLEM, so one
+solve serves every run of the same recipe (the corrected pq16k recipe's reference, l <= 6, 24 radial
+modes, loss 3.0e-9, was copied into each `ib16k_*` run on the hub on 2026-10-16).
+
 ### 5.3 What it found: the inner condition over-determined the problem
 
 All on the `pq` recipe (S2 = -1/12, R0 = 1/sqrt3, rho in [1, 100], four outer shells), compared
