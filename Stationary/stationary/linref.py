@@ -186,6 +186,32 @@ def multipole(f, rho, l, n_gl=48):
     return (2 * l + 1) / 2 * np.sum(vals * P * w)
 
 
+def farfield(ref_fields, cfg, radii=(10.0, 20.0, 30.0, 50.0, 70.0, 100.0)):
+    """Is the far field a decaying tail?  Per radius: the P_2 coefficient of the GH potential P,
+    its log-slope (a tail of a2 rho^-3 gives -3), and the P_0 and P_2 parts of the outer Robin
+    operator on P (the run's own kernel), which a decaying tail makes ~0 at EVERY radius, not
+    only on the shells where it is imposed.  Radii are physical-chart radii scaled to the run's
+    [rho_in, rho_out]."""
+    from .losses import drop_power, gh_potential, robin_operator_exps
+    orders = cfg.robin_orders or {"lam": cfg.robin_order}
+    exps = [cfg.robin_exps["lam"] + i for i in range(orders["lam"])]
+    if getattr(cfg, "robin_lam_drop_dipole", True):
+        exps = drop_power(exps, 2.0)
+    P = lambda y: gh_potential(ref_fields(y).lam)
+    rob = jax.jit(jax.vmap(lambda x: robin_operator_exps(P, x, exps, 0.0)))
+    pv = jax.jit(jax.vmap(P))
+    scale = float(cfg.rho_out) / 100.0
+    rows = []
+    for r in radii:
+        rho = r * scale
+        a2 = multipole(pv, rho, 2)
+        a2p = multipole(pv, rho * 1.02, 2)
+        slope = float(np.log(abs(a2p) / abs(a2)) / np.log(1.02)) if a2 and a2p else float("nan")
+        rows.append({"rho": rho, "P2": a2, "slope": slope,
+                     "robin_l0": multipole(rob, rho, 0), "robin_l2": multipole(rob, rho, 2)})
+    return rows
+
+
 def compare(run_fields, ref_fields, exact_fields, cfg, n=4096, seed=999):
     """The run's network against the reference: pointwise, and mode by mode."""
     from .problem import sample_shell
@@ -317,6 +343,13 @@ def main(argv=None):
     ap.add_argument("--n-bnd", type=int, default=400)
     ap.add_argument("--iters", type=int, default=8)
     ap.add_argument("--params", default="params.pkl")
+    ap.add_argument("--scale-exps", default=None,
+                    help="override the run's rho exponents compat,ricci,gauge,lam_eq, e.g. 3,4,3,4")
+    ap.add_argument("--outer-shell-fracs", default=None,
+                    help="override the Robin ladder (fractions of rho_out), e.g. 1,0.9,0.8,0.7,0.5,0.35")
+    ap.add_argument("--tag", default="",
+                    help="suffix of the output files, linref_nonlinear_<tag>.*, so variants do not "
+                         "overwrite the reference")
     ap.add_argument("--reuse", action="store_true",
                     help="reuse <run>/linref_<mode>.npz if present instead of solving again")
     a = ap.parse_args(argv)
@@ -327,10 +360,17 @@ def main(argv=None):
     exact_fields = exact_asset(cfg)
     if exact_fields is None:
         raise SystemExit("the run has no spherical background (--ref-solution): nothing to perturb")
-    cfg_s = cfg.__class__(**{**cfg.__dict__, "n_coll": a.n_coll, "n_bnd": a.n_bnd,
-                             "n_bnd_outer": a.n_bnd})
+    over = {"n_coll": a.n_coll, "n_bnd": a.n_bnd, "n_bnd_outer": a.n_bnd}
+    if a.scale_exps:
+        over["scale_exps"] = dict(zip(["compat", "ricci", "gauge", "lam_eq"],
+                                      [float(v) for v in a.scale_exps.split(",")]))
+    if a.outer_shell_fracs:
+        over["outer_shell_fracs"] = tuple(float(v) for v in a.outer_shell_fracs.split(","))
+    cfg_s = cfg.__class__(**{**cfg.__dict__, **over})
+    if len(over) > 3:
+        print(f"[linref] overrides: { {k: v for k, v in over.items() if k not in ('n_coll', 'n_bnd', 'n_bnd_outer')} }")
     batch = make_batch(jax.random.PRNGKey(cfg.seed + 4242), cfg_s)
-    tag = "nonlinear" if a.nonlinear else "linear"
+    tag = ("nonlinear" if a.nonlinear else "linear") + (f"_{a.tag}" if a.tag else "")
     npz = os.path.join(a.run, f"linref_{tag}.npz")
     if a.reuse and os.path.exists(npz):
         z = np.load(npz)
@@ -344,6 +384,13 @@ def main(argv=None):
         np.savez(npz, c=np.asarray(c), ls=np.asarray(ls), n_radial=a.n_radial,
                  info=json.dumps(info))
 
+    print("\n[linref] far field of the reference (GH potential P; a decaying tail has P2 slope -3 "
+          "and Robin ~0 at every radius):")
+    print("    rho        P2 coeff    slope    Robin(P) l=0   Robin(P) l=2")
+    ff = farfield(ref_model.fields_of(c), cfg_s)
+    for row in ff:
+        print(f"    {row['rho']:6.1f}  {row['P2']: .3e}  {row['slope']: 6.2f}   {row['robin_l0']: .2e}"
+              f"      {row['robin_l2']: .2e}")
     run_fields = point_fields(model, state["net"])
     cmp_ = compare(run_fields, ref_model.fields_of(c), exact_fields, cfg)
     print(f"\n[linref] {a.run} against the {tag} reference (S2 = {cfg.lam_bc_S2:g}):")
@@ -362,7 +409,7 @@ def main(argv=None):
                              f"{info['steps'][-1]['loss']:.1e})")
     print(f"[linref] figure: {png}")
     with open(os.path.join(a.run, f"linref_{tag}.json"), "w") as fh:
-        json.dump({"info": info, "compare": cmp_,
+        json.dump({"info": info, "compare": cmp_, "farfield": ff,
                    "profiles": {k: np.asarray(v).tolist() for k, v in prof.items()}}, fh, indent=1)
 
 

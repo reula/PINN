@@ -176,6 +176,27 @@ in `linref_<mode>.json` as well.  `--reuse` takes the coefficients from an exist
 solve serves every run of the same recipe (the corrected pq16k recipe's reference, l <= 6, 24 radial
 modes, loss 3.0e-9, was copied into each `ib16k_*` run on the hub on 2026-10-16).
 
+**The far field of the reference (2026-10-16).**  `linref` now prints, per radius, the P_2
+coefficient of the GH potential P, its log-slope and the P_0/P_2 parts of the outer Robin operator
+on P (`farfield`).  For the current reference (l <= 6, 24 radial modes, loss 3.0e-9):
+
+    rho     P2 coeff   slope   Robin(P) l=0   Robin(P) l=2
+     10    1.76e-04    -3.02    -5.5e-04       -1.4e-05
+     20    2.20e-05    -2.96    -5.2e-04        3.5e-05
+     30    7.08e-06    -2.45    -7.3e-04        4.5e-05
+     50    3.04e-06    -0.50    -9.3e-04        1.6e-04
+     70    3.43e-06    +0.88    -5.7e-08        6.6e-09      <- Robin ladder: 70, 80, 90, 100
+    100    4.13e-06    +0.04    -7.1e-10        2.5e-11
+
+The basis is converged (Chebyshev coefficients of the l = 2 lambda part fall to 1e-9; 8 of the 24
+nodes lie beyond rho = 38), and the Robin condition holds where it is imposed.  But the tail is
+-3 only to rho ~ 20: between 30 and 70 the field is not the decaying tail the condition
+annihilates.  The residual floor (per-point rms ~5e-5 after the rho^2 scaling) is larger than the
+l = 2 signal there (3e-6), so the solve does not determine it.  Two variants test this, with the
+new flags `--scale-exps` (the rho exponents, all +2: 3,4,3,4) and `--outer-shell-fracs` (the
+ladder extended to 0.5 and 0.35), each written under `--tag` so the reference is not overwritten.
+Results: pending.
+
 ### 5.3 What it found: the inner condition over-determined the problem
 
 All on the `pq` recipe (S2 = -1/12, R0 = 1/sqrt3, rho in [1, 100], four outer shells), compared
