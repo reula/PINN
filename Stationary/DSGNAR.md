@@ -512,3 +512,8 @@ exports `MPLBACKEND=Agg`.
 
 Next: keep stage 1 (target 0.075 throughout, or a reachable stage-2 target such as 0.15), and a
 larger sketch (s = 1600-2000 of d = 2285).
+
+Round 2 on Mendieta (`mendieta_submit.sh`, submitted 2026-10-16), all from the same `ib16k_adam`
+parameters: DSGNAR s = 1100 with the stage-2 target at 0.075 (no switch) and at 0.15; s = 2000 at
+0.075; DSGNAR's stage 1 (100 iterations) handing over to SSBroyden; SSBroyden continued from its
+20000-iteration result for 40000 more.  Results: pending.

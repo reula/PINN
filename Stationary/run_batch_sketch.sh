@@ -104,17 +104,8 @@ S_ADAM="runs/${SP}_adam"
 done_s() { [ -f "$HERE/runs/$1/report.json" ] && echo "   [done]"; }
 done_e() { [ -f "$EVO/runs/$1/report.md" ] && echo "   [done]"; }
 
-# the recipe of run_dsgnar.sh (the pq_c100 shell), shared by every Stationary arm
-S_RECIPE=(--arch axisym_hybrid
-          --n-coll 16384 --n-bnd 1024 --n-bnd-outer 1024 --ckpt-every 500
-          --R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0
-          --vtk-physical-inner 1.0
-          --lam0 0.33333333333333337 --lam-inf 1.0 --lam-bc-S2 -0.08333333333333333
-          --outer-bc robin --robin-orders h=3,lam=3 --no-robin-G
-          --eq-weights compat=0,ricci=1,gauge=1,lam_eq=1
-          --pin-lam-robin --pin-h-robin --ref-solution --ref-asymptotic 1.0
-          --outer-shell-fracs 1.0,0.9,0.8,0.7
-          --resample-every 500 --decay-feature --log-resources --no-figures)
+# the problem, shared with mendieta_train.sbatch
+source "$HERE/recipe_pq16k.sh"
 
 plan() {
     echo "=== batch_sketch  $(date -u '+%Y-%m-%d %H:%M:%S UTC')  HEAD $(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)"

@@ -1086,8 +1086,10 @@ one rises to +0.60 (from ~0.2 at s = 733) -- consistent with the rank reading of
 The soft_all re-run's 122 stops have rank 436-808, often below s = 733, and still cos ~0.3 with
 the exact LM step gaining ~10%: for soft_all, rank is not the whole story.
 
-Next: the targets with the warm start (no overshoot rule), the targets' two halves separately, and
-the targets on the hard cell at s = 1500.
+Round 2 (Mendieta, submitted 2026-10-16): the targets' two halves separately
+(`pp_soft_all_t075`, `pp_soft_all_dmin8`), the targets with the warm start
+(`pp_soft_all_targets_warm`, no overshoot rule), and the targets on the hard cell at s = 1500
+(`pp_hard_targets_s1500`).  Results: pending.
 
 ## 7. Tests
 

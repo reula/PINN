@@ -34,6 +34,11 @@ RUNS=(
   "pp_hard_all|hard|0|$ALL"
   "dsgnar_soft_all_nc2201_audit|soft_all|0|"
   "dsgnar_hard_nc2201_s1500_audit|hard|1500|"
+  # round 2 (2026-10-16): which half of the targets does it, and the targets with what helped
+  "pp_soft_all_t075|soft_all|0|--set dsgnar_stage1_ratio=0.075"
+  "pp_soft_all_dmin8|soft_all|0|--set dsgnar_delta_min=1e-8"
+  "pp_soft_all_targets_warm|soft_all|0|$TARG $WARM"
+  "pp_hard_targets_s1500|hard|1500|$TARG"
 )
 
 echo "checkout $HERE  HEAD $(git rev-parse --short HEAD)"

@@ -116,6 +116,15 @@ after copying each run's `config.json` and `params.pkl` from the hub (this `/hom
 parallel on A30s, 1-2 h each -- the whole ablation in two hours instead of the ~12 h it would have
 taken in sequence on the hub.
 
+The Stationary optimiser runs (round 2, 2026-10-16), one job each, all from the hub's
+`ib16k_adam` warm-up (copied to `runs/ib16k_adam/`):
+
+    bash ~/Julia/PINN/Stationary/mendieta_submit.sh             # DRY=1 to only print
+
+`mendieta_train.sbatch` is the job (the problem itself is `Stationary/recipe_pq16k.sh`, shared with
+the hub's batch); a run that starts from another run's result is chained with
+`--dependency=afterok`.
+
 ## 6. Differences from the hub
 
 | | JupyterHub (HUB.md) | Mendieta |
