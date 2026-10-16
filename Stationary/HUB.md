@@ -1032,8 +1032,10 @@ check, not a resolution study — and spend the big configuration on the dipole.
 The analysis is produced by the run itself (figures + `report.txt`, see §4):
 `lambda_vs_rho.png` (λ against ρ at several angles, exact solution overlaid),
 `lambda_inner.png` (imposed `lambda` on the inner sphere vs the network),
-`P_multipoles_outer.png` (the `l = 0, 1, 2` angular dependences of the GH potential
-P = (1-λ²)/(4λ) at `rho_final = 100`, with amplitudes), `P_multipole_decay.png` (P's amplitudes
+`P_multipoles_outer.png` (the GH potential P = (1-λ²)/(4λ) at `rho_out`: its Legendre
+spectrum l = 0..8 on a log scale, the anisotropy P - c_0, and what is left after l <= 2 -- each
+against the nonlinear reference when the run has one; since 2026-10-16, before that the l = 0..2
+angular profiles on linear axes), `P_multipole_decay.png` (P's amplitudes
 vs `rho` against the expected `-(l+1)`, and its S_lm against P of the inner data), and `report.txt`/`report.json` with the residuals, boundary values and
 multipole content.
 

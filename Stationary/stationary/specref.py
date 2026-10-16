@@ -235,8 +235,15 @@ def _bins(xs, dh, dl, ph, pl, cfg):
     return out
 
 
-def load_reference(run_dir, cfg, exact_fields, tag="nonlinear", path=None):
+# The references a run is graded against, best first: the rho^4-weighted solve, whose far field is
+# determined (PERTURBATION.md 5.2b), then the original rho^2 one, whose tail beyond rho ~ 30 is not.
+REFERENCE_TAGS = ("nonlinear_rhoW", "nonlinear")
+
+
+def load_reference(run_dir, cfg, exact_fields, tag=None, path=None):
     """The spectral reference saved in `<run_dir>/specref_<tag>.npz`, as point fields.
+
+    `tag=None` takes the first of REFERENCE_TAGS that exists.
 
     Returns `(fields, info)`, or `(None, reason)` when there is none or it does not belong to this
     run's problem.  The check is the one datum that tells problems apart: the reference must carry
@@ -244,6 +251,14 @@ def load_reference(run_dir, cfg, exact_fields, tag="nonlinear", path=None):
     from another run with different data misses it by ~|delta S2| ~ 1e-2.
     """
     from .problem import lam_inner_bc, sample_sphere
+    if path is None and tag is None:
+        for t in REFERENCE_TAGS:
+            if any(os.path.exists(os.path.join(run_dir, f"{pre}_{t}.npz"))
+                   for pre in ("specref", "linref")):
+                tag = t
+                break
+        else:
+            tag = REFERENCE_TAGS[-1]
     if path is None:
         path = os.path.join(run_dir, f"specref_{tag}.npz")
         legacy = os.path.join(run_dir, f"linref_{tag}.npz")     # written before the rename

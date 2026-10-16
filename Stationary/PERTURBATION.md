@@ -223,7 +223,9 @@ residual is weighted differently.  Inside rho ~ 10 the two references agree.
 old reference had the same flattening, so the comparison against it showed agreement there.  The
 networks train with the same rho^2 scaling, so they plausibly carry the same under-determination
 (untested).  `specref_nonlinear_rhoW.npz` is the reference to grade against from now on;
-`stationary.specref_summary` draws every run's error against it.  The ladder variant did not run
+`stationary.specref_summary` draws every run's error against it, and `specref.load_reference`
+(the report's VS NONLINEAR REFERENCE section, `P_multipoles_outer.png`) takes it before the
+rho^2 one when a run has both (`REFERENCE_TAGS`).  The ladder variant did not run
 (the shell was killed with the terminal before it started).
 
 **Every run against the rhoW reference** (`stationary.specref_summary`, 2026-10-16; angular rms of the

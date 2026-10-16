@@ -330,30 +330,7 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3, exact_fields=Non
     report["outer_power_P"] = power
     report["P_outer_mean"] = float(jnp.mean(vals_o))
 
-    fig, ax = plt.subplots(1, 3, figsize=(17, 5))
-    for l in range(min(3, lmax + 1)):
-        ax[0].plot(np.asarray(th_o), np.asarray(prof[l]), label=f"$l={l}$ (amp {np.sqrt(power[l]):.3e})")
-    ax[0].set_title(f"$P$ multipole angular dependence at $\\rho={cfg.rho_out:g}$")
-    ax[0].set_xlabel("$\\theta$"); ax[0].set_ylabel("$P_l(\\theta)$"); ax[0].legend()
-    ls = list(range(min(3, lmax + 1)))
-    ax[1].bar([str(l) for l in ls], [np.sqrt(power[l]) for l in ls])
-    ax[1].set_title("multipole amplitudes of $P$: $\\sqrt{\\sum_m a_{lm}^2}$"); ax[1].set_xlabel("$l$")
-    th_mu = np.arccos(np.asarray(mu_o)[:, 0])
-    ax[2].plot(th_mu, np.asarray(vals_o[:, 0]), label="$P(\\theta,\\varphi=0)$")
-    ax[2].plot(np.asarray(th_o), np.asarray(sum(prof[l] for l in ls)), "--", label="$l\\leq2$ sum")
-    ax[2].set_title("reconstructed vs full $P$ at the outer sphere")
-    ax[2].set_xlabel("$\\theta$"); ax[2].legend()
-    for a in ax:
-        a.grid(alpha=0.3)
-    fig.suptitle(f"multipoles of the Geroch-Hansen potential $P=(1-\\lambda^2)/(4\\lambda)$ at the "
-                 f"outer sphere $\\rho={cfg.rho_out:g}$   |   inner $\\lambda$ data: "
-                 f"$S_1={cfg.lam_bc_S1:g}$, $S_2={cfg.lam_bc_S2:g}$, "
-                 f"$\\lambda_0={cfg.lam0:g}$   |   arch={cfg.arch}"
-                 f"\nmean $P$ there = {float(jnp.mean(vals_o)):.4e}",
-                 fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
-    fig.savefig(os.path.join(outdir, "P_multipoles_outer.png"), dpi=120)
-    plt.close(fig)
+    outer_figure(pf_P, cfg, outdir, exact_fields, report)
 
     # ---------------- how each multipole decays with rho
     from .problem import physical_factor
@@ -425,6 +402,116 @@ def make_figures(point_fields, cfg, outdir: str, lmax: int = 3, exact_fields=Non
     plt.close(fig)
 
     return report
+
+
+def legendre_spectrum(point_fields, rho, lmax: int = 8, n_mu: int = 64, n_phi: int = 32):
+    """Axisymmetric Legendre coefficients c_l of `.lam` on the sphere |x| = rho, l = 0..lmax.
+
+    field(theta, phi) = sum_l c_l P_l(cos theta) + (non-axisymmetric part).  The phi-average is
+    expanded; the non-axisymmetric part is returned as one number, its rms over the sphere.  Also
+    returns the phi-averaged profile on the Gauss nodes, for plotting against theta.
+    """
+    mu, w = np.polynomial.legendre.leggauss(n_mu)
+    phi = 2 * np.pi * np.arange(n_phi) / n_phi
+    MU, PHI = np.meshgrid(mu, phi, indexing="ij")
+    s = np.sqrt(1 - MU ** 2)
+    xs = jnp.asarray(np.stack([rho * s * np.cos(PHI), rho * s * np.sin(PHI), rho * MU], -1))
+    vals = np.asarray(jax.vmap(lambda y: point_fields(y).lam)(xs.reshape(-1, 3))).reshape(MU.shape)
+    avg = vals.mean(axis=1)
+    c = [(2 * l + 1) / 2 * float(np.sum(w * avg * np.polynomial.legendre.Legendre.basis(l)(mu)))
+         for l in range(lmax + 1)]
+    nonaxi = float(np.sqrt(np.sum(w[:, None] * (vals - avg[:, None]) ** 2) / (2 * n_phi)))
+    return np.asarray(c), nonaxi, mu, avg
+
+
+def outer_figure(pf_P, cfg, outdir, exact_fields=None, report=None, lmax: int = 8):
+    """P_multipoles_outer.png: what the far field of P is made of, at rho_out.
+
+    (a) the Legendre spectrum |c_l| of P, l = 0..lmax, log scale, network against the nonlinear
+        reference when the run has one: which multipoles are physical and which are noise (with
+        S1 = 0 the odd l vanish by reflection symmetry, so they are the network's noise floor);
+    (b) the anisotropy P(theta) - c_0, network and reference, and the reference's l = 2 term;
+    (c) what is left after l <= 2, network and reference.
+    The old version drew l = 0..2 on linear axes, where the monopole (50x the rest) flattened
+    everything else, and a bar chart in which only l = 0 was visible.
+    """
+    import matplotlib.pyplot as plt
+    from .losses import gh_potential
+    BLUE, ORANGE, GREEN, MUTED = "#2a78d6", "#eb6834", "#1baf7a", "#898781"
+    rho = float(cfg.rho_out)
+    c_net, nonaxi, mu, avg_net = legendre_spectrum(pf_P, rho, lmax)
+    ref, why = None, None
+    if exact_fields is not None and (cfg.lam_bc_S1 or cfg.lam_bc_S2):
+        try:
+            from .specref import load_reference
+            ref, why = load_reference(outdir, cfg, exact_fields)
+        except Exception as exc:                     # a figure must not fail on the reference
+            ref, why = None, str(exc)
+    if ref is not None:
+        c_ref, _, _, avg_ref = legendre_spectrum(gh_fields(ref), rho, lmax)
+    if report is not None:
+        report["outer_legendre_P"] = [float(v) for v in c_net]
+        report["outer_nonaxisymmetric_rms_P"] = nonaxi
+        if ref is not None:
+            report["outer_legendre_P_reference"] = [float(v) for v in c_ref]
+
+    th = np.arccos(mu)
+    ls = np.arange(lmax + 1)
+    fig, ax = plt.subplots(1, 3, figsize=(17, 5.2))
+    a = ax[0]
+    off = 0.18 if ref is not None else 0.0
+    a.bar(ls - off, np.maximum(np.abs(c_net), 1e-18), width=0.36 if ref is not None else 0.6,
+          color=BLUE, label="network")
+    if ref is not None:
+        a.bar(ls + off, np.maximum(np.abs(c_ref), 1e-18), width=0.36, color=ORANGE,
+              label="nonlinear reference")
+    # the axis starts just below the network's smallest coefficient: the reference's odd l are
+    # machine zeros (1e-20) and would otherwise stretch the axis over 14 empty decades
+    floor = max(float(np.min(np.abs(c_net[np.abs(c_net) > 0]))) / 30.0, 1e-16)
+    if nonaxi >= floor:
+        a.axhline(nonaxi, color=MUTED, ls=":", lw=1.2,
+                  label=f"non-axisymmetric part (rms {nonaxi:.1e})")
+    else:
+        a.plot([], [], " ", label=f"non-axisymmetric part: rms {nonaxi:.0e}")
+    if ref is not None:
+        for l in ls:
+            if abs(c_ref[l]) < floor:
+                a.text(l + off, floor * 1.6, "$\\approx0$", ha="center", fontsize=8, color=ORANGE)
+    a.set_yscale("log"); a.set_ylim(bottom=floor); a.set_xticks(ls); a.set_xlabel("$l$")
+    a.set_ylabel(r"$|c_l|$,  $P=\sum_l c_l P_l(\cos\theta)$")
+    odd = ("\n(odd $l$ vanish by symmetry, so the network's odd $l$ are its noise floor)"
+           if not cfg.lam_bc_S1 else "")
+    a.set_title(f"spectrum of $P$ at $\\rho={rho:g}${odd}", fontsize=10)
+    a.legend(fontsize=8)
+
+    a = ax[1]
+    a.plot(th, avg_net - c_net[0], color=BLUE, lw=2, label="network")
+    if ref is not None:
+        a.plot(th, avg_ref - c_ref[0], "--", color=ORANGE, lw=2, label="nonlinear reference")
+        a.plot(th, c_ref[2] * np.polynomial.legendre.Legendre.basis(2)(mu), ":", color=GREEN,
+               lw=1.5, label="reference, $l=2$ term only")
+    a.set_xlabel(r"$\theta$"); a.set_ylabel(r"$P(\theta)-c_0$  ($\varphi$-averaged)")
+    a.set_title("the anisotropy: everything but the monopole", fontsize=10)
+    a.legend(fontsize=8)
+
+    a = ax[2]
+    low = lambda c: sum(c[l] * np.polynomial.legendre.Legendre.basis(l)(mu) for l in range(3))
+    a.plot(th, avg_net - low(c_net), color=BLUE, lw=2, label="network")
+    if ref is not None:
+        a.plot(th, avg_ref - low(c_ref), "--", color=ORANGE, lw=2, label="nonlinear reference")
+    a.set_xlabel(r"$\theta$"); a.set_ylabel(r"$P(\theta)-\sum_{l\leq2}c_lP_l$")
+    a.set_title("what is left after $l\\leq2$ (higher multipoles, and the error)", fontsize=10)
+    a.legend(fontsize=8)
+    for a in ax:
+        a.grid(alpha=0.3)
+    refline = (f"reference: {os.path.basename(why['path'])}" if ref is not None
+               else f"no nonlinear reference ({why})" if why else "no nonlinear reference")
+    fig.suptitle(f"the Geroch-Hansen potential $P=(1-\\lambda^2)/(4\\lambda)$ at the outer sphere "
+                 f"$\\rho={rho:g}$   |   inner $\\lambda$ data $S_1={cfg.lam_bc_S1:g}$, "
+                 f"$S_2={cfg.lam_bc_S2:g}$, $\\lambda_0={cfg.lam0:g}$   |   {refline}", fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.savefig(os.path.join(outdir, "P_multipoles_outer.png"), dpi=120)
+    plt.close(fig)
 
 
 def multipole_radial_profile(point_fields, rhos, lmax: int = 3, n_mu: int = 40,

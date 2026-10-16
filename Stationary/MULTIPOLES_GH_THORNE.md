@@ -605,6 +605,13 @@ $P$, still not the moments beyond linear order (the cubic term above).  `report.
 both tables, $\lambda$ and $P$; the helpers are `multipoles.gh_fields(point_fields)` (the same
 fields with `.lam` replaced by $P$) and `gh_inner_constants`.
 
+`P_multipoles_outer.png` (redrawn 2026-10-16) shows, at $\rho_{\rm out}$, the Legendre spectrum
+$|c_l|$ of $P$ for $l=0..8$ on a log scale, the anisotropy $P-c_0$, and what is left after
+$l\le2$, each next to the nonlinear spectral reference when the run has one
+(`multipoles.legendre_spectrum`, `outer_figure`).  For `ib16k_ssbroyden` against the rhoW
+reference: $c_2$ = 1.8e-6 against 1.7e-7, and $c_1..c_7$ = 1e-7..5e-7 where the reference has
+machine zeros (odd $l$) or 5e-9 ($l=4,6$) -- the network's far-field anisotropy is mostly error.
+
 ### 6.2 A GH-moment module: what to implement, in order
 
 1. **Exact axisymmetric assets (cheap, closed form).**  For any `Rods` configuration, compute
