@@ -358,30 +358,38 @@ def plot_profiles(prof, path, title):
                          "xtick.color": MUTED, "ytick.color": MUTED, "text.color": INK})
     rho = prof["rho"]
     fig, axs = plt.subplots(2, 2, figsize=(11, 7.5), constrained_layout=True)
+    # Bottom row: the ERROR (network - nonlinear reference) next to the SIZE OF THE PERTURBATION
+    # (nonlinear reference - spherical solution), the scale the error is read on.  The labels
+    # say which is which: "network - reference" / "reference - spherical" did not.
+    ERR = "error: network $-$ nonlinear reference"
+    PERT = "perturbation size: nonlinear reference $-$ spherical solution"
     panels = [
-        (axs[0, 0], "|lambda P2 coefficient|", [("network", np.abs(prof["lam2_net"]), BLUE, "-"),
-                                                ("reference", np.abs(prof["lam2_ref"]), ORANGE, "--")]),
-        (axs[0, 1], "|h_rr P2 coefficient|", [("network", np.abs(prof["hrr2_net"]), BLUE, "-"),
-                                              ("reference", np.abs(prof["hrr2_ref"]), ORANGE, "--")]),
-        (axs[1, 0], "lambda: angular rms", [("network - reference", prof["dlam_rms"], BLUE, "-"),
-                                            ("perturbation (reference - spherical)",
-                                             prof["pert_lam_rms"], ORANGE, "--")]),
-        (axs[1, 1], "h: angular rms of max_ij |.|", [("network - reference", prof["dh_rms"], BLUE, "-"),
-                                                     ("perturbation (reference - spherical)",
-                                                      prof["pert_h_rms"], ORANGE, "--")]),
+        (axs[0, 0], r"$|\lambda$ $P_2$ coefficient$|$", r"$\lambda$: the quadrupole",
+         [("network", np.abs(prof["lam2_net"]), BLUE, "-"),
+          ("nonlinear reference", np.abs(prof["lam2_ref"]), ORANGE, "--")]),
+        (axs[0, 1], r"$|h_{rr}$ $P_2$ coefficient$|$", r"$h_{rr}$: the quadrupole",
+         [("network", np.abs(prof["hrr2_net"]), BLUE, "-"),
+          ("nonlinear reference", np.abs(prof["hrr2_ref"]), ORANGE, "--")]),
+        (axs[1, 0], r"angular rms of $|\delta\lambda|$ on the sphere",
+         r"$\lambda$: the error, against the size of the perturbation",
+         [(ERR, prof["dlam_rms"], BLUE, "-"), (PERT, prof["pert_lam_rms"], ORANGE, "--")]),
+        (axs[1, 1], r"angular rms of $\max_{ij}|\delta h_{ij}|$ on the sphere",
+         r"$h$: the error, against the size of the perturbation",
+         [(ERR, prof["dh_rms"], BLUE, "-"), (PERT, prof["pert_h_rms"], ORANGE, "--")]),
     ]
-    for ax, ylabel, series in panels:
+    for ax, ylabel, ptitle, series in panels:
         for label, y, color, ls in series:
             ax.loglog(rho, np.maximum(y, 1e-18), ls, color=color, lw=2, label=label)
-        ax.set_xlabel("rho")
+        ax.set_xlabel(r"$\rho$")
         ax.set_ylabel(ylabel)
+        ax.set_title(ptitle, fontsize=10)
         ax.grid(True, which="major", color=GRID, lw=0.8)
         ax.legend(frameon=False, fontsize=9)
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
     ax = axs[0, 0]
     r3 = rho ** -3.0 * np.abs(prof["lam2_ref"][0]) * rho[0] ** 3
-    ax.loglog(rho, r3, ":", color=MUTED, lw=1, label="rho^-3 (linear theory)")
+    ax.loglog(rho, r3, ":", color=MUTED, lw=1, label=r"$\rho^{-3}$ (linear theory)")
     ax.legend(frameon=False, fontsize=9)
     fig.suptitle(title, fontsize=11)
     fig.savefig(path, dpi=130)
@@ -409,10 +417,26 @@ def main(argv=None):
     ap.add_argument("--tag", default="",
                     help="suffix of the output files, specref_nonlinear_<tag>.*, so variants do not "
                          "overwrite the reference")
+    ap.add_argument("--replot", action="store_true",
+                    help="only redraw <run>/specref_<mode>[_<tag>].png from the profiles saved in "
+                         "its .json (no solve, no network evaluation)")
     ap.add_argument("--reuse", action="store_true",
                     help="reuse <run>/specref_<mode>.npz if present instead of solving again")
     a = ap.parse_args(argv)
 
+    if a.replot:
+        tag = ("nonlinear" if a.nonlinear else "linear") + (f"_{a.tag}" if a.tag else "")
+        js = os.path.join(a.run, f"specref_{tag}.json")
+        if not os.path.exists(js):
+            raise SystemExit(f"no {js}")
+        d = json.load(open(js))
+        prof = {k: np.asarray(v) for k, v in d["profiles"].items()}
+        loss = d["info"]["steps"][-1]["loss"] if d.get("info", {}).get("steps") else float("nan")
+        png = os.path.join(a.run, f"specref_{tag}.png")
+        plot_profiles(prof, png, f"{os.path.basename(os.path.normpath(a.run))} against the "
+                                 f"{tag.replace('_', ' ')} reference (its own loss {loss:.1e})")
+        print(f"[specref] figure: {png}")
+        return
     cfg, model, state, run_pf = None, None, None, None
     cfg, model, state = load_run(a.run, a.params)[:3]
     ls = tuple(int(v) for v in (a.ls or ("0,2,4,6" if a.nonlinear else "2")).split(","))
@@ -463,9 +487,9 @@ def main(argv=None):
             print(f"    {key:<9} {rho:8.2f}  {a_net:+.4e}  {a_ref:+.4e}")
     prof = profiles(run_fields, ref_model.fields_of(c), exact_fields, cfg)
     png = os.path.join(a.run, f"specref_{tag}.png")
-    plot_profiles(prof, png, f"{os.path.basename(os.path.normpath(a.run))} against the {tag} "
-                             f"reference (S2 = {cfg.lam_bc_S2:g}; loss of the reference "
-                             f"{info['steps'][-1]['loss']:.1e})")
+    plot_profiles(prof, png, f"{os.path.basename(os.path.normpath(a.run))} against the "
+                             f"{tag.replace('_', ' ')} reference (S2 = {cfg.lam_bc_S2:g}; its own "
+                             f"loss {info['steps'][-1]['loss']:.1e})")
     print(f"[specref] figure: {png}")
     with open(os.path.join(a.run, f"specref_{tag}.json"), "w") as fh:
         json.dump({"info": info, "compare": cmp_, "farfield": ff,

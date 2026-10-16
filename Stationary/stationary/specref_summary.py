@@ -54,15 +54,17 @@ def plot(runs, path, title):
     fig, ax = plt.subplots(2, 2, figsize=(14, 9.5))
     ref = runs[0]["prof"]
     rho = ref["rho"]
-    panels = [(ax[0, 0], "dlam_rms", "pert_lam_rms", r"$\lambda$: angular rms of network $-$ reference"),
-              (ax[0, 1], "dh_rms", "pert_h_rms", r"$h$: angular rms of $\max_{ij}|$network $-$ reference$|$")]
+    panels = [(ax[0, 0], "dlam_rms", "pert_lam_rms",
+               r"$\lambda$ error: angular rms of $|$network $-$ nonlinear reference$|$"),
+              (ax[0, 1], "dh_rms", "pert_h_rms",
+               r"$h$ error: angular rms of $\max_{ij}|$network $-$ nonlinear reference$|$")]
     for a, key, pkey, t in panels:
         for r in runs[::-1]:
             c = col[r["name"]]
             top = c != GREY
             a.loglog(rho, r["prof"][key], color=c, lw=2.0 if top else 1.0, zorder=3 if top else 1,
                      label=f"{r['name']} (loss {r['loss']:.1e})" if top else None)
-        a.loglog(rho, ref[pkey], "k--", lw=1.3, label="the perturbation itself (reference - spherical)")
+        a.loglog(rho, ref[pkey], "k--", lw=1.3, label="perturbation size: nonlinear reference $-$ spherical solution")
         a.set_title(t, fontsize=11); a.set_xlabel(r"$\rho$")
     ax[0, 0].plot([], [], color=GREY, lw=1, label=f"the other {max(len(runs) - len(TOP), 0)} runs")
     ax[0, 0].legend(fontsize=7.5, loc="lower left")
@@ -72,10 +74,10 @@ def plot(runs, path, title):
             c = col[r["name"]]
             a.loglog(rho, np.abs(r["prof"][key + "_net"]), color=c,
                      lw=2.0 if c != GREY else 1.0, zorder=3 if c != GREY else 1)
-        a.loglog(rho, np.abs(ref[key + "_ref"]), "k--", lw=1.6, label="reference")
+        a.loglog(rho, np.abs(ref[key + "_ref"]), "k--", lw=1.6, label="nonlinear reference")
         a.loglog(rho, np.abs(ref[key + "_ref"][0]) * rho ** -3.0, ":", color="#898781", lw=1,
                  label=r"$\rho^{-3}$")
-        a.set_title(t + ": networks (colours as above) and the reference", fontsize=11)
+        a.set_title(t + ": networks (colours as above) and the nonlinear reference", fontsize=11)
         a.set_xlabel(r"$\rho$"); a.legend(fontsize=8)
     for a in ax.ravel():
         a.grid(alpha=.3, which="both")
