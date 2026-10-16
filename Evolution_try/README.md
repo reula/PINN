@@ -889,9 +889,13 @@ spectrum of `J`, the gradient and the sketched step's alignment.  Converged stop
 recorded too, as the control.  `../Stationary/run_batch_sketch.sh` re-runs
 `dsgnar_hard_nc2201` with it on.
 
-One cell in twenty is stall-*broken* rather than stall-limited:
+One cell in twenty was stall-*broken* rather than stall-limited:
 `dsgnar_soft_all_nc2201_s1100` at `1.174e-02`, where window 9 stalled and the single
-retry did not rescue it.  Read that row as an artifact.
+retry did not rescue it.  **That run has been deleted.**  It was invalid data by the
+rule this section states, so the surviving tree has no broken cell and the re-run is
+queued (`rm -rf` then `DSGNAR_SKETCH=1100 FOCUSED=1 bash scripts/batch_runs.sh`).  Its
+number is kept here because the failure it records is real and was one of the things
+that pointed at the sketch.
 
 
 ### 6.12 The Wolfe family, and what the Broyden's failure actually was
