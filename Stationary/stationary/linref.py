@@ -212,8 +212,54 @@ def farfield(ref_fields, cfg, radii=(10.0, 20.0, 30.0, 50.0, 70.0, 100.0)):
     return rows
 
 
-def compare(run_fields, ref_fields, exact_fields, cfg, n=4096, seed=999):
-    """The run's network against the reference: pointwise, and mode by mode."""
+def _bins(xs, dh, dl, ph, pl, cfg):
+    """The same rms numbers per radial region: the shell-wide rms is dominated by rho < 3, where
+    the fields are largest, and says nothing about the far field."""
+    rho = np.asarray(jnp.linalg.norm(xs, axis=-1))
+    edges = [e for e in (cfg.rho_in, 3.0, 10.0, 30.0, cfg.rho_out)
+             if cfg.rho_in <= e <= cfg.rho_out]
+    out = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        m = (rho >= lo) & (rho <= hi)
+        if not m.any():
+            continue
+        r = lambda v: float(np.sqrt(np.mean(np.asarray(v)[m] ** 2)))
+        out.append({"rho_lo": float(lo), "rho_hi": float(hi), "n": int(m.sum()),
+                    "rms_dh": r(dh), "rms_dlam": r(dl),
+                    "perturbation_rms_h": r(ph), "perturbation_rms_lam": r(pl)})
+    return out
+
+
+def load_reference(run_dir, cfg, exact_fields, tag="nonlinear"):
+    """The spectral reference saved in `<run_dir>/linref_<tag>.npz`, as point fields.
+
+    Returns `(fields, info)`, or `(None, reason)` when there is none or it does not belong to this
+    run's problem.  The check is the one datum that tells problems apart: the reference must carry
+    THIS run's inner lambda (lam0, S1, S2) to the accuracy of its own solve -- a reference copied
+    from another run with different data misses it by ~|delta S2| ~ 1e-2.
+    """
+    from .problem import lam_inner_bc, sample_sphere
+    path = os.path.join(run_dir, f"linref_{tag}.npz")
+    if not os.path.exists(path):
+        return None, f"no {os.path.basename(path)} (run `python -m stationary.linref {run_dir} --nonlinear`)"
+    if exact_fields is None:
+        return None, "the run has no spherical background to perturb"
+    z = np.load(path)
+    model = SpectralAxisym(cfg, exact_fields, ls=tuple(int(v) for v in z["ls"]),
+                           n_radial=int(z["n_radial"]))
+    fields = model.fields_of(jnp.asarray(z["c"]))
+    xs = sample_sphere(jax.random.PRNGKey(3), 256, cfg.rho_in)
+    miss = float(jnp.max(jnp.abs(jax.vmap(lambda x: fields(x).lam - lam_inner_bc(x, cfg))(xs))))
+    if miss > 1e-3:
+        return None, (f"{os.path.basename(path)} does not carry this run's inner lambda data "
+                      f"(max miss {miss:.2e}): it was solved for a different problem")
+    info = json.loads(str(z["info"])) if "info" in z.files else {}
+    loss = info["steps"][-1]["loss"] if info.get("steps") else float("nan")
+    return fields, {"path": path, "loss": loss, "inner_lam_miss": miss}
+
+
+def compare(run_fields, ref_fields, exact_fields, cfg, n=4096, seed=999, modes=True):
+    """The run's network against the reference: pointwise, per radial region, and mode by mode."""
     from .problem import sample_shell
     xs = sample_shell(jax.random.PRNGKey(seed), n, cfg)
 
@@ -226,7 +272,11 @@ def compare(run_fields, ref_fields, exact_fields, cfg, n=4096, seed=999):
     out = {"rms_dh": float(jnp.sqrt(jnp.mean(dh ** 2))), "max_dh": float(jnp.max(dh)),
            "rms_dlam": float(jnp.sqrt(jnp.mean(dl ** 2))), "max_dlam": float(jnp.max(dl)),
            "perturbation_rms_h": float(jnp.sqrt(jnp.mean(ph ** 2))),
-           "perturbation_rms_lam": float(jnp.sqrt(jnp.mean(pl ** 2))), "modes": {}}
+           "perturbation_rms_lam": float(jnp.sqrt(jnp.mean(pl ** 2))),
+           "bins": _bins(xs, dh, dl, ph, pl, cfg)}
+    if not modes:
+        return out
+    out["modes"] = {}
     radii = [r for r in (cfg.rho_in, 2.0, 5.0, 10.0, 25.0, 50.0, cfg.rho_out)
              if cfg.rho_in <= r <= cfg.rho_out]
     for name, get in (("lam", lambda F: F.lam), ("h_rr", None)):

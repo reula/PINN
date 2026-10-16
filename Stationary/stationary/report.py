@@ -661,6 +661,35 @@ def main():
         _section("VS EXACT REFERENCE")
         print("    none configured for this run (no --ref-solution / --dirichlet-exact)")
 
+    # ------------------------------------------------ the error: the nonlinear reference
+    # For angular inner data the section above is a DEPARTURE; this is the error, against the
+    # spectral solution of the same boundary-value problem (stationary/linref.py), when one has
+    # been solved for this run.
+    if ref is not None and (cfg.lam_bc_S1 or cfg.lam_bc_S2):
+        from .linref import compare as _lr_compare, load_reference
+        _section("VS NONLINEAR REFERENCE (the error)")
+        try:
+            nl, why = load_reference(run_dir, cfg, ref)
+            if nl is None:
+                print(f"    none: {why}")
+            else:
+                print(f"    reference: {why['path']}   (its own loss {why['loss']:.1e}; inner "
+                      f"lambda carried to {why['inner_lam_miss']:.1e})")
+                cm = _lr_compare(pf, nl, ref, cfg, modes=False)
+                print(f"    over the shell   rms |dh| = {cm['rms_dh']:.3e} (max {cm['max_dh']:.3e})"
+                      f"   rms |dlambda| = {cm['rms_dlam']:.3e} (max {cm['max_dlam']:.3e})")
+                print(f"    the perturbation itself (reference - spherical): rms |dh| "
+                      f"{cm['perturbation_rms_h']:.3e}, rms |dlambda| {cm['perturbation_rms_lam']:.3e}")
+                print("    by region         rms|dh|   (perturb.)   rms|dlambda|  (perturb.)   points")
+                for b in cm["bins"]:
+                    print(f"      rho {b['rho_lo']:5.1f}-{b['rho_hi']:5.1f}   {b['rms_dh']:.2e}  "
+                          f"({b['perturbation_rms_h']:.2e})   {b['rms_dlam']:.2e}    "
+                          f"({b['perturbation_rms_lam']:.2e})   {b['n']}")
+                print("    (an error is small only next to the perturbation in the same region; the")
+                print("    reference's own far field is uncertain beyond rho ~ 30, PERTURBATION.md 5.2b)")
+        except Exception as exc:
+            print(f"    skipped: {exc}")
+
     # ------------------------------------------------ chart-independent comparison
     # The harmonic chart is not unique: the residual family F = c1 rho + c2 F2 of harmonic
     # diffeomorphisms changes h_ij without changing the geometry, and what it changes is
