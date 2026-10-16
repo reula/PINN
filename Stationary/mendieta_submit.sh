@@ -49,8 +49,9 @@ submit m2_dsg_s1100_t15     - $DSG --dsgnar-sketch 1100 --dsgnar-stage2-ratio 0.
 submit m2_dsg_s2000_t075    - $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075   # s = 0.88 d
 # hand-over: DSGNAR's first stage (100 iterations), then SSBroyden from where it stopped
 submit m2_dsg_stage1        - $DSG --dsgnar-sketch 1100 --dsgnar-stage2-ratio 0.075 --dsgnar-steps 100
-submit m2_dsg_then_ssb      m2_dsg_stage1 --steps 0 --init-from runs/m2_dsg_stage1/params.pkl \
-                                          --qn-method ssbroyden --lbfgs-steps 20000
+# m2_dsg_then_ssb: ran (OOM-killed at 18250 of 20000, loss 2.04e-8; DSGNAR.md 9.2), not resubmitted
+# submit m2_dsg_then_ssb    m2_dsg_stage1 --steps 0 --init-from runs/m2_dsg_stage1/params.pkl \
+#                                         --qn-method ssbroyden --lbfgs-steps 20000
 # SSBroyden continued from the hub's 20000-iteration result
 submit m2_ssb_continued     - --steps 0 --init-from runs/ib16k_ssbroyden/params.pkl \
                               --qn-method ssbroyden --lbfgs-steps 40000
