@@ -54,5 +54,10 @@ submit m2_dsg_then_ssb      m2_dsg_stage1 --steps 0 --init-from runs/m2_dsg_stag
 # SSBroyden continued from the hub's 20000-iteration result
 submit m2_ssb_continued     - --steps 0 --init-from runs/ib16k_ssbroyden/params.pkl \
                               --qn-method ssbroyden --lbfgs-steps 40000
+# round 3 (2026-10-16): the residuals weighted by rho^4 instead of rho^2 (scale_exps +2), the
+# weighting under which the spectral reference's far field became determined (PERTURBATION.md 5.2b)
+RHO4="--scale-exps 3,4,3,4"
+submit m3_ssb_rho4          - --steps 0 --init-from $INIT --qn-method ssbroyden --lbfgs-steps 20000 $RHO4
+submit m3_dsg_s2000_rho4    - $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null
