@@ -547,6 +547,13 @@ Read off:
    sample stop for a quasi-Newton method, and DSGNAR has not gone below it.
 
 So on Stationary DSGNAR is competitive in cost (s = 2000 in 68 min against 94 min) but not in the
-loss it reaches (9.4e-8 against 1.7e-8).  Still pending: the stage-1 -> SSBroyden hand-over, which
-asks whether DSGNAR's fast first 100 iterations (6.3e-2 -> 1e-4 in 17 min) shorten SSBroyden's
-path to the same floor.
+loss it reaches (9.4e-8 against 1.7e-8).  The stage-1 -> SSBroyden hand-over (`m2_dsg_then_ssb`) was killed by
+the node's memory limit after 2 h 16 min, at iteration 18250 of 20000 with the loss at 2.04e-8 and
+the host RSS at 60.9 GB (SSBroyden's RSS grows ~3.3 MB per iteration): no faster to the same floor
+than SSBroyden from Adam (1.74e-8 at 20000).  DSGNAR's fast first 100 iterations (6.3e-2 -> 1e-4
+in 17 min) do not shorten SSBroyden's path.
+
+Round 3 (submitted 2026-10-16): the same two optimisers with the residuals weighted by rho^4
+(`--scale-exps 3,4,3,4`), the weighting under which the spectral reference's far field became
+determined (PERTURBATION.md 5.2b): SSBroyden as two jobs of 10000 (the RSS limit above), DSGNAR
+s = 2000 at target 0.075.  Results: pending.

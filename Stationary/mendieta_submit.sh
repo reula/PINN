@@ -36,7 +36,7 @@ submit() {      # submit <name> <dependency name or -> <flags...>
     if [ "$DRY" = "1" ]; then
         echo "  DRY      sbatch -J $name ${depflag[*]:-} mendieta_train.sbatch $name $*"; JID[$name]=DRY
     else
-        JID[$name]=$(sbatch --parsable -J "$name" "${depflag[@]}" mendieta_train.sbatch "$name" "$@")
+        JID[$name]=$(sbatch --parsable -J "$name" --mem="${MEM:-48G}" "${depflag[@]}" mendieta_train.sbatch "$name" "$@")
         echo "  submit   $name -> job ${JID[$name]}${depflag:+ (after ${dep})}"
     fi
 }
@@ -57,7 +57,11 @@ submit m2_ssb_continued     - --steps 0 --init-from runs/ib16k_ssbroyden/params.
 # round 3 (2026-10-16): the residuals weighted by rho^4 instead of rho^2 (scale_exps +2), the
 # weighting under which the spectral reference's far field became determined (PERTURBATION.md 5.2b)
 RHO4="--scale-exps 3,4,3,4"
-submit m3_ssb_rho4          - --steps 0 --init-from $INIT --qn-method ssbroyden --lbfgs-steps 20000 $RHO4
+# SSBroyden's host RSS grows ~3.3 MB per iteration (m2_dsg_then_ssb was killed at 18250 iterations
+# and 60.9 GB; the nodes have 64 GB): two jobs of 10000, the second from the first's parameters
+submit m3_ssb_rho4_a        - --steps 0 --init-from $INIT --qn-method ssbroyden --lbfgs-steps 10000 $RHO4
+submit m3_ssb_rho4          m3_ssb_rho4_a --steps 0 --init-from runs/m3_ssb_rho4_a/params.pkl \
+                              --qn-method ssbroyden --lbfgs-steps 10000 $RHO4
 submit m3_dsg_s2000_rho4    - $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null
