@@ -230,7 +230,7 @@ def _bins(xs, dh, dl, ph, pl, cfg):
     return out
 
 
-def load_reference(run_dir, cfg, exact_fields, tag="nonlinear"):
+def load_reference(run_dir, cfg, exact_fields, tag="nonlinear", path=None):
     """The spectral reference saved in `<run_dir>/linref_<tag>.npz`, as point fields.
 
     Returns `(fields, info)`, or `(None, reason)` when there is none or it does not belong to this
@@ -239,7 +239,7 @@ def load_reference(run_dir, cfg, exact_fields, tag="nonlinear"):
     from another run with different data misses it by ~|delta S2| ~ 1e-2.
     """
     from .problem import lam_inner_bc, sample_sphere
-    path = os.path.join(run_dir, f"linref_{tag}.npz")
+    path = path or os.path.join(run_dir, f"linref_{tag}.npz")
     if not os.path.exists(path):
         return None, f"no {os.path.basename(path)} (run `python -m stationary.linref {run_dir} --nonlinear`)"
     if exact_fields is None:

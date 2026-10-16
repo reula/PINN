@@ -195,7 +195,64 @@ annihilates.  The residual floor (per-point rms ~5e-5 after the rho^2 scaling) i
 l = 2 signal there (3e-6), so the solve does not determine it.  Two variants test this, with the
 new flags `--scale-exps` (the rho exponents, all +2: 3,4,3,4) and `--outer-shell-fracs` (the
 ladder extended to 0.5 and 0.35), each written under `--tag` so the reference is not overwritten.
-Results: pending.
+
+Result of `--scale-exps 3,4,3,4 --tag rhoW` (hub, 2026-10-16; the same basis, sample and data):
+
+    rho     P2 coeff   slope   Robin(P) l=0   Robin(P) l=2
+     10    1.76e-04    -3.02    -1.0e-05       -1.3e-05
+     20    2.19e-05    -3.00    -7.9e-06       -6.1e-07
+     30    6.48e-06    -3.00    -7.6e-06       -2.4e-07
+     50    1.40e-06    -3.00    -7.6e-06       -1.4e-07
+     70    5.08e-07    -3.02    -7.6e-06       -1.8e-07
+    100    1.72e-07    -3.09    -3.4e-06        6.0e-07
+
+The tail is rho^-3 to rho_out, in lambda and in h_rr (whose P_2 coefficient is -1.2e-8 at rho = 100,
+the rho^-3 continuation of its value at 25).  So the far field of the rho^2-scaled reference was
+under-determined, not wrong in its basis: the residual floor hid it, and weighting the far rows by
+another rho^2 determines it.  Its loss (4.5e-7) is not comparable with the 3.0e-9 above: the
+residual is weighted differently.  Inside rho ~ 10 the two references agree.
+
+**Consequence: the far-field misfit is the network's.**  Against the rhoW reference,
+`ib16k_ssbroyden`'s lambda P_2 coefficient flattens at ~4e-6 from rho ~ 40 (reference 3e-7 at
+100) and its h_rr P_2 coefficient flattens from rho ~ 8 (2e-6 at 100, reference 1.2e-8); the
+old reference had the same flattening, so the comparison against it showed agreement there.  The
+networks train with the same rho^2 scaling, so they plausibly carry the same under-determination
+(untested).  `linref_nonlinear_rhoW.npz` is the reference to grade against from now on;
+`stationary.linref_summary` draws every run's error against it.  The ladder variant did not run
+(the shell was killed with the terminal before it started).
+
+**Every run against the rhoW reference** (`stationary.linref_summary`, 2026-10-16; angular rms of the
+difference, per radial region, next to the size of the perturbation itself):
+
+![every run's error against the rhoW reference](plots/linref_summary_rhoW.png)
+
+| run | final loss | rms dlam 1-3 | rms dlam 3-10 | rms dlam 10-30 | rms dlam 30-100 | rms dh 1-3 | rms dh 3-10 | rms dh 10-30 | rms dh 30-100 |
+|---|---|---|---|---|---|---|---|---|---|
+| *perturbation itself* | -- | *2.0e-02* | *2.5e-03* | *7.6e-04* | *2.6e-04* | *2.2e-02* | *4.5e-04* | *3.1e-05* | *3.5e-06* |
+| `ib16k_ssbroyden` | 1.7e-08 | 4.1e-04 | 2.5e-04 | 2.1e-04 | 2.2e-04 | 5.1e-03 | 7.5e-04 | 9.2e-05 | 2.9e-05 |
+| `m2_ssb_continued` | 1.7e-08 | 3.8e-04 | 2.4e-04 | 2.1e-04 | 2.2e-04 | 4.8e-03 | 7.1e-04 | 8.5e-05 | 2.6e-05 |
+| `m2_dsg_s2000_t075` | 9.4e-08 | 8.6e-04 | 5.1e-04 | 4.0e-04 | 3.6e-04 | 1.1e-02 | 1.6e-03 | 1.5e-04 | 3.7e-05 |
+| `m2_dsg_s1100_t075` | 1.8e-06 | 1.4e-03 | 7.5e-04 | 3.4e-04 | 2.7e-04 | 1.7e-02 | 3.2e-03 | 1.0e-03 | 2.8e-04 |
+| `m2_dsg_s1100_t15` | 2.2e-05 | 1.4e-03 | 1.0e-03 | 5.7e-04 | 3.4e-04 | 2.5e-02 | 1.7e-02 | 6.8e-03 | 2.0e-03 |
+| `ib16k_paperNW_s1100` | 4.1e-05 | 1.9e-03 | 1.3e-03 | 5.2e-04 | 3.3e-04 | 3.5e-02 | 2.4e-02 | 9.4e-03 | 2.8e-03 |
+| `m2_dsg_stage1` | 1.0e-04 | 1.3e-03 | 9.4e-04 | 7.6e-04 | 4.8e-04 | 2.4e-02 | 1.5e-02 | 6.1e-03 | 1.8e-03 |
+| `ib16k_paper_s1100` | 2.4e-04 | 2.5e-03 | 1.8e-03 | 9.4e-04 | 5.7e-04 | 2.5e-02 | 7.2e-03 | 2.0e-03 | 4.0e-04 |
+| `ib16k_paperNW_s512` | 1.3e-03 | 7.6e-03 | 8.1e-03 | 6.0e-03 | 2.3e-03 | 1.4e-01 | 2.1e-02 | 3.8e-03 | 7.0e-04 |
+| `ib16k_adam` | 6.4e-02 | 2.2e-01 | 3.6e-01 | 2.2e-01 | 9.1e-02 | 1.6e-01 | 2.2e-02 | 5.3e-03 | 1.4e-03 |
+
+Read off:
+
+1. **The error ranks the runs as the loss does.**  SSBroyden (loss 1.7e-8) is the most accurate
+   everywhere; DSGNAR s = 2000 (9.4e-8) is about 2x worse in lambda and in h; the rest follow
+   their losses.  A lower loss is a smaller error here, so the optimiser comparison by loss stands.
+2. **lambda: the best runs sit 1-2 orders below the perturbation inside rho ~ 10**, but their
+   error is flat at ~2e-4 from rho = 3 to 100, so it exceeds the perturbation beyond rho ~ 50.  A
+   floor that does not decay with rho is not in the l = 2 part (whose miss is ~4e-6 at rho = 100):
+   by elimination mostly l = 0, the level of lambda (not separated here).
+3. **h: every run's error is larger than the perturbation from rho ~ 3 out** (SSBroyden: 7.5e-4
+   against 4.5e-4 at 3-10, 2.9e-5 against 3.5e-6 at 30-100).  The h_rr P_2 coefficient of the
+   networks flattens from rho ~ 8 (bottom right) where the reference keeps rho^-3: the far-field
+   metric quadrupole is not learned by any of the runs.
 
 ### 5.3 What it found: the inner condition over-determined the problem
 
