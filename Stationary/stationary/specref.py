@@ -25,9 +25,14 @@ builds a reference that does solve the problem:
 * NONLINEAR: modes `l = (0, 2, 4, ...)`, Gauss-Newton on the same residual.  The full axisymmetric
   solution, to the truncation of the basis.
 
-    ./.venv/bin/python -m stationary.linref runs/<run> [--ls 2] [--nonlinear --ls 0,2,4,6]
+    ./.venv/bin/python -m stationary.specref runs/<run> [--ls 2] [--nonlinear --ls 0,2,4,6]
 
-writes `<run>/linref.npz` and prints the run's network against it.
+writes `<run>/specref_{linear,nonlinear}[_<tag>].{npz,json,png}` and prints the run's network
+against it.
+
+Names: this module was `linref.py` until 2026-10-16, a name that fits only its LINEAR solve.  Say
+"the linear reference" and "the nonlinear reference"; both are spectral references (specref).
+Files written before the rename are `linref_<mode>*.npz`; `load_reference` still reads them.
 """
 from __future__ import annotations
 
@@ -153,7 +158,7 @@ def solve(cfg, exact_fields, batch, ls=(2,), n_radial=32, nonlinear=False, iters
     info = {"r0_norm": float(jnp.linalg.norm(r)), "steps": [], "n_unknowns": model.size,
             "n_rows": int(r.shape[0])}
     if verbose:
-        print(f"[linref] modes l = {model.ls}, {model.n} radial each: {model.size} unknowns, "
+        print(f"[specref] modes l = {model.ls}, {model.n} radial each: {model.size} unknowns, "
               f"{r.shape[0]} residual rows; |r(background)| = {info['r0_norm']:.3e}", flush=True)
     for it in range(iters if nonlinear else 1):
         t0 = time.time()
@@ -168,7 +173,7 @@ def solve(cfg, exact_fields, batch, ls=(2,), n_radial=32, nonlinear=False, iters
                 "cond": float(sv[0] / max(sv[-1], 1e-300)), "wall": time.time() - t0}
         info["steps"].append(step)
         if verbose:
-            print(f"[linref] {'Newton ' + str(it) if nonlinear else 'linear'}: "
+            print(f"[specref] {'Newton ' + str(it) if nonlinear else 'linear'}: "
                   f"|r0 + J dc| = {lin:.3e}, |r(c)| = {step['residual']:.3e} "
                   f"(loss {step['loss']:.3e}), cond(J) = {step['cond']:.2e}  "
                   f"({step['wall']:.1f}s)", flush=True)
@@ -231,7 +236,7 @@ def _bins(xs, dh, dl, ph, pl, cfg):
 
 
 def load_reference(run_dir, cfg, exact_fields, tag="nonlinear", path=None):
-    """The spectral reference saved in `<run_dir>/linref_<tag>.npz`, as point fields.
+    """The spectral reference saved in `<run_dir>/specref_<tag>.npz`, as point fields.
 
     Returns `(fields, info)`, or `(None, reason)` when there is none or it does not belong to this
     run's problem.  The check is the one datum that tells problems apart: the reference must carry
@@ -239,9 +244,13 @@ def load_reference(run_dir, cfg, exact_fields, tag="nonlinear", path=None):
     from another run with different data misses it by ~|delta S2| ~ 1e-2.
     """
     from .problem import lam_inner_bc, sample_sphere
-    path = path or os.path.join(run_dir, f"linref_{tag}.npz")
+    if path is None:
+        path = os.path.join(run_dir, f"specref_{tag}.npz")
+        legacy = os.path.join(run_dir, f"linref_{tag}.npz")     # written before the rename
+        if not os.path.exists(path) and os.path.exists(legacy):
+            path = legacy
     if not os.path.exists(path):
-        return None, f"no {os.path.basename(path)} (run `python -m stationary.linref {run_dir} --nonlinear`)"
+        return None, f"no {os.path.basename(path)} (run `python -m stationary.specref {run_dir} --nonlinear`)"
     if exact_fields is None:
         return None, "the run has no spherical background to perturb"
     z = np.load(path)
@@ -398,10 +407,10 @@ def main(argv=None):
     ap.add_argument("--outer-shell-fracs", default=None,
                     help="override the Robin ladder (fractions of rho_out), e.g. 1,0.9,0.8,0.7,0.5,0.35")
     ap.add_argument("--tag", default="",
-                    help="suffix of the output files, linref_nonlinear_<tag>.*, so variants do not "
+                    help="suffix of the output files, specref_nonlinear_<tag>.*, so variants do not "
                          "overwrite the reference")
     ap.add_argument("--reuse", action="store_true",
-                    help="reuse <run>/linref_<mode>.npz if present instead of solving again")
+                    help="reuse <run>/specref_<mode>.npz if present instead of solving again")
     a = ap.parse_args(argv)
 
     cfg, model, state, run_pf = None, None, None, None
@@ -418,23 +427,23 @@ def main(argv=None):
         over["outer_shell_fracs"] = tuple(float(v) for v in a.outer_shell_fracs.split(","))
     cfg_s = cfg.__class__(**{**cfg.__dict__, **over})
     if len(over) > 3:
-        print(f"[linref] overrides: { {k: v for k, v in over.items() if k not in ('n_coll', 'n_bnd', 'n_bnd_outer')} }")
+        print(f"[specref] overrides: { {k: v for k, v in over.items() if k not in ('n_coll', 'n_bnd', 'n_bnd_outer')} }")
     batch = make_batch(jax.random.PRNGKey(cfg.seed + 4242), cfg_s)
     tag = ("nonlinear" if a.nonlinear else "linear") + (f"_{a.tag}" if a.tag else "")
-    npz = os.path.join(a.run, f"linref_{tag}.npz")
+    npz = os.path.join(a.run, f"specref_{tag}.npz")
     if a.reuse and os.path.exists(npz):
         z = np.load(npz)
         ref_model = SpectralAxisym(cfg_s, exact_fields, ls=tuple(int(v) for v in z["ls"]),
                                    n_radial=int(z["n_radial"]))
         c, info = jnp.asarray(z["c"]), json.loads(str(z["info"]))
-        print(f"[linref] reusing {npz}")
+        print(f"[specref] reusing {npz}")
     else:
         ref_model, c, info = solve(cfg_s, exact_fields, batch, ls=ls, n_radial=a.n_radial,
                                    nonlinear=a.nonlinear, iters=a.iters)
         np.savez(npz, c=np.asarray(c), ls=np.asarray(ls), n_radial=a.n_radial,
                  info=json.dumps(info))
 
-    print("\n[linref] far field of the reference (GH potential P; a decaying tail has P2 slope -3 "
+    print("\n[specref] far field of the reference (GH potential P; a decaying tail has P2 slope -3 "
           "and Robin ~0 at every radius):")
     print("    rho        P2 coeff    slope    Robin(P) l=0   Robin(P) l=2")
     ff = farfield(ref_model.fields_of(c), cfg_s)
@@ -443,7 +452,7 @@ def main(argv=None):
               f"      {row['robin_l2']: .2e}")
     run_fields = point_fields(model, state["net"])
     cmp_ = compare(run_fields, ref_model.fields_of(c), exact_fields, cfg)
-    print(f"\n[linref] {a.run} against the {tag} reference (S2 = {cfg.lam_bc_S2:g}):")
+    print(f"\n[specref] {a.run} against the {tag} reference (S2 = {cfg.lam_bc_S2:g}):")
     print(f"  size of the perturbation itself (reference - spherical): "
           f"rms |dh| {cmp_['perturbation_rms_h']:.3e}, rms |dlam| {cmp_['perturbation_rms_lam']:.3e}")
     print(f"  network - reference: rms |dh| {cmp_['rms_dh']:.3e} (max {cmp_['max_dh']:.3e}), "
@@ -453,12 +462,12 @@ def main(argv=None):
         for rho, a_net, a_ref in rows:
             print(f"    {key:<9} {rho:8.2f}  {a_net:+.4e}  {a_ref:+.4e}")
     prof = profiles(run_fields, ref_model.fields_of(c), exact_fields, cfg)
-    png = os.path.join(a.run, f"linref_{tag}.png")
+    png = os.path.join(a.run, f"specref_{tag}.png")
     plot_profiles(prof, png, f"{os.path.basename(os.path.normpath(a.run))} against the {tag} "
                              f"reference (S2 = {cfg.lam_bc_S2:g}; loss of the reference "
                              f"{info['steps'][-1]['loss']:.1e})")
-    print(f"[linref] figure: {png}")
-    with open(os.path.join(a.run, f"linref_{tag}.json"), "w") as fh:
+    print(f"[specref] figure: {png}")
+    with open(os.path.join(a.run, f"specref_{tag}.json"), "w") as fh:
         json.dump({"info": info, "compare": cmp_, "farfield": ff,
                    "profiles": {k: np.asarray(v).tolist() for k, v in prof.items()}}, fh, indent=1)
 

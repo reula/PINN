@@ -108,7 +108,7 @@ a silent CPU fallback would take days).  The Stationary runs stay on the hub
 The nonlinear spectral reference for finished Stationary runs (PERTURBATION.md section 5):
 
     cd ~/Julia/PINN/Stationary
-    sbatch mendieta_linref.sbatch runs/<run> [runs/<run> ...]
+    sbatch mendieta_specref.sbatch runs/<run> [runs/<run> ...]
 
 after copying each run's `config.json` and `params.pkl` from the hub (this `/home` is separate).
 

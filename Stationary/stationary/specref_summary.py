@@ -1,9 +1,9 @@
 """Every run's error against ONE nonlinear reference, as a function of rho, in one figure.
 
-    ./.venv/bin/python -m stationary.linref_summary --ref runs/<r>/linref_nonlinear_rhoW.npz \
-        runs/<run> [runs/<run> ...] [--out plots/linref_summary.png]
+    ./.venv/bin/python -m stationary.specref_summary --ref runs/<r>/specref_nonlinear_rhoW.npz \
+        runs/<run> [runs/<run> ...] [--out plots/specref_summary.png]
 
-The runs must share the reference's problem (`linref.load_reference` checks the inner lambda
+The runs must share the reference's problem (`specref.load_reference` checks the inner lambda
 data).  Per run: the angular rms of |lambda_net - lambda_ref| and of max_ij |h_net - h_ref| on
 spheres, next to the size of the perturbation itself (reference - spherical) -- the scale an
 error is read on -- and the P_2 coefficients of lambda and h_rr against the reference's.  Prints a
@@ -27,7 +27,7 @@ GREY = "#b4b2ac"
 
 def run_errors(run_dir, ref_path, n_rho=40):
     from .evaluate import load_run
-    from .linref import compare, load_reference, profiles
+    from .specref import compare, load_reference, profiles
     from .model import point_fields
     from .train import exact_asset
     cfg, model, state = load_run(run_dir, "params.pkl")[:3]
@@ -88,8 +88,8 @@ def plot(runs, path, title):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("runs", nargs="+")
-    ap.add_argument("--ref", required=True, help="the reference .npz (linref output)")
-    ap.add_argument("--out", default="plots/linref_summary.png")
+    ap.add_argument("--ref", required=True, help="the reference .npz (specref output)")
+    ap.add_argument("--out", default="plots/specref_summary.png")
     a = ap.parse_args(argv)
     runs = []
     for r in a.runs:

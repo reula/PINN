@@ -232,7 +232,7 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
     many per mode: in harmonic gauge the l = 2 sector has five decaying constants and the inner
     sphere already fixes five (the lambda datum, the trace and trace-free parts of the induced
     metric, the two gauge components), so with `h_rA = 0` added no decaying solution exists.  The
-    spectral reference solve (stationary/linref.py) under the old condition showed what that
+    spectral reference solve (stationary/specref.py) under the old condition showed what that
     looks like: Newton stalled at a residual floor (loss 1.8e-5 at l <= 6, 24 radial modes) and
     kept a NON-DECAYING l = 2 metric part (h_rr's P_2 coefficient ~ -0.045 from rho = 10 to 100)
     -- the "forbidden rho^0 mode" of PERTURBATION.md, section 3, which the networks carried too.  `h_rA` is a coordinate

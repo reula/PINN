@@ -2,7 +2,7 @@
 
 Until 2026-10-15 `inner_bc_raw` imposed `h - h_rr n n = c (I - n n)`, whose mixed part set
 `h_rA = 0` on the inner sphere too, and the hard blend imposed `h_rr = 1` as well.  That is one
-condition too many for every l >= 1 mode: the spectral reference (stationary/linref.py) stalled at
+condition too many for every l >= 1 mode: the spectral reference (stationary/specref.py) stalled at
 a residual floor and kept a non-decaying l = 2 metric part, and with the induced metric alone it
 converged (loss 1.8e-5 -> 3.0e-9) with the l = 2 tails decaying as rho^-3.  These tests make sure
 neither version can impose h_rr or h_rA again.

@@ -13,7 +13,7 @@
 #        S2  DSGNAR s = 1100, paper, no reweighting
 #        S3  DSGNAR s = 1100, --dsgnar-paper    the paper, as written (with reweighting)
 #        S4  DSGNAR s = 512,  paper, no reweighting   (the sketch size)
-#        R   the nonlinear spectral reference (stationary/linref.py) and every arm against it
+#        R   the nonlinear spectral reference (stationary/specref.py) and every arm against it
 #      ib16k_*: the inner condition is the INDUCED metric only (2026-10-15).  Every earlier
 #      Stationary run -- sk_*, sk16k_*, the pq_* production runs -- also imposed h_rA = 0 on the
 #      inner sphere, which over-determines the quadrupole problem (losses.inner_bc_raw); none of
@@ -86,7 +86,7 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-/tmp/jaxcache-$USER}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$HERE/.mplcache}"
 # launched from a notebook, the batch inherits MPLBACKEND=module://matplotlib_inline..., which a
-# plain Python rejects at `import matplotlib` (what killed every linref step on 2026-10-15)
+# plain Python rejects at `import matplotlib` (what killed every specref step on 2026-10-15)
 export MPLBACKEND=Agg
 
 E1_LABEL="dsgnar_soft_all_nc2201_audit"
@@ -212,11 +212,11 @@ if [ "$ONLY" != "E" ]; then
         done
         # R: the nonlinear spectral reference, solved once per run directory (same BVP, same
         # inner condition), and each run against it -- a reference that SOLVES the quadrupole
-        # problem, unlike --ref-solution (spherical).  Writes <run>/linref_nonlinear.{npz,json}.
+        # problem, unlike --ref-solution (spherical).  Writes <run>/specref_nonlinear.{npz,json}.
         for name in "${SP}_ssbroyden" "${ARMS[@]%%|*}"; do
             [ -f "runs/$name/report.json" ] || continue
-            [ -f "runs/$name/linref_nonlinear.json" ] && { echo "--- linref $name done already"; continue; }
-            run "linref $name" "logs/${name}.linref.log" "$SPY" -m stationary.linref "runs/$name" \
+            [ -f "runs/$name/specref_nonlinear.json" ] && { echo "--- specref $name done already"; continue; }
+            run "specref $name" "logs/${name}.specref.log" "$SPY" -m stationary.specref "runs/$name" \
                 --nonlinear --ls 0,2,4,6,8 --n-radial 36 --n-coll 2500 --n-bnd 400 --iters 6
         done
     fi
@@ -266,7 +266,7 @@ echo "=== batch_sketch summary  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 import json, os, sys
 root, sp = sys.argv[1], sys.argv[2]
 print("\nStationary (same Adam start; loss at the original weights; 'vs reference' = against the")
-print("nonlinear spectral reference of linref.py -- NOT the report's rms_d*, which measure the")
+print("nonlinear spectral reference of specref.py -- NOT the report's rms_d*, which measure the")
 print("distance to the SPHERICAL solution)")
 print(f"{'run':<22} {'final loss':>12} {'wall (s)':>9}  stopped")
 for name in [f"{sp}_adam", f"{sp}_ssbroyden"] + sorted(
@@ -277,7 +277,7 @@ for name in [f"{sp}_adam", f"{sp}_ssbroyden"] + sorted(
         print(f"{name:<22} (no report)"); continue
     r = json.load(open(p))
     stop = r.get("qn_stopped_at", "")
-    lr = os.path.join(root, "runs", name, "linref_nonlinear.json")
+    lr = os.path.join(root, "runs", name, "specref_nonlinear.json")
     if os.path.exists(lr):
         c = json.load(open(lr))["compare"]
         ref = f"vs reference: rms dh {c['rms_dh']:.2e}, rms dlam {c['rms_dlam']:.2e}"

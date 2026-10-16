@@ -76,15 +76,15 @@ def evaluate(run_dir: str, params_file: str = "params.pkl", make_plots: bool = T
         report.update(diagnostics.exact_comparison(pf, exact_fields, cfg))
         if cfg.lam_bc_S1 or cfg.lam_bc_S2:
             # the numbers above are then a departure from the spherical member; the error is
-            # against the nonlinear spectral reference, when <run>/linref_nonlinear.npz exists
+            # against the nonlinear spectral reference, when <run>/specref_nonlinear.npz exists
             report["exact_comparison_is"] = "departure from the spherical solution, not an error"
             try:
-                from .linref import compare as _lr_compare, load_reference
+                from .specref import compare as _sr_compare, load_reference
                 nl, why = load_reference(run_dir, cfg, exact_fields)
                 if nl is None:
                     report["vs_nonlinear"] = {"none": why}
                 else:
-                    report["vs_nonlinear"] = {**_lr_compare(pf, nl, exact_fields, cfg, modes=False),
+                    report["vs_nonlinear"] = {**_sr_compare(pf, nl, exact_fields, cfg, modes=False),
                                               "reference": why}
             except Exception as exc:
                 report["vs_nonlinear"] = {"skipped": str(exc)}

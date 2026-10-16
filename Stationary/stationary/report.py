@@ -663,10 +663,10 @@ def main():
 
     # ------------------------------------------------ the error: the nonlinear reference
     # For angular inner data the section above is a DEPARTURE; this is the error, against the
-    # spectral solution of the same boundary-value problem (stationary/linref.py), when one has
+    # spectral solution of the same boundary-value problem (stationary/specref.py), when one has
     # been solved for this run.
     if ref is not None and (cfg.lam_bc_S1 or cfg.lam_bc_S2):
-        from .linref import compare as _lr_compare, load_reference
+        from .specref import compare as _sr_compare, load_reference
         _section("VS NONLINEAR REFERENCE (the error)")
         try:
             nl, why = load_reference(run_dir, cfg, ref)
@@ -675,7 +675,7 @@ def main():
             else:
                 print(f"    reference: {why['path']}   (its own loss {why['loss']:.1e}; inner "
                       f"lambda carried to {why['inner_lam_miss']:.1e})")
-                cm = _lr_compare(pf, nl, ref, cfg, modes=False)
+                cm = _sr_compare(pf, nl, ref, cfg, modes=False)
                 print(f"    over the shell   rms |dh| = {cm['rms_dh']:.3e} (max {cm['max_dh']:.3e})"
                       f"   rms |dlambda| = {cm['rms_dlam']:.3e} (max {cm['max_dlam']:.3e})")
                 print(f"    the perturbation itself (reference - spherical): rms |dh| "

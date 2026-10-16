@@ -114,11 +114,16 @@ If `l = 1` falls by 4, it is second order and harmless; if it falls by 2, someth
 analysis above has missed; if it does not fall at all, it is a coordinate offset and the answer is
 the centre-of-mass condition, not another decay kernel.
 
-## 5. A reference that solves the problem: `stationary/linref.py` (2026-10-15)
+## 5. A reference that solves the problem: `stationary/specref.py` (2026-10-15)
+
+*Names (2026-10-16): the module was `linref.py`, which fits only the linear solve; it is
+`specref.py` now, with the output files `specref_linear.*` and `specref_nonlinear.*`.  "The linear
+reference" is the l = 2 first-order solve, "the nonlinear reference" the Gauss-Newton one.  Files
+from before the rename are `linref_*` on disk and are still read.*
 
 With a quadrupole datum there is no closed-form solution, and `--ref-solution` is the SPHERICAL
 member: the report's `rms_dh`, `rms_dlam`, `max_dlam` measure the distance to it, which includes the
-physical quadrupole, so they are not errors.  `linref.py` builds a reference that does solve the
+physical quadrupole, so they are not errors.  `specref.py` builds a reference that does solve the
 problem, so that runs (and optimisers) can be graded against something.
 
 ### 5.1 What it is
@@ -155,10 +160,10 @@ written) has to reproduce; it is too coarse to grade runs whose loss is 1e-8.  T
 grades runs against the NONLINEAR reference; the linear one is the physics check and the bridge to
 the closed form.
 
-    ./.venv/bin/python -m stationary.linref runs/<run>                       # linear
-    ./.venv/bin/python -m stationary.linref runs/<run> --nonlinear --ls 0,2,4,6,8 --n-radial 36
+    ./.venv/bin/python -m stationary.specref runs/<run>                       # linear
+    ./.venv/bin/python -m stationary.specref runs/<run> --nonlinear --ls 0,2,4,6,8 --n-radial 36
 
-writes `runs/<run>/linref_{linear,nonlinear}.{npz,json}` (coefficients, solve history, and the
+writes `runs/<run>/specref_{linear,nonlinear}.{npz,json}` (coefficients, solve history, and the
 run's network against the reference: pointwise rms/max of `|h - h_ref|`, `|lam - lam_ref|`, and
 the `P_l` coefficients of lambda and h_rr at rho = 1 ... 100).  The Jacobian is built in blocks of
 32 tangents.  On the Mac (CPU) a linear solve takes ~16 min and a nonlinear one ~15-20 min, almost
@@ -167,16 +172,16 @@ every `ib16k_*` arm.
 
 ### 5.2b The comparison figure
 
-Every `linref` call also writes `runs/<run>/linref_<mode>.png`: four panels against rho (log-log) --
+Every `specref` call also writes `runs/<run>/specref_<mode>.png`: four panels against rho (log-log) --
 the `P_2` coefficient of lambda and of h_rr, network against reference (with a rho^-3 guide), and the
 angular rms of `lam_net - lam_ref` and of `max_ij |h_net - h_ref|`, each next to the size of the
 perturbation itself (reference - spherical), the scale the miss is read on.  The profiles are saved
-in `linref_<mode>.json` as well.  `--reuse` takes the coefficients from an existing
-`linref_<mode>.npz` instead of solving again: the reference depends only on the PROBLEM, so one
+in `specref_<mode>.json` as well.  `--reuse` takes the coefficients from an existing
+`specref_<mode>.npz` instead of solving again: the reference depends only on the PROBLEM, so one
 solve serves every run of the same recipe (the corrected pq16k recipe's reference, l <= 6, 24 radial
 modes, loss 3.0e-9, was copied into each `ib16k_*` run on the hub on 2026-10-16).
 
-**The far field of the reference (2026-10-16).**  `linref` now prints, per radius, the P_2
+**The far field of the reference (2026-10-16).**  `specref` now prints, per radius, the P_2
 coefficient of the GH potential P, its log-slope and the P_0/P_2 parts of the outer Robin operator
 on P (`farfield`).  For the current reference (l <= 6, 24 radial modes, loss 3.0e-9):
 
@@ -217,14 +222,14 @@ residual is weighted differently.  Inside rho ~ 10 the two references agree.
 100) and its h_rr P_2 coefficient flattens from rho ~ 8 (2e-6 at 100, reference 1.2e-8); the
 old reference had the same flattening, so the comparison against it showed agreement there.  The
 networks train with the same rho^2 scaling, so they plausibly carry the same under-determination
-(untested).  `linref_nonlinear_rhoW.npz` is the reference to grade against from now on;
-`stationary.linref_summary` draws every run's error against it.  The ladder variant did not run
+(untested).  `specref_nonlinear_rhoW.npz` is the reference to grade against from now on;
+`stationary.specref_summary` draws every run's error against it.  The ladder variant did not run
 (the shell was killed with the terminal before it started).
 
-**Every run against the rhoW reference** (`stationary.linref_summary`, 2026-10-16; angular rms of the
+**Every run against the rhoW reference** (`stationary.specref_summary`, 2026-10-16; angular rms of the
 difference, per radial region, next to the size of the perturbation itself):
 
-![every run's error against the rhoW reference](plots/linref_summary_rhoW.png)
+![every run's error against the rhoW reference](plots/specref_summary_rhoW.png)
 
 | run | final loss | rms dlam 1-3 | rms dlam 3-10 | rms dlam 10-30 | rms dlam 30-100 | rms dh 1-3 | rms dh 3-10 | rms dh 10-30 | rms dh 30-100 |
 |---|---|---|---|---|---|---|---|---|---|

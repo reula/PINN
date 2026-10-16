@@ -144,7 +144,7 @@ Inner sphere (`rho = rho_in`), as specified by the user:
   harmless for the spherical solution (`h_rA` vanishes by symmetry) but one condition too many
   for every `l >= 1` mode (by counting the decaying constants of the l = 2 sector in harmonic
   gauge), so a quadrupole datum had no decaying solution -- under that condition the spectral
-  reference (`stationary/linref.py`) stalled at a residual floor and kept a non-decaying `l = 2`
+  reference (`stationary/specref.py`) stalled at a residual floor and kept a non-decaying `l = 2`
   metric part, the "forbidden mode" of PERTURBATION.md.  The hard version (`--hard-inner-bc`) blended
   the whole tensor and imposed `h_rr = 1` too; it now projects the same way.
 
