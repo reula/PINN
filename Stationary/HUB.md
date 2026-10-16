@@ -43,11 +43,17 @@ A 20 000-step Adam phase takes **~1–2 h** here (`runs/m2R4_realrobin` = 7 435 
 > **On this hub the CUDA environment is the checkout's own `.venv`**, not a separate
 > one: `<checkout>/Stationary/.venv/bin/python -c "import jax; print(jax.devices())"`
 > reports `[cuda:0]`, while `~/venvs/pinn` was created without the CUDA jax and is
-> CPU-only. On this hub `<checkout>` is **`~/serafin/Julia/PINN`** because the JupyterHub
-> node's `$HOME` is `/home/reula/serafin` (there is no `~/PINN`), so the interpreter is
-> `~/serafin/Julia/PINN/Stationary/.venv/bin/python`. From the `serafin.ccad.unc.edu.ar`
-> **login node** the *same* tree is `/home/reula/Julia/PINN/Stationary` (there `$HOME` is
-> `/home/reula`); only the hub node sees the extra `serafin/` level. The venv lives in the
+> CPU-only. On this hub `<checkout>` is **`~/serafin/Julia/PINN`**, so the interpreter is
+> `~/serafin/Julia/PINN/Stationary/.venv/bin/python`. Note what does *not* differ:
+> `$HOME` is `/home/reula` on **both** nodes -- the hub prompt
+> `~/serafin/Julia/PINN/Stationary` resolves to
+> `/home/reula/serafin/Julia/PINN/Stationary`. What differs is where the shared tree is
+> mounted inside that home: the hub node sees it one level deeper, at
+> `~/serafin/Julia/PINN`, while on the `serafin.ccad.unc.edu.ar` **login node** the same
+> files are `~/Julia/PINN` (`/home/reula/Julia/PINN`). An earlier version of this note
+> said `$HOME` was `/home/reula/serafin` on the hub node; it is not, and the difference
+> matters -- a plain `cd ~/Julia/PINN` works over ssh and fails in the JupyterLab
+> terminal. The venv lives in the
 > **`Stationary/`** folder, next to the `stationary` package -- so every bare
 > `$PWD/.venv/bin/python` in this document assumes you are `cd`-ed there, and
 > `-m stationary.bench` / `-m stationary.train` need that working directory too. From
