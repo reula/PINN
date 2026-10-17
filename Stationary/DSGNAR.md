@@ -605,8 +605,12 @@ Results so far:
   in every region (lambda 2.1e-3 / 1.0e-3 / 1.6e-4 / 1.9e-5, h 2.6e-2 / 3.9e-3 / 3.7e-4 / 3.9e-5).
   Both optimisers reach the same loss floor (~4.5e-7, rho^4 units) and the same solution: under
   this weighting and sample the remaining error is not the optimiser's.
-* the other two (hybrid collocation + one Robin sphere; far weight 1 + (rho/10)^4): the first
-  running, the second cancelled before it ran (it had the lam pin, below).
+* `m4_dsg_rho4_hyb_1sh` (hybrid collocation, the Robin condition on rho_out only): 4.6e-6 on its
+  new sample -> 4.53e-7 in 84 iterations, radius stop -- the same lam-pin floor (below).  Error
+  against rhoW: lambda 2.0e-3 / 1.1e-3 / 1.6e-4 / **1.3e-5**, h 2.8e-2 / 4.0e-3 / 3.7e-4 /
+  **2.7e-5**: the far field ~30% better than `m4_ssb_rho4` (1.9e-5, 3.9e-5), the rest unchanged.
+  Small enough to be partly sample noise.
+* `m4_dsg_far10`: cancelled before it ran (it had the lam pin); resubmitted as `m5_dsg_far10`.
 
 **The rho^4 loss floor is the lam pin, not the optimiser** (2026-10-17).  On the same sample the
 network (`m4_ssb_rho4`) and the rhoW nonlinear reference have the SAME loss, 4.5e-7, and in both
