@@ -701,3 +701,23 @@ quadrupole itself at rho = 3-10 -- the dipole of COM_GAUGE.md, here 100x larger 
 recorded there.  The loss barely sees it.  New: `--z-reflect` (axisym_hybrid; Config.z_reflect)
 symmetrises the network so a, b, d, lambda are even in mu = cos(theta) and c odd: odd-l content
 becomes impossible.  tests/test_z_reflect.py; an existing run's output is unchanged with it off.
+(`--z-reflect` is a diagnostic only: the target is problems WITHOUT the symmetry.)
+
+**Nothing in the loss forces the odd part.**  Every term of the residual vector, evaluated on the
+fine reference (even by construction) on a sample B and on its mirror image z -> -z, is equal to
+all digits (relative difference 0 for all 12 terms: the three equation groups, inner lambda and
+h_tan, outer h and lambda on rho_out and on the ladder, the three averaged pins; config of
+`m5_ssb_norsmp`).  In the code the only z-dependent ingredient that is active is the inner lambda
+datum, even for S1 = 0.  So the l = 1, 3 content is not imposed: it is error the objective
+tolerates -- a weakly controlled direction, not a forcing.
+
+Two consequences for problems without the symmetry:
+
+* the dipole restriction we have -- the P Robin kernel {1, 3, 4} without rho^-2 -- constrains the
+  ASYMPTOTIC dipole (the origin); the measured error vanishes at rho_in, peaks at rho ~ 2 and
+  decays, so a better origin / centre-of-mass condition would not remove it (as COM_GAUGE.md 3b
+  found for earlier runs);
+* for data with a genuine dipole (S1 != 0, or any asymmetric data) the exterior HAS a rho^-2
+  dipole relative to the origin the inner sphere fixes (the centre-of-mass offset), and a kernel
+  that forces it to zero asks for something no solution satisfies.  There the dipole must be left
+  in the kernel, or the origin made an unknown (COM_GAUGE.md section 4).
