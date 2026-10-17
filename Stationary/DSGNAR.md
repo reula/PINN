@@ -717,7 +717,16 @@ Two consequences for problems without the symmetry:
   ASYMPTOTIC dipole (the origin); the measured error vanishes at rho_in, peaks at rho ~ 2 and
   decays, so a better origin / centre-of-mass condition would not remove it (as COM_GAUGE.md 3b
   found for earlier runs);
-* for data with a genuine dipole (S1 != 0, or any asymmetric data) the exterior HAS a rho^-2
-  dipole relative to the origin the inner sphere fixes (the centre-of-mass offset), and a kernel
-  that forces it to zero asks for something no solution satisfies.  There the dipole must be left
-  in the kernel, or the origin made an unknown (COM_GAUGE.md section 4).
+* (retracted 2026-10-18) it was stated here that for data with a dipole the kernel without rho^-2
+  is inconsistent.  It is not: the asymptotic origin can always be moved to the centre of mass by
+  a residual harmonic gauge transformation that leaves the inner sphere fixed (COM_GAUGE.md 4b),
+  so D = 0 / no tail dipole is a legitimate gauge choice for any data.
+
+**The odd "error" is (largely) a gauge mode: the networks' centre of mass is displaced.**  The
+dipole flux D^z = oint (z dU/dn - U dz/dn) dA_h, U = ln(lambda)/2, is conserved between any two
+spheres (COM_GAUGE.md 4b).  It is 0 for the reference and -0.32 / -0.43 / -0.11 for
+m5_ssb_norsmp / m5_dsg_cyc / m5_w40, constant from rho = 1 to 100: consistent solutions whose
+asymptotic chart is translated by a ~ -0.04 relative to the reference's -- a residual harmonic
+gauge mode the inner data cannot see, with exactly the measured l = 1 profile.  A pointwise
+comparison counts it as error.  Next: impose D = 0 on a few spheres (a centre-of-mass gauge
+condition usable inside), and compare gauge-invariantly.

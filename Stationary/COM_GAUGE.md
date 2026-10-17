@@ -185,6 +185,53 @@ curvature spheres) is the principled version of route 2, and the one to adopt if
 integral turns out not to converge on our solutions — which is exactly what Cederbaum–Nerz warn
 about and what the parity discussion above predicts for a field with a dipole.
 
+## 4b. A centre-of-mass flux that is conserved, so it can be imposed INSIDE (2026-10-18)
+
+With g = -lambda dt^2 + lambda^-1 h the static vacuum equations are Ric(h) = (1/2) d ln lambda (x)
+d ln lambda and Delta_h ln lambda = 0, so U = (1/2) ln lambda is h-harmonic; and in harmonic gauge
+the coordinates x^i are h-harmonic (Delta_h x^i = -h^ab Gamma^i_ab = 0).  Green's identity for two
+h-harmonic functions then makes
+
+    D^i(S) = oint_S ( x^i dU/dn - U dx^i/dn ) dA_h
+           = oint_{|x| = rho} sqrt(h) h^jk ( x^i d_k U - U delta^i_k ) n_j rho^2 dOmega
+
+the SAME on every closed surface S enclosing the inner sphere.  Far out, a mass M displaced by a
+(U ~ -M/|x - a|) gives D = 4 pi M a: D is the centre of mass, and it is conserved through the shell.
+No quasi-local centre-of-mass condition of this kind turned up in a literature search (the standard
+ones are fluxes at infinity -- ADM, Beig-O Murchadha, Regge-Teitelboim -- or quasi-local
+constructions like Wang-Yau's); it is the elementary Green-identity statement for this formulation.
+
+**Measured** (D_z on spheres rho = 1 ... 100, 32 x 8 quadrature):
+
+| | rho = 1 | 2 | 10 | 100 |
+|---|---|---|---|---|
+| fine nonlinear reference (even basis) | 2e-15 | 0 | -6e-15 | -7e-14 |
+| `m5_ssb_norsmp` | -0.32 | -0.32 | -0.32 | -0.32 |
+| `m5_dsg_cyc` | -0.43 | -0.43 | -0.43 | -0.43 |
+| `m5_w40` | -0.11 | -0.11 | -0.11 | -0.11 |
+| `ib16k_ssbroyden` | -0.083 | -0.083 | -0.083 | -0.022 |
+
+The networks' D is constant in rho -- they are consistent solutions -- but NOT zero: their centre of
+mass is displaced along z by a = D/(4 pi M) ~ -0.04 (best run), although the data are symmetric.
+
+**Why the data allow it: a residual harmonic gauge mode.**  A coordinate change x -> x + xi with
+Delta_h xi = 0, xi = 0 on the inner sphere and xi -> a at infinity keeps the chart harmonic and the
+inner data (the points of the inner sphere do not move: same induced metric, same lambda datum),
+and translates only the asymptotic chart, changing D by 4 pi M a.  Its effect on lambda at fixed
+coordinates, xi . grad lambda, vanishes at rho_in, peaks near rho ~ 2 and decays like
+grad lambda ~ rho^-2 -- the shape of the l = 1 difference network - reference measured in DSGNAR.md
+9.2 (3.3e-3 at rho = 2, 4e-4 at rho = 10).  So that "error" is, at least in large part, this gauge
+mode: the same geometry in a translated asymptotic chart (to be confirmed by a gauge-invariant
+comparison).  The outer Robin condition on P without rho^-2 penalises it only at the level of the
+loss floor: for a ~ 0.04 the P dipole at rho_out is ~2.5e-6, whose Robin residual (factor 2)
+costs ~1e-9 at w_outer = 100 -- the size of the whole loss.
+
+**What it gives.**  D = 0 fixes the asymptotic origin at the centre of mass.  It is a gauge choice,
+available for ANY data (the mode xi exists in general), it involves only l = 1, and because D is
+conserved it can be imposed on any sphere -- the inner one included, where the network is best
+resolved -- instead of through a tail coefficient at rho_out.  As a loss term: three averaged
+numbers per sphere, (D^x, D^y, D^z)^2, on a few spheres (pin-like; cheap).
+
 ## 5. What this would and would not explain
 
 It would explain, in one stroke: the size of the tail dipole in the production runs, its growth when
