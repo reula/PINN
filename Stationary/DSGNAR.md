@@ -648,3 +648,11 @@ vs 8.5e-5, lambda 1.9e-5 vs 5.3e-5); the reference fits the inner data better.  
 reference's own error there (its truncation l <= 6 against a 25% quadrupole), not the networks'.
 The rho^2 run is clearly worse in the far field (lambda equation 1.8e-4 beyond rho = 30), which
 fits its flat lambda error.  A reference good enough to grade the inner region needs more modes.
+
+* `specref_rhoWP` (the reference with the pin on P, l <= 6, 24 radial): loss 2.6e-9 in 68 min --
+  about the networks' level, as the residuals above say.
+* `m5_ssb_norsmp`: SSBroyden from `m4_ssb_rho4`, P pin, no resampling: 9.4e-9 -> 2.1e-9 in 10000
+  iterations (36 min), still falling slowly at the cap; the loss is now all equations (pin 3e-13).
+  Its dimensionless residuals are 10-30% below `m5_dsg_cyc`'s in every region (Ricci 3.9e-5 /
+  9.5e-7 / 5.4e-8 / 4.3e-9, lambda equation 1.4e-5 / 6.6e-7 / 3.4e-8 / 3.5e-9; inner lambda 8.8e-7,
+  h 6.9e-7): with the floor removed SSBroyden is again ahead, by a little.
