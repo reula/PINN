@@ -763,13 +763,29 @@ def dsgnar_qn_phase(state, batch, cfg: Config, model, exact_fields, weights,
                 print(f"[dsgnar] checkpoint at iteration {step} (loss {loss_now:.6e}) -> "
                       f"params_dsgnar.pkl", flush=True)
 
-    flat, hist, info = dsgnar_phase(obj, obj.flat0, cfg, verbose=verbose,
-                                    step_offset=int(cfg.steps) + start_total,
-                                    callback=checkpoint, resample=resample)
-    if verbose:
-        print(f"[dsgnar] {info['iterations']} iteration(s), s={info['sketch']}, "
-              f"{info['accepted']} accepted / {info['rejected']} rejected, "
-              f"stopped: {info['stopped']}", flush=True)
+    cycles = max(int(getattr(cfg, "dsgnar_cycles", 1) or 1), 1)
+    per = getattr(cfg, "dsgnar_cycle_steps", None)
+    cfg_c = cfg if (cycles == 1 and not per) else \
+        cfg.__class__(**{**cfg.__dict__, "dsgnar_steps": int(per or cfg.dsgnar_steps)})
+    flat, hist, done = obj.flat0, [], 0
+    for cyc in range(cycles):
+        if cyc:
+            # a fresh sample (its own key, after every in-phase resample point) and a fresh
+            # trust region: dsgnar_phase starts from delta0 and its initial lambda every call
+            point = int(cfg.steps) + start_total + 100000 * cyc
+            obj = FlatObjective(obj.unflatten(flat),
+                                make_batch(jax.random.PRNGKey(cfg.seed + 991 + point), cfg),
+                                cfg, model, exact_fields, weights=weights)
+        flat, h, info = dsgnar_phase(obj, flat, cfg_c, verbose=verbose,
+                                     step_offset=int(cfg.steps) + start_total + done,
+                                     callback=checkpoint, resample=resample)
+        hist += h
+        done += int(info["iterations"])
+        if verbose:
+            tag = f"cycle {cyc + 1}/{cycles}: " if cycles > 1 else ""
+            print(f"[dsgnar] {tag}{info['iterations']} iteration(s), s={info['sketch']}, "
+                  f"{info['accepted']} accepted / {info['rejected']} rejected, "
+                  f"stopped: {info['stopped']}", flush=True)
     return obj.unflatten(flat), hist, weights
 
 
@@ -1764,6 +1780,15 @@ def parse_args(argv=None):
                    help="pin the spherical MEAN of lambda at rho_out to the exact "
                         "reference's value there (the monopole, i.e. the branch); the "
                         "l >= 1 content stays free for the Robin conditions")
+    p.add_argument("--pin-lam-potential", action="store_true", dest="pin_lam_potential",
+                   help="with --pin-lam-robin: pin <(rho d_rho + 1)(P - P_inf)> on the GH potential "
+                        "P = (1-lam^2)/(4 lam) instead of on lam, which the exact solution "
+                        "satisfies (the lam form costs 4.3e-7 on it at rho_out = 100)")
+    p.add_argument("--dsgnar-cycles", type=int, default=None, dest="dsgnar_cycles",
+                   help="restart DSGNAR this many times, each on a fresh sample with a fresh "
+                        "trust region, from the previous cycle's parameters")
+    p.add_argument("--dsgnar-cycle-steps", type=int, default=None, dest="dsgnar_cycle_steps",
+                   help="iterations per cycle (default: --dsgnar-steps)")
     p.add_argument("--pin-lam-robin", action="store_true", dest="pin_lam_robin",
                    help="pin the same monopole through the ORDER-1 ROBIN COMBINATION "
                         "instead of its value: rho d_rho <lam> + (<lam> - lam_inf) = 0, the "
@@ -2034,6 +2059,12 @@ def parse_args(argv=None):
         cfg.pin_lam = True
     if a.pin_lam_robin:
         cfg.pin_lam_robin = True
+    if a.pin_lam_potential:
+        cfg.pin_lam_potential = True
+    if a.dsgnar_cycles is not None:
+        cfg.dsgnar_cycles = a.dsgnar_cycles
+    if a.dsgnar_cycle_steps is not None:
+        cfg.dsgnar_cycle_steps = a.dsgnar_cycle_steps
     if a.pin_h_tan:
         cfg.pin_h_tan = True
     if a.pin_h_rr:

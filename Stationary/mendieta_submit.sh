@@ -78,7 +78,21 @@ submit m4_dsg_rho4_hyb_1sh  m3_dsg_s2000_rho4 $DSG4 --outer-shell-fracs 1.0 --ra
                               --radial-log-frac 0.5
 #   d. DSGNAR continued with the dimensionless exponents and a far weight 1 + (rho/10)^4 on the
 #      loss instead of rho^4 from rho_in: the inner equations keep their weight (Config.far_weight)
-submit m4_dsg_far10         m3_dsg_s2000_rho4 $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 \
-                              --init-from $M3 --far-weight 10,4
+# m4_dsg_far10: cancelled before it ran (it had the lam pin; see round 5)
+# submit m4_dsg_far10       m3_dsg_s2000_rho4 $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 \
+#                             --init-from $M3 --far-weight 10,4
+# round 5 (2026-10-17): the lam pin <(rho d_rho + 1)(lam - 1)> is violated by the exact solution
+# (4.3e-7 at rho_out = 100, the whole rho^4 loss floor); --pin-lam-potential puts it on P.  All from
+# m4_ssb_rho4 except the wider network, which needs its own warm-up.
+M4="runs/m4_ssb_rho4/params.pkl"
+PP="--pin-lam-potential"
+submit m5_dsg_cyc           m4_ssb_rho4 $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4 $PP \
+                              --init-from $M4 --dsgnar-cycles 5 --dsgnar-cycle-steps 60
+submit m5_ssb_norsmp        m4_ssb_rho4 --steps 0 --init-from $M4 --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 0 $RHO4 $PP
+submit m5_dsg_far10         m4_ssb_rho4 $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $PP \
+                              --init-from $M4 --far-weight 10,4
+submit m5_w40               - --width 40 --depth 6 --steps 5000 --plateau-min-iters -1 --qn-method ssbroyden \
+                              --lbfgs-steps 8000 $RHO4 $PP
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null

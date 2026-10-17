@@ -427,6 +427,8 @@ def main(argv=None):
     ap.add_argument("--params", default="params.pkl")
     ap.add_argument("--scale-exps", default=None,
                     help="override the run's rho exponents compat,ricci,gauge,lam_eq, e.g. 3,4,3,4")
+    ap.add_argument("--pin-lam-potential", action="store_true",
+                    help="override: the lam pin on the GH potential P (Config.pin_lam_potential)")
     ap.add_argument("--outer-shell-fracs", default=None,
                     help="override the Robin ladder (fractions of rho_out), e.g. 1,0.9,0.8,0.7,0.5,0.35")
     ap.add_argument("--tag", default="",
@@ -462,6 +464,8 @@ def main(argv=None):
     if a.scale_exps:
         over["scale_exps"] = dict(zip(["compat", "ricci", "gauge", "lam_eq"],
                                       [float(v) for v in a.scale_exps.split(",")]))
+    if a.pin_lam_potential:
+        over["pin_lam_potential"] = True
     if a.outer_shell_fracs:
         over["outer_shell_fracs"] = tuple(float(v) for v in a.outer_shell_fracs.split(","))
     cfg_s = cfg.__class__(**{**cfg.__dict__, **over})

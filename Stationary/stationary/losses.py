@@ -509,7 +509,12 @@ def outer_pin_raw(point_fields, xs, cfg, exact_fields=None):
         """
         f = point_fields(x)
         v = {}
-        if robin_lam:
+        if robin_lam and getattr(cfg, "pin_lam_potential", False):
+            # on P, whose monopole has no rho^-2 term: the exact solution satisfies it to 1.5e-11
+            # (the lam form leaves 2M^2/rho^2 and costs 4.3e-7 at rho_out = 100; Config)
+            v["lam"] = robin_operator(lambda y: gh_potential(point_fields(y).lam), x, 1.0, 1,
+                                      gh_potential(jnp.asarray(lam_inf)))
+        elif robin_lam:
             v["lam"] = robin_operator(lambda y: point_fields(y).lam, x, 1.0, 1, lam_inf)
         elif cfg.pin_lam:
             v["lam"] = f.lam - exact_fields(x).lam

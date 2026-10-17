@@ -222,6 +222,14 @@ class Config:
     # -2 R0^2 / rho_out^2 (4.2e-06 at ratio 400), i.e. negligible at the solution and 10
     # orders decisive away from it.
     pin_lam_robin: bool = False
+    # ... and the same pin on the Geroch-Hansen potential P = (1 - lam^2)/(4 lam) instead of lam:
+    # <(rho d_rho + 1)(P - P_inf)> = 0.  The lam version is NOT satisfied by the exact solution:
+    # lam = 1 - 2M/rho + 2M^2/rho^2 - ..., and rho d_rho + 1 leaves the 2M^2/rho^2 term, so at
+    # rho_out = 100 the exact spherical solution violates it by 6.6e-5 and pays w_pin x that^2
+    # = 4.3e-7 -- the whole loss of every rho^4-weighted run and of the nonlinear reference
+    # (98% of it, measured; DSGNAR.md 9.2).  P's monopole is M/rho + M^3/(3 rho^3), with no
+    # rho^-2 term, so on P the floor is 1.5e-11.  Off by default so older runs reproduce.
+    pin_lam_potential: bool = False
     pin_h_tan: bool = False
     pin_h_rr: bool = False
     # The AVERAGED Robin condition for the metric -- the same construction as pin_lam_robin,
@@ -329,6 +337,12 @@ class Config:
     # default and is too large here (13 828 parameters would need 4609 tangents ~ 15 GB of
     # tangent batch); 128-512 is the range that fits a GPU for this problem.
     dsgnar_steps: int = 200
+    # Restart cycles: run DSGNAR `dsgnar_cycles` times, each from the previous cycle's parameters
+    # on a FRESH collocation sample with a fresh trust region (radius and lambda reset), for at
+    # most `dsgnar_cycle_steps` iterations (None = dsgnar_steps).  Every DSGNAR arm so far ended
+    # by the radius collapsing on one sample; a new sample and a new start is the cheap way out.
+    dsgnar_cycles: int = 1
+    dsgnar_cycle_steps: int | None = None
     dsgnar_sketch: int = 0
     dsgnar_stage1_ratio: float = 0.15   # target decrease ratio while lambda is being driven down
     dsgnar_stage2_ratio: float = 0.5    # ... and after it has bottomed out

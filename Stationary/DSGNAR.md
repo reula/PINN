@@ -605,4 +605,22 @@ Results so far:
   in every region (lambda 2.1e-3 / 1.0e-3 / 1.6e-4 / 1.9e-5, h 2.6e-2 / 3.9e-3 / 3.7e-4 / 3.9e-5).
   Both optimisers reach the same loss floor (~4.5e-7, rho^4 units) and the same solution: under
   this weighting and sample the remaining error is not the optimiser's.
-* the other two (hybrid collocation + one Robin sphere; far weight 1 + (rho/10)^4): pending.
+* the other two (hybrid collocation + one Robin sphere; far weight 1 + (rho/10)^4): the first
+  running, the second cancelled before it ran (it had the lam pin, below).
+
+**The rho^4 loss floor is the lam pin, not the optimiser** (2026-10-17).  On the same sample the
+network (`m4_ssb_rho4`) and the rhoW nonlinear reference have the SAME loss, 4.5e-7, and in both
+4.4e-7 of it is one term, `pin_mean_lam` = w_pin <(rho d_rho + 1)(lam - 1)>^2.  The exact spherical
+solution violates that pin: lam = 1 - 2M/rho + 2M^2/rho^2 - ..., and rho d_rho + 1 leaves the
+2M^2/rho^2 term, -6.59e-5 at rho_out = 100, so w_pin x that^2 = 4.34e-7.  Nothing can go below it.
+On P = (1 - lam^2)/(4 lam), whose monopole has no rho^-2 term, the same pin costs 1.5e-11
+(tests/test_pin_potential.py).  Under rho^2 weighting the runs instead bend lam near rho_out to
+satisfy the pin, which plausibly is the flat ~2e-4 lambda error of every rho^2 run (untested).
+New: `--pin-lam-potential` (the pin on P) and `--dsgnar-cycles N --dsgnar-cycle-steps K` (restart
+DSGNAR N times, each on a fresh sample with a fresh trust region).
+
+Round 5 (submitted 2026-10-17), all with the P pin: the nonlinear reference re-solved (rhoWP);
+from `m4_ssb_rho4`, DSGNAR s = 2000 rho^4 in 5 cycles of <= 60 (`m5_dsg_cyc`), SSBroyden rho^4
+without resampling (`m5_ssb_norsmp`), the far weight 1 + (rho/10)^4 (`m5_dsg_far10`); and a wider
+network, width 40 x depth 6 (~8.6k parameters), Adam 5000 then SSBroyden 8000, rho^4 (`m5_w40`).
+Results: pending.
