@@ -76,5 +76,9 @@ submit m4_ssb_rho4          m3_dsg_s2000_rho4 --steps 0 --init-from $M3 --qn-met
                               --lbfgs-steps 10000 $RHO4
 submit m4_dsg_rho4_hyb_1sh  m3_dsg_s2000_rho4 $DSG4 --outer-shell-fracs 1.0 --radial hybrid \
                               --radial-log-frac 0.5
+#   d. DSGNAR continued with the dimensionless exponents and a far weight 1 + (rho/10)^4 on the
+#      loss instead of rho^4 from rho_in: the inner equations keep their weight (Config.far_weight)
+submit m4_dsg_far10         m3_dsg_s2000_rho4 $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 \
+                              --init-from $M3 --far-weight 10,4
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null

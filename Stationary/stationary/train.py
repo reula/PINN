@@ -1829,6 +1829,10 @@ def parse_args(argv=None):
     p.add_argument("--scale-ref", type=float, default=None)
     p.add_argument("--scale-ref-rho-in", action="store_true")
     p.add_argument("--scale-exps", type=str, default=None)
+    p.add_argument("--far-weight", type=str, default=None, dest="far_weight",
+                   help="RHO_C[,Q]: loss weight 1 + (rho/rho_c)^Q on the interior equations, on top "
+                        "of --scale-exps (Q default 4); keeps the inner equations at their "
+                        "dimensionless weight while weighting the far field like rho^Q")
     p.add_argument("--reweight-every", type=int, default=None)
     p.add_argument("--reweight-band", type=float, default=None,
                    help="how far a PDE weight may drift from its configured value")
@@ -2085,6 +2089,9 @@ def parse_args(argv=None):
         cfg.reweight_band = a.reweight_band
     if a.scale_ref is not None:
         cfg.scale_ref = a.scale_ref
+    if a.far_weight is not None:
+        v = [float(x) for x in a.far_weight.split(",")]
+        cfg.far_weight = (v[0], v[1] if len(v) > 1 else 4.0)
     if a.scale_exps is not None:
         vals = [float(v) for v in a.scale_exps.split(",")]
         cfg.scale_exps = dict(zip(["compat", "ricci", "gauge", "lam_eq"], vals))

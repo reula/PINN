@@ -160,6 +160,13 @@ class Config:
     # the chart is a no-op here; what a [0.01, 1] recipe really changes is the ratio
     # (100 instead of 10), i.e. how far outside the source the outer sphere sits.
     scale_ref: float | None = None   # None -> use local rho; else a fixed length
+    # A far-field weight ON TOP of the dimensionless exponents: the LOSS weight of an interior
+    # point is 1 + (rho/rho_c)^q, i.e. each residual is multiplied by sqrt(1 + (rho/rho_c)^q).
+    # Inside rho_c the equations keep their dimensionless weight; outside the weight grows like
+    # rho^q.  Raising the exponents instead (--scale-exps 3,4,3,4, "rho^4") weights the loss by
+    # rho^4 from rho_in on, so with rho_in = 1 the far rows outweigh the inner ones by 1e8 and
+    # the inner field gets 2-5x worse (DSGNAR.md 9.2, round 3).  None = off.  (rho_c, q).
+    far_weight: tuple | None = None
     w_inner: float = 100.0     # the boundary weights of the working family
     # (was 10; 100 is what the correct-source predecessor runs used, and the NEW defaults below
     # -- pin_h_robin, ricci_lam_source = 1 -- are the settings a run should not have to remember)

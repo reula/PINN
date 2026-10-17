@@ -311,7 +311,8 @@ def residuals_batch(fields: Callable, xs: jnp.ndarray,
 
 def scaled_residuals_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
                            ref: float | None = None,
-                           gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None) -> dict:
+                           gauge_src: Callable[[jnp.ndarray], jnp.ndarray] | None = None,
+                           far_weight=None) -> dict:
     """Residuals multiplied by a length**p so that the groups can be compared.
 
     Dimensionally compat, gauge ~ 1/length and ricci, lam_eq ~ 1/length^2, so
@@ -324,6 +325,9 @@ def scaled_residuals_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
     ratios -- each one divided by the size of its own terms -- so no length is applied and the
     exponents are ignored.  Multiplying them by rho^p as well would double-count the
     dimensions and undo the point of the mode.
+
+    `far_weight = (rho_c, q)` multiplies every residual by sqrt(1 + (rho/rho_c)^q) on top of the
+    exponents, i.e. a LOSS weight 1 + (rho/rho_c)^q (Config.far_weight).
     """
     r = residuals_batch(fields, xs, gauge_src)
     if _RELATIVE_TERMS:
@@ -332,10 +336,14 @@ def scaled_residuals_batch(fields: Callable, xs: jnp.ndarray, exps: dict,
         base = jnp.linalg.norm(xs, axis=-1)
     else:
         base = jnp.full((xs.shape[0],), float(ref))
+    far = 1.0
+    if far_weight is not None:
+        rho_c, q = float(far_weight[0]), float(far_weight[1])
+        far = jnp.sqrt(1.0 + (jnp.linalg.norm(xs, axis=-1) / rho_c) ** q)
     out = {}
     for k, v in r.items():
         p = exps[k]
-        out[k] = v * (base ** p)[(...,) + (None,) * (v.ndim - 1)]
+        out[k] = v * (base ** p * far)[(...,) + (None,) * (v.ndim - 1)]
     return out
 
 

@@ -586,4 +586,9 @@ Round 4 (submitted 2026-10-17), all from `m3_dsg_s2000_rho4`, rho^4 weighting: D
 continued with the Robin condition on rho_out only and HYBRID collocation, half log-uniform and
 half uniform in volume (`m4_dsg_rho4_hyb_1sh`).  Every earlier run sampled log-uniformly only
 (`radial = log`; the recipe's `radial_log_frac = 0.5` is unused unless `--radial hybrid`).
-Results: pending.
+Fourth arm (`m4_dsg_far10`): the same continuation with the dimensionless exponents (1, 2, 1, 2)
+and the new `--far-weight 10,4`, a LOSS weight 1 + (rho/10)^4 on the interior equations
+(`Config.far_weight`; tests/test_far_weight.py).  "rho^4" (`--scale-exps 3,4,3,4`) multiplies the
+loss by rho^4 from rho_in = 1 on, so the far rows outweigh the inner ones by 1e8; with the crossover
+at rho_c = 10 the inner equations keep their dimensionless weight and the far rows gain 1e4.  (A
+bare 1 + rho^4 would equal rho^4 beyond rho ~ 2 and change nothing.)  Results: pending.

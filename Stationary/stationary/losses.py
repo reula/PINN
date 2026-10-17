@@ -161,7 +161,8 @@ def pde_raw(point_fields, xs, cfg, gauge_src=None) -> dict:
     """
     if gauge_src is None:
         gauge_src = gauge_source_of(cfg, point_fields)
-    return scaled_residuals_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref, gauge_src)
+    return scaled_residuals_batch(point_fields, xs, cfg.scale_exps, cfg.scale_ref, gauge_src,
+                                  getattr(cfg, "far_weight", None))
 
 
 def pde_terms(point_fields, xs, cfg, gauge_src=None) -> dict:
