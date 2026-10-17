@@ -627,4 +627,24 @@ Round 5 (submitted 2026-10-17), all with the P pin: the nonlinear reference re-s
 from `m4_ssb_rho4`, DSGNAR s = 2000 rho^4 in 5 cycles of <= 60 (`m5_dsg_cyc`), SSBroyden rho^4
 without resampling (`m5_ssb_norsmp`), the far weight 1 + (rho/10)^4 (`m5_dsg_far10`); and a wider
 network, width 40 x depth 6 (~8.6k parameters), Adam 5000 then SSBroyden 8000, rho^4 (`m5_w40`).
-Results: pending.
+
+* `m5_dsg_cyc`: with the pin on P the loss goes 9.4e-9 -> 3.2e-9 in cycle 1 (51 iterations, 46
+  accepted), and cycles 2-5 on fresh samples add little (1, 2, 6, 0 accepted; ~3.2-3.4e-9 on each
+  new sample).  140x below the lam-pin floor.  Its error against the rhoW reference is AGAIN the
+  same to two digits as every rho^4 run (lambda 2.1e-3 / 1.0e-3 / 1.6e-4 / 1.9e-5).
+
+**So inside rho ~ 10 the rhoW reference is not more accurate than the networks.**  Dimensionless
+residuals (rho^2 Ricci, rho^2 lambda equation; rms by region, 3000 points) and the inner data:
+
+| | Ricci 1-3 | 3-10 | 10-30 | 30-100 | lam eq 1-3 | 3-10 | 10-30 | 30-100 | inner lam | inner h |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `ib16k_ssbroyden` (rho^2, lam pin) | 6.8e-5 | 1.9e-5 | 1.5e-5 | 1.2e-5 | 5.6e-5 | 2.7e-5 | 4.8e-5 | 1.8e-4 | 9.8e-7 | 1.2e-6 |
+| `m5_dsg_cyc` (rho^4, P pin) | 4.3e-5 | 1.3e-6 | 6.1e-8 | 4.9e-9 | 1.9e-5 | 8.0e-7 | 5.0e-8 | 4.1e-9 | 8.7e-7 | 8.7e-7 |
+| rhoW reference (l <= 6, 24 radial) | 8.5e-5 | 4.4e-7 | 2.2e-8 | 1.9e-9 | 5.3e-5 | 1.1e-6 | 7.5e-8 | 1.6e-8 | 4.2e-8 | 2.4e-7 |
+
+Near the inner sphere the network satisfies the equations better than the reference (Ricci 4.3e-5
+vs 8.5e-5, lambda 1.9e-5 vs 5.3e-5); the reference fits the inner data better.  The "error"
+~2e-3 near rho = 1, identical across four different rho^4 runs, is therefore mostly the
+reference's own error there (its truncation l <= 6 against a 25% quadrupole), not the networks'.
+The rho^2 run is clearly worse in the far field (lambda equation 1.8e-4 beyond rho = 30), which
+fits its flat lambda error.  A reference good enough to grade the inner region needs more modes.
