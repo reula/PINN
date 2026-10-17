@@ -669,3 +669,8 @@ The inner floor -- Ricci ~4e-5 and lambda equation ~1.5e-5 in rho 1-3 -- is comm
 converged 2285-parameter run whatever the weighting or optimiser, and the l <= 6 reference sits at
 8.5e-5 there.  It is the network's capacity near the inner sphere (or the sample), which is what
 the wider network is for; it needs a much longer run to tell.
+
+Round 6 (submitted 2026-10-17): the wide network continued, 2 x 10000 SSBroyden iterations
+without resampling (`m6_w40_a` -> `m6_w40`); and a finer nonlinear reference to grade the inner
+region, l = 0..10 and 36 radial modes (1008 unknowns), 2500 collocation points, rho^4 and the P pin
+(`specref_nonlinear_fine` on `ib16k_ssbroyden`).  Results: pending.

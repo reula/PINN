@@ -94,5 +94,10 @@ submit m5_dsg_far10         m4_ssb_rho4 $DSG --dsgnar-sketch 2000 --dsgnar-stage
                               --init-from $M4 --far-weight 10,4
 submit m5_w40               - --width 40 --depth 6 --steps 5000 --plateau-min-iters -1 --qn-method ssbroyden \
                               --lbfgs-steps 8000 $RHO4 $PP
+# round 6 (2026-10-17): the wide network was still falling at its 8000-iteration cap (2.35e-7);
+# 2 x 10000 more SSBroyden iterations (the RSS limit), no resampling
+W40="--width 40 --depth 6 --steps 0 --qn-method ssbroyden --lbfgs-steps 10000 --resample-every 0 $RHO4 $PP"
+submit m6_w40_a             m5_w40 $W40 --init-from runs/m5_w40/params.pkl
+submit m6_w40               m6_w40_a $W40 --init-from runs/m6_w40_a/params.pkl
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null
