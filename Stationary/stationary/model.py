@@ -319,6 +319,13 @@ class AxisymHybridNet(nn.Module):
     out_std: float = 1e-2
     hard_inner: Optional[Callable] = None
     decay: bool = False
+    # Reflection symmetry z -> -z, by construction (Config.z_reflect).  For inner data with S1 = 0
+    # the solution satisfies h(Rx) = R h(x) R, lambda(Rx) = lambda(x), R = diag(1, 1, -1); in this
+    # ansatz that is a, b, d, u EVEN in mu and c (the n z + z n coefficient) ODD.  The trunk is
+    # evaluated at mu and at -mu and the outputs are symmetrised accordingly, so odd-l content is
+    # impossible -- as in the spectral reference.  Without it the converged runs carried a spurious
+    # l = 1, 3 part of lambda of up to 3e-3 at rho ~ 2 (DSGNAR.md 9.2), as large as the quadrupole.
+    reflect: bool = False
 
     @nn.compact
     def __call__(self, x):
@@ -327,19 +334,32 @@ class AxisymHybridNet(nn.Module):
         n = x / rho
         t = jnp.log(rho / self.rho_in) / jnp.log(self.rho_out / self.rho_in)
         mu = n[..., 2:3]
-        feats = [t, mu]
-        if self.decay:
-            feats.append(self.rho_in / rho)
-        for i in range(1, self.fourier + 1):
-            feats.append(jnp.sin(jnp.pi * i * t))
-            feats.append(jnp.cos(jnp.pi * i * t))
-        for i in range(1, self.fourier + 1):
-            feats.append(jnp.cos(jnp.pi * i * mu))
-        z = jnp.concatenate(feats, axis=-1)
-        for _ in range(self.depth):
-            z = jnp.tanh(_dense(self.width)(z))
-        out = _dense(5, kernel_init=nn.initializers.normal(self.out_std),
-                       bias_init=nn.initializers.zeros)(z)
+
+        def feats_of(mu):
+            feats = [t, mu]
+            if self.decay:
+                feats.append(self.rho_in / rho)
+            for i in range(1, self.fourier + 1):
+                feats.append(jnp.sin(jnp.pi * i * t))
+                feats.append(jnp.cos(jnp.pi * i * t))
+            for i in range(1, self.fourier + 1):
+                feats.append(jnp.cos(jnp.pi * i * mu))
+            return jnp.concatenate(feats, axis=-1)
+
+        dense = [_dense(self.width) for _ in range(self.depth)]
+        head = _dense(5, kernel_init=nn.initializers.normal(self.out_std),
+                      bias_init=nn.initializers.zeros)
+
+        def trunk(z):
+            for layer in dense:
+                z = jnp.tanh(layer(z))
+            return head(z)
+
+        out = trunk(feats_of(mu))
+        if self.reflect:
+            mirror = trunk(feats_of(-mu))
+            parity = jnp.array([1.0, 1.0, -1.0, 1.0, 1.0])      # a, b, c, d, u
+            out = 0.5 * (out + parity * mirror)
 
         d3 = jnp.eye(3)
         ez = jnp.array([0.0, 0.0, 1.0])

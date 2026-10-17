@@ -44,6 +44,12 @@ def make_model(cfg: Config):
               rho_in=cfg.rho_in, rho_out=cfg.rho_out)
     if cfg.arch in ("sym", "sym_hybrid", "axisym_hybrid"):
         kw["decay"] = cfg.decay_feature
+    if getattr(cfg, "z_reflect", False):
+        if cfg.arch != "axisym_hybrid":
+            raise SystemExit("--z-reflect is implemented for --arch axisym_hybrid only")
+        if cfg.lam_bc_S1:
+            raise SystemExit("--z-reflect needs S1 = 0: a dipole datum is odd under z -> -z")
+        kw["reflect"] = True
     if getattr(cfg, "hard_inner_bc", False):
         # The inner data is imposed by construction (model._blend_inner) instead of by a penalty.
         # `load_run` goes through here too, so a loaded run evaluates the same constrained ansatz
@@ -1854,6 +1860,9 @@ def parse_args(argv=None):
     p.add_argument("--scale-ref", type=float, default=None)
     p.add_argument("--scale-ref-rho-in", action="store_true")
     p.add_argument("--scale-exps", type=str, default=None)
+    p.add_argument("--z-reflect", action="store_true", dest="z_reflect",
+                   help="axisym_hybrid: impose z -> -z reflection symmetry by construction (for "
+                        "S1 = 0 data), so the network cannot carry odd-l content")
     p.add_argument("--far-weight", type=str, default=None, dest="far_weight",
                    help="RHO_C[,Q]: loss weight 1 + (rho/rho_c)^Q on the interior equations, on top "
                         "of --scale-exps (Q default 4); keeps the inner equations at their "
@@ -2140,6 +2149,8 @@ def parse_args(argv=None):
         cfg.ref_solution = True
     if a.decay_feature:
         cfg.decay_feature = True
+    if a.z_reflect:
+        cfg.z_reflect = True
     if a.robin_source:
         cfg.robin_source = True
     if a.ref_asymptotic is not None:

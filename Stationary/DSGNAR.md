@@ -673,4 +673,31 @@ the wider network is for; it needs a much longer run to tell.
 Round 6 (submitted 2026-10-17): the wide network continued, 2 x 10000 SSBroyden iterations
 without resampling (`m6_w40_a` -> `m6_w40`); and a finer nonlinear reference to grade the inner
 region, l = 0..10 and 36 radial modes (1008 unknowns), 2500 collocation points, rho^4 and the P pin
-(`specref_nonlinear_fine` on `ib16k_ssbroyden`).  Results: pending.
+(`specref_nonlinear_fine` on `ib16k_ssbroyden`).
+
+* `specref_fine`: loss 2.8e-11 in 37 min (100x below the best networks); far field rho^-3.00 from
+  rho = 20 to 100, Robin(P) 1e-9..1e-10 at rho_out.
+
+**Graded against it, the networks' error is the same as against rhoW** (m5_ssb_norsmp: lambda
+1.6e-3 / 7.8e-4 / 1.2e-4 / 1.4e-5, h 2.0e-2 / 2.9e-3 / 2.8e-4 / 2.9e-5), so the ~2e-3 near the
+inner sphere is NOT the l <= 6 reference's error, as the residual comparison above had suggested:
+a small residual there did not mean a small error.  Where it is:
+
+* not a radial coordinate shift and not the monopole: the spherical mean of lambda against the
+  AREAL radius differs from the reference by 3.6e-6 (rho 1-3) and 1.9e-9 (30-100), and the areal
+  radius of rho = 1 agrees to six digits;
+* it is ODD-parity content.  Legendre coefficients of lambda_net - lambda_ref (m5_ssb_norsmp):
+
+      rho     l = 1      l = 3      l = 0, 2, 4..8
+      1.0     -5e-8      -1e-7      <= 1.4e-6        (the inner data hold)
+      1.5    2.8e-3     8.9e-4      <= 3.2e-5
+      2.0    3.3e-3     6.3e-4      <= 1.7e-5
+      5.0    1.3e-3     4.4e-5      <= 6.6e-6
+     10.0    4.1e-4     3.6e-6      <= 1.4e-6
+
+With S1 = 0 the problem is symmetric under z -> -z and its solution has no odd l (the reference's
+basis is even by construction).  The networks carry a spurious l = 1 (and 3) part as large as the
+quadrupole itself at rho = 3-10 -- the dipole of COM_GAUGE.md, here 100x larger than the 1e-5
+recorded there.  The loss barely sees it.  New: `--z-reflect` (axisym_hybrid; Config.z_reflect)
+symmetrises the network so a, b, d, lambda are even in mu = cos(theta) and c odd: odd-l content
+becomes impossible.  tests/test_z_reflect.py; an existing run's output is unchanged with it off.

@@ -104,6 +104,7 @@ class Config:
     depth: int = 6
     fourier: int = 0
     decay_feature: bool = False      # add rho_in/rho to the network features
+    z_reflect: bool = False          # axisym_hybrid: z -> -z symmetry by construction (S1 = 0 data)
 
     # ------------------------------------------------------------- sampling
     n_coll: int = 4096
