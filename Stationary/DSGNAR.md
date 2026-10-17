@@ -656,3 +656,16 @@ fits its flat lambda error.  A reference good enough to grade the inner region n
   Its dimensionless residuals are 10-30% below `m5_dsg_cyc`'s in every region (Ricci 3.9e-5 /
   9.5e-7 / 5.4e-8 / 4.3e-9, lambda equation 1.4e-5 / 6.6e-7 / 3.4e-8 / 3.5e-9; inner lambda 8.8e-7,
   h 6.9e-7): with the floor removed SSBroyden is again ahead, by a little.
+* `m5_dsg_far10` (dimensionless exponents + loss weight 1 + (rho/10)^4, P pin): 8.1e-9 -> 9.6e-10
+  (its own units) in 80 iterations, radius stop.  Residuals: Ricci 4.0e-5 / 2.5e-6 / 5.4e-7 /
+  7.4e-8, lambda equation 1.6e-5 / 4.2e-6 / 1.7e-6 / 4.5e-7.  Inside rho = 3 it is no better than
+  rho^4 (4.0e-5 vs 3.9e-5) and beyond rho = 3 it is 3-100x worse: lowering the far weight did not
+  buy accuracy inside.
+* `m5_w40` (width 40 x depth 6, ~8.6k parameters; Adam 5000 -> 0.16, then SSBroyden 8000 under
+  rho^4 + P pin -> 2.35e-7, still falling at the cap, 81 min): unconverged, and 10x worse than the
+  2285-parameter runs everywhere (Ricci 4.7e-4 / 8.6e-6 / 5.3e-7 / 5.2e-8; inner data 9e-6).
+
+The inner floor -- Ricci ~4e-5 and lambda equation ~1.5e-5 in rho 1-3 -- is common to every
+converged 2285-parameter run whatever the weighting or optimiser, and the l <= 6 reference sits at
+8.5e-5 there.  It is the network's capacity near the inner sphere (or the sample), which is what
+the wider network is for; it needs a much longer run to tell.
