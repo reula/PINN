@@ -278,6 +278,17 @@ class Config:
     # different code and different thread counts, which is accumulation, not contention.
     log_resources: bool = False
     w_pin: float = 100.0        # weight of the pin group, independent of w_outer
+    # Centre-of-mass gauge condition, usable on ANY sphere (COM_GAUGE.md 4b): the dipole flux
+    #     d^i(rho) = (1/4 pi) oint ( x^i dU/dn - U dx^i/dn ) dA_h,   U = ln(lambda)/2,
+    # is the same on every sphere for a solution in harmonic gauge (Green's identity: U and x^i are
+    # h-harmonic) and equals M a for a mass M displaced by a.  d = 0 puts the asymptotic origin at
+    # the centre of mass -- a gauge choice available for any data, involving l = 1 only.  The
+    # networks otherwise drift to a residual harmonic gauge mode with d ~ -0.025 (a ~ -0.04).
+    # None = off; else the chart radii of the spheres it is imposed on.  Fixed quadrature (Gauss-
+    # Legendre x uniform phi), not random points: the integrand's zero-mean parts (U n_z) would
+    # make a Monte Carlo estimate as noisy as the signal.
+    com_radii: tuple | None = None
+    w_com: float = 100.0
 
     # ------------------------------------- radial derivative of the lambda equation
     # The lambda-equation is second order, so the loss is blind to lambda''', and lambda'''

@@ -99,5 +99,13 @@ submit m5_w40               - --width 40 --depth 6 --steps 5000 --plateau-min-it
 W40="--width 40 --depth 6 --steps 0 --qn-method ssbroyden --lbfgs-steps 10000 --resample-every 0 $RHO4 $PP"
 submit m6_w40_a             m5_w40 $W40 --init-from runs/m5_w40/params.pkl
 submit m6_w40               m6_w40_a $W40 --init-from runs/m6_w40_a/params.pkl
+# round 7 (2026-10-18): the centre-of-mass gauge d = 0 (COM_GAUGE.md 4b) on six spheres, from the
+# best run, whose d is -0.025 on every sphere (asymptotic chart translated by a ~ -0.04)
+M5="runs/m5_ssb_norsmp/params.pkl"
+COM="--com-pin 1,1.5,3,10,30,100"
+submit m7_ssb_com           m5_ssb_norsmp --steps 0 --init-from $M5 --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 0 $RHO4 $PP $COM
+submit m7_dsg_com           m5_ssb_norsmp $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4 $PP \
+                              $COM --init-from $M5 --dsgnar-cycles 5 --dsgnar-cycle-steps 60
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null

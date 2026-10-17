@@ -232,6 +232,13 @@ conserved it can be imposed on any sphere -- the inner one included, where the n
 resolved -- instead of through a tail coefficient at rho_out.  As a loss term: three averaged
 numbers per sphere, (D^x, D^y, D^z)^2, on a few spheres (pin-like; cheap).
 
+Implemented (2026-10-18): `--com-pin RADII [--w-com W]` (Config.com_radii, w_com = 100): the loss
+gets w_com * sum over the spheres of |d|^2, d = D/(4 pi), by fixed Gauss-Legendre x uniform-phi
+quadrature (24 x 8 per sphere), in `total_loss` and `residual_vector` alike (`losses.com_flux`).
+tests/test_com_flux.py: d = 0 for the exact solution on every sphere; for it translated by
+a = 0.05 the same value on every sphere, = M a; the residual vector still squares to the loss.
+First runs: Mendieta round 7 (`m7_ssb_com`, `m7_dsg_com`, DSGNAR.md 9.2).
+
 ## 5. What this would and would not explain
 
 It would explain, in one stroke: the size of the tail dipole in the production runs, its growth when

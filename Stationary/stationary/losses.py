@@ -545,6 +545,33 @@ def outer_pin_raw(point_fields, xs, cfg, exact_fields=None):
     return averaged, value
 
 
+def com_flux(point_fields, cfg, n_mu: int = 24, n_phi: int = 8):
+    """d^i = D^i/(4 pi) on each sphere of cfg.com_radii, flattened (3 per sphere); see Config.
+
+    D^i = oint sqrt(h) h^jk (x^i d_k U - U delta^i_k) n_j rho^2 dOmega with U = ln(lambda)/2.
+    """
+    import numpy as _np
+    mu, w = _np.polynomial.legendre.leggauss(n_mu)
+    phi = 2 * _np.pi * _np.arange(n_phi) / n_phi
+    MU, PHI = _np.meshgrid(mu, phi, indexing="ij")
+    st = _np.sqrt(1 - MU ** 2)
+    dirs = jnp.asarray(_np.stack([st * _np.cos(PHI), st * _np.sin(PHI), MU], -1).reshape(-1, 3))
+    wts = jnp.asarray(_np.outer(w, _np.full(n_phi, 2 * _np.pi / n_phi)).reshape(-1))
+
+    def integrand(x):
+        f = point_fields(x)
+        U = 0.5 * jnp.log(f.lam)
+        dU = jax.grad(lambda y: 0.5 * jnp.log(point_fields(y).lam))(x)
+        hn = jnp.linalg.solve(f.h, x / jnp.linalg.norm(x))           # h^jk n_j
+        return jnp.sqrt(jnp.linalg.det(f.h)) * (x * (hn @ dU) - U * hn)
+
+    out = []
+    for r in cfg.com_radii:
+        vals = jax.vmap(integrand)(float(r) * dirs)                 # (P, 3)
+        out.append(float(r) ** 2 * jnp.sum(wts[:, None] * vals, axis=0) / (4 * jnp.pi))
+    return jnp.concatenate(out)
+
+
 def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
     """Asymptotic-VALUE pins at rho_out (`cfg.pin_lam`, `cfg.pin_h_tan`, `cfg.pin_h_rr`).
 
@@ -725,6 +752,8 @@ def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
         push(f"pin_mean_{k}", jnp.sqrt(w_pin) * jnp.mean(v).reshape(1))
     for k, v in value.items():
         push(f"pin_{k}", jnp.sqrt(w_pin / v.size) * v.reshape(-1))
+    if getattr(cfg, "com_radii", None):
+        push("com", jnp.sqrt(jnp.asarray(cfg.w_com)) * com_flux(pf, cfg))
     return jnp.concatenate(rows)
 
 
@@ -766,6 +795,8 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     pin = outer_pin_terms(pf, batch["outer"], cfg, exact_fields)
     for k, v in pin.items():
         parts[f"pin_{k}"] = v
+    if getattr(cfg, "com_radii", None):
+        parts["com"] = jnp.sum(com_flux(pf, cfg) ** 2)
 
     loss = 0.0
     for k in equation_keys(model):
@@ -787,5 +818,7 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
         # its own weight: the pins are data, not a decay condition, and the run that needs
         # them is exactly the one where w_outer could not see the level at all
         loss = loss + jnp.asarray(cfg.w_pin) * sum(pin.values())
+    if "com" in parts:
+        loss = loss + jnp.asarray(cfg.w_com) * parts["com"]
 
     return loss, parts

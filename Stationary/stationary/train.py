@@ -1860,6 +1860,10 @@ def parse_args(argv=None):
     p.add_argument("--scale-ref", type=float, default=None)
     p.add_argument("--scale-ref-rho-in", action="store_true")
     p.add_argument("--scale-exps", type=str, default=None)
+    p.add_argument("--com-pin", type=str, default=None, dest="com_pin",
+                   help="RADII: impose the centre-of-mass gauge d = 0 (the conserved dipole flux, "
+                        "COM_GAUGE.md 4b) on the spheres of these chart radii, e.g. 1,2,5,20")
+    p.add_argument("--w-com", type=float, default=None, dest="w_com")
     p.add_argument("--z-reflect", action="store_true", dest="z_reflect",
                    help="axisym_hybrid: impose z -> -z reflection symmetry by construction (for "
                         "S1 = 0 data), so the network cannot carry odd-l content")
@@ -2151,6 +2155,10 @@ def parse_args(argv=None):
         cfg.decay_feature = True
     if a.z_reflect:
         cfg.z_reflect = True
+    if a.com_pin:
+        cfg.com_radii = tuple(float(v) for v in a.com_pin.split(","))
+    if a.w_com is not None:
+        cfg.w_com = a.w_com
     if a.robin_source:
         cfg.robin_source = True
     if a.ref_asymptotic is not None:
