@@ -591,4 +591,13 @@ and the new `--far-weight 10,4`, a LOSS weight 1 + (rho/10)^4 on the interior eq
 (`Config.far_weight`; tests/test_far_weight.py).  "rho^4" (`--scale-exps 3,4,3,4`) multiplies the
 loss by rho^4 from rho_in = 1 on, so the far rows outweigh the inner ones by 1e8; with the crossover
 at rho_c = 10 the inner equations keep their dimensionless weight and the far rows gain 1e4.  (A
-bare 1 + rho^4 would equal rho^4 beyond rho ~ 2 and change nothing.)  Results: pending.
+bare 1 + rho^4 would equal rho^4 beyond rho ~ 2 and change nothing.)
+
+Results so far:
+
+* `m4_dsg_rho4_cont`: 1.44e-6 -> 4.6e-7 in 61 iterations (18 min), then stopped by the radius
+  (lambda 3e7, radius 1e-7; 45 accepted, 16 rejected).  Its error against the rhoW reference is the
+  SAME as at its start, to two digits in every region (lambda 2.1e-3 / 1.0e-3 / 1.6e-4 / 1.9e-5,
+  h 2.7e-2 / 3.9e-3 / 3.8e-4 / 3.9e-5): the parameters moved by at most 1e-3, and the 3x lower
+  loss did not move the error.  At this point the error is not limited by the optimisation.
+* the other three: pending.
