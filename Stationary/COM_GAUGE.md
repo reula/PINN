@@ -239,6 +239,21 @@ tests/test_com_flux.py: d = 0 for the exact solution on every sphere; for it tra
 a = 0.05 the same value on every sphere, = M a; the residual vector still squares to the loss.
 First runs: Mendieta round 7 (`m7_ssb_com`, `m7_dsg_com`, DSGNAR.md 9.2).
 
+**Confirmed far out (2026-10-18).**  For `m5_ssb_norsmp`, `com_flux` gives d_z = -0.02567 on the
+spheres rho = 2, 10, 50 (constant to 2e-5 relative), M = 0.5771 (= R0), so a = d/M = -0.0445.  The
+l = 1 coefficient of lambda_net(x) - lambda_ref(x), against lambda_net(x) - lambda_ref(x - a z):
+
+| rho | plain | reference translated by a |
+|---|---|---|
+| 10 | 4.1e-4 | 5.4e-5 |
+| 30 | 5.3e-5 | 2.5e-6 |
+| 100 | 5.4e-6 | 2.4e-7 |
+
+Far out the network IS the reference in a chart translated by a (8-23x less l = 1 difference);
+near the inner sphere translating makes it worse (-6.6e-3 at rho = 1.5), as it must: there the gauge
+vector xi -> 0 and is not a translation.  So the odd "error" is the residual harmonic gauge mode of
+section 4b, not wrong geometry.
+
 ## 5. What this would and would not explain
 
 It would explain, in one stroke: the size of the tail dipole in the production runs, its growth when
