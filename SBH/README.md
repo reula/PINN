@@ -63,9 +63,7 @@ original's. A second smoke run exercising `--core_points 600 --core_ic_points 12
 
 **Environment.** Python with JAX (x64), flax, optax, numpy, scipy, matplotlib, tqdm. Both on the
 laptop and on Mendieta the scripts use `../Stationary/.venv` (JAX 0.11.1, flax 0.12.9, optax
-0.2.8); `tqdm` was added to the laptop's copy on 2026-10-17 and is **still missing on Mendieta**:
-
-    ssh mendieta.ccad.unc.edu.ar '~/.local/bin/uv pip install --python ~/Julia/PINN/Stationary/.venv/bin/python tqdm'
+0.2.8); `tqdm` was added to both copies (laptop 2026-10-17, Mendieta 2026-10-18).
 
 The script writes every output into `--outdir` (default: the current directory).
 
@@ -85,8 +83,8 @@ The script writes every output into `--outdir` (default: the current directory).
 
 The job refuses to start if JAX does not see the GPU(s), or if `OUTDIR` already holds a run
 (unless resuming). It copies the script and its md5 next to the outputs. The production flags
-(`PROD_ARGS`) are those of the MN5 jobs: `--fast_hessian --loss_plot_every 10 --blowup_factor
-100`. The README_bundle's best-run settings are not defaults; pass them through `EXTRA_ARGS`
+(`PROD_ARGS`) are those of the MN5 jobs, `--fast_hessian --loss_plot_every 10 --blowup_factor
+100`, plus `--deriv_mode taylor` (section 3). The README_bundle's best-run settings are not defaults; pass them through `EXTRA_ARGS`
 (`--core_points 48000 --core_ic_points 4800 --core_radius 0.5 --EPOCHS_QN 24000`).
 **Open:** whether the default sizes (80000 interior points, dense 9302^2 inverse Hessian) fit
 an A30's 24 GB. The MN5 runs used H100s. Use `NGPU=2` if they don't.
@@ -133,9 +131,22 @@ The default stays `autodiff`, which is bit-for-bit the previous behaviour.
   window's end. Taylor and autodiff runs are therefore **not bitwise comparable** (like runs on
   different JAX versions); compare against a baseline made in the same mode.
 
-**Not yet measured: the GPU.** `PRESET=bench` on Mendieta runs `tools/bench_loss.py` and
-`tools/check_taylor.py` at 8000/32000 points. Until it has run, `--deriv_mode taylor` is not in
-the production flags.
+**GPU (Mendieta A30, job 1180555, 2026-10-18, `PRESET=bench`):** agreement 7e-16 (residual),
+3e-16 (loss), 1e-15 (gradient). Times (median, network 6 x 40):
+
+| | 8000 interior pts | 32000 interior pts |
+|---|---|---|
+| full BFGS loss value+grad (autodiff) | 20.9 ms | 46.9 ms |
+| evolution residual value+grad (autodiff) | 16.2 ms | 46.3 ms |
+| evolution residual forward only | 3.6 ms | 12.2 ms |
+| Sommerfeld boundary value+grad | 1.7 ms | 3.1 ms |
+| residual value+grad, autodiff -> taylor (moving chi) | | 46.5 -> 26.6 ms (**1.75x**) |
+| residual value+grad, autodiff -> taylor (physical chi) | | 43.6 -> 26.4 ms (1.65x) |
+
+So on the GPU too the residual is ~all of the loss, and taylor removes ~40 % of it. Compilation
+takes 15-50 s per function (cached in `~/.cache/jax_bh`). **`--deriv_mode taylor` is in the
+Mendieta job's default `PROD_ARGS`** since then; the MN5 scripts are unchanged (autodiff).
+Still open: GPU memory at the default 80000 points (the bench job used at most 32000).
 
 **Next candidates** (not done): the RHS backward pass (the other ~2/3 of the residual cost;
 per-point 3 x 3 einsums under vmap) is the larger target, but it is verified physics code, so it

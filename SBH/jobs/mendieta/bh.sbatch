@@ -14,8 +14,10 @@
 #         bbh    : the script defaults (equal-mass bound orbit, t <= 50, 200 windows)
 #         smoke  : a few minutes, tiny network
 #         bench  : tools/bench_loss.py + tools/check_taylor.py, no training
-# PROD_ARGS default: --fast_hessian --loss_plot_every 10 --blowup_factor 100 (the MN5
-# production flags). Add --deriv_mode taylor through EXTRA_ARGS (or PROD_ARGS).
+# PROD_ARGS default: the MN5 production flags (--fast_hessian --loss_plot_every 10
+# --blowup_factor 100) plus --deriv_mode taylor (1.7x faster residual on the A30, job
+# 1180555; agrees with autodiff to 1e-15). PROD_ARGS="..." without it = autodiff, bitwise
+# the collaborators' behaviour.
 #SBATCH -p multi
 #SBATCH -A ifeg
 #SBATCH --gres=gpu:1
@@ -36,7 +38,7 @@ mkdir -p "$JAX_COMPILATION_CACHE_DIR" runs
 
 NGPU=${NGPU:-1}
 PRESET=${PRESET:-single}
-PROD_ARGS=${PROD_ARGS---fast_hessian --loss_plot_every 10 --blowup_factor 100}
+PROD_ARGS=${PROD_ARGS---fast_hessian --loss_plot_every 10 --blowup_factor 100 --deriv_mode taylor}
 
 echo "$(hostname) | $(nvidia-smi -L | tr '\n' ' ')"
 # Refuse a silent CPU fallback (it would take days).
