@@ -225,8 +225,22 @@ networks train with the same rho^2 scaling, so they plausibly carry the same und
 (untested).  `specref_nonlinear_rhoW.npz` is the reference to grade against from now on;
 `stationary.specref_summary` draws every run's error against it, and `specref.load_reference`
 (the report's VS NONLINEAR REFERENCE section, `P_multipoles_outer.png`) takes it before the
-rho^2 one when a run has both (`REFERENCE_TAGS`).  The ladder variant did not run
-(the shell was killed with the terminal before it started).
+rho^2 one when a run has both (`REFERENCE_TAGS`).  The ladder variant (Robin shells at
+1, 0.9, 0.8, 0.7, 0.5, 0.35 of rho_out, rho^2 weighting; Mendieta, 2026-10-16) does NOT fix it:
+
+    rho     P2 coeff   slope   Robin(P) l=0   Robin(P) l=2
+     10    1.77e-04    -3.01    -1.1e-03        9.3e-05
+     20    2.29e-05    -2.94    -1.2e-03        9.6e-05
+     30    7.60e-06    -2.23    -5.1e-04       -2.5e-05
+     50    3.13e-06    -1.41    -7.1e-07        2.4e-07      <- shells: 35, 50, 70, 80, 90, 100
+     70    2.57e-06    +1.18    -6.4e-07        3.6e-08
+    100    3.63e-06    -0.17    -5.4e-09       -4.7e-10
+
+The condition now holds on the shells at 35 and 50 as well, and the tail is still not rho^-3.  A
+plausible reason (not tested): the kernel {1, 3, 4} acts on every l, so an l = 2 rho^-1 term --
+not a solution of the equations, but annihilated by the operator -- passes the condition at any
+radius, and only the interior residual can exclude it, which at rho^2 weighting it does not.
+Weighting (rhoW), not more shells, is what determines the far field.
 
 **Every run against the rhoW reference** (`stationary.specref_summary`, 2026-10-16; angular rms of the
 difference, per radial region, next to the size of the perturbation itself):

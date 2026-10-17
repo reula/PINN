@@ -556,4 +556,27 @@ in 17 min) do not shorten SSBroyden's path.
 Round 3 (submitted 2026-10-16): the same two optimisers with the residuals weighted by rho^4
 (`--scale-exps 3,4,3,4`), the weighting under which the spectral reference's far field became
 determined (PERTURBATION.md 5.2b): SSBroyden as two jobs of 10000 (the RSS limit above), DSGNAR
-s = 2000 at target 0.075.  Results: pending.
+s = 2000 at target 0.075.
+
+Results (Mendieta, 2026-10-16/17).  Under the rho^4 weighting the Adam warm-up's loss is 1.23e4
+(the far rows, ~rho^2 = 1e4 heavier, were never trained), and:
+
+* **SSBroyden did not move**: both jobs stopped at iteration 0 (`stop=stall`, line-search status 3)
+  at 1.23e4.  The quasi-Newton start from a point that far off fails; it needs a start under the
+  new weighting.
+* **DSGNAR s = 2000 took it to 1.4e-6 in 300 iterations (86 min) and was still falling** (x6 per 30
+  iterations at the end; stopped by the budget, not the radius; 286/300 accepted).
+
+Its error against the rhoW nonlinear reference (`specref_summary`), against the rho^2 runs:
+
+| run | rms dlam 1-3 | 3-10 | 10-30 | 30-100 | rms dh 1-3 | 3-10 | 10-30 | 30-100 |
+|---|---|---|---|---|---|---|---|---|
+| *perturbation size* | *2.0e-2* | *2.5e-3* | *7.6e-4* | *2.6e-4* | *2.2e-2* | *4.5e-4* | *3.1e-5* | *3.5e-6* |
+| SSBroyden, rho^2 (loss 1.7e-8) | 4.1e-4 | 2.5e-4 | 2.1e-4 | 2.2e-4 | 5.1e-3 | 7.5e-4 | 9.2e-5 | 2.9e-5 |
+| DSGNAR s = 2000, rho^2 (9.4e-8) | 8.6e-4 | 5.1e-4 | 4.0e-4 | 3.6e-4 | 1.1e-2 | 1.6e-3 | 1.5e-4 | 3.7e-5 |
+| DSGNAR s = 2000, rho^4 (1.4e-6, unconverged) | 2.1e-3 | 1.0e-3 | 1.6e-4 | **1.9e-5** | 2.7e-2 | 3.9e-3 | 3.8e-4 | 3.9e-5 |
+
+The rho^4 weighting removes the flat ~2e-4 lambda error of every rho^2 run: beyond rho = 30 the
+error is 1.9e-5, 12x below SSBroyden's and below the perturbation (2.6e-4), unconverged.  Near the
+inner sphere it is 2-5x worse, and h is not yet better anywhere.  (Its loss is in rho^4 units and
+is not comparable with the rho^2 losses.)
