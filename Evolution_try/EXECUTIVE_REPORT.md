@@ -3,8 +3,9 @@
 **Project:** `Evolution_try`, a physics-informed neural network for the 1+1D wave equation
 `u_tt − c²u_xx = 0`, `c = 1`, `L = 1`, integrated to `T = 20`; comparison of optimisers.
 **Period covered:** the whole line of work in this directory, to 2026-10-16.
-**Status:** results complete for the wave equation; one cell queued for re-run; the stall's
-cause identified by an independent audit.
+**Status:** results complete for the wave equation.  The stall's cause is identified (the
+sketch), and a separate, reproducible single-cell failure turned out to be a defect in this
+project's own retry rule rather than in DSGNAR — found, fixed and tested while re-running it.
 
 ---
 
@@ -51,7 +52,8 @@ Gauss–Newton model is meaningful there."
 | Exact-Jacobian audits (rank, alignment) | the stop is the **sketch's**, not the problem's |
 | Paper re-read: its own rules as switches | the paper's double-precision targets are worth `×1000` |
 | Line-search studies (Crunch, jaxopt, DSGNAR) | all three measured; none helps (§6) |
-| Documentation, 49 tests, F64 throughout | `README.md`, `docs/dsgnar_spec.md`, `BATCH_REPORT.md` |
+| A reproducible window-1 convergence failure | traced to a retry rule that could never fire for window 1; fixed and tested |
+| Documentation, 59 tests, F64 throughout | `README.md`, `docs/dsgnar_spec.md`, `BATCH_REPORT.md` |
 
 This directory is **shared with a parallel workstream** (the `Stationary`/Mendieta work, and the
 `pp_*` runs, which are paper-rule ablations on the wave equation). Those results are included and
@@ -245,9 +247,19 @@ someone else's measurement.
    fixes are `s` chosen from the *measured* rank rather than a fixed fraction, and separating the
    paper's two target halves (`0.075` versus `Δ_min = 1e-8`), which are currently confounded —
    round 2 of that ablation is submitted and pending.
-2. **One cell is queued for re-run.** `dsgnar_soft_all_nc2201_s1100` (`1.17e-02`, stall-broken) has
-   been deleted as invalid data; `DSGNAR_SKETCH=1100 FOCUSED=1 bash scripts/batch_runs.sh`
-   recreates it.
+2. **A reproducible failure was found and fixed, and it was ours, not DSGNAR's.**
+   `dsgnar_soft_all_nc2201_s1100` gave `1.174e-02`, was deleted as invalid data, and on a clean
+   re-run gave `1.224e-02`.  Two runs, same failure.  The recorded explanation — *"window 9
+   stalled and the retry did not rescue it"* — was wrong: no window was retried at all.  What
+   happened is that **window 1** stopped on its radius rule at `1.9e-08`, where a healthy window 1
+   reaches `1e-20` (300 of 300 steps accepted), and the chain then carried `1.1e-03` of relative
+   error through ten windows that each converged perfectly.  Nothing caught it because a window is
+   retried only when its loss exceeds a multiple of **the best window so far** — and window 1 has
+   no predecessor, so that test could never fire.  **The one window that seeds the whole chain was
+   the one window with no guard.**  `window_first_max_loss` now judges it against an absolute
+   floor, narrowly (window 1 only, only on a radius stop, retries capped), with the rule extracted
+   and tested six ways.  Worth stating plainly: this is the fifth time in this project that a
+   silent no-op — here a guard that could never trigger — looked exactly like correct behaviour.
 3. **The two-problem contrast is unexplained in mechanism.** Why does the sibling problem's
    sketched model go uninformative at `1e-7` while the wave equation's reaches `1e-9`? The
    available evidence is the rank/alignment audit; it has not been run on the sibling problem at

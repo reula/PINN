@@ -247,6 +247,35 @@ class Slab:
         return jax.vmap(one)(jnp.full_like(x, t) if jnp.ndim(t) == 0 else t, x)
 
 
+def _window_retry_reason(k, final_loss, infos, best_loss, stall_factor, max_tries,
+                         attempt, first_floor):
+    """Why this window should be redrawn and retried, or ``None``.
+
+    Two different questions, and conflating them was a bug:
+
+    * **A later window** is stalled when its final loss is far above the best any
+      previous window reached.  ``best_loss`` carries that reference.
+    * **Window 1** has no previous window, so ``best_loss`` is ``inf`` there and that
+      rule can never fire -- which made the one window that seeds the whole chain the
+      one window with no guard.  It is judged instead against an absolute floor, and
+      ONLY when the optimiser *says it converged* (stopped on its radius).  A window
+      that stopped on its budget is not under-converged in this sense: retrying it
+      with the same budget cannot help, and short budgets are legitimate in tests.
+
+    Extracted from the retry loop so it can be tested directly; provoking a genuinely
+    under-converged window 1 takes a rare running condition.
+    """
+    if attempt + 1 >= max_tries:
+        return None
+    first_stop = str(infos[-1].get("stopped", "")) if infos else ""
+    if k == 0 and first_floor > 0.0 and "radius" in first_stop \
+            and final_loss > first_floor:
+        return "first"
+    if best_loss < float("inf") and final_loss > stall_factor * best_loss:
+        return "stall"
+    return None
+
+
 class Chain:
     """The piecewise solution assembled from a list of trained slabs."""
 
@@ -368,16 +397,39 @@ def run_windows(cfg: Config, verbose: bool = True, save: bool = True) -> Dict:
             # attempt it was meant to rescue should not win by being later.
             if best_try is None or final_loss < best_try[0]:
                 best_try = (final_loss, flat, history, infos, phase_histories)
-            stalled = (attempt + 1 < max_tries and best_loss < float("inf")
-                       and final_loss > stall_factor * best_loss)
-            if not stalled:
+            # Window 1 has no predecessor to compare against, so `best_loss` is inf
+            # there and the rule above can NEVER fire -- which makes the one window
+            # that seeds the whole chain the one window with no guard.  Measured, and
+            # it is the defect this cell kept showing: dsgnar_soft_all_nc2201_s1100
+            # reproduced at 1.174e-02 and then 1.224e-02, and in BOTH runs window 1
+            # stopped by its radius rule at 1.9e-08 (16 accepted, 18 rejected) where a
+            # healthy window 1 reaches 1e-15..1e-20.  The chain then carries 1.1e-03
+            # of relative error through ten windows that each converge perfectly,
+            # because the state they are handed is already wrong.
+            #
+            # The test is deliberately narrow: only window 1, only when the optimiser
+            # says it CONVERGED (stopped by the radius), and only above an absolute
+            # floor.  A window that stopped on its budget is not under-converged in
+            # this sense -- retrying it with the same budget cannot help, and small
+            # budgets are legitimate in the tests.
+            reason = _window_retry_reason(
+                k, final_loss, infos, best_loss, stall_factor, max_tries, attempt,
+                float(getattr(cfg, "window_first_max_loss", 0.0) or 0.0))
+            if reason is None:
                 break
             attempt += 1
             if verbose:
-                print(f"[win {k+1}/{cfg.windows}] the optimiser stalled at loss "
-                      f"{final_loss:.3e}, {final_loss / best_loss:.0e}x the best so far "
-                      f"(best {best_loss:.3e}); redrawing and retrying "
-                      f"({attempt}/{max_tries - 1})", flush=True)
+                if reason == "first":
+                    print(f"[win {k+1}/{cfg.windows}] window 1 stopped on its radius "
+                          f"rule at {final_loss:.3e}, above the "
+                          f"{float(cfg.window_first_max_loss):.0e} floor, and there is "
+                          f"no earlier window to compare it with; redrawing and "
+                          f"retrying ({attempt}/{max_tries - 1})", flush=True)
+                else:
+                    print(f"[win {k+1}/{cfg.windows}] the optimiser stalled at loss "
+                          f"{final_loss:.3e}, {final_loss / best_loss:.0e}x the best so far "
+                          f"(best {best_loss:.3e}); redrawing and retrying "
+                          f"({attempt}/{max_tries - 1})", flush=True)
         slab.attempts = attempt
         _loss, flat, history, infos, phase_histories = best_try
         slab.params = objective.unflatten(flat)

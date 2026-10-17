@@ -889,13 +889,42 @@ spectrum of `J`, the gradient and the sketched step's alignment.  Converged stop
 recorded too, as the control.  `../Stationary/run_batch_sketch.sh` re-runs
 `dsgnar_hard_nc2201` with it on.
 
-One cell in twenty was stall-*broken* rather than stall-limited:
-`dsgnar_soft_all_nc2201_s1100` at `1.174e-02`, where window 9 stalled and the single
-retry did not rescue it.  **That run has been deleted.**  It was invalid data by the
-rule this section states, so the surviving tree has no broken cell and the re-run is
-queued (`rm -rf` then `DSGNAR_SKETCH=1100 FOCUSED=1 bash scripts/batch_runs.sh`).  Its
-number is kept here because the failure it records is real and was one of the things
-that pointed at the sketch.
+**One cell is reproducibly broken, and the first diagnosis of it was wrong.**  The
+cell `dsgnar_soft_all_nc2201_s1100` (`s = d/2`, `n_coll = 2201`, `soft_all`) gave
+`1.174e-02`; it was deleted as invalid data, re-run from scratch, and gave `1.224e-02`.
+Two runs, same failure: it is not sample luck.
+
+The first explanation here was *"window 9 stalled and the single retry did not rescue
+it"*.  That is false, and the per-window record says so plainly: **no window was
+retried — `attempts` is zero for all ten** — and window 9 was fine.  What actually
+happened is in **window 1**:
+
+| | window 1 final loss | its stop | accepted / rejected | windows 2–10 |
+|---|---|---|---|---|
+| this cell (twice) | **1.925e-08** | radius below threshold, 34 iterations, 5 rounds | 16 / 18 | 4e-11 … 1e-17, all fine |
+| a healthy cell (`s = 1500`, same `n_coll`) | 3.70e-20 | budget, 300 iterations | 300 / 0 | fine |
+
+Window 1 stopped because its radius collapsed while the loss sat **seven orders above**
+where the same phase reaches elsewhere, and the chain then carried `1.1e-03` of
+relative error through ten windows that each converged perfectly (1.08e-03 → 2.04e-02,
+growing monotonically) — because the state they are handed is already wrong.
+
+**The reason nothing caught it is a defect in the retry rule, not in DSGNAR.**  A
+window is retried when its final loss exceeds `window_stall_factor` times *the best
+window so far* — and for window 1 there is no previous window, so `best_loss` is `inf`
+and that test can never fire.  **The one window that seeds the entire chain was the
+one window with no guard.**  `window_first_max_loss` (default `1e-11`) now judges it
+against an absolute floor instead, narrowly: only window 1, only when the optimiser
+*stopped on its radius* (a budget stop is not under-convergence, and small budgets are
+legitimate), and only above the floor.  The rule is extracted as
+`_window_retry_reason` so it is tested directly, six ways.
+
+Note what this cell is **not** evidence for.  At `n_coll = 2201` the same hand-over
+gives `7.83e-06` at `s = d/3` and `2.40e-07` at `s = 0.68 d`, so the sketch-size story
+of §6.10 does not explain it — `d/2` is the one size that fails there, and it fails by
+under-converging window 1, not by the sketch being too small.  The re-run is
+`runs/dsgnar_soft_all_nc2201_s1100` and it is kept in the record now, as the second
+observation of a reproducible failure rather than as a stray.
 
 
 ### 6.12 The Wolfe family, and what the Broyden's failure actually was

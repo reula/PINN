@@ -93,6 +93,14 @@ class Config:
                                        # noise, where the Gauss-Newton model is degenerate
                                        # (measured: rho = -4.9e13, then a hang).  0 disables.
     window_retries: int = 2            # re-draw and retry a window whose optimiser stalled
+    window_first_max_loss: float = 1.0e-11
+                                       # A FIRST window is retried if it stopped on its
+                                       # radius rule above this loss.  Window 1 has no
+                                       # predecessor, so the stall rule (which compares
+                                       # against the best window so far) could never fire
+                                       # there -- and window 1 seeds the whole chain.  The
+                                       # failing cell stopped at 1.9e-08 where healthy ones
+                                       # reach 1e-15..1e-20.  0 disables.
     window_stall_factor: float = 1.0e3 # stalled = final loss above this times the best
                                        # final loss seen so far in the run
     ic_grid: int = 256                 # points on the edge grid for the window hand-over

@@ -243,6 +243,47 @@ class TestSubagentFreeOptimisers(unittest.TestCase):
         self.assertAlmostEqual(hist[-1]["loss"], obj.loss(flat), places=12)
 
 
+class TestWindowRetryRule(unittest.TestCase):
+    """The retry rule, tested directly.
+
+    Window 1 has no previous window, so `best_loss` is inf for it and the original
+    `final_loss > stall_factor * best_loss` could NEVER fire -- the one window that
+    seeds the whole chain was the one window with no guard.  It showed up as
+    dsgnar_soft_all_nc2201_s1100 reproducing 1.174e-02 and then 1.224e-02, with
+    window 1 stopping on its radius rule at 1.9e-08 where a healthy window 1 reaches
+    1e-15..1e-20.
+    """
+
+    def rule(self, **kw):
+        from wave_pinn.windows import _window_retry_reason
+        args = dict(k=0, final_loss=1.0e-8, infos=[{"stopped": "radius below threshold"}],
+                    best_loss=float("inf"), stall_factor=1.0e3, max_tries=3,
+                    attempt=0, first_floor=1.0e-11)
+        args.update(kw)
+        return _window_retry_reason(**args)
+
+    def test_a_first_window_that_converged_early_is_retried(self):
+        self.assertEqual(self.rule(), "first")
+
+    def test_a_healthy_first_window_is_not(self):
+        self.assertIsNone(self.rule(final_loss=1.0e-18))
+
+    def test_a_first_window_that_stopped_on_its_budget_is_not_retried(self):
+        """Retrying a budget stop with the same budget cannot help, and small
+        budgets are legitimate -- e.g. every test in this file."""
+        self.assertIsNone(self.rule(infos=[{"stopped": "budget"}]))
+
+    def test_the_floor_can_be_switched_off(self):
+        self.assertIsNone(self.rule(first_floor=0.0))
+
+    def test_retries_are_capped(self):
+        self.assertIsNone(self.rule(attempt=2))          # max_tries = 3 -> no more
+
+    def test_a_later_window_still_uses_the_best_so_far(self):
+        self.assertEqual(self.rule(k=4, best_loss=1.0e-14), "stall")
+        self.assertIsNone(self.rule(k=4, best_loss=1.0e-14, final_loss=1.0e-15))
+
+
 class TestSsbroydenLineSearches(unittest.TestCase):
     """Crunch ships the same ssbroyden2 update twice, differing only in the search."""
 
