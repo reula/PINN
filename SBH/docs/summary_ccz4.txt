@@ -1,0 +1,182 @@
+================================================================================
+EEccz4_BH_puncture.py — vacuum CCZ4 PINN for black-hole binaries
+(Brill-Lindquist / Bowen-York punctures, moving-puncture gauge, no excision)
+State of the code on 2026-10-16.  Equations: equations_ccz4.txt (LaTeX),
+compiled as equations_ccz4.pdf.  (The earlier boson-star version of these two
+notes, for EEccz4_BS.py, is kept in other/notes_backup_2026-10-16/.)
+================================================================================
+
+WHAT IT DOES
+------------
+A PINN learns the 22 CCZ4 fields of a vacuum spacetime,
+    [0:6]   gamma-tilde_ij  (xx,xy,xz,yy,yz,zz)      conformal 3-metric
+    [6:12]  A-tilde_ij      (same packing)           trace-free extr. curvature
+    [12]    chi             conformal factor (det gamma)^(-1/3)
+    [13]    Khat = K - 2 Theta
+    [14]    Theta           Z4 energy-constraint field
+    [15:18] Gamma-hat^i     evolved conformal connection
+    [18]    alpha           lapse   (1+log slicing)
+    [19:22] beta^i          shift   (integrated Gamma-driver)
+over windows in time, starting from Brill-Lindquist data with Bowen-York
+momenta/spins. Every field has a first-order-in-time equation
+d_t(field) = RHS; the 22 residuals (r_ccz4_evolution) are the PDE loss.
+The punctures are never excised and never trainable: they are tracked by
+integrating dx_A/dt = -beta(x_A) through the trained network (shift-driven
+tracking), and that track moves both the sampling focus and an analytic chi
+background.
+
+Default setup: equal-mass binary (--BL_masses 0.5,0.5), separation 4 on the
+x-axis, tangential Bowen-York momenta --BL_momenta_y -0.16,0.16 (bound orbit),
+domain |x|<=24 (--R_domain), t in [0,50] (--tfinal) in 200 windows of 0.25.
+
+EQUATIONS (details and formulas: equations_ccz4.txt)
+---------
+  * CCZ4 of Bezares, Palenzuela & Bona 2017 (arXiv:1705.01071, Sec. II),
+    vacuum. Ricci tensor built with the evolved Gamma-hat plus the explicit Z
+    term in R^chi, which already equals R_ij + 2 D_(i Z_j) (trace R + 2 D_i Z^i);
+    no separate D_i Z_j term is added (Z double counting fixed 2026-10-10;
+    every run before that date used 3 D_(iZ_j) in At and R + 4 D_iZ^i in Theta).
+  * Deliberate differences from the paper: integrated Gamma-driver without
+    B^i and without beta_0; lapse written as -2 alpha f_alpha Khat; Gamma-hat
+    (Alic's kappa_3 = 1) in the shift terms; extra --kappa_2; boundary speed 1.
+  * Divisions: every 1/chi uses max(chi, --chi_floor 1e-5) (0 = old sign-blind
+    floor); the residual never divides by alpha (Theta/alpha term cancelled
+    analytically).
+  * Damping off by default: --kappa_z 0 --kappa_c 0 --kappa_2 0; gauge
+    --f_alpha 1 --f_beta 1 --eta 0.1; --gauge static freezes alpha=1, beta=0.
+  * Verification (handoff_EEccz4_BH_puncture/tests/): all 22 rows agree with
+    an independent Alic-et-al. implementation to ~1e-16 on random fields with
+    Z, Theta, beta != 0; static Schwarzschild 0 in all rows, Kerr-Schild Kerr
+    (a=0.6) 0 in the 18 gravity rows; flat space exactly 0.
+
+INITIAL DATA AND WINDOWS
+------------------------
+  * psi = 1 + sum m_A/(2 r_A); chi = psi^-4, gamma-tilde = delta, alpha = 1/psi,
+    beta = 0, Theta = 0, Gamma-hat = Gamma-tilde (Z = 0), K_ij from Bowen-York
+    (exact momentum constraint, trace-free; Hamiltonian constraint not solved,
+    left to the loss when P or S != 0). Flags --BL_masses, --BL_momenta (x),
+    --BL_momenta_y (y), --BL_spins, --n_stars 1|2, --star_separation.
+  * Later windows start from the previous window's network at its end time
+    (--reinit_mode warm also inherits the weights). --ic_mode soft (default)
+    penalises the mismatch; --ic_mode hard builds f_IC + tau*NN.
+
+MOVING CHI BACKGROUND (--chi_bg_mode moving, default)
+------------------------------------------------------
+The chi channel is the regular deviation from psi_bg^-4, with psi_bg the
+Brill-Lindquist factor centred on the tracked puncture positions (x_A(t),
+y_A(t)), stop-gradient, refreshed at every resample with
+--moving_bg_refresh_steps RK4 steps. Requires --bh_center_mode shift_driven.
+--chi_bg_mode physical: the network outputs chi directly.
+
+LOSS
+----
+  Loss = lam_einstein*[18 gravity rows] + lam_gauge*[4 gauge rows]
+           (interior + lam_tapa x window-end surface, causal weights)
+       + lam_bc*BC + lamg0*(IC fit + lam_ic_log*log-ratio IC on chi, alpha)
+       + w_pos*mean(relu(-chi)^2 + relu(-alpha)^2)
+Defaults: lam_einstein = lam_gauge = lam_bc = 1, lam_tapa = 2, lamg0 = 10,
+lam_ic_log = 0, w_pos = 10 (lamgt0 accepted but unused). Causal weights
+(--causal_weight, 8 buckets, eps 1) down-weight late points until the earlier
+buckets are small; the window-end term is gated by the whole interior.
+Boundary: Sommerfeld on X - X_flat for all 22 fields (--metric_bc
+sommerfeld), or Dirichlet to the t=0 values.
+
+SAMPLING
+--------
+--Nint 80000 interior, --NI 8000 window-start/end, --Nb 16000 boundary points,
+redrawn every --N_change 250 BFGS iterations. Focused clouds around each
+tracked puncture (--int_focus_fraction/--int_focus_radius,
+--ic_focus_fraction/--ic_focus_radius), optional orbit ball
+(--orbit_focus_fraction), optional within-window following of the punctures
+(--follow_puncture_sampling), points closer than --min_puncture_dist 0.02 to
+a puncture rejected, time distribution --time_dist exponential.
+
+PUNCTURE TRACKING (--bh_center_mode)
+-------------------------------------
+shift_driven (default): RK4 (--track_steps 1000) of dx_A/dt = -beta^x,
+dy_A/dt = -beta^y read at z = 0.03 from the trained network. chi_min /
+lapse_min: centres from minima of chi or alpha in the x-y plane of the
+previous window (not with the moving background). fixed: t = 0 positions.
+
+OPTIMIZER (per window)
+----------------------
+Optional Adam (--EPOCHS_ADAM 0), then --EPOCHS_QN 12000 quasi-Newton
+iterations as 48 restarts of --N_change 250 on a fixed batch; fresh batch
+between restarts, inverse Hessian carried over (dense, n_params^2).
+  * --qn_update ssbroyden2 (default, self-scaled Broyden) | bfgs | score.
+    score = SCORE (arXiv:2608.04206): shifted secant pair (s, y + mu s),
+    mu = clip(eta*lambda, mu_min, mu_max), lambda = sqrt(g.H.g), first trial
+    step 1/(1+lambda); --score_eta 0.1 --score_mu_min 1e-8 --score_mu_max 1e-4
+    (the paper gives no values; on a scaled-down Burgers test it never beat
+    SSBroyden). Needs --line_search wolfe.
+  * --line_search wolfe (default; strong Wolfe, c1 1e-4, --wolfe_c2 0.9) |
+    armijo (backtracking; all runs before 2026-10-10 used it). The script
+    exits if the imported Crunch lacks the requested search or update.
+  * --h0_scaling 1 (default since 2026-10-16): an identity inverse Hessian
+    is rescaled to (y.s/y.y) I after the first step. 0 = old behaviour.
+  * NaN guard: a non-finite restart restores the last finite weights, resets
+    H = I and redraws the batch; 3 in a row end the window.
+  * Excursion guard (2026-10-16): a restart whose loss exceeds
+    --excursion_ratio (100) x the previous restart's, or for the first
+    restart of a later window max(--excursion_abs 1e-2, 100 x previous
+    window's final loss), is discarded (weights kept, H = I, new batch at the
+    same sampling stage), up to --excursion_retries 3 per window. It catches
+    finite loss jumps that the NaN guard cannot, e.g. chi crossing zero.
+  * Stall handling: no relative improvement > --min_delta (1e-3) for
+    --patience_bfgs (500) restarts -> reset H = I (twice, with a shorter
+    probation), then end the window. --es_min_loss (default 0 = off) adds
+    the condition best loss <= es_min_loss. Patience counts restarts, so with
+    48 restarts per window the default 500 never fires (the script prints a
+    note); to use it, e.g. --patience_bfgs 10 --min_delta 1e-2.
+  * Each window's summary prints a "QN (...)" line: iterations, curvature
+    pairs used/skipped, first trials accepted, decrement and y.s/s.s of the
+    last restart, and the mean SCORE shift.
+
+OUTPUTS (written in the working directory)
+------------------------------------------
+loss_window{w}.csv/.png (all loss terms every --loss_save_every steps;
+optional per-term gradient norms with --log_term_grad_norms);
+pinn_checkpoint_w{w:04d}.pkl per window plus the manifest pinn_checkpoint.pkl
+(--resume_checkpoint continues a run); puncture_track.txt,
+puncture_track_fine.txt, puncture_strength.csv, diagnostics_puncture_track
+(_xy).png; per-window 2D slices diagnostics_2D(_zoom)_w{w}.png
+(--snapshot_2d_every); fields_/residuals_/gauge_metric_/native_fields_
+snapshots (--snapshot_save_every); diagnostics_1D_cut.png,
+diagnostics_gauge_at_puncture.png, diagnostics_gauge_source.png.
+Constraint monitors are Theta and Z^i; hamiltonian_constraint() returns
+Theta (labelled "H" in plots), not R + K^2 - K_ij K^ij.
+
+RUNNING
+-------
+Run from a scratch directory with Crunch/ next to the script (it writes all
+outputs into the working directory).
+  Production (cluster GPU):  python -u EEccz4_BH_puncture.py --snapshot_save_every 12000
+  Smoke test (CPU or >= 4 GB GPU, a few minutes):
+    python -u EEccz4_BH_puncture.py --Nint 3000 --NI 600 --Nb 1200 --HIDDEN 20 \
+        --N_LAYERS 4 --tfinal 0.5 --N_window 2 --EPOCHS_QN 200 --N_change 50 \
+        --snapshot_save_every 100 --loss_save_every 50
+The defaults do not fit a 4 GB GPU (dense inverse Hessian of the 6x40 net,
+~0.7 GB, plus 80000 interior points).
+
+CHANGELOG (most recent first)
+-----------------------------
+  * 2026-10-17 (Reula/Claude, see SBH/README.md): ONE script. The Oct-16 optimizer
+    version merged with the Oct-15 _gpus version (--outdir, --core_points/_ic_points/
+    _radius, --blowup_factor/_max, resume-into-other-outdir fix, --n_gpus,
+    --fast_hessian, --loss_plot_every, --profile_restarts). Both loss guards kept:
+    excursion guard first, blow-up guard as backstop. Defaults are byte-identical to
+    the Oct-16 script (smoke-run loss CSVs). New --deriv_mode taylor (default
+    autodiff): batched second-order forward pass for the residual's derivatives,
+    agrees with autodiff to ~1e-15, ~2x faster residual value+grad on CPU (GPU not yet
+    measured). Run with Crunch from Crunch.zip (SCORE, initial_scale, stats).
+  * 2026-10-16: ported the optimizer updates of EEdedonder_merged.py:
+    --h0_scaling (default on), excursion guard, --es_min_loss gate,
+    --qn_update {ssbroyden2,score,bfgs} with SCORE parameters, per-window QN
+    statistics. Defaults keep the old stall behaviour (patience 500,
+    min_delta 1e-3, no loss gate). With --h0_scaling 0 the loss history is
+    identical to the previous version.
+  * 2026-10-10: Z terms no longer counted twice (At, Theta); strong-Wolfe line
+    search made the default (--line_search, --wolfe_c2); --chi_floor replaces
+    the sign-blind chi floor.
+  * 2026-09-21: Theta/alpha term in the Gamma-hat equation cancelled
+    analytically (no division by alpha).

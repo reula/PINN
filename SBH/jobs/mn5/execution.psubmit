@@ -1,0 +1,109 @@
+#!/bin/bash
+# Production BBH run (the script's defaults: equal-mass bound orbit, t <= 50 in
+# 200 windows of 0.25). Defaults = the warm2_low settings, but with the strong-Wolfe
+# line search, the 2026-10-10 equation fix and the chi floor, so not directly
+# comparable with warm2_low or any run before 2026-10-10 (see NOTES.md).
+# 200 windows do not fit in one 72 h job: resume (below) until done.
+#
+# Environment (ENV, default jax09, 2026-10-13), same as single_puncture.psubmit:
+#   jax09 : shared venv /gpfs/projects/uib108/venvs/pinn (Python 3.12, JAX 0.9.2).
+#   jax04 : the colabfold JAX 0.4.30 / Python 3.9 module environment used by every
+#           BH run before 2026-10-13.
+# Runs in different environments are NOT bitwise comparable (random streams,
+# round-off): compare with a baseline from the SAME ENV. THREEFRY=0 (jax09 only)
+# gives the JAX 0.4 random streams.
+#
+# Submit from the BH folder (script and Crunch/ there); outputs go to $OUTDIR, and the
+# job moves its own SLURM log (slurm_<jobname>_<jobid>.out) there as soon as it starts:
+#   sbatch execution.psubmit                                              # -> bbh_jax09/
+#   sbatch --export=ALL,OUTDIR=bbh_follow,EXTRA_ARGS="--follow_puncture_sampling" execution.psubmit
+# Resume a killed job (same OUTDIR, ENV and flags):
+#   sbatch --export=ALL,OUTDIR=bbh_jax09,EXTRA_ARGS="--resume_checkpoint bbh_jax09/pinn_checkpoint.pkl" execution.psubmit
+# GPUs (production default since 2026-10-15): EEccz4_BH_puncture.py (merged 2026-10-17; was _gpus.py) on NGPU GPUs of one
+# node (default 2) with PROD_ARGS = --fast_hessian --loss_plot_every 10 --blowup_factor 100 (NOTES §4: 1/2/4 H100 = 39.7/21.7/13.85 s
+# per 250-step restart). The header requests 2 GPUs; for another count override it on the sbatch line
+# (20 cores per GPU), e.g. 4 GPUs:
+#   sbatch --gres=gpu:4 --cpus-per-task=80 --export=ALL,NGPU=4,OUTDIR=x,EXTRA_ARGS="..." execution.psubmit
+# 1 GPU: --gres=gpu:1 --cpus-per-task=20 --export=ALL,NGPU=1,...
+# Since the 2026-10-17 merge there is one script; SCRIPT= still selects another file if needed.
+# Submit from SBH/ (script and Crunch/ there):  sbatch jobs/mn5/<this file>
+#SBATCH --job-name=bbh_ccz4
+#SBATCH --qos=acc_resa
+#SBATCH --account=uib108
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=40
+#SBATCH --gres=gpu:2
+#SBATCH --time=72:00:00
+#SBATCH --output=slurm_%x_%j.out
+
+set -eo pipefail
+cd "$SLURM_SUBMIT_DIR"
+
+ENV=${ENV:-jax09}
+module purge
+case "$ENV" in
+  jax09)
+    module load miniforge/25.3.0-3
+    unset PYTHONPATH
+    source /gpfs/projects/uib108/venvs/pinn/bin/activate
+    PYTHON=python
+    export JAX_PLATFORMS=cuda
+    export JAX_ENABLE_X64=True
+    export JAX_THREEFRY_PARTITIONABLE=${THREEFRY:-1}
+    export JAX_COMPILATION_CACHE_DIR=$HOME/.cache/jax_bh
+    mkdir -p "$JAX_COMPILATION_CACHE_DIR"
+    ;;
+  jax04)
+    module load bsc/1.0
+    module load openmpi/4.1.5-gcc
+    module load cuda/12.6
+    module load colabfold/1.5.5-conda_jax0.4.30
+    module load miniforge/24.3.0-0
+    PYTHON=/gpfs/apps/MN5/ACC/MINIFORGE/24.3.0-0/envs/colabfold155_jax0.4.30/bin/python
+    export PATH=/gpfs/apps/MN5/ACC/MINIFORGE/24.3.0-0/envs/colabfold155_jax0.4.30/bin:$PATH
+    unset PYTHONPATH
+    ;;
+  *) echo "ERROR: unknown ENV=$ENV (jax09|jax04)" >&2; exit 1 ;;
+esac
+export MPLBACKEND=Agg
+
+NGPU=${NGPU:-2}
+SCRIPT=${SCRIPT:-EEccz4_BH_puncture.py}
+PROD_ARGS=${PROD_ARGS---fast_hessian --loss_plot_every 10 --blowup_factor 100}
+NVIS=$(nvidia-smi -L | wc -l)
+if [ "$NVIS" -lt "$NGPU" ]; then
+  echo "ERROR: NGPU=$NGPU but only $NVIS GPUs allocated (add --gres=gpu:$NGPU to sbatch)" >&2; exit 1
+fi
+GPU_ARGS="--n_gpus $NGPU $PROD_ARGS"   # the merged script runs on 1..N GPUs (2026-10-17)
+
+OUTDIR=${OUTDIR:-bbh_${ENV}}
+case "$EXTRA_ARGS" in
+  *--resume_checkpoint*) ;;
+  *) if [ -e "$OUTDIR/pinn_checkpoint.pkl" ]; then
+         echo "ERROR: $OUTDIR already holds a run; refusing to overwrite it." >&2
+         echo "       To continue it: EXTRA_ARGS=\"--resume_checkpoint $OUTDIR/pinn_checkpoint.pkl\"" >&2
+         exit 1
+     fi ;;
+esac
+mkdir -p "$OUTDIR"
+# Move this job's SLURM log into the run directory right away. A rename on the same
+# file system keeps SLURM writing into the moved file, so the whole log ends up there.
+# If the job stops before this point (e.g. the overwrite check above), the log stays here.
+LOG="slurm_${SLURM_JOB_NAME:-x}_${SLURM_JOB_ID:-x}.out"
+[ -f "$LOG" ] && mv -n "$LOG" "$OUTDIR/" && echo "SLURM log moved to $OUTDIR/$LOG"
+
+echo "$(hostname) | $(nvidia-smi -L | head -1) | ENV=$ENV | python $(which $PYTHON)"
+$PYTHON -c "import sys, jax, flax, optax, tqdm, matplotlib; print('python', sys.version.split()[0], '| jax', jax.__version__, '| flax', flax.__version__, '| optax', optax.__version__, '|', jax.devices())"
+echo "SCRIPT=$SCRIPT NGPU=$NGPU GPU_ARGS=$GPU_ARGS  JAX_THREEFRY_PARTITIONABLE=${JAX_THREEFRY_PARTITIONABLE:-unset}  OUTDIR=$OUTDIR  EXTRA_ARGS=$EXTRA_ARGS"
+
+# Record exactly what ran next to the outputs (the script in the BH folder may change later).
+STAMP=$(date +%Y%m%d_%H%M%S)
+cp "$SCRIPT" "$OUTDIR/$SCRIPT.$STAMP"
+{ echo "job ${SLURM_JOB_ID:-?} $STAMP"
+  md5sum "$SCRIPT" Crunch/Optimizers/minimize_backtracking.py
+  echo "SCRIPT=$SCRIPT NGPU=$NGPU GPU_ARGS=$GPU_ARGS ENV=$ENV JAX_THREEFRY_PARTITIONABLE=${JAX_THREEFRY_PARTITIONABLE:-unset} EXTRA_ARGS=$EXTRA_ARGS"; } >> "$OUTDIR/code_md5.txt"
+
+echo "start $(date)"
+time $PYTHON -u "$SCRIPT" --outdir "$OUTDIR" $GPU_ARGS \
+    --snapshot_save_every 12000 ${EXTRA_ARGS}
+echo "end $(date)"

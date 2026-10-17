@@ -1,0 +1,333 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\geometry{margin=2.3cm}
+
+\newcommand{\half}{\tfrac{1}{2}}
+\newcommand{\tg}[2]{\tilde\gamma_{#1#2}}
+\newcommand{\tgu}[2]{\tilde\gamma^{#1#2}}
+\newcommand{\ta}[2]{\tilde A_{#1#2}}
+\newcommand{\tGamma}{\tilde\Gamma}
+\newcommand{\hGamma}{\hat\Gamma}
+\newcommand{\hK}{\hat K}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{Equations solved in \texttt{EEccz4\_BH\_puncture.py}\\[4pt]
+\normalsize vacuum CCZ4 PINN for Brill--Lindquist / Bowen--York black-hole binaries
+(state of the code on 2026-10-16)}
+\date{}
+
+\begin{document}
+\sloppy
+\maketitle
+
+\noindent
+The network maps $(t,x,y,z)$ to the 22 CCZ4 fields
+$\left(\tg{i}{j},\ \ta{i}{j},\ \chi,\ \hK,\ \Theta,\ \hGamma^i,\ \alpha,\ \beta^i\right)$
+(6+6+1+1+1+3+1+3). There is no matter: the stress--energy sources
+$\tau, S_i, S_{ij}$ are identically zero. Every field obeys a first-order-in-time
+equation $\partial_t(\text{field})=\mathrm{RHS}(\text{fields, spatial derivatives})$;
+the residual of each one is a row of the loss (\code{r\_ccz4\_evolution}). The
+system is the conformal CCZ4 of Bezares, Palenzuela \& Bona 2017
+(arXiv:1705.01071, Sec.~II), i.e.\ Alic et al.\ 2012 with $\chi=\gamma^{-1/3}$,
+the $\lambda_0\,\mathrm{tr}\ta{}{}$ term and $\kappa_c$ damping of the conformal
+constraints, with the deliberate differences listed in Sec.~3.
+
+% ==========================================================================
+\section*{1.\ Fields, network and metric reconstruction}
+
+$\chi=(\det\gamma_{ij})^{-1/3}$, $\tg{i}{j}=\chi\gamma_{ij}$,
+$\hK=K-2\Theta$, $\ta{i}{j}=\chi(K_{ij}-\tfrac13\gamma_{ij}K)$; $\Theta$ is the Z4
+energy-constraint field and $\hGamma^i$ the evolved conformal connection, to be
+compared with the algebraic $\tGamma^i=\tgu{j}{k}\tilde\Gamma^i_{jk}$. The
+momentum-constraint violation is
+\begin{equation}\label{eq:Zdef}
+  Z^i=\frac{\chi}{2}\left(\hGamma^i-\tGamma^i\right).
+\end{equation}
+
+\paragraph{Network.} A tanh MLP (default 6 hidden layers of 40) with inputs
+$\big(2(t-t_s)/(t_e-t_s)-1,\ x/R,\ y/R,\ z/R\big)$, $[t_s,t_e]$ the current
+window and $R$=\code{--R\_domain} (24). The output layer starts small
+(std $10^{-3}$) and is shifted to flat space: $\tg{i}{j}\to\delta_{ij}$,
+$\alpha\to1$, all others $\to0$; $\chi\to1$ only under \code{--chi\_bg\_mode
+physical} (see Sec.~4).
+
+\paragraph{4-metric.} For plots only, \code{adm\_to\_g4} rebuilds
+$\gamma_{ij}=\tg{i}{j}/\chi$, $\beta_i=\gamma_{ij}\beta^j$,
+$g^{tt}=-1/\alpha^2$, $g^{ti}=\beta^i/\alpha^2$,
+$g^{ij}=\gamma^{ij}-\beta^i\beta^j/\alpha^2$, $\sqrt{-g}=\alpha\sqrt\gamma$.
+
+% ==========================================================================
+\section*{2.\ Building blocks}
+
+\subsection*{2a.\ Conformal Ricci split}
+
+With $\tilde\Gamma_{ijk}$ the conformal Christoffel symbol of the first kind
+(symmetric in its last two indices) and $\tilde\Gamma^k_{ij}=\tgu{k}{l}\tilde\Gamma_{lij}$,
+\begin{align}
+  \hat R^{\chi}_{ij} &=
+    -\half\tgu{m}{n}\partial_m\partial_n\tg{i}{j}
+    + \half\!\left(\tg{k}{i}\partial_j\hGamma^k + \tg{k}{j}\partial_i\hGamma^k\right)
+    + \half\!\left(\hGamma^k\tilde\Gamma_{ijk} + \hGamma^k\tilde\Gamma_{jik}\right)
+    \nonumber\\
+    &\hspace{1cm}
+    + \tgu{m}{n}\!\left(\tilde\Gamma^k_{mi}\tilde\Gamma_{jkn}
+      + \tilde\Gamma^k_{mj}\tilde\Gamma_{ikn}
+      + \tilde\Gamma^k_{mi}\tilde\Gamma_{knj}\right), \label{eq:Rhat3}\\[4pt]
+  R^{\chi}_{ij} &= \frac{1}{\chi}\Bigg[
+    \half\partial_i\partial_j\chi
+    - \half\tilde\Gamma^k_{ij}\partial_k\chi
+    - \frac{1}{4\chi}\partial_i\chi\,\partial_j\chi
+    + \frac{1}{\chi}\left(\tg{i}{k}Z^k\partial_j\chi + \tg{j}{k}Z^k\partial_i\chi\right)
+    \nonumber\\
+    &\hspace{1cm}
+    +\half\tg{i}{j}\left(\tgu{k}{m}\partial_k\partial_m\chi
+      - \frac{3}{2\chi}\tgu{k}{m}\partial_k\chi\,\partial_m\chi
+      - \hGamma^k\partial_k\chi\right)\Bigg]. \label{eq:Rchi}
+\end{align}
+Because the evolved $\hGamma^k$ (not $\tGamma^k$) is used and $R^\chi_{ij}$ carries
+the explicit $Z$ term,
+\begin{equation}\label{eq:RZ}
+  \hat R^\chi_{ij}+R^\chi_{ij}=R_{ij}+D_iZ_j+D_jZ_i,\qquad
+  \gamma^{ij}\big(\hat R^\chi_{ij}+R^\chi_{ij}\big)=R+2D_iZ^i
+\end{equation}
+(arXiv:1705.01071, below their Eq.~(syseq2)). The combinations
+$R_{ij}+2D_{(i}Z_{j)}$ and $R+2D_iZ^i$ needed in Sec.~3 are therefore computed
+directly as Eq.~\eqref{eq:RZ}; \textbf{no separate $D_iZ_j$ or $D_iZ^i$ is
+added.} (Until 2026-10-10 the code added them again, i.e.\ it evolved
+$3D_{(i}Z_{j)}$ in $\ta{i}{j}$ and $R+4D_iZ^i$ in $\Theta$. Exact solutions have
+$Z=0$ and were unaffected; constraint-violating states were not. All runs
+before that date used the double-counted terms.)
+
+\subsection*{2b.\ Lapse Hessian and Laplacian}
+\begin{align}
+  D_iD_j\alpha &= \partial_i\partial_j\alpha - \Gamma^k_{ij}\partial_k\alpha
+    + \frac{1}{2\chi}\Big(\partial_i\chi\,\partial_j\alpha + \partial_j\chi\,\partial_i\alpha
+      - \tg{i}{j}\,\tgu{k}{l}\partial_k\chi\,\partial_l\alpha\Big), \label{eq:DaDa}\\
+  D^iD_i\alpha &= \chi\,\tgu{i}{j}\partial_i\partial_j\alpha
+    - \chi\,\tGamma^i\partial_i\alpha
+    - \half\,\tgu{i}{j}\partial_i\alpha\,\partial_j\chi . \label{eq:lap}
+\end{align}
+
+\subsection*{2c.\ Divisions by $\chi$ and $\alpha$}
+Every division by $\chi$ in the residual (the $R^\chi$ terms,
+$-\tfrac{3}{2\chi}\tilde A^{ij}\partial_j\chi$ and $-\tfrac1\chi Z^i(\dots)$ in
+Eq.~\eqref{eq:Ghat}, and Eq.~\eqref{eq:DaDa}) uses $\max(\chi,\chi_{\rm floor})$,
+\code{--chi\_floor} $=10^{-5}$ (0 restores the old sign-blind
+$\sqrt{\chi^2+10^{-28}}$). Collocation points are kept at least
+\code{--min\_puncture\_dist} $=0.02$ from each tracked puncture, where
+$\chi_{\rm BL}\approx2.96\times10^{-5}$ at $t=0$; the script prints this margin
+at startup. The residual never divides by $\alpha$: the term
+$2\alpha\,[-\tgu{i}{j}(\Theta/\alpha)\partial_j\alpha]$ of Eq.~\eqref{eq:Ghat} is
+written as $-2\,\tgu{i}{j}\Theta\,\partial_j\alpha$, which stays correct where an
+under-trained network has $\alpha<0$.
+
+% ==========================================================================
+\section*{3.\ Evolution equations (vacuum)}
+
+With $\mathcal{L}_\beta$ the Lie derivative along $\beta^i$, $K\equiv\hK+2\Theta$,
+$\mathrm{tr}\ta{}{}=\tgu{i}{j}\ta{i}{j}$, $\tilde A^{ij}$ raised with $\tgu{}{}$,
+and $\mathrm{TF}[\cdot]$ the trace-free part with respect to $\tg{i}{j}$:
+\begin{align}
+  \partial_t\tg{i}{j} &= \mathcal{L}_\beta\tg{i}{j}
+    - \tfrac{2}{3}\tg{i}{j}\partial_k\beta^k
+    - 2\alpha\!\left(\ta{i}{j}-\tfrac{1}{3}\tg{i}{j}\mathrm{tr}\ta{}{}\right)
+    - \tfrac{\alpha}{3}\kappa_c\,\tg{i}{j}\ln(\det\tg{}{}), \label{eq:gt}\\[2pt]
+  \partial_t\chi &= \beta^k\partial_k\chi
+    + \tfrac{2}{3}\chi\!\left(\alpha K - \partial_k\beta^k\right), \label{eq:chi}\\[2pt]
+  \partial_t\hK &= \beta^k\partial_k\hK - D^iD_i\alpha
+    + \alpha\Big[\tfrac{1}{3}K^2 + \ta{i}{j}\tilde A^{ij}
+      + \kappa_z(1-\kappa_2)\Theta\Big]
+    + 2Z^i\partial_i\alpha, \label{eq:Khat}\\[2pt]
+  \partial_t\Theta &= \beta^k\partial_k\Theta
+    + \half\alpha\Big[R + 2D_iZ^i + \tfrac{2}{3}\hK^2
+      + \tfrac{2}{3}\Theta(\hK-2\Theta) - \ta{i}{j}\tilde A^{ij}\Big]
+    - Z^i\partial_i\alpha
+      - \alpha\,\kappa_z(2+\kappa_2)\Theta, \label{eq:Theta}\\[2pt]
+  \partial_t\ta{i}{j} &= \mathcal{L}_\beta\ta{i}{j}
+    - \tfrac{2}{3}\ta{i}{j}\partial_k\beta^k
+    - \tfrac{\alpha}{3}\kappa_c\,\tg{i}{j}\mathrm{tr}\ta{}{}
+    + \chi\,\mathrm{TF}\!\Big[\alpha\big(R_{ij}+2D_{(i}Z_{j)}\big) - D_iD_j\alpha\Big]
+    \nonumber\\
+    &\hspace{1.3cm}
+    + \alpha\big(\hK\ta{i}{j} - 2\ta{i}{k}\tgu{k}{l}\ta{l}{j}\big), \label{eq:At}\\[2pt]
+  \partial_t\hGamma^i &= \beta^j\partial_j\hGamma^i - \hGamma^j\partial_j\beta^i
+    + \tfrac{2}{3}\hGamma^i\partial_k\beta^k
+    + \tgu{j}{k}\partial_j\partial_k\beta^i + \tfrac{1}{3}\tgu{i}{j}\partial_j\partial_k\beta^k
+    - 2\tilde A^{ij}\partial_j\alpha
+    \nonumber\\
+    &\hspace{1.3cm}
+    + 2\alpha\Big[\tilde\Gamma^i_{jk}\tilde A^{jk} - \tfrac{3}{2\chi}\tilde A^{ij}\partial_j\chi
+      - \tfrac{2}{3}\tgu{i}{j}\partial_j\hK
+      - \tfrac{1}{3}\tgu{i}{j}\partial_j\Theta
+      - \tfrac{1}{\chi}Z^i\!\left(\kappa_z+\tfrac{2}{3}K\right)\Big]
+    - 2\,\tgu{i}{j}\Theta\,\partial_j\alpha, \label{eq:Ghat}\\[2pt]
+  \partial_t\alpha &= \beta^i\partial_i\alpha - 2\alpha f_\alpha \hK
+    \qquad\text{(1+log slicing)}, \label{eq:alpha}\\[2pt]
+  \partial_t\beta^i &= \beta^j\partial_j\beta^i + \tfrac{3}{4}f_\beta\hGamma^i - \eta\,\beta^i
+    \qquad\text{(integrated Gamma-driver)}. \label{eq:beta}
+\end{align}
+In Eqs.~\eqref{eq:Theta} and \eqref{eq:At}, $R+2D_iZ^i$ and
+$R_{ij}+2D_{(i}Z_{j)}$ are evaluated as in Eq.~\eqref{eq:RZ}. The 18 rows
+\eqref{eq:gt}--\eqref{eq:Ghat} form the ``Einstein'' loss and the 4 rows
+\eqref{eq:alpha}--\eqref{eq:beta} the ``gauge'' loss.
+
+\paragraph{Parameters and defaults.} $\kappa_z,\kappa_c,\kappa_2$
+(\code{--kappa\_z/--kappa\_c/--kappa\_2}, all 0: no constraint damping);
+$f_\alpha=f_\beta=1$, $\eta=0.1$ (\code{--f\_alpha/--f\_beta/--eta});
+\code{--gauge static} freezes $\alpha=1$, $\beta^i=0$ (debugging).
+
+\paragraph{Differences from arXiv:1705.01071 (deliberate).}
+(i) Lapse: $-2\alpha f_\alpha\hK$ equals the paper's $-\alpha^2 f\hK$ with $f=2/\alpha$.
+(ii) Shift: integrated Gamma-driver, no $B^i$ field and no $\beta_0$ term.
+(iii) $\hGamma^i$, not $\tGamma^i$, in the shift terms of Eq.~\eqref{eq:Ghat}
+(Alic's $\kappa_3=1$); $\kappa_2$ is an addition.
+(iv) Boundary speed $c=1$ for all fields (Sec.~6).
+
+\paragraph{Verification} (\code{handoff\_EEccz4\_BH\_puncture/tests/}). All 22
+rows match an independent implementation in Alic et al.'s variables ($\mathrm{tr}K,\Theta$;
+physical Ricci, $D_iD_j\alpha$, $D_iZ_j$ by autodiff of $\tg{i}{j}/\chi$) to
+$\sim10^{-16}$ on random fields with $Z,\Theta,\beta\neq0$ and nonzero
+$\kappa_z,\kappa_c,\kappa_2,f_\alpha,f_\beta,\eta$; static isotropic Schwarzschild
+gives 0 in all 22 rows and Kerr ($a=0.6$, Kerr--Schild) 0 in the 18 Einstein
+rows; flat space gives exactly 0.
+
+% ==========================================================================
+\section*{4.\ Moving $\chi$ background (\code{--chi\_bg\_mode moving}, default)}
+
+The network's $\chi$ channel is the smooth deviation from an analytic
+Brill--Lindquist background that follows the tracked punctures:
+\begin{equation}
+  \chi(t,\vec x)=\chi_{\rm net}(t,\vec x)+\psi_{\rm bg}^{-4},\qquad
+  \psi_{\rm bg}=1+\sum_A\frac{m_A}{2\,|\vec x-\vec x_A(t)|},
+\end{equation}
+with $\vec x_A(t)=(x_A(t),y_A(t),0)$ interpolated from the shift-driven
+trajectory of Sec.~8 and held fixed with respect to the optimizer
+(stop-gradient). It is refreshed at every resample with
+\code{--moving\_bg\_refresh\_steps} RK4 steps. This $\chi$ is the one used in
+the residual, the boundary condition and the diagnostics.
+\code{--chi\_bg\_mode physical}: the network outputs $\chi$ itself.
+
+% ==========================================================================
+\section*{5.\ Initial data (Brill--Lindquist / Bowen--York)}
+
+Conformally flat multi-puncture data, punctures on the $x$-axis at
+$\mp$\code{--star\_separation}/2 (default 4, \code{--n\_stars} 2):
+\begin{equation}
+  \psi=1+\sum_A\frac{m_A}{2r_A},\qquad
+  \gamma_{ij}=\psi^4\delta_{ij},\qquad \alpha=1/\psi,\qquad \beta^i=0,
+\end{equation}
+masses \code{--BL\_masses} (0.5,0.5). Each puncture may carry an in-plane
+momentum $P_A=(P^x_A,P^y_A,0)$ (\code{--BL\_momenta}, default 0,0, and
+\code{--BL\_momenta\_y}, default $-0.16,0.16$: a bound orbit) and a spin
+$S_A$ (\code{--BL\_spins}, default 0). With $n_A^i=(x-x_A)^i/r_A$ built from a
+max-floored radius $r_A=\sqrt{\max(r^2,\code{r\_eps}^2)}$,
+\begin{align}
+  \bar A^{ij}_A &= \frac{3}{2r_A^2}\Big[P_A^in_A^j+P_A^jn_A^i
+    -\big(\delta^{ij}-n_A^in_A^j\big)(P_A\!\cdot\!n_A)\Big]
+  + \frac{3}{r_A^3}\Big[\epsilon^{ikl}S_{A,k}n_{A,l}\,n_A^j
+    +\epsilon^{jkl}S_{A,k}n_{A,l}\,n_A^i\Big], \\
+  K_{ij} &= \psi^{-2}\sum_A\bar A_{A,ij}.
+\end{align}
+This $K_{ij}$ satisfies the momentum constraint exactly for any $\psi$ and is
+trace-free; the Hamiltonian constraint is not solved (no $u$ correction), so
+its residual is left to the loss (it vanishes only for $P_A=S_A=0$). The CCZ4 data follow algebraically: $\chi=\psi^{-4}$,
+$\tg{i}{j}=\delta_{ij}$, $\ta{i}{j}=\chi(K_{ij}-\tfrac13\gamma_{ij}K)$, $\hK=K=0$,
+$\Theta=0$, $\hGamma^i=\tGamma^i$ (so $Z^i=0$), $\alpha=1/\psi$, $\beta^i=0$
+(\code{compute\_ccz4\_ic}).
+
+\paragraph{Windows.} Time is split into \code{--N\_window} windows (200 of
+width 0.25 for \code{--tfinal} 50). Window 0 starts from the data above; every
+later window starts from the previous window's network at its end time
+(\code{--reinit\_mode warm}: the weights are inherited too). \code{--ic\_mode
+soft} (default) imposes this by the loss term of Sec.~7; \code{--ic\_mode hard}
+uses $f=f_{\rm IC}+\tau\,\mathrm{NN}$, $\tau=(t-t_s)/(t_e-t_s)$.
+
+% ==========================================================================
+\section*{6.\ Boundary conditions}
+
+Sommerfeld (\code{--metric\_bc sommerfeld}, default) for all 22 fields $X$ at
+$r=R$, towards the flat values $X_\infty$
+($\tg{i}{j}\to\delta_{ij}$, $\chi,\alpha\to1$, all others $\to0$):
+\begin{equation}
+  \partial_tX + c\,\frac{x^i}{r}\partial_iX + c\,\frac{X-X_\infty}{r} = 0,\qquad c=1 .
+\end{equation}
+The 1+log gauge speed $\sqrt{2\alpha}$ is ignored. \code{--metric\_bc
+dirichlet} fixes every field to its $t=0$ value at the boundary.
+
+% ==========================================================================
+\section*{7.\ Loss}
+
+With $r^{(k)}$ the residual of Eq.~$k$ of Sec.~3, interior points
+$\mathcal{I}$, the window-end surface $\mathcal{T}$ (``tapa''), boundary
+points $\mathcal{B}$ and window-start points $\mathcal{S}$:
+\begin{align}
+  L &= \lambda_E\Big[\big\langle w_c\,|r_{1..18}|^2\big\rangle_{\mathcal I}
+        + \lambda_{\rm tapa}\,w_T\big\langle|r_{1..18}|^2\big\rangle_{\mathcal T}\Big]
+     + \lambda_G\Big[\big\langle w_c\,|r_{19..22}|^2\big\rangle_{\mathcal I}
+        + \lambda_{\rm tapa}\,w_T\big\langle|r_{19..22}|^2\big\rangle_{\mathcal T}\Big]
+     \nonumber\\
+    &\quad + \lambda_{bc}\big\langle|r_{BC}|^2\big\rangle_{\mathcal B}
+     + \lambda_{g0}\Big[\big\langle|u-u_{\rm IC}|^2\big\rangle_{\mathcal S}
+        + \lambda_{\log}\big\langle(\ln\chi-\ln\chi_{\rm IC})^2+(\ln\alpha-\ln\alpha_{\rm IC})^2\big\rangle_{\mathcal S}\Big]
+     \nonumber\\
+    &\quad + w_{\rm pos}\big\langle \mathrm{relu}(-\chi)^2+\mathrm{relu}(-\alpha)^2\big\rangle_{\mathcal I},
+\end{align}
+$\langle\cdot\rangle$ the mean over points and components. Defaults:
+$\lambda_E=\lambda_G=\lambda_{bc}=1$, $\lambda_{\rm tapa}=2$, $\lambda_{g0}=10$,
+$\lambda_{\log}=0$ (\code{--lam\_ic\_log}), $w_{\rm pos}=10$.
+\emph{Causal weights} (\code{--causal\_weight}, on): the window is cut into
+\code{--causal\_buckets} (8) time buckets and each interior point is weighted by
+$w_c=\exp(-\epsilon\sum_{b'<b}\bar r^2_{b'})$, the stop-gradient sum of the mean
+squared residual of the earlier buckets ($\epsilon$=\code{--causal\_eps}, 1);
+the tapa term gets $w_T=\exp(-\epsilon\sum_b\bar r^2_b)$.
+
+% ==========================================================================
+\section*{8.\ Puncture tracking}
+
+\code{--bh\_center\_mode shift\_driven} (default): each puncture moves with
+\begin{equation}
+  \frac{dx_A}{dt}=-\beta^x(x_A,y_A,\varepsilon,t),\qquad
+  \frac{dy_A}{dt}=-\beta^y(x_A,y_A,\varepsilon,t),\qquad \varepsilon=0.03,
+\end{equation}
+integrated with RK4 (\code{--track\_steps} 1000) through the trained network of
+each window; the positions are never trainable. They steer the focused
+sampling and the moving background of Sec.~4. \code{chi\_min} and
+\code{lapse\_min} relocate the centres from minima of $\chi$ or $\alpha$ in the
+$x$--$y$ plane instead (not compatible with the moving background); \code{fixed}
+keeps them at $t=0$.
+
+% ==========================================================================
+\section*{9.\ Optimizer}
+
+Per window: optional Adam (\code{--EPOCHS\_ADAM}, 0) then quasi-Newton
+restarts of \code{--N\_change} (250) iterations on a fixed batch, with a fresh
+batch between restarts and the inverse Hessian $H$ carried over
+(\code{--EPOCHS\_QN} 12000, i.e.\ 48 restarts). Update
+(\code{--qn\_update}): self-scaled Broyden \code{ssbroyden2} (default),
+\code{bfgs}, or SCORE (\code{score}: SSBroyden on the shifted pair
+$(s,\ y+\mu_k s)$, $\mu_k=\mathrm{clip}(\eta_S\lambda_k,\mu_{\min},\mu_{\max})$,
+$\lambda_k=\sqrt{g^\top Hg}$, first line-search trial $1/(1+\lambda_k)$; defaults
+$\eta_S=0.1$, $\mu_{\min}=10^{-8}$, $\mu_{\max}=10^{-4}$). Line search
+(\code{--line\_search}): strong Wolfe (default, $c_1=10^{-4}$,
+$c_2$=\code{--wolfe\_c2}=0.9) or Armijo backtracking. \code{--h0\_scaling} 1
+(default) rescales an identity $H$ to $(y\!\cdot\!s/y\!\cdot\!y)\,I$ after the
+first step (Nocedal \& Wright eq.~6.20). Safeguards: a non-finite restart is
+undone (weights restored, $H=I$, new batch; the window ends after 3 in a row);
+the excursion guard discards a restart whose loss exceeds
+\code{--excursion\_ratio} (100) times the previous one, or, for the first
+restart of a later window, $\max(\code{--excursion\_abs},\ 100\times$ the
+previous window's final loss$)$, up to \code{--excursion\_retries} (3) times;
+a stall (no relative improvement $>$\code{--min\_delta} for
+\code{--patience\_bfgs} restarts, and best loss $\le$\code{--es\_min\_loss} if
+that is $>0$) first resets $H=I$ twice and then ends the window. With the
+defaults (patience 500 $>$ 48 restarts) the stall rule never fires.
+
+% ==========================================================================
+\section*{10.\ Diagnostics}
+
+$\Theta$ and $Z^i$ (Eq.~\eqref{eq:Zdef}) are the constraint monitors.
+\code{hamiltonian\_constraint()} returns $\Theta$ (the plots call it ``H''), not
+$R+K^2-K_{ij}K^{ij}$. Puncture health is read from $\alpha$ at the punctures
+(\code{puncture\_track.txt}) and \code{puncture\_strength.csv}.
+\end{document}
