@@ -580,3 +580,10 @@ The rho^4 weighting removes the flat ~2e-4 lambda error of every rho^2 run: beyo
 error is 1.9e-5, 12x below SSBroyden's and below the perturbation (2.6e-4), unconverged.  Near the
 inner sphere it is 2-5x worse, and h is not yet better anywhere.  (Its loss is in rho^4 units and
 is not comparable with the rho^2 losses.)
+
+Round 4 (submitted 2026-10-17), all from `m3_dsg_s2000_rho4`, rho^4 weighting: DSGNAR continued
+300 iterations (`m4_dsg_rho4_cont`); SSBroyden 10000 from there (`m4_ssb_rho4`); and DSGNAR
+continued with the Robin condition on rho_out only and HYBRID collocation, half log-uniform and
+half uniform in volume (`m4_dsg_rho4_hyb_1sh`).  Every earlier run sampled log-uniformly only
+(`radial = log`; the recipe's `radial_log_frac = 0.5` is unused unless `--radial hybrid`).
+Results: pending.

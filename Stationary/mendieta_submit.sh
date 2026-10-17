@@ -64,5 +64,17 @@ submit m3_ssb_rho4_a        - --steps 0 --init-from $INIT --qn-method ssbroyden 
 submit m3_ssb_rho4          m3_ssb_rho4_a --steps 0 --init-from runs/m3_ssb_rho4_a/params.pkl \
                               --qn-method ssbroyden --lbfgs-steps 10000 $RHO4
 submit m3_dsg_s2000_rho4    - $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4
+# round 4 (2026-10-17), all from m3_dsg_s2000_rho4 (1.4e-6, still falling at its 300-iteration
+# budget; SSBroyden from the rho^2 Adam start stalled at iteration 0, loss 1.2e4):
+#   a. DSGNAR continued, same problem;  b. SSBroyden from there;
+#   c. DSGNAR continued with the Robin condition on rho_out ONLY (no inner shells) and HYBRID
+#      collocation (half log-uniform, half uniform in volume) -- every run so far sampled log only.
+M3="runs/m3_dsg_s2000_rho4/params.pkl"
+DSG4="$DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4 --init-from $M3"
+submit m4_dsg_rho4_cont     m3_dsg_s2000_rho4 $DSG4
+submit m4_ssb_rho4          m3_dsg_s2000_rho4 --steps 0 --init-from $M3 --qn-method ssbroyden \
+                              --lbfgs-steps 10000 $RHO4
+submit m4_dsg_rho4_hyb_1sh  m3_dsg_s2000_rho4 $DSG4 --outer-shell-fracs 1.0 --radial hybrid \
+                              --radial-log-frac 0.5
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null
