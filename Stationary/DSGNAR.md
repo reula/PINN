@@ -600,4 +600,9 @@ Results so far:
   SAME as at its start, to two digits in every region (lambda 2.1e-3 / 1.0e-3 / 1.6e-4 / 1.9e-5,
   h 2.7e-2 / 3.9e-3 / 3.8e-4 / 3.9e-5): the parameters moved by at most 1e-3, and the 3x lower
   loss did not move the error.  At this point the error is not limited by the optimisation.
-* the other three: pending.
+* `m4_ssb_rho4`: SSBroyden from the same start, 1.44e-6 -> 4.5e-7 in 1500 iterations (12 min),
+  stopped by the plateau rule.  Its error against the rhoW reference equals DSGNAR's continuation
+  in every region (lambda 2.1e-3 / 1.0e-3 / 1.6e-4 / 1.9e-5, h 2.6e-2 / 3.9e-3 / 3.7e-4 / 3.9e-5).
+  Both optimisers reach the same loss floor (~4.5e-7, rho^4 units) and the same solution: under
+  this weighting and sample the remaining error is not the optimiser's.
+* the other two (hybrid collocation + one Robin sphere; far weight 1 + (rho/10)^4): pending.
