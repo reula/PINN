@@ -101,6 +101,8 @@ rho = 30); the COM gauge (step 3) brought everything else down by ~10x more, and
 * At the 1e-8 level part of the remaining difference may be the reference's own (its loss is
   2.8e-11, the network's 1.2e-10).
 * The symmetric data make the odd part easy to see; the COM condition itself does not use the
-  symmetry.  The first asymmetric test (S1 = 0.05) is pending (`m8_s1_dsg`, DSGNAR.md 9.2).
+  symmetry.  **The asymmetric test works**: with S1 = 0.05 added (no z -> -z symmetry), DSGNAR + COM
+  reaches 8.2e-10, and against its own nonlinear reference (all l = 0..10) the error is rms 1.5e-7
+  in lambda and 1.9e-6 in h, 5 orders below the perturbation (DSGNAR.md 9.2).
 
 Details and the run-by-run history: DSGNAR.md 9.2, COM_GAUGE.md 4b, PERTURBATION.md 5.2b.

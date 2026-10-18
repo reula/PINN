@@ -71,7 +71,17 @@ default "armijo" so older runs reproduce).  Smoke test on a tiny network (149 pa
 start at loss 38.6: Armijo **0 iterations in each of 3 blocks** (status 3) -- the same stall as the
 two runs above -- against Wolfe **38.6 -> 0.18 in 85 iterations**.  The two iteration-0 stalls of the
 table were therefore the line search's, not SSBroyden's.  Reruns with Wolfe from those two starts
-(Mendieta round 9: `m9_ssbw_rho4`, `m9_ssbw_com`, and `m9_ssbw_com_nors` without resampling): pending.
+(Mendieta round 9):
+
+| rerun with Wolfe | start loss | result |
+|---|---|---|
+| `m9_ssbw_rho4`: rho^4 from the rho^2 Adam (Armijo: 0 iterations) | 1.2e4 | **moves**: 1.1e-2 after 911 iterations -- but slowly (blocks end early on status-3 line-search failures, ~40 iterations each), and the job was killed at 60.6 GB of host memory after 97 min: the RSS growth is per `minimize` call, and failed blocks make many calls |
+| `m9_ssbw_com`: COM term added (Armijo: 0 iterations) | 0.395 | **still stalls**: 1 iteration per block, status 5, loss unchanged |
+| `m9_ssbw_com_nors`: the same, no resampling | 0.395 | stalls the same way |
+
+So Wolfe fixes the far-start failure in one case (the new weights) but not the other (the new COM
+term), where DSGNAR went 0.395 -> 1.16e-10: from that start the difficulty is the objective's
+conditioning, not only the line search.  DSGNAR remains the tool for far starts.
 
 ## Recommendation
 

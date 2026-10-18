@@ -771,6 +771,20 @@ halve m7's error (lambda 3.2e-8 / 3.5e-8 at rho 1-3, h 1.4e-7 / 2.1e-7); SSBroyd
 and 5x faster.  Both at the reference's own loss (2.8e-11); the inner residual (~3e-6 at rho 1-3)
 is now the limit.
 
+* `m8_harm` (`--ricci-form harmonic`, same start and settings as `m7_dsg_com`): 0.395 -> 1.21e-10 in 5
+  cycles, the same trajectory as full Ricci (1.16e-10).  Against the fine reference: lambda 7.9e-8 /
+  1.4e-8 / 3.7e-9 / **7.3e-10** (m7: 6.7e-8 / 3.4e-8 / 1.2e-8 / 3.4e-9), h **6.1e-6** / 3.7e-8 / 5.4e-9 /
+  2.5e-9 (m7: 4.8e-7 / ...): better far out in lambda, 13x worse in h near the inner sphere.  No clear
+  gain from the reduction at this level.  (Its residual columns in report_metrics.json are of the
+  reduced Ricci, not comparable with the other runs'.)
+* **`m8_s1_dsg` -- data WITHOUT the symmetry** (S1 = 0.05, S2 = -1/12), DSGNAR + COM gauge, 8 cycles from
+  `m7_dsg_com`: 8.4e-2 -> 1.0e-3 -> 9.9e-6 -> 1.4e-7 -> 2.3e-9 -> 8.0e-10 (cycles 1-5), then 8.2e-10.
+  Its nonlinear reference (`specref_s1`: all l = 0..10, 36 radial, rho^4, P pin, COM; loss 4.6e-10,
+  far field rho^-3.00; cond(J) ~ 4e20, a near-null direction the least-squares solve resolves by
+  minimum norm): network - reference rms |dlambda| **1.5e-7** (max 1.2e-6), rms |dh| **1.9e-6**
+  (max 2.5e-5), against a perturbation of 1.2e-2 and 4.2e-2 -- 5 orders below it.  The COM gauge
+  carries over to asymmetric data.
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
