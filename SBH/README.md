@@ -90,6 +90,29 @@ The job refuses to start if JAX does not see the GPU(s), or if `OUTDIR` already 
 **Open:** whether the default sizes (80000 interior points, dense 9302^2 inverse Hessian) fit
 an A30's 24 GB. The MN5 runs used H100s. Use `NGPU=2` if they don't.
 
+**Forking a run** (2026-10-18): `--resume_checkpoint <run>/pinn_checkpoint.pkl --resume_windows K`
+loads only the first K windows (and their puncture-track entries) and continues from window K+1,
+into its own `--outdir`; `--stop_after_window W` ends after W windows, with the end-of-run plots
+restricted to the trained span. The resume check compares only physics/architecture flags, so
+optimizer flags may differ between branches. The RNG key is not checkpointed: a resumed run draws
+different samples than the uninterrupted one would, so every arm of a comparison should be forked
+the same way (including the baseline).
+
+**Running experiment: optimizer branches from `single_a` window 15** (jobs 1180622-4, each forked
+after window 15, stopped after 25, one A30 each, production flags + taylor):
+
+| branch | extra flags | per window |
+|---|---|---|
+| `fork15_qn` | none: the baseline, resumed like the others | 48 QN restarts (~25 min) |
+| `fork15_fixed` | `--qn_fixed_batch` | 48 QN restarts on one sample |
+| `fork15_dsg` | `--EPOCHS_QN 6000 --dsgnar_order after_qn --dsgnar_steps 12 --dsgnar_sketch 1024` | 24 restarts + 12 DSGNAR its (~27 min) |
+
+Graded per window on: the training loss, the Einstein residual on a fresh held-out sample (same
+for all branches), the constraint monitors Theta and Z^i, and the puncture's position and strength.
+The collaborators' 1D reference (`reference_1d/compare_pinn.py` + `ref_single_m0.5_dr0.005.npz`,
+17 MB) would turn residuals into errors, but it was not in the bundle (not on the laptop or Mendieta
+either, searched 2026-10-18); it has to be requested from them.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
