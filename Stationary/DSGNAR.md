@@ -732,7 +732,8 @@ comparison counts it as error.  Next: impose D = 0 on a few spheres (a centre-of
 condition usable inside), and compare gauge-invariantly.
 
 * `m6_w40_a` (width 40, SSBroyden 10000 more, no resampling): 2.3e-7 -> 5.0e-8, still falling
-  (52 min); `m6_w40` continues it.
+  (52 min); `m6_w40` continued it: 5.0e-8 -> 2.0e-8 in 10000 more (47 min), still at the cap.
+  Without the centre-of-mass gauge, so superseded by `m7_dsg_com` (1.2e-10 with 2285 parameters).
 * `m7_ssb_com` (`--com-pin 1,1.5,3,10,30,100` from `m5_ssb_norsmp`): SSBroyden stalls at iteration
   0 (line-search status 3) -- the new term is 100 x 6 x 0.0257^2 = 0.395 against 2e-9 for the rest,
   the same failure as SSBroyden started under rho^4 from the rho^2 warm-up.  `m7_dsg_com` (DSGNAR,
