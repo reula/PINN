@@ -210,6 +210,26 @@ def _norm(t):
     return jnp.sqrt(jnp.sum(t * t))
 
 
+# Which Ricci the "ricci" residual uses (Config.ricci_form, set once by apply_config):
+#
+#   "full"       R_ij(h) - (1/2 lam^2) d_i lam d_j lam                        (the default)
+#   "harmonic"   the same minus nabla_(i xi_j), xi^k = h^ab Gamma^k_ab (minus the gauge source):
+#                the DeTurck / "harmonic Einstein" reduction (Headrick-Kitchen-Wiseman 0905.1822).
+#                R_ij = -1/2 h^cd d_c d_d h_ij + d_(i Gamma_j) + lower order, so removing
+#                nabla_(i xi_j) leaves an ELLIPTIC operator on h (full Ricci is gauge invariant and
+#                is not); the two agree wherever the harmonic gauge holds, i.e. at a solution.
+#                For static metrics a solution of the reduced system with xi = 0 on the
+#                boundary is a true solution.
+_RICCI_FORM = "full"
+
+
+def set_ricci_form(form: str) -> None:
+    global _RICCI_FORM
+    if form not in ("full", "harmonic"):
+        raise ValueError(f"ricci_form must be 'full' or 'harmonic', not {form!r}")
+    _RICCI_FORM = form
+
+
 def apply_config(cfg, derives_gamma: bool | None = None,
                  want_compat: bool | None = None) -> None:
     """Set this module's switches from a Config -- the ONE place they are set from a cfg.
@@ -233,6 +253,7 @@ def apply_config(cfg, derives_gamma: bool | None = None,
     set_ricci_lam_source(getattr(cfg, "ricci_lam_source", 1.0))
     set_lam_eq_form(getattr(cfg, "lam_eq_form", "lambda"))
     set_relative_terms(getattr(cfg, "relative_terms", False))
+    set_ricci_form(getattr(cfg, "ricci_form", "full"))
 
 
 def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
@@ -293,6 +314,20 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
         if gsrc is not None:
             den = den + jnp.abs(gsrc)
         gauge = gauge / (den + _REL_EPS)
+
+    if _RICCI_FORM == "harmonic":
+        if _RELATIVE_TERMS:
+            raise ValueError("ricci_form='harmonic' is not implemented with relative terms")
+        # xi^k = h^bc Gamma^k_bc (- source) is `gauge`; its covariant derivative from h, Gamma
+        # and their first derivatives (dh[b,c,a] = d_a h_bc, dG[k,b,c,a] = d_a Gamma^k_bc).
+        dHinv = -jnp.einsum("bm,mna,nc->bca", Hinv, dh, Hinv)
+        dxi = jnp.einsum("bca,kbc->ka", dHinv, G) + jnp.einsum("bc,kbca->ka", Hinv, dG)
+        if gsrc is not None:
+            dxi = dxi - jax.jacfwd(gauge_src)(x)
+        xi_low = h @ gauge
+        dxi_low = jnp.einsum("bka,k->ba", dh, gauge) + jnp.einsum("bk,ka->ba", h, dxi)
+        nab = dxi_low.T - jnp.einsum("kab,k->ab", G, xi_low)          # nabla_a xi_b
+        ric = ric - 0.5 * (nab + nab.T)
 
     hess = d2lam - jnp.einsum("cij,c->ij", G, dlam)
     lam_eq = lam_eq_of(Hinv, hess, dlam, lam)

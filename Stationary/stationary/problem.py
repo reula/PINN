@@ -105,6 +105,7 @@ class Config:
     fourier: int = 0
     decay_feature: bool = False      # add rho_in/rho to the network features
     z_reflect: bool = False          # axisym_hybrid: z -> -z symmetry by construction (S1 = 0 data)
+    ricci_form: str = "full"         # "full" | "harmonic" (DeTurck reduction; geometry._RICCI_FORM)
 
     # ------------------------------------------------------------- sampling
     n_coll: int = 4096

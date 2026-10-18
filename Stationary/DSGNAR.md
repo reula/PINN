@@ -755,3 +755,10 @@ condition usable inside), and compare gauge-invariantly.
   1.1e-7 / 7.4e-8).  The free residual harmonic gauge mode was both the "error" and what held the
   optimisation back.  (At this level part of the remaining difference may be the reference's own,
   whose loss is 2.8e-11.)
+
+Round 8 (submitted 2026-10-18): `m8_dsg_com_cont` (5 more cycles) and `m8_ssb_com` (SSBroyden 10000
+from it); `m8_s1_dsg`, data WITHOUT the z-reflection symmetry (S1 = 0.05 with S2 = -1/12), 8 cycles
+from `m7_dsg_com`, then its nonlinear reference with all l = 0..10 (`specref_s1`); and `m8_harm`, the
+harmonic (DeTurck) Ricci `--ricci-form harmonic` (geometry._RICCI_FORM; tests/test_ricci_harmonic.py:
+equal to full Ricci in harmonic gauge, linearisation -1/2 Laplacian h_ij) from the same start and
+settings as `m7_dsg_com`.  Results: pending.

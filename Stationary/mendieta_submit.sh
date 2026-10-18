@@ -107,5 +107,15 @@ submit m7_ssb_com           m5_ssb_norsmp --steps 0 --init-from $M5 --qn-method 
                               --lbfgs-steps 10000 --resample-every 0 $RHO4 $PP $COM
 submit m7_dsg_com           m5_ssb_norsmp $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4 $PP \
                               $COM --init-from $M5 --dsgnar-cycles 5 --dsgnar-cycle-steps 60
+# round 8 (2026-10-18): (1) the COM-pinned run continued, and SSBroyden from it; (2) data WITHOUT the
+# reflection symmetry, S1 = 0.05 (the reference for it is solved afterwards, all l = 0..10); (3) the
+# harmonic (DeTurck) Ricci from the same start as m7_dsg_com
+M7="runs/m7_dsg_com/params.pkl"
+DSGC="$DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4 $PP $COM --dsgnar-cycle-steps 60"
+submit m8_dsg_com_cont      m7_dsg_com $DSGC --init-from $M7 --dsgnar-cycles 5
+submit m8_ssb_com           m7_dsg_com --steps 0 --init-from $M7 --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 0 $RHO4 $PP $COM
+submit m8_s1_dsg            m7_dsg_com $DSGC --init-from $M7 --dsgnar-cycles 8 --lam-bc-S1 0.05
+submit m8_harm              m5_ssb_norsmp $DSGC --init-from $M5 --dsgnar-cycles 5 --ricci-form harmonic
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null

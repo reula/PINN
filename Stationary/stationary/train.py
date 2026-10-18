@@ -1860,6 +1860,10 @@ def parse_args(argv=None):
     p.add_argument("--scale-ref", type=float, default=None)
     p.add_argument("--scale-ref-rho-in", action="store_true")
     p.add_argument("--scale-exps", type=str, default=None)
+    p.add_argument("--ricci-form", type=str, default=None, dest="ricci_form",
+                   choices=("full", "harmonic"),
+                   help="'harmonic': the DeTurck reduction R_ij - nabla_(i xi_j), xi = h^ab Gamma_ab "
+                        "(elliptic; equal to full Ricci where the gauge holds)")
     p.add_argument("--com-pin", type=str, default=None, dest="com_pin",
                    help="RADII: impose the centre-of-mass gauge d = 0 (the conserved dipole flux, "
                         "COM_GAUGE.md 4b) on the spheres of these chart radii, e.g. 1,2,5,20")
@@ -2155,6 +2159,8 @@ def parse_args(argv=None):
         cfg.decay_feature = True
     if a.z_reflect:
         cfg.z_reflect = True
+    if a.ricci_form:
+        cfg.ricci_form = a.ricci_form
     if a.com_pin:
         cfg.com_radii = tuple(float(v) for v in a.com_pin.split(","))
     if a.w_com is not None:
