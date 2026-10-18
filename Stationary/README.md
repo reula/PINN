@@ -210,6 +210,32 @@ Useful flags: `--R0`, `--lam0`, `--rho-out`, `--n-coll`, `--width`, `--depth`,
 `--outer-bc {dirichlet_exact,robin}`, `--pde-ramp-steps`, `--w-inner`,
 `--w-outer`, `--init-from <params.pkl>` (continue a run), `--seed`.
 
+### 6.1 Recommended workflow (2026-10-18)
+
+What the Stationary experiments of 2026-10 converged on (REPORT_PIN_COM.md, REPORT_OPTIMISERS.md):
+
+1. **The objective** -- the problem recipe (`recipe_pq16k.sh`: `S_RECIPE`) plus `S_BEST`:
+   `--scale-exps 3,4,3,4` (residuals weighted by rho^4: determines the far field),
+   `--pin-lam-potential` (the outer averaged pin on P, which the exact solution satisfies; the lambda
+   form costs 4.3e-7 on it), `--com-pin 1,1.5,3,10,30,100` (the centre-of-mass gauge: fixes the
+   residual harmonic gauge mode the boundary data leave free; it is the condition that took the error
+   down 4-5 orders).  Use the SAME objective from the first step on: SSBroyden cannot start when the
+   objective changes under it.
+2. **Adam warm-up**, 5000 steps, plateau stop off.
+3. **DSGNAR with restart cycles**: `--qn-method dsgnar --dsgnar-paper --dsgnar-reweight 0
+   --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 --dsgnar-cycles 5 --dsgnar-cycle-steps 60` -- each
+   cycle a fresh sample and a fresh trust region.  The sketch should be ~0.9 of the parameter count.
+4. **SSBroyden to polish**: `--qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000
+   --resample-every 500 --plateau-patience 8` (jobs of <= 10000 iterations: its host memory grows per
+   block).
+5. **Check the result is sample-stable**: `scripts/fresh_sample_loss.py runs/<run>` -- the loss on 5
+   fresh samples against the training loss (a ratio ~1 is stable), and the centre-of-mass flux.
+6. **Grade** against a nonlinear spectral reference when one exists (`stationary.specref`,
+   `stationary.specref_summary`; for the report numbers `scripts/report_metrics.py`).
+
+On Mendieta, steps 2-5 are `mendieta_submit.sh`'s round 10 (`wf_adam` -> `wf_dsg` -> `wf_ssb` ->
+`mendieta_check.sbatch`), chained by dependencies.
+
 ## 7. Tests
 
 `tests/test_pipeline.py` contains the end-to-end acceptance tests.  The crucial

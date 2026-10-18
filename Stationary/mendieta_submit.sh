@@ -124,5 +124,23 @@ WOLFE="--qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000"
 submit m9_ssbw_rho4         - --steps 0 --init-from $INIT $WOLFE $RHO4
 submit m9_ssbw_com          m5_ssb_norsmp --steps 0 --init-from $M5 $WOLFE $RHO4 $PP $COM
 submit m9_ssbw_com_nors     m5_ssb_norsmp --steps 0 --init-from $M5 $WOLFE --resample-every 0 $RHO4 $PP $COM
+# round 10 (2026-10-18): the recommended workflow end to end, FROM SCRATCH (README "Recommended
+# workflow"), with resampling throughout so the result is checked to be sample-stable:
+#   wf_adam  Adam 5000 under the final objective (rho^4, pin on P, COM gauge)
+#   wf_dsg   DSGNAR s = 2000, 5 restart cycles of <= 60 (each cycle a fresh sample)
+#   wf_ssb   SSBroyden (strong Wolfe), resampling every 500, plateau over 8 blocks (a resample moves
+#            the loss by ~ the 1% the plateau rule asks for, so 3 blocks stopped runs early)
+#   then mendieta_check.sbatch: the loss on 5 fresh samples (scripts/fresh_sample_loss.py)
+BEST="$RHO4 $PP $COM"
+submit wf_adam              - --steps 5000 --plateau-min-iters -1 --lbfgs-steps 0 $BEST
+submit wf_dsg               wf_adam $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $BEST \
+                              --init-from runs/wf_adam/params.pkl --dsgnar-cycles 5 --dsgnar-cycle-steps 60
+submit wf_ssb               wf_dsg --steps 0 --init-from runs/wf_dsg/params.pkl --qn-method ssbroyden \
+                              --qn-linesearch wolfe --lbfgs-steps 10000 --resample-every 500 \
+                              --plateau-patience 8 $BEST
+if [ "$DRY" != "1" ] && [ -n "${JID[wf_ssb]:-}" ] && ! squeue -h -u "$USER" -n check -o %i | grep -q .; then
+    echo "  submit   check -> job $(sbatch --parsable --dependency=afterany:${JID[wf_ssb]} \
+          mendieta_check.sbatch runs/wf_dsg runs/wf_ssb) (after wf_ssb)"
+fi
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null

@@ -13,3 +13,10 @@ S_RECIPE=(--arch axisym_hybrid
           --pin-lam-robin --pin-h-robin --ref-solution --ref-asymptotic 1.0
           --outer-shell-fracs 1.0,0.9,0.8,0.7
           --resample-every 500 --decay-feature --log-resources --no-figures)
+
+# The settings that made the difference (2026-10-18, REPORT_PIN_COM.md): residuals weighted by
+# rho^4, the outer lambda pin on the Geroch-Hansen potential P, and the centre-of-mass gauge on six
+# spheres.  Appended after S_RECIPE (later flags win).  The workflow that uses them is README
+# "Recommended workflow": Adam -> DSGNAR restart cycles -> SSBroyden (Wolfe) with resampling ->
+# scripts/fresh_sample_loss.py.
+S_BEST=(--scale-exps 3,4,3,4 --pin-lam-potential --com-pin 1,1.5,3,10,30,100)
