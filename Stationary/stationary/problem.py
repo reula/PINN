@@ -450,6 +450,12 @@ class Config:
     vtk_physical_inner: float = 1.0  # the inner radius in the coordinates to write out
     qn_block: int = 250
     qn_gtol: float = 1e-9
+    # SSBroyden's line search: "armijo" -- Crunch's backtracking (bfgs_backtracking.py: sufficient
+    # decrease only, alpha <= 1, no curvature condition, so y.s > 0 is not guaranteed and the
+    # inverse-Hessian update can lose positive definiteness) -- or "wolfe": Crunch's bfgs.py, JAX's
+    # strong-Wolfe zoom (c2 = 0.9, with two fallback tries), which guarantees y.s > 0 and can
+    # lengthen a step.  The default stays "armijo" so that older runs reproduce.
+    qn_linesearch: str = "armijo"
     plateau_tol: float = 1e-4
     plateau_patience: int = 3
     plateau_min_iters: int = 100   # negative DISABLES the plateau stop (train.py);

@@ -117,5 +117,12 @@ submit m8_ssb_com           m7_dsg_com --steps 0 --init-from $M7 --qn-method ssb
                               --lbfgs-steps 10000 --resample-every 0 $RHO4 $PP $COM
 submit m8_s1_dsg            m7_dsg_com $DSGC --init-from $M7 --dsgnar-cycles 8 --lam-bc-S1 0.05
 submit m8_harm              m5_ssb_norsmp $DSGC --init-from $M5 --dsgnar-cycles 5 --ricci-form harmonic
+# round 9 (2026-10-18): SSBroyden with the strong-Wolfe line search (--qn-linesearch wolfe) on the two
+# starts where the Armijo version stalled at iteration 0, with the resampling those runs had (every
+# 500), and the COM one also without resampling
+WOLFE="--qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000"
+submit m9_ssbw_rho4         - --steps 0 --init-from $INIT $WOLFE $RHO4
+submit m9_ssbw_com          m5_ssb_norsmp --steps 0 --init-from $M5 $WOLFE $RHO4 $PP $COM
+submit m9_ssbw_com_nors     m5_ssb_norsmp --steps 0 --init-from $M5 $WOLFE --resample-every 0 $RHO4 $PP $COM
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null

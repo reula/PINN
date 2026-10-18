@@ -60,6 +60,19 @@ on the Stationary problem as well.
 | main knob | none needed | sketch size: s = 1100 -> 2000 was 20x in the final loss; s must grow with d |
 | reproducibility of the minimum | from the same start, both reach the same floor and the same solution (rows 3-4) | |
 
+## The line search (2026-10-18)
+
+All SSBroyden runs above used Crunch's **Armijo backtracking** (`bfgs_backtracking.py`): sufficient
+decrease only (c1 = 1e-4), alpha starts at 1 and only shrinks (factor 0.1-0.5 per trial, 20 trials,
+alpha >= 1e-12), and no curvature condition -- so y.s > 0 is not guaranteed and the inverse-Hessian
+update can become indefinite.  Crunch also has the **strong-Wolfe** version (`bfgs.py`: JAX's zoom,
+c2 = 0.9, two fallback tries), now selectable with `--qn-linesearch wolfe` (Config.qn_linesearch;
+default "armijo" so older runs reproduce).  Smoke test on a tiny network (149 parameters) from a
+start at loss 38.6: Armijo **0 iterations in each of 3 blocks** (status 3) -- the same stall as the
+two runs above -- against Wolfe **38.6 -> 0.18 in 85 iterations**.  The two iteration-0 stalls of the
+table were therefore the line search's, not SSBroyden's.  Reruns with Wolfe from those two starts
+(Mendieta round 9: `m9_ssbw_rho4`, `m9_ssbw_com`, and `m9_ssbw_com_nors` without resampling): pending.
+
 ## Recommendation
 
 1. **Default: DSGNAR with restart cycles** (`--qn-method dsgnar --dsgnar-sketch ~0.9 d --dsgnar-cycles

@@ -434,7 +434,7 @@ def _crunch_candidates(here: str):
     return out
 
 
-def _crunch_minimize(root: str | None = None):
+def _crunch_minimize(root: str | None = None, linesearch: str = "armijo"):
     """Crunch's SciPy-style `minimize`, or (None, reason) when it is not available.
 
     Looks in every location `_crunch_candidates` lists and returns the first that imports;
@@ -474,7 +474,10 @@ def _crunch_minimize(root: str | None = None):
             sys.path.insert(0, cand)
         _purge_crunch_modules(except_under=cand)
         try:
-            from Crunch.Optimizers.minimize_backtracking import minimize
+            if linesearch == "wolfe":
+                from Crunch.Optimizers.minimize import minimize            # strong Wolfe (bfgs.py)
+            else:
+                from Crunch.Optimizers.minimize_backtracking import minimize  # Armijo
         except Exception as exc:                                         # pragma: no cover
             # A root can hold a Crunch that does not import: an incomplete copy, or one whose
             # line_search_backtracking is missing.  Undo what the attempt left behind -- in
@@ -818,7 +821,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     H describes the old function, and the first step of a new objective needs the same
     treatment the first block gets.
     """
-    minimize, where = _crunch_minimize()
+    minimize, where = _crunch_minimize(linesearch=getattr(cfg, "qn_linesearch", "armijo"))
     if minimize is None:
         if verbose:
             print(f"[qn] SSBroyden unavailable ({where}); using optax.lbfgs", flush=True)
@@ -1016,7 +1019,8 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     status = -1
     t0 = time.time()
     if verbose:
-        print(f"[qn] SSBroyden (ssbroyden2) from {where}: {n} parameters, {gb:.2f} GB "
+        print(f"[qn] SSBroyden (ssbroyden2, {getattr(cfg, 'qn_linesearch', 'armijo')} line search) "
+              f"from {where}: {n} parameters, {gb:.2f} GB "
               f"inverse Hessian, blocks of {block} up to {cfg.lbfgs_steps} iterations "
               f"({n_blocks} blocks, plateau_tol {cfg.plateau_tol:g} over "
               f"{cfg.plateau_patience} blocks), start loss {f:.6e}", flush=True)
@@ -1624,6 +1628,10 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--steps", type=int, default=None)
     p.add_argument("--lbfgs-steps", type=int, default=None)
+    p.add_argument("--qn-linesearch", choices=("armijo", "wolfe"), default=None,
+                   dest="qn_linesearch",
+                   help="SSBroyden's line search: Crunch's Armijo backtracking (default) or the "
+                        "strong-Wolfe zoom of Crunch's bfgs.py")
     p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs", "dsgnar"), default=None,
                    help="quasi-Newton phase: Crunch's SSBroyden (default), optax.lbfgs, or "
                         "DSGNAR -- the doubly-sketched Gauss-Newton method of "
@@ -2161,6 +2169,8 @@ def parse_args(argv=None):
         cfg.z_reflect = True
     if a.ricci_form:
         cfg.ricci_form = a.ricci_form
+    if a.qn_linesearch:
+        cfg.qn_linesearch = a.qn_linesearch
     if a.com_pin:
         cfg.com_radii = tuple(float(v) for v in a.com_pin.split(","))
     if a.w_com is not None:
