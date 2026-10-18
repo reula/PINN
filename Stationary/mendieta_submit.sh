@@ -121,7 +121,8 @@ submit m8_harm              m5_ssb_norsmp $DSGC --init-from $M5 --dsgnar-cycles 
 # starts where the Armijo version stalled at iteration 0, with the resampling those runs had (every
 # 500), and the COM one also without resampling
 WOLFE="--qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000"
-submit m9_ssbw_rho4         - --steps 0 --init-from $INIT $WOLFE $RHO4
+# m9_ssbw_rho4: ran (moved 1.2e4 -> 1.1e-2, then OOM at 60.6 GB after 911 iterations); not resubmitted
+# submit m9_ssbw_rho4       - --steps 0 --init-from $INIT $WOLFE $RHO4
 submit m9_ssbw_com          m5_ssb_norsmp --steps 0 --init-from $M5 $WOLFE $RHO4 $PP $COM
 submit m9_ssbw_com_nors     m5_ssb_norsmp --steps 0 --init-from $M5 $WOLFE --resample-every 0 $RHO4 $PP $COM
 # round 10 (2026-10-18): the recommended workflow end to end, FROM SCRATCH (README "Recommended
