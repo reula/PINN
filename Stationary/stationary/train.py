@@ -1861,7 +1861,7 @@ def parse_args(argv=None):
     p.add_argument("--scale-ref-rho-in", action="store_true")
     p.add_argument("--scale-exps", type=str, default=None)
     p.add_argument("--ricci-form", type=str, default=None, dest="ricci_form",
-                   choices=("full", "harmonic"),
+                   choices=("full", "harmonic", "harmonic_direct"),
                    help="'harmonic': the DeTurck reduction R_ij - nabla_(i xi_j), xi = h^ab Gamma_ab "
                         "(elliptic; equal to full Ricci where the gauge holds)")
     p.add_argument("--com-pin", type=str, default=None, dest="com_pin",

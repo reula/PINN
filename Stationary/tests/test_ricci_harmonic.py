@@ -49,3 +49,27 @@ def test_linearised_principal_part_is_minus_half_laplacian():
     np.testing.assert_allclose(_ric(fields, x, "harmonic") / eps, -0.5 * np.asarray(lap),
                                rtol=1e-4, atol=1e-5)
     assert np.max(np.abs(_ric(fields, x, "full") / eps + 0.5 * np.asarray(lap))) > 1e-2
+
+
+def test_direct_form_equals_ricci_minus_nabla_xi():
+    """'harmonic_direct' (from h, d h, d d h only) is the same tensor as R - nabla_(i xi_j), on a
+    metric far from harmonic gauge and with a varying lambda."""
+    def h_of(x):
+        s = jnp.sin(0.7 * x[0]) * jnp.cos(0.4 * x[1]) + 0.3 * x[2] ** 2 * x[0]
+        return jnp.eye(3) + 0.2 * jnp.array([[s, x[1] * x[2], 0.2 * s],
+                                             [x[1] * x[2], jnp.exp(0.1 * x[0]), x[0] ** 2],
+                                             [0.2 * s, x[0] ** 2, s * x[1]]])
+    lam_of = lambda x: 1.0 - 0.3 / (1.0 + x @ x) + 0.05 * x[2]
+    fields = _fields_of(h_of, lam_of)
+    fields.hl_of = lambda y: (h_of(y), lam_of(y))
+    x = jnp.array([0.4, -0.3, 0.8])
+    for form in ("harmonic", "harmonic_direct"):
+        geometry.set_ricci_form(form)
+        try:
+            r = residuals_at(fields, x, want_compat=False)
+        finally:
+            geometry.set_ricci_form("full")
+        if form == "harmonic":
+            ref = r
+    for k in ("ricci", "gauge", "lam_eq"):
+        np.testing.assert_allclose(np.asarray(r[k]), np.asarray(ref[k]), rtol=1e-10, atol=1e-12)

@@ -220,13 +220,19 @@ def _norm(t):
 #                is not); the two agree wherever the harmonic gauge holds, i.e. at a solution.
 #                For static metrics a solution of the reduced system with xi = 0 on the
 #                boundary is a true solution.
+#   "harmonic_direct"  the same tensor computed directly from h, d h, d d h:
+#                R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf),
+#                G_abc = (d_b h_ac + d_c h_ab - d_a h_bc)/2, so Gamma is never differentiated
+#                (it is formed algebraically from d h for the gauge and the lambda equation).
+#                Needs `fields.hl_of` (model.point_fields provides it for the metric-only nets);
+#                otherwise h and lambda are read off `fields`, which costs Gamma anyway.
 _RICCI_FORM = "full"
 
 
 def set_ricci_form(form: str) -> None:
     global _RICCI_FORM
-    if form not in ("full", "harmonic"):
-        raise ValueError(f"ricci_form must be 'full' or 'harmonic', not {form!r}")
+    if form not in ("full", "harmonic", "harmonic_direct"):
+        raise ValueError(f"ricci_form must be 'full', 'harmonic' or 'harmonic_direct', not {form!r}")
     _RICCI_FORM = form
 
 
@@ -270,6 +276,8 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
     of the whole system without a coordinate transformation, exactly as the manufactured
     Robin source does for the outer boundary.
     """
+    if _RICCI_FORM == "harmonic_direct":
+        return _residuals_direct(fields, x, gauge_src, want_compat)
     h, G, lam = fields(x)
     dh, dG, dlam = jax.jacfwd(fields)(x)
     d2lam = jax.hessian(lambda y: fields(y)[2])(x)
@@ -335,6 +343,34 @@ def residuals_at(fields: Callable[[jnp.ndarray], Fields], x: jnp.ndarray,
     out = dict(ricci=ric, gauge=gauge, lam_eq=lam_eq)
     if want_compat:
         out["compat"] = compat
+    return out
+
+
+def _residuals_direct(fields, x, gauge_src=None, want_compat=None) -> dict:
+    """residuals_at for ricci_form = 'harmonic_direct': the reduced Ricci from h, d h, d d h."""
+    if _RELATIVE_TERMS:
+        raise ValueError("ricci_form='harmonic_direct' is not implemented with relative terms")
+    hl = getattr(fields, "hl_of", None)
+    if hl is None:
+        hl = lambda y: (fields(y).h, fields(y).lam)
+    h, lam = hl(x)
+    dh, dlam = jax.jacfwd(hl)(x)                       # dh[b,c,a] = d_a h_bc
+    d2h, d2lam = jax.jacfwd(jax.jacfwd(hl))(x)         # d2h[b,c,a,d] = d_d d_a h_bc
+    Hinv = jnp.linalg.inv(h)
+    Gl = 0.5 * (jnp.einsum("aec->ace", dh) + jnp.einsum("ace->ace", dh)
+                - jnp.einsum("cea->ace", dh))          # G_ace = (d_c h_ae + d_e h_ac - d_a h_ce)/2
+    G = jnp.einsum("ka,aij->kij", Hinv, Gl)            # Gamma^k_ij
+    ric = (-0.5 * jnp.einsum("cd,abcd->ab", Hinv, d2h)
+           + jnp.einsum("cd,ef,cae,dbf->ab", Hinv, Hinv, dh, dh)
+           - jnp.einsum("cd,ef,ace,bdf->ab", Hinv, Hinv, Gl, Gl)
+           - _RICCI_LAM_SOURCE * (1.0 / (2.0 * lam**2)) * jnp.outer(dlam, dlam))
+    gauge = jnp.sum(G * Hinv[None, :, :], axis=(1, 2))
+    if gauge_src is not None:
+        gauge = gauge - gauge_src(x)
+    hess = d2lam - jnp.einsum("cij,c->ij", G, dlam)
+    out = dict(ricci=ric, gauge=gauge, lam_eq=lam_eq_of(Hinv, hess, dlam, lam))
+    if want_compat if want_compat is not None else _WANT_COMPAT:
+        out["compat"] = jnp.zeros((3, 3, 3))           # Gamma IS h's Christoffel symbol here
     return out
 
 

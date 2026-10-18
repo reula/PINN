@@ -128,6 +128,13 @@ def point_fields(model, params):
             f = model.apply(params, x[None, :])
             return Fields(f.h[0], christoffel(h_of, x), f.lam[0])
 
+        def hl_of(y):
+            """(h, lambda) from ONE network evaluation, without Gamma: what the direct reduced Ricci
+            (geometry ricci_form = 'harmonic_direct') differentiates."""
+            f = model.apply(params, y[None, :])
+            return f.h[0], f.lam[0]
+
+        fields.hl_of = hl_of
         return fields
 
     def fields(x):

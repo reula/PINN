@@ -763,3 +763,12 @@ from `m7_dsg_com`, then its nonlinear reference with all l = 0..10 (`specref_s1`
 harmonic (DeTurck) Ricci `--ricci-form harmonic` (geometry._RICCI_FORM; tests/test_ricci_harmonic.py:
 equal to full Ricci in harmonic gauge, linearisation -1/2 Laplacian h_ij) from the same start and
 settings as `m7_dsg_com`.  Results: pending.
+
+Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
+R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
+algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
+from one network evaluation).  It equals R - nabla_(i xi_j) to 1e-10 on a metric far from harmonic
+gauge (tests/test_ricci_harmonic.py) and to 3e-15 on the trained network.  Cost of the residuals
+at 8192 points (CPU, jitted): full 0.017 s, harmonic 0.018 s, harmonic_direct 0.016 s -- JAX's nested
+forward derivatives already make the d Gamma route cheap, so the saving is ~6%; what the reduction
+changes is the operator (elliptic), not the cost.
