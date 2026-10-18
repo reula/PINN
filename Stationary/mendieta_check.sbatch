@@ -2,6 +2,7 @@
 # ---------------------------------------------------------------------------
 # The resampling-stability check (scripts/fresh_sample_loss.py) for finished runs, on one A30.
 #   sbatch mendieta_check.sbatch runs/<run> [runs/<run> ...]
+#   GRADE_REF=runs/<r>/specref_nonlinear_fine.npz sbatch ... : also scripts/grade_rotated.py
 # ---------------------------------------------------------------------------
 #SBATCH -p multi
 #SBATCH -A ifeg
@@ -19,5 +20,9 @@ echo "=== check job ${SLURM_JOB_ID:-?} on $(hostname)  $(date -u '+%F %T UTC')  
 rc=0
 for run in "$@"; do
     .venv/bin/python scripts/fresh_sample_loss.py "$run" --n 5 || rc=$?
+    # GRADE_REF=<specref .npz>: also grade against that reference, rotated onto the run's data axis
+    if [ -n "${GRADE_REF:-}" ]; then
+        .venv/bin/python scripts/grade_rotated.py "$run" --ref "$GRADE_REF" || rc=$?
+    fi
 done
 exit $rc

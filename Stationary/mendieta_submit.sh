@@ -125,6 +125,23 @@ WOLFE="--qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000"
 # submit m9_ssbw_rho4       - --steps 0 --init-from $INIT $WOLFE $RHO4
 submit m9_ssbw_com          m5_ssb_norsmp --steps 0 --init-from $M5 $WOLFE $RHO4 $PP $COM
 submit m9_ssbw_com_nors     m5_ssb_norsmp --steps 0 --init-from $M5 $WOLFE --resample-every 0 $RHO4 $PP $COM
+# round 11 (2026-10-18): OFF-AXIS data and the 3-D network.  S2 = -1/12 about e = (1,0,1)/sqrt 2: the
+# axisymmetric problem rotated by 45 deg, so the exact solution is the rotated axisymmetric one and the
+# fine reference, rotated, grades it (scripts/grade_rotated.py).  The general metric-only network
+# (hybrid, width 20 x depth 6: 2347 parameters), the recommended workflow, the COM gauge now on all
+# three components.
+ROT="--arch hybrid --width 20 --depth 6 --lam-bc-axis 1,0,1"
+submit rot_adam             - --steps 5000 --plateau-min-iters -1 --lbfgs-steps 0 $ROT $RHO4 $PP $COM
+submit rot_dsg              rot_adam $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $ROT $RHO4 $PP $COM \
+                              --init-from runs/rot_adam/params.pkl --dsgnar-cycles 5 --dsgnar-cycle-steps 60
+submit rot_ssb              rot_dsg --steps 0 --init-from runs/rot_dsg/params.pkl --qn-method ssbroyden \
+                              --qn-linesearch wolfe --lbfgs-steps 10000 --resample-every 500 \
+                              --plateau-patience 8 $ROT $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssb]:-}" ] && ! squeue -h -u "$USER" -n check_rot -o %i | grep -q .; then
+    echo "  submit   check_rot -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_rot --dependency=afterany:${JID[rot_ssb]} \
+          mendieta_check.sbatch runs/rot_dsg runs/rot_ssb) (after rot_ssb)"
+fi
 # round 10 (2026-10-18): the recommended workflow end to end, FROM SCRATCH (README "Recommended
 # workflow"), with resampling throughout so the result is checked to be sample-stable:
 #   wf_adam  Adam 5000 under the final objective (rho^4, pin on P, COM gauge)

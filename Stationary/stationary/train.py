@@ -49,6 +49,9 @@ def make_model(cfg: Config):
             raise SystemExit("--z-reflect is implemented for --arch axisym_hybrid only")
         if cfg.lam_bc_S1:
             raise SystemExit("--z-reflect needs S1 = 0: a dipole datum is odd under z -> -z")
+        ax = getattr(cfg, "lam_bc_axis", None)
+        if ax is not None and (abs(ax[0]) > 0 or abs(ax[1]) > 0):
+            raise SystemExit("--z-reflect needs the data axis on z")
         kw["reflect"] = True
     if getattr(cfg, "hard_inner_bc", False):
         # The inner data is imposed by construction (model._blend_inner) instead of by a penalty.
@@ -1876,6 +1879,8 @@ def parse_args(argv=None):
                    help="RADII: impose the centre-of-mass gauge d = 0 (the conserved dipole flux, "
                         "COM_GAUGE.md 4b) on the spheres of these chart radii, e.g. 1,2,5,20")
     p.add_argument("--w-com", type=float, default=None, dest="w_com")
+    p.add_argument("--lam-bc-axis", type=str, default=None, dest="lam_bc_axis",
+                   help="axis of the S1/S2 inner data as a vector ax,ay,az (default z)")
     p.add_argument("--z-reflect", action="store_true", dest="z_reflect",
                    help="axisym_hybrid: impose z -> -z reflection symmetry by construction (for "
                         "S1 = 0 data), so the network cannot carry odd-l content")
@@ -2167,6 +2172,8 @@ def parse_args(argv=None):
         cfg.decay_feature = True
     if a.z_reflect:
         cfg.z_reflect = True
+    if a.lam_bc_axis:
+        cfg.lam_bc_axis = tuple(float(v) for v in a.lam_bc_axis.split(","))
     if a.ricci_form:
         cfg.ricci_form = a.ricci_form
     if a.qn_linesearch:

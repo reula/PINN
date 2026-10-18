@@ -33,6 +33,10 @@ class Config:
                                         # None -> 2, the radius in the problem statement
     lam_bc_S1: float = 0.0          # dipole amplitude    S1 * z / rho_in
     lam_bc_S2: float = 0.0          # quadrupole amplitude S2 * (z^2-(x^2+y^2)/2)/rho_in^2
+    # The axis of the S1/S2 data (a vector, normalised on use); None = z.  An off-axis datum is the
+    # same problem rotated, so its solution is the rotated axisymmetric one -- which is what lets a
+    # 3-D network be graded against the axisymmetric spectral reference (scripts/grade_rotated.py).
+    lam_bc_axis: tuple | None = None
     # h_rr on the inner sphere is deliberately NOT constrained by default: the metric on
     # the inner sphere (round, areal radius inner_radius) already fixes the scaling
     # freedom h -> s^2 h, and pinning h_rr as well over-determines the radial gauge --
@@ -593,7 +597,12 @@ def lam_inner_bc(x, cfg):
     written in the harmonic coordinates (x, y, z); on |x| = rho_in it reduces to
     lam0 + S1 n_z + S2 (3 n_z^2 - 1)/2.
     """
-    z = x[..., 2]
+    axis = getattr(cfg, "lam_bc_axis", None)
+    if axis is None:
+        z = x[..., 2]
+    else:
+        e = jnp.asarray(axis, dtype=x.dtype)
+        z = x @ (e / jnp.linalg.norm(e))            # the coordinate along the data axis
     r2 = jnp.sum(x * x, axis=-1)
     return (cfg.lam0 + cfg.lam_bc_S1 * z / cfg.rho_in
             + cfg.lam_bc_S2 * (z * z - 0.5 * (r2 - z * z)) / cfg.rho_in**2)

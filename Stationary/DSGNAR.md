@@ -785,6 +785,16 @@ is now the limit.
   (max 2.5e-5), against a perturbation of 1.2e-2 and 4.2e-2 -- 5 orders below it.  The COM gauge
   carries over to asymmetric data.
 
+Round 10 (2026-10-18): the recommended workflow from scratch (README 6.1; `wf_adam` -> `wf_dsg` ->
+`wf_ssb` -> fresh-sample check).  The best run so far, `m8_ssb_com`, passes that check: loss on two
+fresh samples 3.65e-11 and 3.88e-11 against 3.75e-11 in training (ratio 1.01).
+
+Round 11 (2026-10-18): off-axis data with the 3-D network -- S2 = -1/12 about e = (1,0,1)/sqrt 2
+(`--lam-bc-axis 1,0,1`, Config.lam_bc_axis; tests/test_lam_bc_axis.py), `--arch hybrid --width 20
+--depth 6` (2347 parameters), the same workflow (`rot_adam` -> `rot_dsg` -> `rot_ssb`), graded against the
+fine reference rotated by R z = e (`scripts/grade_rotated.py`; on an on-axis run it reproduces the
+unrotated numbers exactly).  Results: pending.
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
