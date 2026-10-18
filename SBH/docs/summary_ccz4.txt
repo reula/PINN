@@ -160,6 +160,11 @@ The defaults do not fit a 4 GB GPU (dense inverse Hessian of the 6x40 net,
 
 CHANGELOG (most recent first)
 -----------------------------
+  * 2026-10-18 (Reula/Claude, SBH/README.md section 4): DSGNAR (--dsgnar_steps, default 0 =
+    off) on each window before or after the QN restarts, with Stationary's schemes (cycles,
+    in-cycle resampling, paper preset, reweighting, ...), and --qn_fixed_batch. The loss in
+    residual form (bfgs_residual_vector) squares to compute_bfgs_loss exactly. Defaults
+    unchanged (byte-identical smoke run).
   * 2026-10-17 (Reula/Claude, see SBH/README.md): ONE script. The Oct-16 optimizer
     version merged with the Oct-15 _gpus version (--outdir, --core_points/_ic_points/
     _radius, --blowup_factor/_max, resume-into-other-outdir fix, --n_gpus,

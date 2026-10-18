@@ -12,7 +12,8 @@ Crunch/                   optimiser library (SSBroyden/BFGS/SCORE, Wolfe search)
 docs/                     summary_ccz4.txt, equations_ccz4.{txt,pdf}, README_bundle.md (the MN5 bundle's notes)
 jobs/mendieta/bh.sbatch   Mendieta job (presets single | bbh | smoke | bench)
 jobs/mn5/*.psubmit        the collaborators' MareNostrum 5 jobs, pointed at the merged script
-tools/                    load_defs.py, bench_loss.py, check_taylor.py, taylor_proto.py, smoke_local.sh
+dsgnar.py                 DSGNAR optimiser (vendored from Stationary/, section 4)
+tools/                    load_defs.py, bench_loss.py, check_taylor.py, taylor_proto.py, smoke_local.sh, test_dsgnar_bh.py
 originals/                the files as received (git-ignored), plus make_ancestor.py
 runs/                     outputs (git-ignored)
 ```
@@ -154,7 +155,76 @@ should only be rewritten with the GPU profile in hand and with `check_taylor.py`
 agreement tests against the current version. `apply_model` (logging, once per restart) also
 computes a gradient it discards; that is under 1 % of a restart.
 
-## 4. Tools
+## 4. DSGNAR (2026-10-18)
+
+The doubly-sketched Gauss-Newton optimiser of Webb, Jerad & Cartis (arXiv:2607.02194), ported from
+`Stationary/` with the optimiser-level schemes used there. The algorithm, its history and every
+design choice are in `Stationary/DSGNAR.md`; this section covers only what is specific to the BH code.
+
+**Code.** `dsgnar.py` is `Stationary/stationary/dsgnar.py` unchanged except that its config is
+duck-typed (`_dsgnar_cfg()` in the script builds it from the flags). The script adds:
+
+* `bfgs_residual_vector`: `compute_bfgs_loss` as a residual vector, `sum(r**2) == loss` term by
+  term, 7 conditions (8 with `--lam_ic_log`): `einstein_int`, `einstein_tapa`, `gauge_int`,
+  `gauge_tapa`, `bc`, `ic`, (`ic_log`), `pos`. The causal weights are already stop-gradiented in
+  the QN loss, so the residual is a weighted least-squares problem with the weights held fixed,
+  and the Gauss-Newton model is the right one. Rows at the default point counts: 22 x (80000 +
+  8000 + 16000 + 8000) + 2 x 80000 = 2.6 M.
+* `_DsgnarObjective`: the flat-parameter adapter (residual scaled by sqrt(2M), as Stationary's
+  `FlatObjective`).
+* `_dsgnar_phase` inside `train_window`: runs on the window's parameters, logs every iteration to
+  `loss_window{w}.csv` as optimizer `dsgnar`, and refreshes the moving chi background with every
+  new sample. The QN restarts continue the step count after it.
+
+**Schemes** (flags; defaults are Stationary's):
+
+| scheme | flags |
+|---|---|
+| DSGNAR then QN polish (default order) | `--dsgnar_steps N` (0 = off) `--dsgnar_order before_qn` |
+| QN then DSGNAR | `--dsgnar_order after_qn` |
+| DSGNAR alone | `--EPOCHS_QN 0` |
+| restart cycles: fresh sample + fresh trust region | `--dsgnar_cycles C --dsgnar_cycle_steps K` |
+| resampling inside a cycle (trust region kept) | `--dsgnar_resample_every R` |
+| sketch size, hashes, JVP chunk | `--dsgnar_sketch` (0 = n/3), `--dsgnar_hashes 4`, `--dsgnar_chunk 4` |
+| trust region | `--dsgnar_delta0 1`, `--dsgnar_delta_min 1e-14`, `--dsgnar_omega 1e-8`, `--dsgnar_radius_floor 1e-3`, `--dsgnar_shrink_on_accept` |
+| step | `--dsgnar_line_scan/--no-dsgnar_line_scan`, `--dsgnar_backtrack 0.5`, `--dsgnar_backtrack_steps 4`, `--dsgnar_calibrate/--no-...` |
+| targets | `--dsgnar_stage1_ratio 0.15`, `--dsgnar_stage2_ratio 0.5` |
+| the paper's set (DSGNAR.md section 9) | `--dsgnar_paper` (reweight 0.05, reject overshoot, no line scan, no calibration, shrink on accept, no floor, K 4, targets 0.075/0.5, delta_min 1e-8); explicit flags override |
+| per-condition reweighting, one fixed sketch, overshoot rejection | `--dsgnar_reweight 0.05`, `--dsgnar_fixed_sketch`, `--dsgnar_reject_overshoot` |
+| SSBroyden on one fixed sample (Stationary's best SSBroyden scheme) | `--qn_fixed_batch` |
+
+Not ported: Stationary's problem-specific schemes (lambda/P pins, Robin spheres, COM gauge,
+z-reflection), which belong to the stationary equations; the in-phase `params_dsgnar.pkl`
+checkpoint (a DSGNAR phase is part of a window, and the window checkpoint covers it).
+
+**Verified (CPU, 2026-10-18).** `tools/test_dsgnar_bh.py`:
+
+* `sum(r**2) == compute_bfgs_loss` to <= 8e-16 relative in 12 configurations: default, physical
+  chi, Dirichlet BC, causal weights off, `--lam_ic_log 0.3`, `--deriv_mode taylor`, each at the
+  initial parameters and at strongly perturbed ones (positivity rows active);
+* a 6-iteration DSGNAR phase (s = 120) lowers the loss 7.24e-3 -> 4.36e-3, 6/6 accepted, and the
+  reported loss equals the true loss at the returned parameters.
+
+End to end (smoke flags, network 4 x 20, 2 windows, s = 200, `--deriv_mode taylor`):
+
+* DSGNAR before QN, 8 iterations per window: 8/8 accepted in both windows, measured ratio
+  tracking the 0.15 target; window 0 7.43e-3 -> 4.36e-3, then QN -> 3.32e-3. 83 % of the DSGNAR
+  time is the s batched JVPs, as expected;
+* QN then DSGNAR with `--dsgnar_paper --dsgnar_cycles 2 --dsgnar_resample_every 2`: runs, but
+  every step is rejected (ratio -inf: the unscanned step raises the loss). The logged loss still
+  moves, because each resample changes the loss's value. This matches Stationary's experience
+  that the paper's settings do not work from a cold start;
+* default flags: loss CSVs still byte-identical to the Oct-16 original; `--qn_fixed_batch` runs.
+
+**Cost.** One iteration = s JVPs of the whole residual (forward mode through the second-order
+derivatives) + 25-32 loss evaluations + an s x s SVD. At the defaults, n = 9302 and s = n/3 = 3100,
+with 2.6 M rows. The production-size cost per iteration on the A30 is the open question; see
+the probe jobs below. Taylor mode makes the JVPs cheaper too.
+
+    # production-size probe: window 0 only, 3 DSGNAR iterations, no QN
+    sbatch -t 06:00:00 --export=ALL,PRESET=single,OUTDIR=dsg_probe_s1024,EXTRA_ARGS="--N_window 1 --EPOCHS_QN 0 --dsgnar_steps 3 --dsgnar_sketch 1024" jobs/mendieta/bh.sbatch
+
+## 5. Tools
 
 * `tools/load_defs.py`: `load(argv)` executes the script up to the training loop and returns
   its namespace (every function, no training). Used by the other tools.
@@ -165,3 +235,4 @@ computes a gradient it discards; that is under 1 % of a restart.
 * `tools/taylor_proto.py`: the derivative arrays alone (value, d_t, d_xyz, d_xyz d_xyz) against the
   autodiff stack.
 * `tools/smoke_local.sh`: the laptop smoke run.
+* `tools/test_dsgnar_bh.py [--quick]`: the DSGNAR tests above.

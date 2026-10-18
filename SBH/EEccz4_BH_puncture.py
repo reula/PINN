@@ -522,6 +522,61 @@ parser.add_argument("--patience_bfgs", type=int,   default=500,
 parser.add_argument("--min_delta",     type=float, default=1e-3,
                     help="Minimum relative loss improvement (best-new)/|best| to reset "
                          "the patience counter.")
+# DSGNAR (doubly-sketched Gauss-Newton, arXiv:2607.02194), vendored from Stationary/ (2026-10-18).
+# Flags mirror Stationary's --dsgnar-* ones; see SBH/README.md section 4 and Stationary/DSGNAR.md.
+# Flags with default None are the ones --dsgnar_paper presets; None = "not given".
+parser.add_argument("--dsgnar_steps", type=int, default=0,
+                    help="DSGNAR iterations per window and cycle (0 = off, default). Runs on the window's "
+                         "parameters before or after the QN restarts (--dsgnar_order).")
+parser.add_argument("--dsgnar_order", type=str, default="before_qn", choices=["before_qn", "after_qn"],
+                    help="before_qn (default): Adam -> DSGNAR -> QN polish. after_qn: Adam -> QN -> DSGNAR. "
+                         "--EPOCHS_QN 0 gives DSGNAR alone.")
+parser.add_argument("--dsgnar_cycles", type=int, default=1,
+                    help="Restart cycles per window: each from the previous cycle's parameters with a FRESH "
+                         "sample and a FRESH trust region (delta0, initial lambda) -- Stationary's scheme "
+                         "against the trust region collapsing. Iterations per cycle: --dsgnar_cycle_steps.")
+parser.add_argument("--dsgnar_cycle_steps", type=int, default=None,
+                    help="Iterations per cycle (default: --dsgnar_steps).")
+parser.add_argument("--dsgnar_resample_every", type=int, default=0,
+                    help="Redraw the collocation sample every N DSGNAR iterations inside a cycle, keeping the "
+                         "trust region (0 = fixed sample within a cycle, default).")
+parser.add_argument("--dsgnar_sketch", type=int, default=0,
+                    help="Sketch size s (0 = n_params/3, the paper's lower end). Cost per iteration ~ s JVPs.")
+parser.add_argument("--dsgnar_hashes", type=int, default=None, help="CountSketch hashes K (default 4).")
+parser.add_argument("--dsgnar_chunk", type=int, default=4,
+                    help="JVP tangents pushed through the residual at once (memory ~ chunk x residual "
+                         "workspace; 4 is safe at the default point counts).")
+parser.add_argument("--dsgnar_delta0", type=float, default=1.0, help="Initial trust-region radius.")
+parser.add_argument("--dsgnar_delta_min", type=float, default=None, help="Stop below this radius (default 1e-14).")
+parser.add_argument("--dsgnar_omega", type=float, default=1e-8, help="LM regularisation floor.")
+parser.add_argument("--dsgnar_stage1_ratio", type=float, default=None, help="Target ratio, stage 1 (default 0.15).")
+parser.add_argument("--dsgnar_stage2_ratio", type=float, default=None, help="Target ratio, stage 2 (default 0.5).")
+parser.add_argument("--dsgnar_backtrack", type=float, default=0.5, help="Line-scan factor.")
+parser.add_argument("--dsgnar_backtrack_steps", type=int, default=4, help="Line-scan fractions 1, 1/2, ... (4).")
+parser.add_argument("--dsgnar_line_scan", action=argparse.BooleanOptionalAction, default=None,
+                    help="Scan fractions of the step (default on; the paper evaluates the step once).")
+parser.add_argument("--dsgnar_calibrate", action=argparse.BooleanOptionalAction, default=None,
+                    help="Median calibration of the sketched model's predicted decrease (default on).")
+parser.add_argument("--dsgnar_shrink_on_accept", action="store_true", default=None,
+                    help="Radius to the PCHIP radius on accept (the paper); default: grow-only.")
+parser.add_argument("--dsgnar_radius_floor", type=float, default=None,
+                    help="Radius floor as a fraction of its high-water mark (default 1e-3; paper 0).")
+parser.add_argument("--dsgnar_reweight", type=float, default=None,
+                    help="Per-condition reweighting exponent (paper: 0.05; default 0 = off). Conditions: "
+                         "einstein/gauge x interior/tapa, bc, ic, (ic_log), pos.")
+parser.add_argument("--dsgnar_fixed_sketch", action="store_true", help="One sketch for the whole cycle.")
+parser.add_argument("--dsgnar_reject_overshoot", action="store_true", default=None,
+                    help="Reject a step whose ratio overshoots target + 0.1 and expand the radius (paper 3.4).")
+parser.add_argument("--dsgnar_paper", action="store_true",
+                    help="The paper's settings (reweight 0.05, reject overshoot, no line scan, no "
+                         "calibration, shrink on accept, no floor, K 4, targets 0.075/0.5, delta_min 1e-8); "
+                         "explicit flags override.")
+parser.add_argument("--dsgnar_log_every", type=int, default=1,
+                    help="Write the loss history every N DSGNAR iterations (1 = every iteration).")
+parser.add_argument("--qn_fixed_batch", action="store_true",
+                    help="Do NOT redraw the collocation sample between QN restarts (Stationary's best "
+                         "SSBroyden scheme: one fixed sample, inverse Hessian carried). The NaN, excursion "
+                         "and blow-up guards still redraw it.")
 parser.add_argument("--deriv_mode", type=str, default="autodiff", choices=["autodiff", "taylor"],
                     help="How r_ccz4_evolution gets the network's derivatives. 'autodiff' (default): "
                          "per-point jvp (t) + jacfwd (x,y,z) + jacfwd-of-jacfwd (second spatial "
@@ -677,6 +732,47 @@ blowup_max     = int(args.blowup_max)
 min_delta      = args.min_delta
 line_search    = args.line_search
 deriv_mode   = args.deriv_mode
+qn_fixed_batch = bool(args.qn_fixed_batch)
+_DSGNAR_DEFAULTS = dict(dsgnar_hashes=4, dsgnar_delta_min=1e-14, dsgnar_stage1_ratio=0.15,
+                        dsgnar_stage2_ratio=0.5, dsgnar_line_scan=True, dsgnar_calibrate=True,
+                        dsgnar_shrink_on_accept=False, dsgnar_radius_floor=1e-3, dsgnar_reweight=0.0,
+                        dsgnar_reject_overshoot=False)
+_DSGNAR_PAPER = dict(dsgnar_hashes=4, dsgnar_delta_min=1e-8, dsgnar_stage1_ratio=0.075,
+                     dsgnar_stage2_ratio=0.5, dsgnar_line_scan=False, dsgnar_calibrate=False,
+                     dsgnar_shrink_on_accept=True, dsgnar_radius_floor=0.0, dsgnar_reweight=0.05,
+                     dsgnar_reject_overshoot=True)
+_dsg = dict(_DSGNAR_PAPER if args.dsgnar_paper else _DSGNAR_DEFAULTS)
+_dsg.update({k: getattr(args, k) for k in _dsg if getattr(args, k) is not None})
+dsgnar_steps = int(args.dsgnar_steps)
+if dsgnar_steps > 0:
+    print(f"DSGNAR: {dsgnar_steps} iterations x {args.dsgnar_cycles} cycle(s) per window "
+          f"({args.dsgnar_order}), sketch {args.dsgnar_sketch or 'n/3'}, "
+          + ", ".join(f"{k[7:]}={v}" for k, v in _dsg.items())
+          + (" [paper preset]" if args.dsgnar_paper else ""))
+
+
+def _dsgnar_cfg(**over):
+    """The duck-typed config dsgnar.dsgnar_phase reads (Stationary's field names)."""
+    import types
+    cfg = types.SimpleNamespace(
+        dsgnar_steps=int(args.dsgnar_cycle_steps or dsgnar_steps),
+        dsgnar_sketch=int(args.dsgnar_sketch), dsgnar_hashes=int(_dsg["dsgnar_hashes"]),
+        dsgnar_chunk=int(args.dsgnar_chunk), dsgnar_row_chunk=0,
+        dsgnar_delta0=float(args.dsgnar_delta0), dsgnar_delta_min=float(_dsg["dsgnar_delta_min"]),
+        dsgnar_omega=float(args.dsgnar_omega),
+        dsgnar_stage1_ratio=float(_dsg["dsgnar_stage1_ratio"]),
+        dsgnar_stage2_ratio=float(_dsg["dsgnar_stage2_ratio"]),
+        dsgnar_backtrack=float(args.dsgnar_backtrack), dsgnar_backtrack_steps=int(args.dsgnar_backtrack_steps),
+        dsgnar_line_scan=bool(_dsg["dsgnar_line_scan"]), dsgnar_calibrate=bool(_dsg["dsgnar_calibrate"]),
+        dsgnar_grow_on_accept=not bool(_dsg["dsgnar_shrink_on_accept"]),
+        dsgnar_radius_floor=float(_dsg["dsgnar_radius_floor"]),
+        dsgnar_reweight_alpha=float(_dsg["dsgnar_reweight"]),
+        dsgnar_fixed_sketch=bool(args.dsgnar_fixed_sketch),
+        dsgnar_reject_overshoot=bool(_dsg["dsgnar_reject_overshoot"]),
+        seed=0, resample_every=int(args.dsgnar_resample_every), log_every=int(args.dsgnar_log_every))
+    for k, v in over.items():
+        setattr(cfg, k, v)
+    return cfg
 wolfe_c2       = args.wolfe_c2
 # An older Crunch silently ignores unknown minimize() options, so a request
 # for the Wolfe search must fail loudly rather than quietly run Armijo.
@@ -3070,6 +3166,98 @@ def compute_bfgs_loss(apply_fn, net_params,
     return (ein_l + gauge_l + bc_l
             + lamg0  * (ic_abs + ic_log)
             + w_pos  * pos_l)
+
+
+def bfgs_residual_vector(apply_fn, net_params,
+                         lam_bc, lamg0, w_pos, traj_tt, traj_xx,
+                         lam_einstein, lam_gauge, r_eps,
+                         *train_data, _blocks=None):
+    """compute_bfgs_loss in least-squares form, for --dsgnar_steps (DSGNAR is a
+    Gauss-Newton method and needs the residual VECTOR): rows r with
+
+        sum(r**2) == compute_bfgs_loss(same arguments)
+
+    term by term. Each _wmean(res**2, w) = sum(w res^2) / (sum(w) C) becomes the
+    rows sqrt(w / (sum(w) C)) * res; the plain means (boundary, positivity) the
+    rows res / sqrt(count). The scale factors are stop-gradiented: the causal
+    weights already are (see _causal_weights), so the Jacobian is that of the
+    weighted residual with the weights held fixed, exactly as in the QN gradient.
+    `_blocks`, if a list, receives (label, n_rows) per condition in row order
+    (static shapes; DSGNAR's per-condition reweighting, --dsgnar_reweight)."""
+    params = net_params if traj_tt is None else _bundle_params(net_params, traj_tt, traj_xx)
+    (t, x, y, z, tf, xf, yf, zf, tb, xb, yb, zb, gb,
+     ti, xi, yi, zi, ic_ccz4,
+     w_int, w_tapa, w_ic,
+     window_start, window_end) = train_data
+    sg = jax.lax.stop_gradient
+    rows = []
+
+    def add(label, scale, res):
+        r = (sg(scale) * res).reshape(-1)
+        rows.append(r)
+        if _blocks is not None:
+            _blocks.append((label, int(r.shape[0])))
+
+    def wrows(weight, w, res):      # rows of weight * _wmean(res**2, w)
+        return jnp.sqrt(weight * w / (jnp.sum(w) * res.shape[1] + 1e-30)), res
+
+    rei = r_ccz4_evolution(apply_fn, params, t,  x,  y,  z,  window_start, window_end)
+    ref = r_ccz4_evolution(apply_fn, params, tf, xf, yf, zf, window_start, window_end)
+    w_int_c, w_tapa_c = _causal_weighted_ic(rei, w_int, w_tapa, t, window_start, window_end)
+    add("einstein_int",  *wrows(lam_einstein,            w_int_c,  rei[:, :18]))
+    add("einstein_tapa", *wrows(lam_einstein * lam_tapa, w_tapa_c, ref[:, :18]))
+    add("gauge_int",     *wrows(lam_gauge,               w_int_c,  rei[:, 18:22]))
+    add("gauge_tapa",    *wrows(lam_gauge * lam_tapa,    w_tapa_c, ref[:, 18:22]))
+
+    if metric_bc_mode == "dirichlet":
+        met_res = metric_dirichlet_residual(apply_fn, params, tb, xb, yb, zb, window_start, window_end, gb, lam_bc)
+    else:
+        met_res = metric_sommerfeld_residual(apply_fn, params, tb, xb, yb, zb, window_start, window_end, c, lam_bc, r_eps)
+    add("bc", 1.0 / jnp.sqrt(float(met_res.size)), met_res)
+
+    ug = full_output(apply_fn, params, ti, xi, yi, zi, window_start, window_end)
+    add("ic", *wrows(lamg0, w_ic, ug[:, CCZ4_SLICE] - ic_ccz4))
+    if lam_ic_log > 0.0:
+        idx = jnp.array([CHI_IDX, ALPHA_IDX])
+        d = (jnp.log(_smooth_floor(ug[:, idx], _IC_LOG_EPS))
+             - jnp.log(_smooth_floor(ic_ccz4[:, idx], _IC_LOG_EPS)))
+        add("ic_log", *wrows(lamg0 * lam_ic_log, w_ic, d))
+
+    out = full_output(apply_fn, params, t, x, y, z, window_start, window_end)
+    pos = jnp.stack([jax.nn.relu(-out[:, CHI_IDX]), jax.nn.relu(-out[:, ALPHA_IDX])], axis=1)
+    add("pos", jnp.sqrt(w_pos / float(t.shape[0])), pos)
+    return jnp.concatenate(rows)
+
+
+class _DsgnarObjective:
+    """R^n -> R^M view of compute_bfgs_loss for dsgnar.dsgnar_phase (Stationary's
+    FlatObjective). The residual is scaled by sqrt(2M) so that
+    0.5 * mean(residual**2) == compute_bfgs_loss: DSGNAR's model decrease is in
+    those units (Stationary/DSGNAR.md section 2.2). `args` are compute_bfgs_loss's
+    arguments after net_params; they are closed over, so a new sample is a new
+    objective (the phase rebuilds its jitted maps on resample)."""
+
+    def __init__(self, apply_fn, unflatten, args, flat_like):
+        self.n = int(flat_like.size)
+        self.dtype = flat_like.dtype
+        blocks = []
+        jax.eval_shape(lambda f: bfgs_residual_vector(apply_fn, unflatten(f), *args, _blocks=blocks),
+                       flat_like)
+        self.blocks = blocks
+        k = float(np.sqrt(2.0 * sum(b[1] for b in blocks)))
+
+        @jax.jit
+        def _residual(f):
+            return k * bfgs_residual_vector(apply_fn, unflatten(f), *args)
+
+        self._residual = _residual
+        self._loss = jax.jit(lambda f: 0.5 * jnp.mean(_residual(f) ** 2))
+
+    def residual(self, flat):
+        return self._residual(jnp.asarray(flat))
+
+    def loss(self, flat):
+        return float(self._loss(jnp.asarray(flat)))
 
 
 @partial(jax.jit, static_argnums=(1, 2))
@@ -5617,6 +5805,71 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
         print(f"\n  [Adam non-finite] window {window_idx}: parameters went NaN/Inf during Adam; "
               f"restoring the pre-Adam parameters before BFGS.")
         params = _params_pre_adam
+    # --- DSGNAR (--dsgnar_steps > 0) ---------------------------------------------
+    # step_base: the loss-history step after which the QN restarts count; it is
+    # EPOCHS_ADAM unless DSGNAR runs first and adds its iterations.
+    step_base = EPOCHS_ADAM
+
+    def _dsgnar_phase(params_in):
+        """DSGNAR on this window: --dsgnar_cycles cycles, each a fresh sample and a
+        fresh trust region (Stationary's train.py dsgnar_qn_phase). Returns
+        (params, iterations, final loss)."""
+        nonlocal train_data, _resample_count, next_loss_step, step_base
+        import dsgnar as _dsg_mod
+        flat, unflat = flatten_util.ravel_pytree(params_in)
+        ramp = float(min(step_base / N_ramp, 1.0)) if N_ramp > 0 else 1.0
+        cur = [flat]
+
+        def make_obj(p_flat):
+            a_ = (lam_bc, lamg0, w_pos, traj_tt, traj_xx, lam_einstein * ramp, lam_gauge, r_eps, *train_data)
+            return _DsgnarObjective(train_apply_fn, unflat, a_, p_flat)
+
+        def new_sample():
+            nonlocal train_data, _resample_count
+            _resample_count += 1
+            if chi_bg_mode == "moving":
+                _refresh_traj(unflat(cur[0]))
+            train_data = _resample_train_data()
+            return make_obj(cur[0])
+
+        def on_step(step, loss_now, flat_now):
+            cur[0] = flat_now
+            i = step - step_base
+            if i > 0 and (i % max(1, int(args.dsgnar_log_every)) == 0):
+                p_now = unflat(flat_now)
+                all_loss_it, _ = apply_model(train_apply_fn, p_now, lam_bc, lamg0, w_pos, traj_tt, traj_xx,
+                                             lam_einstein * ramp, lam_gauge, r_eps, *train_data)
+                append_loss_history(step, "dsgnar", all_loss_it, params_snap=_snap_params(p_now))
+
+        cycles = max(1, int(args.dsgnar_cycles))
+        done, loss_end, t0_d = 0, float("nan"), time.perf_counter()
+        obj = make_obj(flat)
+        for cyc in range(cycles):
+            if cyc:
+                obj = new_sample()           # fresh sample; dsgnar_phase restarts the trust region
+            cfg_c = _dsgnar_cfg(seed=SEED + 7919 * window_idx + 104729 * cyc)
+            flat_new, hist, info = _dsg_mod.dsgnar_phase(
+                obj, flat, cfg_c, verbose=True, callback=on_step, step_offset=step_base,
+                resample=(new_sample if cfg_c.resample_every > 0 else None))
+            if not bool(jnp.all(jnp.isfinite(flat_new))):
+                print(f"  [DSGNAR] window {window_idx}, cycle {cyc + 1}: non-finite parameters; "
+                      f"keeping the cycle's starting point and ending DSGNAR for this window.")
+                break
+            flat, cur[0] = flat_new, flat_new
+            step_base += int(info["iterations"])
+            done += int(info["iterations"])
+            loss_end = float(info["loss_final"])
+            print(f"  [DSGNAR] window {window_idx}, cycle {cyc + 1}/{cycles}: {info['iterations']} its, "
+                  f"s={info['sketch']}, {info['accepted']} accepted / {info['rejected']} rejected, "
+                  f"loss {hist[0]['loss']:.3e} -> {loss_end:.3e}, stopped: {info['stopped']} "
+                  f"({info['wall']:.0f} s; JVPs {info['time_jvp']:.0f} s, probes {info['time_probe']:.0f} s)")
+        next_loss_step = max(next_loss_step, (step_base // loss_save_every + 1) * loss_save_every)
+        print(f"  [DSGNAR] window {window_idx}: {done} iterations in {time.perf_counter() - t0_d:.0f} s")
+        return unflat(flat), done, loss_end
+
+    if dsgnar_steps > 0 and args.dsgnar_order == "before_qn":
+        params, _n_dsg, _ = _dsgnar_phase(params)
+
     initial_weights, _ = flatten_util.ravel_pytree(params)
     unflatten_func = _get_stable_unflatten(params)
     H0       = jnp.eye(len(initial_weights), dtype=jnp.float64)
@@ -5681,7 +5934,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
     if num_outer > 0:
         pbar = tqdm(range(num_outer), desc=f"BFGS w{window_idx+1}")
         for outer_idx in pbar:
-            ramp_bfgs = float(min((EPOCHS_ADAM + effective_steps) / N_ramp, 1.0)) if N_ramp > 0 else 1.0
+            ramp_bfgs = float(min((step_base + effective_steps) / N_ramp, 1.0)) if N_ramp > 0 else 1.0
             _tp = _tp_restart = time.perf_counter()  # [GPUS]
             new_w, new_H0, bfgs_key, loss_val, nit = bfgs_step(
                 initial_weights, H0, bfgs_key,
@@ -5777,7 +6030,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
                 *train_data)
             _tp = _prof_add("apply_model", _tp, all_loss_it)  # [GPUS]
 
-            current_step = EPOCHS_ADAM + effective_steps
+            current_step = step_base + effective_steps
             if current_step >= next_loss_step:
                 tgn = per_term_grad_norms(
                     train_apply_fn, params_current,
@@ -5791,8 +6044,9 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
                 next_loss_step += loss_save_every
             _tp = _prof_add("loss_log", _tp)  # [GPUS]
 
-            _resample_count += 1
-            train_data = _resample_train_data()
+            if not qn_fixed_batch:
+                _resample_count += 1
+                train_data = _resample_train_data()
             _tp = _prof_add("resample", _tp, train_data)  # [GPUS]
             _prof_end_restart(_tp_restart)  # [GPUS]
             pbar.set_postfix({
@@ -5825,6 +6079,12 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
     if loss_plot_every > 1:  # [GPUS] final state of this window's loss plot
         save_loss_plot()  # [GPUS]
     params = unflatten_func(initial_weights)
+    if dsgnar_steps > 0 and args.dsgnar_order == "after_qn":
+        step_base = step_base + effective_steps
+        params, _n_dsg, _l_dsg = _dsgnar_phase(params)
+        if _n_dsg and np.isfinite(_l_dsg):
+            epochs_list.append(step_base)
+            loss_list.append(_l_dsg)
     if snapshot_2d_every > 0 and (window_idx % snapshot_2d_every == 0 or window_idx == N_window - 1):
         save_2d_slice_snapshot(_snap_params(params))
 
