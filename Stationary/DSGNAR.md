@@ -737,3 +737,21 @@ condition usable inside), and compare gauge-invariantly.
   0 (line-search status 3) -- the new term is 100 x 6 x 0.0257^2 = 0.395 against 2e-9 for the rest,
   the same failure as SSBroyden started under rho^4 from the rho^2 warm-up.  `m7_dsg_com` (DSGNAR,
   which handled the 1e4 -> 1e-6 jump of round 3) is the run that tests the condition.
+* **`m7_dsg_com` -- the centre-of-mass gauge fixes it.**  DSGNAR s = 2000, rho^4, P pin, `--com-pin
+  1,1.5,3,10,30,100`, 5 cycles of 60 from `m5_ssb_norsmp`: 0.395 -> 4.9e-3 -> 4.7e-5 -> 5.9e-7 ->
+  6.8e-9 -> **1.16e-10** (~55/60 accepted per cycle, ~60x per cycle, still falling at the budget;
+  96 min).  18x below the previous best loss.  d_z = -1e-8..+5e-8 on the spheres (was -0.026).
+  Against the FINE reference:
+
+  | | lambda 1-3 | 3-10 | 10-30 | 30-100 | h 1-3 | 3-10 | 10-30 | 30-100 |
+  |---|---|---|---|---|---|---|---|---|
+  | *perturbation size* | *2.0e-2* | *2.5e-3* | *7.6e-4* | *2.6e-4* | *2.2e-2* | *4.5e-4* | *3.1e-5* | *3.5e-6* |
+  | `m5_ssb_norsmp` (no COM pin) | 1.6e-3 | 7.8e-4 | 1.2e-4 | 1.4e-5 | 2.0e-2 | 2.9e-3 | 2.8e-4 | 2.9e-5 |
+  | **`m7_dsg_com`** | **6.7e-8** | **3.4e-8** | **1.2e-8** | **3.4e-9** | **4.8e-7** | **3.7e-8** | **5.0e-9** | **4.0e-9** |
+
+  4-5 orders of magnitude, now 5-6 orders below the perturbation itself; the odd l = 1, 3 part of
+  lambda - lambda_ref is 1e-9..4e-8 (was 3.3e-3); residuals 10x lower everywhere (Ricci 3.0e-6 /
+  4.9e-8 / 5.1e-9 / 9.7e-10, lambda equation 3.3e-6 / 6.3e-8 / 6.4e-9 / 7.2e-10; inner data
+  1.1e-7 / 7.4e-8).  The free residual harmonic gauge mode was both the "error" and what held the
+  optimisation back.  (At this level part of the remaining difference may be the reference's own,
+  whose loss is 2.8e-11.)

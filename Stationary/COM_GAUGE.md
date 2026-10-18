@@ -254,6 +254,12 @@ near the inner sphere translating makes it worse (-6.6e-3 at rho = 1.5), as it m
 vector xi -> 0 and is not a translation.  So the odd "error" is the residual harmonic gauge mode of
 section 4b, not wrong geometry.
 
+**Result (2026-10-18): imposing d = 0 removes it.**  `m7_dsg_com` (DSGNAR, `--com-pin
+1,1.5,3,10,30,100`): d_z ~ 1e-8 on every sphere, loss 1.16e-10 (18x below the best without it), and
+the error against the fine nonlinear reference falls by 4-5 orders of magnitude (lambda 6.7e-8 near
+the inner sphere, 3.4e-9 far out; h 4.8e-7 / 4.0e-9).  Details in DSGNAR.md 9.2.  SSBroyden could not
+start from the unpinned run (the new term is 0.395 there and its first line search fails).
+
 ## 5. What this would and would not explain
 
 It would explain, in one stroke: the size of the tail dipole in the production runs, its growth when
