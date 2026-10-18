@@ -89,7 +89,15 @@ rho = 30); the COM gauge (step 3) brought everything else down by ~10x more, and
 ## Caveats
 
 * Step 3 differs from step 2 also in the optimiser (DSGNAR with restart cycles, as SSBroyden could not
-  start).  The SSBroyden run from step 3 (`m8_ssb_com`) and DSGNAR's continuation are pending.
+  start).  Continued from step 3, both reach the reference's own loss level and halve the error again:
+
+  | continuation of step 3 | loss | lambda 1-3 | 3-10 | 10-30 | 30-100 | h 1-3 | 3-10 | 10-30 | 30-100 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | SSBroyden (`m8_ssb_com`, 8 min) | 3.75e-11 | 3.2e-8 | 3.9e-9 | 2.9e-9 | 2.6e-9 | 1.4e-7 | 1.7e-8 | 2.4e-9 | 1.6e-9 |
+  | DSGNAR (`m8_dsg_com_cont`, 39 min) | 3.96e-11 | 3.5e-8 | 7.8e-9 | 5.9e-9 | 4.2e-9 | 2.1e-7 | 2.2e-8 | 3.0e-9 | 1.7e-9 |
+
+  The Ricci and lambda-equation residuals near the inner sphere (~3e-6 at rho 1-3) barely move in
+  either: that is now the limit.
 * At the 1e-8 level part of the remaining difference may be the reference's own (its loss is
   2.8e-11, the network's 1.2e-10).
 * The symmetric data make the odd part easy to see; the COM condition itself does not use the

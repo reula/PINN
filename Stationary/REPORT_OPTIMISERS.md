@@ -29,7 +29,7 @@ nonlinear reference (REPORT_PIN_COM.md).*
 | rho^4, lambda pin, from the result above | 1.44e-6 | 4.5e-7, 12 min | 4.6e-7, 18 min | identical (both at the pin's floor) | tie |
 | rho^4, pin on P, from the result above | 9.4e-9 | 2.1e-9, 36 min, 10000 it. (cap, still falling) | 3.4e-9, 43 min, 5 restart cycles | residuals 10-30% lower for SSBroyden | SSBroyden, slightly |
 | rho^4, pin on P, COM gauge, from the result above | 0.395 | **stalls at iteration 0** | **1.16e-10**, 94 min, 5 cycles, still falling ~60x per cycle | -- / errors 6.7e-8 / 4.8e-7 | DSGNAR |
-| COM gauge, from DSGNAR's 1.16e-10 | 1.2e-10 | pending (`m8_ssb_com`) | pending (`m8_dsg_com_cont`) | | |
+| COM gauge, from DSGNAR's 1.16e-10 | 1.2e-10 | **3.75e-11, 8 min**, 1500 it. (plateau) | 3.96e-11, 39 min, 5 cycles (radius stops, few accepted after cycle 1) | 3.2e-8 / 1.4e-7 vs 3.5e-8 / 2.1e-7 | SSBroyden, 5x faster |
 
 Losses are each run's own objective and comparable only within a row.  The first row ran on different
 GPUs (SSBroyden on the hub, DSGNAR on a Mendieta A30).
@@ -66,8 +66,9 @@ on the Stationary problem as well.
    5 --dsgnar-cycle-steps 60`) -- whenever the problem, the weighting or a condition has changed, for new
    data, and for time windows.
 2. **Then SSBroyden without resampling** (`--resample-every 0`, in jobs of 10000 iterations) to polish,
-   once the loss is near the floor of a fixed objective.  Whether this still pays from DSGNAR's
-   1.2e-10 COM solution is what `m8_ssb_com` measures.
+   once the loss is near the floor of a fixed objective.  From DSGNAR's 1.2e-10 COM solution it
+   reached 3.75e-11 in 8 minutes, against DSGNAR's own continuation 3.96e-11 in 39 minutes, with
+   slightly smaller errors -- both now at the reference's own level (2.8e-11).
 3. **Wider networks shift the balance**: DSGNAR's cost grows with s ~ d (s = 2000 is 0.88 d now; for the
    8.6k-parameter network it would be ~2 min per iteration), SSBroyden's with d^2 memory.  The wide
    network was trained with SSBroyden for that reason.

@@ -764,6 +764,13 @@ harmonic (DeTurck) Ricci `--ricci-form harmonic` (geometry._RICCI_FORM; tests/te
 equal to full Ricci in harmonic gauge, linearisation -1/2 Laplacian h_ij) from the same start and
 settings as `m7_dsg_com`.  Results: pending.
 
+Round 8 results: `m8_ssb_com` (SSBroyden from `m7_dsg_com`): 1.18e-10 -> 3.75e-11 in 1500
+iterations (7.4 min), plateau stop; `m8_dsg_com_cont` (DSGNAR, 5 cycles): -> 3.96e-11 in 39 min
+(cycle 1: 50 iterations to 3.9e-11, then 2, 11, 1, 0 accepted).  Against the fine reference both
+halve m7's error (lambda 3.2e-8 / 3.5e-8 at rho 1-3, h 1.4e-7 / 2.1e-7); SSBroyden slightly better
+and 5x faster.  Both at the reference's own loss (2.8e-11); the inner residual (~3e-6 at rho 1-3)
+is now the limit.
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
