@@ -22,6 +22,7 @@ import os
 import pickle
 import sys
 import time
+import types
 from dataclasses import asdict
 
 import jax
@@ -825,6 +826,18 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     treatment the first block gets.
     """
     minimize, where = _crunch_minimize(linesearch=getattr(cfg, "qn_linesearch", "armijo"))
+    reuse = [None, None]                 # (sample/weights key, the objective handed to Crunch)
+    crunch_bfgs = None
+    if minimize is not None and getattr(cfg, "qn_reuse_objective", False):
+        import importlib
+        crunch_bfgs = importlib.import_module(
+            "Crunch.Optimizers.bfgs" if getattr(cfg, "qn_linesearch", "armijo") == "wolfe"
+            else "Crunch.Optimizers.bfgs_backtracking").minimize_bfgs
+        # ... and jitted once: Crunch's minimize_bfgs is a plain function around a lax.while_loop,
+        # which is traced and compiled anew on every call; with the objective and the options
+        # static it compiles once per (objective, options) and every later block is a cache hit
+        crunch_bfgs = jax.jit(crunch_bfgs, static_argnames=(
+            "fun", "maxiter", "norm", "gtol", "update_method", "initial_scale"))
     if minimize is None:
         if verbose:
             print(f"[qn] SSBroyden unavailable ({where}); using optax.lbfgs", flush=True)
@@ -1088,8 +1101,7 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         # that test_qn_phase.py::test_the_objective_handed_to_crunch_is_jitted is about.
         # It was failing on HEAD for exactly this: the inner objective carried @jax.jit,
         # the wrapper did not, so the property the test asserts did not hold.
-        res = minimize(jax.jit(lambda flat: fun(flat, batch, weights)), x, args=(), method="BFGS",
-                       options={"maxiter": block, "gtol": cfg.qn_gtol,
+        opts = {"maxiter": block, "gtol": cfg.qn_gtol,
                                 "initial_H": H,
                                 # initial_scale engages SSBroyden's tau_k^A: without it the
                                 # first step is -grad with H = I, which the Wolfe line search
@@ -1102,7 +1114,20 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                                 # estimate), so the phase would otherwise retry with the
                                 # same I and the same unscaled first step that failed.
                                 "update_method": "ssbroyden2",
-                                "initial_scale": (b == 0 or reweighted or fail_streak > 0)})
+                                "initial_scale": (b == 0 or reweighted or fail_streak > 0)}
+        if getattr(cfg, "qn_reuse_objective", False):
+            # one objective object per (sample, weights): Crunch's static-argument jit cache hits
+            # on every later block instead of compiling (and keeping) a new line search
+            key = (id(batch), id(weights))
+            if reuse[0] != key:
+                reuse[0] = key
+                reuse[1] = jax.jit(lambda flat, _b=batch, _w=weights: fun(flat, _b, _w))
+            r = crunch_bfgs(fun=reuse[1], x0=x, **opts)
+            res = types.SimpleNamespace(x=r.x_k, fun=r.f_k, nit=r.k, status=r.status,
+                                        hess_inv=r.H_k)
+        else:
+            res = minimize(jax.jit(lambda flat: fun(flat, batch, weights)), x, args=(),
+                           method="BFGS", options=opts)
         if b == 0 and maps_start is not None:
             m, _ = _map_budget()
             # the delta ACROSS the first minimize call: that one call compiles jit_fun and the
@@ -1635,6 +1660,9 @@ def parse_args(argv=None):
                    dest="qn_linesearch",
                    help="SSBroyden's line search: Crunch's Armijo backtracking (default) or the "
                         "strong-Wolfe zoom of Crunch's bfgs.py")
+    p.add_argument("--qn-reuse-objective", action="store_true", dest="qn_reuse_objective",
+                   help="hand Crunch the same objective object across blocks (no per-block "
+                        "recompilation, no per-block memory growth); numerically identical")
     p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs", "dsgnar"), default=None,
                    help="quasi-Newton phase: Crunch's SSBroyden (default), optax.lbfgs, or "
                         "DSGNAR -- the doubly-sketched Gauss-Newton method of "
@@ -2178,6 +2206,8 @@ def parse_args(argv=None):
         cfg.ricci_form = a.ricci_form
     if a.qn_linesearch:
         cfg.qn_linesearch = a.qn_linesearch
+    if a.qn_reuse_objective:
+        cfg.qn_reuse_objective = True
     if a.com_pin:
         cfg.com_radii = tuple(float(v) for v in a.com_pin.split(","))
     if a.w_com is not None:

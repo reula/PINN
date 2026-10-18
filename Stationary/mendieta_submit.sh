@@ -142,6 +142,11 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssb]:-}" ] && ! squeue -h -u "$USER" -n 
           sbatch --parsable -J check_rot --dependency=afterany:${JID[rot_ssb]} \
           mendieta_check.sbatch runs/rot_dsg runs/rot_ssb) (after rot_ssb)"
 fi
+# round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
+# (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
+# Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
+# order).  The log's per-block "resources: rss=" line is the measurement.
+submit m12_ssbw_rho4_reuse  - --steps 0 --init-from $INIT $WOLFE $RHO4 --qn-reuse-objective
 # round 10 (2026-10-18): the recommended workflow end to end, FROM SCRATCH (README "Recommended
 # workflow"), with resampling throughout so the result is checked to be sample-stable:
 #   wf_adam  Adam 5000 under the final objective (rho^4, pin on P, COM gauge)

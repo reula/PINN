@@ -83,6 +83,19 @@ So Wolfe fixes the far-start failure in one case (the new weights) but not the o
 term), where DSGNAR went 0.395 -> 1.16e-10: from that start the difficulty is the objective's
 conditioning, not only the line search.  DSGNAR remains the tool for far starts.
 
+## SSBroyden's memory and time per block (2026-10-18)
+
+Crunch jits its line search with the objective as a STATIC argument, and `minimize` wraps the
+objective in a fresh lambda on every call; on top of that `minimize_bfgs` (a lax.while_loop) is not
+jitted.  So every block of 250 iterations recompiled the line search and the loop, and the old
+executables stayed in JAX's cache: the host memory that grew per block (killed at 60.6 GB), and a
+large per-block compile time.  `--qn-reuse-objective` (Config.qn_reuse_objective) hands Crunch the
+same objective object until the sample or the weights change and jits `minimize_bfgs` once, with the
+objective and the options static.  CPU test (tiny network, Wolfe, 10 blocks of 20): the same
+iterates for the first blocks (the jitted loop changes the evaluation order slightly, 1.0e-1 vs
+9.97e-2 after 180 iterations), **200.8 s against 1018.7 s** -- 5x faster.  The memory test on the run
+that was killed is Mendieta round 12 (`m12_ssbw_rho4_reuse`): pending.
+
 ## Recommendation
 
 1. **Default: DSGNAR with restart cycles** (`--qn-method dsgnar --dsgnar-sketch ~0.9 d --dsgnar-cycles

@@ -52,8 +52,8 @@ def test_the_objective_handed_to_crunch_is_jitted(tmp_path, monkeypatch):
     real = T._crunch_minimize
     captured = {}
 
-    def fake_minimize():
-        minimize, where = real()
+    def fake_minimize(*args, **kw):          # passes --qn-linesearch through (linesearch=...)
+        minimize, where = real(*args, **kw)
         if minimize is None:
             return None, where
 

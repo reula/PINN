@@ -460,6 +460,13 @@ class Config:
     # strong-Wolfe zoom (c2 = 0.9, with two fallback tries), which guarantees y.s > 0 and can
     # lengthen a step.  The default stays "armijo" so that older runs reproduce.
     qn_linesearch: str = "armijo"
+    # Hand Crunch the SAME objective object block after block (until the sample or the weights
+    # change), calling its minimize_bfgs directly.  Crunch jits its line search with the objective as
+    # a STATIC argument, and `minimize` wraps it in a fresh lambda on every call: every block then
+    # recompiled the line search (~37 s per block measured on a tiny CPU run) and the old executables
+    # stayed in JAX's cache -- the host memory that grew per block until the node killed the job
+    # (60 GB).  Numerically identical; off by default until measured on the GPU.
+    qn_reuse_objective: bool = False
     plateau_tol: float = 1e-4
     plateau_patience: int = 3
     plateau_min_iters: int = 100   # negative DISABLES the plateau stop (train.py);
