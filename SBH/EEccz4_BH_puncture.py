@@ -668,6 +668,15 @@ parser.add_argument("--outdir", type=str, default=".",
                          "'.', i.e. the current directory, as before. --resume_checkpoint is a path "
                          "of its own (usually OUTDIR/pinn_checkpoint.pkl).")
 
+parser.add_argument("--resume_windows", type=int, default=0,
+                    help="With --resume_checkpoint: load only the first K completed windows (and their "
+                         "puncture-track entries) and continue from window K+1, i.e. fork a run at a "
+                         "window boundary. 0 (default) = all windows in the checkpoint. Note: the RNG "
+                         "key is not checkpointed, so any resume draws different samples than the "
+                         "uninterrupted run would; fork every arm of a comparison the same way.")
+parser.add_argument("--stop_after_window", type=int, default=0,
+                    help="Stop after this many windows are complete (1-based, as in the log's "
+                         "'Training window k/N'); 0 = run to N_window. The checkpoint is written as usual.")
 parser.add_argument("--fast_hessian", action="store_true",  # [GPUS]
                     help="[GPUS] Compile Crunch's SSBroyden inverse-Hessian update with jax.jit (one "  # [GPUS]
                          "fused kernel instead of ~35 separate GPU operations and three materialised "  # [GPUS]
@@ -6406,6 +6415,14 @@ if resume_checkpoint is not None:
                 f"format). Post-hoc diagnostics for those windows would silently use raw regular-"
                 f"remainder chi instead of physical chi.")
 
+    if args.resume_windows > 0:
+        if args.resume_windows > len(_ckpt["windows"]):
+            raise ValueError(f"--resume_windows {args.resume_windows} but the checkpoint has only "
+                             f"{len(_ckpt['windows'])} window(s)")
+        _ckpt["windows"] = _ckpt["windows"][:args.resume_windows]
+        _ckpt["puncture_track_history"] = [e for e in _ckpt.get("puncture_track_history", [])
+                                           if e.get("window_idx", 0) < args.resume_windows]
+        print(f"--resume_windows {args.resume_windows}: forking after window {args.resume_windows}")
     for _w in _ckpt["windows"]:
         if "ic_history" not in _w:
             # Old checkpoint (pre flat-vmap-sum rewrite): migrate the nested
@@ -6758,6 +6775,14 @@ if resume_checkpoint is not None and bh_center_mode in ("shift_driven", "chi_min
             print(f"Resumed {bh_center_mode} puncture track: x={_ckpt_track[-1]['x']}")
 
 for window_idx in range(resume_start, N_window):
+    if args.stop_after_window > 0 and window_idx >= args.stop_after_window:
+        print(f"--stop_after_window {args.stop_after_window}: stopping after window {window_idx}.")
+        # The post-run diagnostics below sample t in [0, tfinal] and look windows up by
+        # time; restrict them to the trained span.
+        N_window     = len(window_states)
+        window_edges = window_edges[:N_window + 1]
+        tfinal       = float(window_edges[-1])
+        break
     t_start    = float(window_edges[window_idx])
     t_end      = float(window_edges[window_idx + 1])
     if window_idx == 0:
