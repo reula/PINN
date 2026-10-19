@@ -155,6 +155,11 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_dsg2]:-}" ] && ! squeue -h -u "$USER" -n
           sbatch --parsable -J check_rot2 --dependency=afterany:${JID[rot_dsg2]} \
           mendieta_check.sbatch runs/rot_dsg2) (after rot_dsg2)"
 fi
+# round 15 (2026-10-19): SSBroyden on the MERGED Crunch (now the default, --qn-crunch merged) from
+# wf_dsg, where the legacy one took no step (rounds 10, 13); on the Mac it moves with both line
+# searches.  Recipe step 4 as written, the Armijo default; compare with wf_dsg2 (more DSGNAR, same start)
+submit wf_ssbm              wf_dsg --steps 0 --init-from runs/wf_dsg/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $BEST
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
