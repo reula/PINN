@@ -800,6 +800,13 @@ Round 10 results (2026-10-19), from scratch with the recipe as written:
   gives the identical fresh losses).  Same failure as `m9_ssbw_com`; the one SSBroyden run that moved
   from a COM start (`m8_ssb_com`) used Armijo and no resampling.  Round 13 separates the two:
   `wf_ssba` (Armijo, resampling 500) and `wf_ssba_nors` (Armijo, none).
+  **Round 13 result: neither moves.**  Both make 0 iterations in every block (status 3, the
+  backtracking search fails) and stop on the stall rule after 3.4 and 1.2 min.  So it is not the line
+  search and not the resampling: from `wf_dsg` (8.6e-5) SSBroyden cannot take its first step, while
+  from `m7_dsg_com` (1.2e-10) the same objective went to 3.75e-11.  The other first-step stalls so far:
+  m3 (Armijo, rho^4, from the rho^2 Adam start) and m9_ssbw_com (Wolfe, from m5 with the COM term at
+  0.395).  Cause not known; a gradient-vs-finite-difference check at `wf_dsg`'s parameters is the
+  obvious next test.
 - So the from-scratch budget ends 6 orders above the best run (3.75e-11), which got there through
   many more DSGNAR iterations over rounds 3-7: 5 cycles x 60 are not enough, and the recipe's step 4
   as written does nothing at this point.
@@ -808,7 +815,17 @@ Round 11 (2026-10-18): off-axis data with the 3-D network -- S2 = -1/12 about e 
 (`--lam-bc-axis 1,0,1`, Config.lam_bc_axis; tests/test_lam_bc_axis.py), `--arch hybrid --width 20
 --depth 6` (2347 parameters), the same workflow (`rot_adam` -> `rot_dsg` -> `rot_ssb`), graded against the
 fine reference rotated by R z = e (`scripts/grade_rotated.py`; on an on-axis run it reproduces the
-unrotated numbers exactly).  Results: pending.
+unrotated numbers exactly).
+
+Round 11 results (2026-10-19): **not converged.**  `rot_adam` 0.91 -> `rot_dsg` **2.48e-2** (50 min;
+only cycle 1 at budget, cycles 3-5 accepted 1, 3 and 0 of 15-17 steps) -> `rot_ssb` (Wolfe) **2.36e-2**
+(162 iterations, then failed line searches and the stall stop, 21 min).  Sample-stable (fresh/training
+1.00), but against the rotated fine reference the error is the size of the quadrupole itself: rms
+|dlambda| 1.25e-2 against a perturbation of 9.4e-3, rms |dh| 6.9e-2 against 1.1e-2; by region
+(rms |dlambda| / perturbation): rho 1-3 2.1e-2 / 1.9e-2, 3-10 1.3e-2 / 2.4e-3, 10-30 4.9e-3 / 7.6e-4,
+30-100 1.7e-3 / 2.6e-4.  The axisymmetric workflow reached 8.6e-5 with the same budget; the 3-D
+network (2347 parameters, s = 2000 = 0.85 d) stalls 300x higher.  The off-axis test therefore says
+nothing yet about the rotated physics -- it needs a converged run first.
 
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
