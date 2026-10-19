@@ -170,6 +170,11 @@ And on a tiny network from Adam (smoke): legacy Armijo 0 iterations in 3 blocks;
 problem.  Why `m8_ssb_com` moved from m7 with the legacy Armijo despite needing more halvings is not
 understood (its backtracking interpolates, so it is not pure halving).
 
+**On Mendieta (round 15, `wf_ssbm`):** the recipe's step 4 from `wf_dsg` on the merged Crunch
+(Armijo, resampling every 500, 10000 iterations): **8.08e-5 -> 1.11e-10 in 15.7 min**, at the cap
+(still falling ~2% per block), RSS flat at 3.4 GB.  From the same start the legacy Crunch made no
+step in three tries; this is the level `m7_dsg_com` reached through rounds 3-7 of DSGNAR.
+
 ## Recommendation
 
 1. **Default: DSGNAR with restart cycles** (`--qn-method dsgnar --dsgnar-sketch ~0.9 d --dsgnar-cycles
