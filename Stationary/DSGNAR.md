@@ -879,7 +879,7 @@ iterations (12 min), still falling at the cap; errors still the size of the pert
 |dlambda| 1.04e-2, |dh| 5.6e-2).  Much slower than the hybrid.  Round 20: the control polished with
 2 x 10000 merged SSBroyden (`ctl_hyb_ssbm`, `ctl_hyb_ssbm2`) for its floor, and `rot_mlpc_ssb2`.
 
-**Round 20 result: the rotation costs nothing.**  Same network (3-D hybrid), objective and budget,
+**Round 20 result: the rotation costs nothing in the first 10000 iterations** (but see round 21).  Same network (3-D hybrid), objective and budget,
 10000 merged-SSBroyden iterations each from a DSGNAR stall near 2.3e-2:
 
 | | loss | rms dlambda | rms dh | rms dh, rho 1-3 |
@@ -893,6 +893,16 @@ ran to the cap, 2.58e-7 (rms dlambda 1.17e-5, dh 5.5e-4; fresh/training 0.94), w
 plateau stop off.  The 3-D floor is the network's (axisymmetric: 1.1e-10), not the rotation's.
 `rot_mlpc_ssb2` (mlp, compat on) stopped on the plateau at 2.8e-3, errors unchanged: the 25-field mlp
 does not converge on this objective within these budgets.
+
+**Round 21 result: the rotated run floors, the on-axis one does not.**  `rot_ssbm3` (10000 more,
+plateau stop off): 1.59e-6 -> **1.32e-6**, errors unchanged (rms dlambda 1.72e-5, dh 1.17e-3; rho 1-3
+dh 2.4e-3), fresh/training 1.03.  Against the on-axis control after 20000: 2.58e-7, dlambda 1.17e-5,
+dh 5.5e-4.  So the rotated problem costs nothing to start with but stalls at ~1.3e-6 with an h error
+2x the on-axis one, dominated by the inner region.  Not understood.  Plausible causes, none tested:
+the network's input features (n, a log-radial t and its Fourier modes) treat every direction alike,
+so the rotation itself should not matter -- but the rotated inner data have more angular structure
+on the sampled points of the inner sphere (n_bnd 1024), or the 45-deg data excite modes the
+centre-of-mass condition (radii 1 .. 100) handles differently.
 
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
