@@ -244,6 +244,17 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssbm3]:-}" ] && ! squeue -h -u "$USER" -
           sbatch --parsable -J check_rotm3 --dependency=afterany:${JID[rot_ssbm3]} \
           mendieta_check.sbatch runs/rot_ssbm3) (after rot_ssbm3)"
 fi
+# round 22 (2026-10-19): is the rotated floor (rot_ssbm3, 1.32e-6, h error 2x the on-axis control's,
+# concentrated in rho 1-3) the sampling of the inner sphere?  rot_ssbm3 continued with 4x the inner
+# boundary points (--n-bnd 4096; outer unchanged), everything else as rot_ssbm3; rot_ssbm3 is the control.
+submit rot_bnd4k            rot_ssbm3 --steps 0 --init-from runs/rot_ssbm3/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 --n-bnd 4096 \
+                              $ROT $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_bnd4k]:-}" ] && ! squeue -h -u "$USER" -n check_bnd4k -o %i | grep -q .; then
+    echo "  submit   check_bnd4k -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_bnd4k --dependency=afterany:${JID[rot_bnd4k]} \
+          mendieta_check.sbatch runs/rot_bnd4k) (after rot_bnd4k)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
