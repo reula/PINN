@@ -16,6 +16,15 @@ Support is only through <https://tickets.clementinaxxi.org.ar> (same credentials
 
 ---
 
+## Status (2026-10-19)
+
+* **probe** (job 1547927, cn034): environment mapped — see §4.
+* **smoke** (job 1548105, cn038): **18/18 checks passed** on one Max 1550.
+  `jax 0.11.2` + `jax-oneapi-plugin 0.11.2`, `backend gpu`, six
+  `OneapiDevice`s (3 unfiltered cards × 2 tiles), f32 matmul ≈ 10.7 TFLOP/s,
+  f64 ≈ 370 GFLOP/s, f64 6×20 MLP `value_and_grad` at batch 2201 ≈ 2.9 ms/iter.
+* **next**: tiny `wave_pinn` run on one card + CPU baseline (§7).
+
 ## 0. What is different from Mendieta, in one table
 
 | | Mendieta (what the code was written for) | Clementina XXI |
@@ -31,11 +40,14 @@ Support is only through <https://tickets.clementinaxxi.org.ar> (same credentials
 
 Three consequences that decide everything below:
 
-1. **`jax.default_backend()` returns `"oneapi"`, not `"gpu"`.** Every existing
-   guard in the repo (`assert jax.default_backend() == "gpu"`,
-   `[d for d in jax.devices() if d.platform == "gpu"]` in the `mendieta_*.sbatch`
-   and `hub_*.sh` scripts) would reject a perfectly working GPU on Clementina.
-   The scripts here test `backend != "cpu"` instead.
+1. **The backend still calls itself `gpu`** — JAX 0.11.2 on the Intel plugin
+   reports `jax.default_backend() == "gpu"` and devices of class
+   `OneapiDevice` with `platform == "gpu"`, so the repo's existing GPU guards
+   (`assert jax.default_backend() == "gpu"`, `d.platform == "gpu"`) keep
+   working. What does *not* transfer is CUDA: there is no `nvidia-smi`,
+   `XLA_PYTHON_CLIENT_*` do nothing, and `/dev/dri` is not filtered per job, so
+   a job can see several cards unless `ZE_AFFINITY_MASK` pins it (`env.sh`'s
+   `cxxi_pin_gpu` does that from `SLURM_JOB_GPUS`).
 2. **The only released `jax-oneapi-plugin` is 0.11.2** (there are 0.11.0/0.11.1
    development builds, no releases), while the repo pins
    `jax==0.11.1` (`Evolution_try/requirements.txt`, `Stationary/requirements.txt`).

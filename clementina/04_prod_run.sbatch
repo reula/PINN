@@ -82,6 +82,8 @@ echo
 
 # A JAX that cannot see the GPU falls back to the CPU silently and the run then
 # takes days: refuse to start instead.
+cxxi_pin_gpu
+
 cxxi_assert_accelerator "$PY" || { echo "FATAL: no Intel GPU visible to JAX" >&2; exit 2; }
 
 if [ -f "$OUTDIR/report.md" ]; then

@@ -67,6 +67,40 @@ if [ "${CXXI_UNSET_ZE_MASK:-0}" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Pin Level Zero to the GPU Slurm gave us.
+#
+# /dev/dri is not filtered (cn038: a --gpus=1 job saw 3 cards = 6 tile-devices),
+# so JAX enumerates every card on the node unless we mask.  Slurm sets no
+# ZE_AFFINITY_MASK, and CUDA_VISIBLE_DEVICES does nothing for Level Zero.
+#
+# Device order matches Slurm's: in the debug job on cn038, xpu-smi topology gave
+# GPU 0/0 the CPU affinity 0-7, exactly the cpuset Slurm allocated, while GPUs 1
+# and 2 had none -- i.e. Slurm's GPU 0 is Level Zero device 0.
+#
+# FLAT lists tiles (2g, 2g+1 per card); COMPOSITE lists device.tile pairs.
+# CXXI_ZE_MASK=off disables the pinning.
+# ---------------------------------------------------------------------------
+cxxi_pin_gpu() {
+    [ "${CXXI_ZE_MASK:-on}" = "off" ] && return 0
+    [ -n "${ZE_AFFINITY_MASK:-}" ] && return 0
+    [ -n "${SLURM_JOB_GPUS:-}" ] || return 0
+    local g out="" IFS=,
+    for g in $SLURM_JOB_GPUS; do
+        g="${g//[!0-9]/}"                       # "0" or "0,1" or gres syntax
+        [ -n "$g" ] || continue
+        if [ "${ZE_FLAT_DEVICE_HIERARCHY:-FLAT}" = "COMPOSITE" ]; then
+            out="${out:+$out,}$g.0,$g.1"
+        else
+            out="${out:+$out,}$((2 * g)),$((2 * g + 1))"
+        fi
+    done
+    if [ -n "$out" ]; then
+        export ZE_AFFINITY_MASK="$out"
+        echo "pinned ZE_AFFINITY_MASK=$out  (Slurm GPUs: ${SLURM_JOB_GPUS}; CXXI_ZE_MASK=off to disable)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Caches.  XLA's compilation cache is worth a lot for these workloads (the DSGNAR
 # trace is big and the same shape is recompiled across resample rounds).
 # ---------------------------------------------------------------------------
