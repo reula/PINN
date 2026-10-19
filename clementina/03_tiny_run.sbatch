@@ -63,7 +63,7 @@ echo "job       ${SLURM_JOB_ID:-?}  partition ${SLURM_JOB_PARTITION:-?}"
 echo "head      $(git rev-parse --short HEAD 2>/dev/null)"
 echo "python    $PY"
 echo "outdir    $RUNROOT/runs/$LABEL"
-command -v xpu-smi >/dev/null 2>&1 && xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not on this node"
+command -v xpu-smi >/dev/null 2>&1 && timeout 20 xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not on this node (or timed out)"
 echo
 
 cxxi_assert_accelerator "$PY" || { echo "FATAL: no Intel GPU visible to JAX" >&2; exit 2; }

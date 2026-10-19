@@ -59,11 +59,15 @@ echo "data      $CXXI_DATA"
 echo "ZE        ZE_FLAT_DEVICE_HIERARCHY=${ZE_FLAT_DEVICE_HIERARCHY:-<unset>}  ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK:-<unset>}"
 echo "          (CXXI_ZE_MODE=${CXXI_ZE_MODE:-<unset>} CXXI_UNSET_ZE_MASK=${CXXI_UNSET_ZE_MASK:-0})"
 echo
-echo "--- xpu-smi discovery"
-command -v xpu-smi >/dev/null 2>&1 && xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not on this node"
+echo "--- xpu-smi discovery (bounded: it is a hang suspect)"
+command -v xpu-smi >/dev/null 2>&1 && timeout 20 xpu-smi discovery 2>&1 | head -20 \
+    || echo "xpu-smi not on this node (or timed out)"
 echo
 
-"$PY" "$CXXI_DIR/smoke.py" --json "$CXXI_DATA/smoke_${SLURM_JOB_ID:-local}.json" "$@"
+# -u and a timeout inside the job limit: a hang then leaves the log it produced
+# instead of being killed silently at the wall clock.
+PYTHONUNBUFFERED=1 timeout 780 "$PY" -u "$CXXI_DIR/smoke.py" \
+    --json "$CXXI_DATA/smoke_${SLURM_JOB_ID:-local}.json" "$@"
 rc=$?
 echo
 echo "smoke.py exit $rc"

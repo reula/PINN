@@ -25,8 +25,9 @@ import sys
 import time
 import traceback
 
-# Third-party imports happen after argparse so --help works even in a broken env.
-import numpy as np
+# Third-party imports are deliberately not at module level: if numpy or jax hangs
+# (as the first oneAPI attempt did), the "starting" line below is the only proof
+# that the process got far enough to matter.
 
 
 def hr(title: str) -> None:
@@ -36,6 +37,7 @@ def hr(title: str) -> None:
 
 
 def main(argv=None) -> int:
+    print(f"smoke.py: start, python {sys.version.split()[0]}, exe {sys.executable}", flush=True)
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--allow-cpu", action="store_true",
@@ -45,6 +47,9 @@ def main(argv=None) -> int:
     ap.add_argument("--skip-bench", action="store_true", help="skip the matmul timings")
     ap.add_argument("--json", default=None, help="write results to this file")
     args = ap.parse_args(argv)
+
+    print("smoke.py: importing numpy", flush=True)
+    import numpy as np
 
     hr("environment")
     import jax

@@ -58,6 +58,7 @@ Three consequences that decide everything below:
 | `00_probe.sbatch` | step 1 — discovers drivers, modules, python, partitions, ZE mask, proxy | `testing`, 1 GPU, 10 min |
 | `01_setup_env.sh` | step 2 — builds `~/venvs/pinn-oneapi` with `jax[oneapi]==0.11.2` | **login node** |
 | `smoke.py` | step 4 — checks the JAX primitives the DSGNAR optimiser needs; names the one that fails | any node |
+| `debug_oneapi.sbatch` | when a job prints nothing and runs to its limit: every diagnostic wrapped in `timeout`, so `rc=124` names the hanging step | `gpunode`, 20 min |
 | `02_smoke.sbatch` | step 3 wrapper, inside a GPU allocation | `testing`, 1 GPU, 20 min |
 | `03_tiny_run.sbatch` | step 4 — the real `wave_pinn` CLI, tiny, on one Intel GPU | `gpunode`, 40 min |
 | `04_prod_run.sbatch` | step 5 — the Mendieta production recipe, one GPU | `gpunode`, 8 h (override) |
@@ -398,6 +399,7 @@ and heading to 500 GB per IPAC, while `/data/contrib` is ~1 PB shared by the IPA
 | `ssh: Could not resolve hostname` | DNS, or VPN down | `ssh oreula@172.29.3.3`, or set DNS `8.8.8.8` (wiki: Errores Frecuentes) |
 | `Permission denied (publickey,...)` | key not in `authorized_keys` | wiki's *Autenticación sin contraseña*; password login always works |
 | `sbatch: error: invalid partition` | `gpunode` vs `gpunodes` | use the name printed by `sinfo` in the probe |
+| job runs to its time limit printing nothing after the header | a hang: `xpu-smi`, python startup, or the oneAPI plugin init | `sbatch -p gpunode -t 00:20:00 clementina/debug_oneapi.sbatch`; the `rc=124` step is the culprit |
 | log file not there right after `sbatch` | job still `PD`, or log went to the submit directory (older relative paths) | `squeue --me`; `ls -t ~/Julia/PINN/*.out ~/Julia/PINN/clementina/*.out` |
 | `sbatch: error: invalid account` | `pci_143` association | `sacctmgr show assoc user=$USER` in the probe output |
 | stderr says `/var/spool/slurmd/job*/env.sh: No such file` | older checkout: the script looked for `env.sh` next to the slurmd spool copy | `git pull --ff-only`; the scripts now locate `env.sh` through an absolute `CXXI_DIR`, overridable with `sbatch --export=ALL,CXXI_DIR=/path/to/clementina` |

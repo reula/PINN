@@ -71,7 +71,7 @@ OUTDIR="$RUNROOT/runs/$LABEL"
 
 echo "=== $LABEL  job ${SLURM_JOB_ID:-?} on $(hostname)  $(date -u '+%F %T UTC')  HEAD $(git rev-parse --short HEAD)"
 echo "python $PY   outdir $OUTDIR"
-command -v xpu-smi >/dev/null 2>&1 && xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not on this node"
+command -v xpu-smi >/dev/null 2>&1 && timeout 20 xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not on this node (or timed out)"
 echo
 
 # A JAX that cannot see the GPU falls back to the CPU silently and the run then
