@@ -93,8 +93,23 @@ large per-block compile time.  `--qn-reuse-objective` (Config.qn_reuse_objective
 same objective object until the sample or the weights change and jits `minimize_bfgs` once, with the
 objective and the options static.  CPU test (tiny network, Wolfe, 10 blocks of 20): the same
 iterates for the first blocks (the jitted loop changes the evaluation order slightly, 1.0e-1 vs
-9.97e-2 after 180 iterations), **200.8 s against 1018.7 s** -- 5x faster.  The memory test on the run
-that was killed is Mendieta round 12 (`m12_ssbw_rho4_reuse`): pending.
+9.97e-2 after 180 iterations), **200.8 s against 1018.7 s** -- 5x faster.
+
+**Mendieta round 12 confirms it on the run that was killed** (`m12_ssbw_rho4_reuse` = `m9_ssbw_rho4`
++ `--qn-reuse-objective`, same start, Wolfe, rho^4).  Host RSS after each block (the log's
+`resources: rss=` line):
+
+| block | 1 | 2 | 3 | 4 | 5 | 8 | 11 | 14 |
+|---|---|---|---|---|---|---|---|---|
+| m9 (plain), GB | 9.2 | 12.8 | 14.2 | 17.0 | 20.5 | 30.9 | 44.3 | 54.5 (killed at 60.6) |
+| m12 (reuse), GB | 9.3 | 12.6 | 12.6 | 12.6 | 15.7 | 15.7 | 15.7 | -- |
+
+The growth of ~3.4 GB per block is gone: RSS is flat except for two steps (blocks 2 and 5, likely a
+new compile when a static option or the sample changes -- not checked).  Time: m9 did ~21 blocks in
+96.6 min (~4.6 min/block), m12 16 blocks in 30.7 min (~1.9 min/block), **~2.4x faster** on the A30
+nodes (less than the CPU test's 5x: there the compile dominated more).  The iterates agree for block 1
+and then drift apart through the evaluation order (block 11: m9 1.76e-1, m12 1.25e-2); a single pair,
+so this is not evidence that the reuse path converges faster.
 
 ## Recommendation
 
