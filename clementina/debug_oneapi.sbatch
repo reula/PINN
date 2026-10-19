@@ -36,6 +36,7 @@ CXXI_DIR="${CXXI_DIR:-/home/oreula/Julia/PINN/clementina}"
 source "$CXXI_DIR/env.sh"
 cxxi_pick_data
 PY="$(cxxi_python)" || { echo "FATAL: no venv; run 01_setup_env.sh" >&2; exit 1; }
+export PY CXXI_DIR          # step() runs each command in a child bash: PY must be exported
 
 step() {   # step <timeout-s> <title> <command...>
     local t="$1" title="$2"; shift 2
@@ -70,7 +71,11 @@ sstep 10 "visibility env"    'env | grep -iE "^(ZE_|ONEAPI_|SYCL_|CUDA_|ROCR_|SL
 sstep 10 "driver versions"   'cat /sys/module/i915/version 2>/dev/null; cat /sys/module/xe/version 2>/dev/null; ls /lib64/libze* 2>/dev/null'
 
 echo
-echo "===== suspect 1: xpu-smi / Level Zero ==="
+echo "(dropping the Lmod LD_LIBRARY_PATH from here on; the dump above is the record)"
+unset LD_LIBRARY_PATH PYTHONPATH PYTHONHOME
+
+echo
+echo "===== suspect 1: xpu-smi / Level Zero ====="
 sstep 20 "xpu-smi discovery"    'xpu-smi discovery'
 sstep 20 "xpu-smi topology -m"  'xpu-smi topology -m'
 

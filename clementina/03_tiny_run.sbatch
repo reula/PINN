@@ -48,6 +48,12 @@ if [ ! -f "$CXXI_DIR/env.sh" ]; then
 fi
 # shellcheck source=env.sh
 source "$CXXI_DIR/env.sh"
+
+# Slurm copies the login shell's Lmod environment into the job (ohpc gcc 13,
+# openmpi5, libfabric on LD_LIBRARY_PATH).  The pip oneAPI runtime needs none of
+# it, and a gcc13 libstdc++ ahead of the system one is exactly the kind of thing
+# that makes a 500 MB plugin misbehave; the venv python has its own RPATH.
+unset LD_LIBRARY_PATH PYTHONPATH PYTHONHOME
 cxxi_pick_data
 
 LABEL="${LABEL:-cxxi_tiny}"

@@ -36,25 +36,28 @@ export no_proxy="${no_proxy:-localhost,127.0.0.1,ssh.clementinaxxi.org.ar,172.28
 export NO_PROXY="$no_proxy"
 
 # ---------------------------------------------------------------------------
-# Intel GPU visibility (wiki: Desarrollo/gpus).  Probe job 1547927 on cn034, a
-# --gpus=1 allocation, showed:
+# Intel GPU visibility.  Two probe jobs (cn034 with --gpus=1, cn038 with
+# --gpus=1 and the debug job) showed:
 #
-#   * Slurm here does NOT set ZE_AFFINITY_MASK; the allocation is enforced one
-#     level lower, in the cgroup: xpu-smi discovery listed only Device ID 0
-#     (physical, /dev/dri/card1) and xpu-smi topology showed just GPU 0/0 and
-#     0/1.  Nothing outside the allocation is visible to the job.
-#   * with the default hierarchy (FLAT, unset) each *tile* is a device, so JAX
-#     reports [OneapiDevice(0), OneapiDevice(1)]: two 64 GB devices.  Single
-#     device code like wave_pinn uses device 0 and has 64 GB, which is 2-3x what
-#     the A30 runs used.
+#   * Slurm does NOT set ZE_AFFINITY_MASK here, and the device nodes are NOT
+#     filtered: on cn038 a one-GPU job could see three Max 1550s through
+#     /dev/dri (xpu-smi listed 3).  CUDA_VISIBLE_DEVICES / ROCR_VISIBLE_DEVICES
+#     do not influence Level Zero, so JAX enumerates every visible card -- two
+#     tile-devices per card in the default FLAT hierarchy -- unless we mask.
+#   * cn034 showed a single card, so how many cards are visible depends on what
+#     else is running/present on the node, not on our --gpus request.
 #
-# Knobs:
-#   CXXI_ZE_MODE=COMPOSITE   one 128 GB device spanning both tiles (the wiki's
-#                            recommendation for programs that want the whole
-#                            card).  Worth a smoke-test measurement, not needed.
-#   CXXI_ZE_MODE=FLAT        the default; one device per tile.
-#   CXXI_UNSET_ZE_MASK=1     drop a ZE_AFFINITY_MASK set by Slurm.  There is none
-#                            on CXXI today; kept for other clusters.
+# Consequence: for a single-device program the default device is whichever card
+# Level Zero enumerates first, which is *probably* the Slurm-allocated one but is
+# not guaranteed.  Knobs:
+#
+#   CXXI_ZE_MODE=COMPOSITE   one 128 GB device per card (2 tiles each).
+#   CXXI_ZE_MODE=FLAT        default; one 64 GB device per tile.
+#   CXXI_ZE_MASK              set ZE_AFFINITY_MASK explicitly.  Syntax follows
+#                            the hierarchy: FLAT lists tiles (0,1 = card 0;
+#                            2,3 = card 1; ...), COMPOSITE lists device.tile
+#                            pairs (0.0,0.1 = card 0).
+#   CXXI_UNSET_ZE_MASK=1     drop a mask inherited from somewhere else.
 # ---------------------------------------------------------------------------
 if [ -n "${CXXI_ZE_MODE:-}" ]; then
     export ZE_FLAT_DEVICE_HIERARCHY="$CXXI_ZE_MODE"

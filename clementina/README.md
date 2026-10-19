@@ -196,7 +196,7 @@ three corrections, and the scripts are written against these answers:
 | partitions | `gpunode` is real (67 nodes, 266 GPUs, 2-day limit) and `testing` has only **two** nodes (`cn034`, `cn053`) with the 20-min cap — keep it for probes only |
 | Level Zero | `libze_loader.so.1` and `libze_intel_gpu.so.1.6.33578` are in `/lib64`, i.e. the default search path: the pip JAX plugin needs **no** `LD_LIBRARY_PATH` help |
 | python | `python3` is 3.9.18 **without pip**, `uv` absent, and `sycl-ls` does not exist even after `module load oneapi` — so the `uv` route in step 2 is the right one (plan D in §5 if its download is refused) |
-| Intel GPU visibility | Slurm sets `CUDA_VISIBLE_DEVICES`/`ROCR_VISIBLE_DEVICES` but **no** `ZE_AFFINITY_MASK`; the cgroup exposes only the allocated card, so `--gpus=1` gives the two tiles of one Max 1550 |
+| Intel GPU visibility | Slurm sets `CUDA_VISIBLE_DEVICES`/`ROCR_VISIBLE_DEVICES` but **no** `ZE_AFFINITY_MASK`; `/dev/dri` is **not** filtered, so a `--gpus=1` job can see several Max 1550s (cn034 showed 1, cn038 showed 3). JAX/Level Zero enumerate every visible card, two tile-devices each in FLAT |
 | storage | `/home` 47 TB (113 MB used), `/data` 1.1 PB, `/data/contrib/pci_143` exists for group `pci_143` |
 | account | `pci_143` with `qos_pci_143`, `MaxJobs=50`, fairshare ~0.77 |
 | proxy | PyPI unrestolvable **without** the proxy, HTTP 200 in ~50 ms **with** it |
@@ -367,12 +367,17 @@ sacct -j <jobid> --format=JobID,JobName,State,Elapsed,MaxRSS,MaxVMSize
 scontrol show job <jobid> | grep -E 'ExitCode|RunTime|NodeList'
 ```
 
-Note on GPU visibility in production: this cluster's Slurm does not set
-`ZE_AFFINITY_MASK`; the job's cgroup exposes only the allocated card, so
-`--gpus=1` is the two tiles of one Max 1550 and nothing else. With the default
-FLAT hierarchy JAX lists two 64 GB devices and single-device code uses one;
-`CXXI_ZE_MODE=COMPOSITE` collapses them into a single 128 GB device if a recipe
-needs the whole card (nothing in this repo has needed more than ~24 GB).
+Note on GPU visibility in production: the device nodes are not filtered per job.
+A `--gpus=1` allocation can still enumerate several Max 1550s, so the *default*
+device is whichever card Level Zero lists first — usually the allocated one, but
+not guaranteed when other jobs hold other cards. The smoke log prints how many
+devices JAX sees; if it is more than the allocation, pin it with
+`ZE_AFFINITY_MASK` (FLAT: `0,1` = card 0; COMPOSITE: `0.0,0.1`) via
+`sbatch --export=ALL,ZE_AFFINITY_MASK=0,1`.
+
+With the default FLAT hierarchy, single-device code uses the first tile it is
+given and has 64 GB; `CXXI_ZE_MODE=COMPOSITE` collapses each card into one
+128 GB device if a recipe needs more (nothing in this repo has needed ~24 GB).
 
 ---
 
@@ -399,6 +404,7 @@ and heading to 500 GB per IPAC, while `/data/contrib` is ~1 PB shared by the IPA
 | `ssh: Could not resolve hostname` | DNS, or VPN down | `ssh oreula@172.29.3.3`, or set DNS `8.8.8.8` (wiki: Errores Frecuentes) |
 | `Permission denied (publickey,...)` | key not in `authorized_keys` | wiki's *Autenticación sin contraseña*; password login always works |
 | `sbatch: error: invalid partition` | `gpunode` vs `gpunodes` | use the name printed by `sinfo` in the probe |
+| job inherits the login shell Lmod environment (`LD_LIBRARY_PATH` with ohpc gcc 13 / openmpi5) | Slurm copies the submit environment | jobs now `unset LD_LIBRARY_PATH PYTHONPATH PYTHONHOME`; do the same by hand with `srun --pty` |
 | job runs to its time limit printing nothing after the header | a hang: `xpu-smi`, python startup, or the oneAPI plugin init | `sbatch -p gpunode -t 00:20:00 clementina/debug_oneapi.sbatch`; the `rc=124` step is the culprit |
 | log file not there right after `sbatch` | job still `PD`, or log went to the submit directory (older relative paths) | `squeue --me`; `ls -t ~/Julia/PINN/*.out ~/Julia/PINN/clementina/*.out` |
 | `sbatch: error: invalid account` | `pci_143` association | `sacctmgr show assoc user=$USER` in the probe output |
