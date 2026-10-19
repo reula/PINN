@@ -104,10 +104,21 @@ iterates for the first blocks (the jitted loop changes the evaluation order slig
 | m9 (plain), GB | 9.2 | 12.8 | 14.2 | 17.0 | 20.5 | 30.9 | 44.3 | 54.5 (killed at 60.6) |
 | m12 (reuse), GB | 9.3 | 12.6 | 12.6 | 12.6 | 15.7 | 15.7 | 15.7 | -- |
 
-The growth of ~3.4 GB per block is gone: RSS is flat except for two steps (blocks 2 and 5, likely a
-new compile when a static option or the sample changes -- not checked).  Time: m9 did ~21 blocks in
-96.6 min (~4.6 min/block), m12 16 blocks in 30.7 min (~1.9 min/block), **~2.4x faster** on the A30
-nodes (less than the CPU test's 5x: there the compile dominated more).  The iterates agree for block 1
+The growth of ~3.4 GB on EVERY block is gone, but not all of it.  Over the full run (40 blocks, cap,
+1986 iterations, 1.23e4 -> 1.35e-3, 68 min) RSS still rose in 7 steps of ~3 GB, to 27.4 GB (SLURM
+MaxRSS 29.2 GB):
+
+    9.3 | 12.6 (block 2) | 15.7 (5) | 18.7 (17) | 21.5 (28) | 24.4 (29) | 27.4 (37) GB
+
+Each step is a new compile of `jit_minimize_bfgs` (~2 min each, the "slow compile" alarms in the log):
+`fun` and `initial_scale` are static arguments, so a resample (every 500 iterations here: 4 of them)
+or `initial_scale` flipping (block 1 -> 2; again after a failed block) compiles a new executable,
+and the old one stays cached.  For a run that resamples every 500 iterations up to 10000 that is
+still ~20 steps, ~60 GB -- over the 48 GB job limit if it does not plateau first.  Fix in progress
+(clear JAX's caches when the objective changes); see below.
+
+Time: m9 did ~21 blocks in 96.6 min (~4.6 min/block), m12 16 blocks in 30.7 min (~1.9 min/block),
+**~2.4x faster** on the A30 nodes (less than the CPU test's 5x: there the compile dominated more).  The iterates agree for block 1
 and then drift apart through the evaluation order (block 11: m9 1.76e-1, m12 1.25e-2); a single pair,
 so this is not evidence that the reuse path converges faster.
 
