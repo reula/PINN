@@ -160,6 +160,27 @@ fi
 # searches.  Recipe step 4 as written, the Armijo default; compare with wf_dsg2 (more DSGNAR, same start)
 submit wf_ssbm              wf_dsg --steps 0 --init-from runs/wf_dsg/params.pkl --qn-method ssbroyden \
                               --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $RHO4 $PP $COM
+# round 16 (2026-10-19): the off-axis 3-D run is stuck -- rot_dsg2 accepted 0 of 150 DSGNAR steps from
+# rot_ssb (2.36e-2, Ricci-dominated, h error 6x the perturbation in rho 1-3).  Nothing has ever
+# converged with the 3-D hybrid network (the Weyl runs were axisymmetric), so the CONTROL: the same
+# network, budget and objective on ON-AXIS data (ctl_hyb_*; graded unrotated).  And SSBroyden on the
+# merged Crunch from rot_ssb (rot_ssbm), where the legacy one stalled.
+HYB="--arch hybrid --width 20 --depth 6"
+submit ctl_hyb_adam         - --steps 5000 --plateau-min-iters -1 --lbfgs-steps 0 $HYB $RHO4 $PP $COM
+submit ctl_hyb_dsg          ctl_hyb_adam $DSG --dsgnar-sketch 2100 --dsgnar-stage2-ratio 0.075 $HYB $RHO4 $PP $COM \
+                              --init-from runs/ctl_hyb_adam/params.pkl --dsgnar-cycles 5 --dsgnar-cycle-steps 60
+if [ "$DRY" != "1" ] && [ -n "${JID[ctl_hyb_dsg]:-}" ] && ! squeue -h -u "$USER" -n check_ctl -o %i | grep -q .; then
+    echo "  submit   check_ctl -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_ctl --dependency=afterany:${JID[ctl_hyb_dsg]} \
+          mendieta_check.sbatch runs/ctl_hyb_dsg) (after ctl_hyb_dsg)"
+fi
+submit rot_ssbm             rot_ssb --steps 0 --init-from runs/rot_ssb/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $ROT $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssbm]:-}" ] && ! squeue -h -u "$USER" -n check_rotm -o %i | grep -q .; then
+    echo "  submit   check_rotm -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_rotm --dependency=afterany:${JID[rot_ssbm]} \
+          mendieta_check.sbatch runs/rot_ssbm) (after rot_ssbm)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
