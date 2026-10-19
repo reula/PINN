@@ -840,6 +840,23 @@ data (`ctl_hyb_adam` -> `ctl_hyb_dsg`, graded against the unrotated reference), 
 merged Crunch from `rot_ssb` (`rot_ssbm`).  Round 17: the rotated quadrupole with the network that converged on the rotated Weyl
 problem (`rot_mlp_adam` -> `rot_mlp_ssb`, `--arch mlp --width 20 --depth 6`, otherwise as `rot_*`).
 
+**Round 16 result: the 3-D hybrid converges on the rotated quadrupole -- with the merged Crunch.**
+`rot_ssbm` (SSBroyden, merged Crunch, Armijo, resampling every 500, from `rot_ssb`): **2.36e-2 ->
+2.25e-6** in 10000 iterations (14.7 min, RSS 3.1 GB), still falling at the cap (block 10 7.7e-4,
+block 20 3.2e-5, block 30 7.1e-6, block 40 2.2e-6); fresh/training 1.04.  Against the fine
+reference rotated onto (1,0,1)/sqrt 2: rms |dlambda| **1.56e-5** (max 9.1e-5) against a perturbation
+of 9.4e-3 -- 600x below it; rms |dh| **1.16e-3** (max 7.6e-3) against 1.1e-2.  By region (rms
+dlambda / dh): rho 1-3 3.2e-5 / 2.4e-3, 3-10 5.5e-6 / 1.0e-4, 10-30 9.2e-7 / 3.3e-6, 30-100 3.7e-7 /
+2.7e-7.  So the stall of rounds 11 and 14 was the optimisers (the legacy Crunch's line search, and
+DSGNAR, which accepted 0 of 150 steps from the same start), not the network or the rotation.
+Continued in round 18 (`rot_ssbm2`).  The inner region still carries the largest h error, 10x below
+the perturbation there.
+
+`wf_dsg2` (10 more DSGNAR cycles from `wf_dsg`): 8.18e-5, i.e. no progress -- 7 of 152 steps
+accepted, every cycle stopped on the trust radius -- while `wf_ssbm` (merged SSBroyden, same start)
+reached 1.11e-10.  DSGNAR stalls near 1e-4 on this objective; SSBroyden on the merged Crunch does
+not.
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
