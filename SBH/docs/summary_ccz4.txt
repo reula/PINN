@@ -160,6 +160,10 @@ The defaults do not fit a 4 GB GPU (dense inverse Hessian of the 6x40 net,
 
 CHANGELOG (most recent first)
 -----------------------------
+  * 2026-10-19 (SBH/README.md section 5): the merged Crunch of 2026-10-17 (bit-identical with its
+    options off). New --qn_scale_invariant (DEFAULT 1, the Crunch authors' recommendation; 0 =
+    bitwise the earlier runs), --qn_gtol (default 1e-9, absolute), --qn_loss_norm (default 0).
+    Fork flags --resume_windows / --stop_after_window (2026-10-18).
   * 2026-10-18 (Reula/Claude, SBH/README.md section 4): DSGNAR (--dsgnar_steps, default 0 =
     off) on each window before or after the QN restarts, with Stationary's schemes (cycles,
     in-cycle resampling, paper preset, reweighting, ...), and --qn_fixed_batch. The loss in

@@ -8,7 +8,7 @@ with Carlos). It is Python/JAX, not Julia. What it does and every flag:
 
 ```
 EEccz4_BH_puncture.py     the one script (merged 2026-10-17, see section 1)
-Crunch/                   optimiser library (SSBroyden/BFGS/SCORE, Wolfe search); must sit next to the script
+Crunch/                   optimiser library (SSBroyden/BFGS/SCORE, Wolfe search; merged version of 2026-10-17, section 5); must sit next to the script
 docs/                     summary_ccz4.txt, equations_ccz4.{txt,pdf}, README_bundle.md (the MN5 bundle's notes)
 jobs/mendieta/bh.sbatch   Mendieta job (presets single | bbh | smoke | bench)
 jobs/mn5/*.psubmit        the collaborators' MareNostrum 5 jobs, pointed at the merged script
@@ -247,7 +247,50 @@ the probe jobs below. Taylor mode makes the JVPs cheaper too.
     # production-size probe: window 0 only, 3 DSGNAR iterations, no QN
     sbatch -t 06:00:00 --export=ALL,PRESET=single,OUTDIR=dsg_probe_s1024,EXTRA_ARGS="--N_window 1 --EPOCHS_QN 0 --dsgnar_steps 3 --dsgnar_sketch 1024" jobs/mendieta/bh.sbatch
 
-## 5. Tools
+## 5. Crunch update and QN scale invariance (2026-10-19)
+
+**The new Crunch.** `Crunch/Optimizers/minimize_backtracking.py` is now the collaborators' merged
+version of 2026-10-17 (received as `originals/minimize_backtracking.py`, CRLF converted to LF;
+md5 after conversion `b50ed315`). It merges three diverged copies: C. Palenzuela's of 2026-10-16
+(the one installed before, md5 `77cad12e`), the Boson fork (`reuse_first_trial`, extra counters,
+`scale_invariant`) and a BH fork (`rescale_carried`). Every new option defaults to off, and with
+them off it is **bit-identical** to the previous file. Verified: the smoke run's loss CSVs are
+byte-identical to the Oct-16 original's with the new file in place (and `--qn_scale_invariant 0`).
+Its header refers to `CRUNCH_MERGE_2026-10-17.md`, which we did not receive.
+
+**The authors' recommendation, now applied here:**
+
+* `--qn_scale_invariant 1` (**new default**): Crunch's `scale_invariant`. The curvature guards
+  become relative (y.s <= 1e-14 |s||y|), and the update is computed on the rescaled pair. Same
+  cost. `0` reproduces every earlier run bitwise.
+* `--qn_gtol` (default 1e-9, as before): the gradient threshold stays ABSOLUTE. Lower it, or set
+  0, when the loss is very small.
+* `--qn_loss_norm 1` (default off): QN minimizes loss / L0, with L0 the loss at the start of the
+  window's QN phase (fixed for the window, over which H is carried). The identity H of the first
+  step is then well scaled at any loss level; logs and guards see the true loss; `--qn_gtol`
+  becomes relative.
+
+**Their general test, run on this code** (`tools/test_scale_invariance.py`: 3 restarts x 40 QN
+iterations, production settings, H carried, gtol 0, the loss multiplied by K):
+
+| setting | K = 1 | K = 1e8 | K = 1e-8 (loss ~3e-11) |
+|---|---|---|---|
+| old (`scale_invariant` off) | 2.47e-3 | 2.43e-3 (x differs 5 %) | **6.94e-3: frozen, 39/40 updates skipped** |
+| `scale_invariant` on | 2.43e-3 | 2.43e-3 (x differs 13 %) | 3.07e-3: no skips, but the first step is mis-scaled |
+| on + `--qn_loss_norm 1` | 2.40e-3 | identical | identical |
+
+(loss/K after the third restart). The freezing they describe is real here: without the option,
+QN stops updating its Hessian once the loss is ~1e-11. With the option on, what remains is the
+identity first step, whose length scales with the loss; the loss normalization removes that, and
+by construction then the optimizer sees the same O(1) objective at every scale. At the losses of
+the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a real run yet.
+`--qn_scale_invariant 1 --qn_loss_norm 1 --fast_hessian --deriv_mode taylor` runs end to end
+(smoke, CPU), with a loss history close to the old defaults' at these loss levels (~1e-3).
+
+**Comparability.** Runs before 2026-10-19 (including `single_a` and the window-15 branches) used
+`scale_invariant` off; to reproduce or extend them exactly, pass `--qn_scale_invariant 0`.
+
+## 6. Tools
 
 * `tools/load_defs.py`: `load(argv)` executes the script up to the training loop and returns
   its namespace (every function, no training). Used by the other tools.
@@ -259,3 +302,4 @@ the probe jobs below. Taylor mode makes the JVPs cheaper too.
   autodiff stack.
 * `tools/smoke_local.sh`: the laptop smoke run.
 * `tools/test_dsgnar_bh.py [--quick]`: the DSGNAR tests above.
+* `tools/test_scale_invariance.py`: the loss-scale test of section 5.

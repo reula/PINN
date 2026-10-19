@@ -1,5 +1,14 @@
 """JAX-compatible BFGS optimizer with SSBroyden inverse-Hessian update.
 
+MERGED VERSION (2026-10-17) of the three copies that had diverged:
+  * C. Palenzuela's file of 2026-10-16 (md5 77cad12e): strong Wolfe with a_init,
+    SCORE, initial_scale, per-call ``stats``.  This is the base; with every new
+    option off the result is bit-identical to it.
+  * Boson's fork (md5 a3e48534): ``reuse_first_trial`` (Armijo), the counters
+    ``ngev / nfull / nskip / nreset / h_scale`` and ``scale_invariant``.
+  * BH (md5 59960127): ``rescale_carried``.
+All new options default to off.  See CRUNCH_MERGE_2026-10-17.md.
+
 The BFGS loop and line search run as Python for-loops so no XLA loop is
 ever compiled.  The caller must supply two thin closure wrappers around
 module-level @jax.jit functions:
@@ -24,6 +33,12 @@ class OptimizeResult(NamedTuple):
     nfev: int = 0        # loss-only evaluations (line search)
     njev: int = 0        # loss+gradient evaluations (line search + BFGS)
     stats: Any = None    # per-call diagnostics (dict of Python floats/ints), see minimize()
+    # Boson-fork fields (same meaning as there):
+    ngev: Any = 0        # = njev (loss+gradient evaluations), Boson's name
+    nfull: Any = 0       # iterations whose accepted step was exactly alpha = 1
+    h_scale: Any = 1.0   # factor applied to the carried H at it == 0 (rescale_carried; 1.0 = none)
+    nskip: Any = 0       # iterations whose H update was skipped (y.s below the curvature guard)
+    nreset: Any = 0      # 1 if H was reset to the identity at it == 0 (y.s below the guard)
 
 
 # Line searches this module implements. Callers that request one by name
@@ -35,6 +50,11 @@ LINE_SEARCHES = ("armijo", "wolfe")
 # secant pair and self-concordant first trial (Si, An, Ma & Yan,
 # arXiv:2608.04206, Algorithm 1); it requires line_search='wolfe'.
 UPDATE_METHODS = ("bfgs", "ssbroyden", "ssbroyden2", "score")
+
+# Feature flags for callers (check with getattr(module, NAME, False)).
+RESCALE_CARRIED = True   # options["rescale_carried"] (BH, PINN_LESSONS 17.4)
+SCALE_INVARIANT = True   # options["scale_invariant"] (Boson, PINN_LESSONS 18)
+REUSE_FIRST_TRIAL = True # options["reuse_first_trial"] (Boson, Armijo only)
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +468,24 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
                         Gives a well-scaled first step instead of the raw
                         identity's unit step; a non-identity initial_H
                         (e.g. carried over from a previous call) is left as is.
+        rescale_carried – if True, rescale a NON-identity initial_H (e.g. carried
+                        over from the previous call after a resample) by
+                        y.s / y.H.y from the first curvature pair of this call,
+                        before the first update (PINN_LESSONS 17.4). Default False.
+        scale_invariant – if True, make the optimizer independent of the loss
+                        scale (PINN_LESSONS 18): the curvature guards become
+                        relative, y.s <= 1e-14 |s||y|, and the H update is
+                        computed on the rescaled pair, H_new = c U(H/c, s, c y, c g)
+                        with c = 1/(|s||y|) (exact for BFGS-type updates), so the
+                        internal 1e-14 regularisers act at a relative level.
+                        Without it, every update is skipped once y.s < 1e-14
+                        (loss ~1e-12). Default False.
+        reuse_first_trial – (Armijo only) evaluate the alpha = 1 trial with
+                        fun_val_grad; if it passes Armijo, reuse its loss and
+                        gradient (saves one forward pass). Default False.
+        collect_stats – if True (default), fill ``stats`` (costs two scalar
+                        device syncs per iteration). False skips them unless
+                        SCORE needs the decrement.
 
     The result's ``stats`` is a dict of Python scalars for logging:
     n_iter, n_update (curvature pairs used), n_skip (pairs rejected by the
@@ -468,6 +506,10 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
     alphamax      = float(options.get('alphamax',    1e3))
     H             = options.get('initial_H', jnp.eye(x0.shape[0], dtype=x0.dtype))
     initial_scale = bool(options.get('initial_scale', False))
+    rescale_carried = bool(options.get('rescale_carried', False))
+    scale_invariant = bool(options.get('scale_invariant', False))
+    reuse_first   = bool(options.get('reuse_first_trial', False))
+    collect_stats = bool(options.get('collect_stats', True))
     score_eta     = float(options.get('score_eta',     0.1))
     score_mu_min  = float(options.get('score_mu_min',  1e-8))
     score_mu_max  = float(options.get('score_mu_max',  1e-4))
@@ -507,7 +549,17 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
         gp    = float(jnp.dot(g, p))
         f_ref = float(f)
         alpha = 1.0
-        for _ in range(max_ls):
+        n_ls  = max_ls
+        if reuse_first:
+            # Full step evaluated WITH its gradient; x_try is built exactly as
+            # x_new below would be, so an accepted step is bit-identical.
+            x_try        = x + jnp.array(1.0, dtype=x.dtype) * p
+            f_try, g_try = fun_val_grad_c(x_try)
+            if float(f_try) <= f_ref + c1 * gp:
+                return 1.0, x_try, f_try, g_try
+            alpha = 0.5
+            n_ls  = max_ls - 1
+        for _ in range(n_ls):
             if float(fun_val_c(x + alpha * p)) <= f_ref + c1 * alpha * gp or alpha <= alphamin:
                 break
             alpha *= 0.5
@@ -548,6 +600,8 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
     nit  = 0
     eps  = 1e-14
     n_update = n_skip = n_first = 0
+    n_full = n_reset = 0
+    h_scale = 1.0
     lam_hist, curv_hist, mu_hist = [], [], []
 
     for it in range(maxiter):
@@ -555,18 +609,21 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
             break
         p = -(H @ g)
         # Quasi-Newton decrement lambda_k = sqrt(g.H.g) = sqrt(-g.p).
-        lam = math.sqrt(max(-float(jnp.dot(g, p)), 0.0))
+        lam = math.sqrt(max(-float(jnp.dot(g, p)), 0.0)) if (collect_stats or use_score) else float('nan')
         a_init = 1.0 / (1.0 + lam) if use_score else 1.0
         alpha, x_new, f_new, g_new = search(x, f, g, p, a_init)
         s = x_new - x
         y = g_new - g
         ys = float(jnp.dot(y, s))
-        ss = float(jnp.dot(s, s))
-        lam_hist.append(lam)
-        if ss > 0.0:
-            curv_hist.append(ys / ss)
+        ss = float(jnp.dot(s, s)) if (collect_stats or use_score) else float('nan')
+        if collect_stats:
+            lam_hist.append(lam)
+            if ss > 0.0:
+                curv_hist.append(ys / ss)
         if alpha >= a_init:
             n_first += 1
+        if alpha == 1.0:
+            n_full += 1
         if use_score:
             # Shifted secant pair (s, y + mu s): the inverse update learns the
             # positive shifted metric Hess + mu I along the accepted step.
@@ -576,7 +633,14 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
             ys_upd = ys + mu * ss
         else:
             y_upd, ys_upd = y, ys
-        if it == 0 and ys <= eps:
+        # Curvature guard: absolute 1e-14 (historical) or, with scale_invariant,
+        # relative to |s||y| (PINN_LESSONS 18).
+        if scale_invariant:
+            sc = float(jnp.linalg.norm(s)) * float(jnp.linalg.norm(y_upd))
+            thr = eps * sc if sc > 0.0 else math.inf
+        else:
+            sc, thr = 1.0, eps
+        if it == 0 and ys <= thr:
             # H (e.g. carried over as initial_H from a previous, differently
             # -sampled call) fails the curvature condition on its very first
             # application to THIS loss realization: it isn't a trustworthy
@@ -586,19 +650,34 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
             # from the identity so the rest of this call's curvature is
             # self-consistent with its own (resampled) batch.
             H = jnp.eye(H.shape[0], dtype=H.dtype)
+            n_reset = 1
         else:
             if it == 0 and h_is_identity:
                 # Scale the identity by y.s/y.y (N&W 6.20) so the inverse
                 # Hessian starts with the right magnitude along the first
                 # curvature pair; the update below then refines it.
                 yy = float(jnp.dot(y_upd, y_upd))
-                if yy > eps:
+                if yy > (0.0 if scale_invariant else eps):
                     H = (ys_upd / yy) * H
-            if ys_upd > eps:
+            elif it == 0 and rescale_carried:
+                # Carried-over H (e.g. after a resample): restore its scale
+                # to the new point set's curvature, y.s / y.H.y.
+                yHy = float(jnp.dot(y_upd, H @ y_upd))
+                if yHy > (0.0 if scale_invariant else eps) and ys_upd > thr:
+                    h_scale = ys_upd / yHy
+                    H = h_scale * H
+            if ys_upd > thr:
                 n_update += 1
             else:
                 n_skip += 1
-            if update_method in ('ssbroyden2', 'ssbroyden', 'score'):
+            if scale_invariant:
+                if ys_upd > thr:
+                    c = 1.0 / sc
+                    if update_method in ('ssbroyden2', 'ssbroyden', 'score'):
+                        H = c * _ssbroyden_update(H * sc, s, c * y_upd, c * g, alpha)
+                    else:
+                        H = c * _bfgs_update(H * sc, s, c * y_upd)
+            elif update_method in ('ssbroyden2', 'ssbroyden', 'score'):
                 H = _ssbroyden_update(H, s, y_upd, g, alpha)
             else:
                 H = _bfgs_update(H, s, y_upd)
@@ -609,7 +688,8 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
         return float(sorted(v)[len(v) // 2]) if v else float('nan')
 
     stats = {"n_iter": nit, "n_update": n_update, "n_skip": n_skip, "n_first": n_first,
-             "lam_med": _median(lam_hist), "curv_med": _median(curv_hist)}
+             "lam_med": _median(lam_hist), "curv_med": _median(curv_hist),
+             "h_scale": h_scale, "n_reset": n_reset}
     if use_score:
         stats["mu_mean"] = float(sum(mu_hist) / len(mu_hist)) if mu_hist else float('nan')
 
@@ -621,4 +701,9 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
         nfev=n_val,
         njev=n_vg,
         stats=stats,
+        ngev=n_vg,
+        nfull=n_full,
+        h_scale=h_scale,
+        nskip=n_skip,
+        nreset=n_reset,
     )

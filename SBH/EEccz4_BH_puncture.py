@@ -607,6 +607,24 @@ parser.add_argument("--h0_scaling", type=int, default=1, choices=[0, 1],
                          "(first restart of a window, or after a reset), rescale it to (y.s/y.y) I "
                          "after the first line search (Nocedal & Wright eq. 6.20) so the first steps "
                          "are well scaled. 0: raw identity (behaviour of runs before 2026-10-16).")
+parser.add_argument("--qn_scale_invariant", type=int, default=1, choices=[0, 1],
+                    help="1 (default since 2026-10-19, the Crunch authors' recommendation): Crunch's "
+                         "scale_invariant option -- relative curvature guards (y.s <= 1e-14 |s||y|) and the "
+                         "H update computed on the rescaled pair, so the optimizer does not depend on the "
+                         "loss scale. Without it every update is skipped once y.s < 1e-14 (loss ~1e-12) "
+                         "and the QN 'floor' can be that threshold, not the network. Same cost. 0 = the "
+                         "behaviour of every run before 2026-10-19 (bitwise; use it to compare with them).")
+parser.add_argument("--qn_gtol", type=float, default=1e-9,
+                    help="QN stops a restart when |grad| <= this ABSOLUTE value (not made relative by "
+                         "--qn_scale_invariant). Lower it, or set 0, when the loss is very small: e.g. a "
+                         "network whose last layer starts at zero (gradient ~1e-11) stops at iteration 0.")
+parser.add_argument("--qn_loss_norm", type=int, default=0, choices=[0, 1],
+                    help="1: inside the QN optimizer, divide the loss by its value at the start of the "
+                         "window's QN phase (fixed for the window, the span over which H is carried), so "
+                         "the identity H of the first step is well scaled whatever the loss level; the "
+                         "logs and guards still see the true loss, and --qn_gtol becomes relative. With "
+                         "--qn_scale_invariant 1 this makes the QN trajectory independent of the loss "
+                         "scale (tools/test_scale_invariance.py). 0 (default) = off.")
 parser.add_argument("--excursion_ratio", type=float, default=100.0,
                     help="Excursion guard: if the loss at the end of a BFGS restart exceeds this "
                          "factor times the loss at the end of the previous accepted restart, the "
@@ -791,6 +809,12 @@ if line_search not in getattr(_minimize_mod, "LINE_SEARCHES", ("armijo",)):
                      f"({_minimize_mod.__file__}); update Crunch/Optimizers/minimize_backtracking.py.")
 es_min_loss       = float(args.es_min_loss)
 h0_scaling        = args.h0_scaling
+qn_scale_invariant = bool(args.qn_scale_invariant)
+qn_gtol           = float(args.qn_gtol)
+qn_loss_norm      = bool(args.qn_loss_norm)
+if qn_scale_invariant and not getattr(_minimize_mod, "SCALE_INVARIANT", False):
+    raise SystemExit(f"--qn_scale_invariant 1 needs the merged Crunch of 2026-10-17 "
+                     f"({_minimize_mod.__file__} lacks it); pass --qn_scale_invariant 0 or update Crunch/.")
 excursion_ratio   = args.excursion_ratio
 excursion_abs     = args.excursion_abs
 excursion_retries = args.excursion_retries
@@ -812,6 +836,7 @@ if patience_bfgs > 0 and EPOCHS_QN > 0 and patience_bfgs >= max(1, EPOCHS_QN // 
           f"({max(1, EPOCHS_QN // args.N_change)} = EPOCHS_QN/N_change): early stopping and the "
           f"stall Hessian resets can never fire.")
 print(f"Quasi-Newton: update={qn_update}  line_search={line_search}  h0_scaling={h0_scaling}  "
+      f"scale_invariant={int(qn_scale_invariant)}  gtol={qn_gtol:g}  loss_norm={int(qn_loss_norm)}  "
       f"early stop: patience={patience_bfgs} min_delta={min_delta:g} es_min_loss={es_min_loss:g}  "
       f"excursion guard: ratio={excursion_ratio:g} abs={excursion_abs:g} retries={excursion_retries}"
       + (f"  SCORE eta={score_eta} mu_min={score_mu_min:g} mu_max={score_mu_max:g}" if qn_update == "score" else ""))
@@ -3303,13 +3328,20 @@ _QN_LAST_STATS = {}
 
 def bfgs_step(initial_weights, H0, key, train_data,
               lam_bc, lamg0, w_pos, traj_tt, traj_xx, lam_einstein, lam_gauge, r_eps,
-              apply_fn, unflatten_func, static_options):
+              apply_fn, unflatten_func, static_options, loss_scale=1.0):
+    """loss_scale (--qn_loss_norm): the optimizer minimizes loss/loss_scale; the
+    returned loss is the true one."""
     key, _ = jax.random.split(key)
     all_args = (apply_fn, unflatten_func,
                 lam_bc, lamg0, w_pos, traj_tt, traj_xx, lam_einstein, lam_gauge, r_eps,
                 *train_data)
     fun_val      = lambda w: bfgs_loss_and_grad(w, *all_args)
     fun_val_grad = lambda w: bfgs_val_and_grad(w, *all_args)
+    if loss_scale != 1.0:
+        _inv = 1.0 / float(loss_scale)
+        _fv, _fvg = fun_val, fun_val_grad
+        fun_val      = lambda w: _fv(w) * _inv
+        fun_val_grad = lambda w: tuple(v * _inv for v in _fvg(w))
     if profile_restarts:  # [GPUS]
         fun_val, fun_val_grad = _prof_wrap(fun_val, "f_val"), _prof_wrap(fun_val_grad, "f_valgrad")  # [GPUS]
     opts = dict(static_options)
@@ -3356,7 +3388,7 @@ def bfgs_step(initial_weights, H0, key, train_data,
         # versions; replicated weights made XLA recompile all of them for the  # [GPUS]
         # 4-GPU mesh at the first window end (13 min on MN5, job 47307354).  # [GPUS]
         x_out = jnp.asarray(np.asarray(result.x))  # [GPUS]
-    return x_out, final_H0, key, result.fun, result.nit
+    return x_out, final_H0, key, result.fun * loss_scale, result.nit
 
 
 # --------------------------------------------------------------------------------
@@ -5885,10 +5917,12 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
     bfgs_key = jax.random.PRNGKey(SEED + 1000 + window_idx)
 
     static_options = {
-        "maxiter": Nchange, "gtol": 1e-9, "update_method": qn_update,
+        "maxiter": Nchange, "gtol": qn_gtol, "update_method": qn_update,
         "initial_scale": bool(h0_scaling), "alphamin": 1e-15, "max_iter": 100,
         "line_search": line_search, "c2": wolfe_c2,
     }
+    if qn_scale_invariant:          # absent key = off: bitwise the pre-2026-10-19 call
+        static_options["scale_invariant"] = True
     if qn_update == "score":
         static_options.update({"score_eta": score_eta, "score_mu_min": score_mu_min,
                                "score_mu_max": score_mu_max})
@@ -5940,6 +5974,15 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
     best_restart_w    = initial_weights
     blowups           = 0
 
+    qn_loss_scale = 1.0
+    if qn_loss_norm and num_outer > 0:
+        qn_loss_scale = float(bfgs_loss_and_grad(
+            initial_weights, train_apply_fn, unflatten_func,
+            lam_bc, lamg0, w_pos, traj_tt, traj_xx, lam_einstein, lam_gauge, r_eps, *train_data))
+        if not (np.isfinite(qn_loss_scale) and qn_loss_scale > 0.0):
+            qn_loss_scale = 1.0
+        print(f"  --qn_loss_norm: QN minimizes loss / {qn_loss_scale:.3e} in window {window_idx}")
+
     if num_outer > 0:
         pbar = tqdm(range(num_outer), desc=f"BFGS w{window_idx+1}")
         for outer_idx in pbar:
@@ -5951,6 +5994,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
                 lam_bc, lamg0, w_pos, traj_tt, traj_xx,
                 lam_einstein*ramp_bfgs, lam_gauge, r_eps,
                 train_apply_fn, unflatten_func, static_options_tuple,
+                loss_scale=qn_loss_scale,
             )
             _tp = _prof_add("bfgs_step", _tp, new_w, new_H0)  # [GPUS]
             if not (bool(jnp.isfinite(loss_val)) and bool(jnp.all(jnp.isfinite(new_w)))):
