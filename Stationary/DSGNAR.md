@@ -879,6 +879,21 @@ iterations (12 min), still falling at the cap; errors still the size of the pert
 |dlambda| 1.04e-2, |dh| 5.6e-2).  Much slower than the hybrid.  Round 20: the control polished with
 2 x 10000 merged SSBroyden (`ctl_hyb_ssbm`, `ctl_hyb_ssbm2`) for its floor, and `rot_mlpc_ssb2`.
 
+**Round 20 result: the rotation costs nothing.**  Same network (3-D hybrid), objective and budget,
+10000 merged-SSBroyden iterations each from a DSGNAR stall near 2.3e-2:
+
+| | loss | rms dlambda | rms dh | rms dh, rho 1-3 |
+|---|---|---|---|---|
+| on-axis (`ctl_hyb_ssbm`) | 1.05e-6 | 1.65e-5 | 1.00e-3 | 2.07e-3 |
+| rotated 45 deg (`rot_ssbm`) | 2.25e-6 | 1.56e-5 | 1.16e-3 | 2.40e-3 |
+
+(perturbation ~9.5e-3 in lambda, 1.1e-2 in h).  The second 10000 differ: on-axis `ctl_hyb_ssbm2`
+ran to the cap, 2.58e-7 (rms dlambda 1.17e-5, dh 5.5e-4; fresh/training 0.94), while rotated
+`rot_ssbm2` stopped on the plateau rule at 1.58e-6 -- round 21 (`rot_ssbm3`) continues it with the
+plateau stop off.  The 3-D floor is the network's (axisymmetric: 1.1e-10), not the rotation's.
+`rot_mlpc_ssb2` (mlp, compat on) stopped on the plateau at 2.8e-3, errors unchanged: the 25-field mlp
+does not converge on this objective within these budgets.
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda

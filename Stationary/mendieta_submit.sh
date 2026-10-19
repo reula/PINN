@@ -235,6 +235,15 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_mlpc_ssb2]:-}" ] && ! squeue -h -u "$USE
           sbatch --parsable -J check_rotmlpc2 --dependency=afterany:${JID[rot_mlpc_ssb2]} \
           mendieta_check.sbatch runs/rot_mlpc_ssb2) (after rot_mlpc_ssb2)"
 fi
+# round 21 (2026-10-19): rot_ssbm2 stopped on the plateau rule (1.58e-6) while the on-axis control ran
+# its second 10000 to the cap (2.58e-7): the rotated run continued with the plateau stop OFF, to match.
+submit rot_ssbm3            rot_ssbm2 --steps 0 --init-from runs/rot_ssbm2/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 $ROT $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssbm3]:-}" ] && ! squeue -h -u "$USER" -n check_rotm3 -o %i | grep -q .; then
+    echo "  submit   check_rotm3 -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_rotm3 --dependency=afterany:${JID[rot_ssbm3]} \
+          mendieta_check.sbatch runs/rot_ssbm3) (after rot_ssbm3)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
