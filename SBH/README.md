@@ -162,6 +162,13 @@ moves the background, which the network then has to correct -- a possible feedba
 that would separate the causes: `--chi_bg_mode physical`, or a fixed centre (`--bh_center_mode
 fixed`), on the same single-puncture setup.
 
+Submitted 2026-10-19 (jobs 1180766/7, `PRESET=single`, from t = 0 to t = 4 = 16 windows, both
+with `--qn_scale_invariant 0` so the only difference from `single_a` is the chi setting):
+`drift_phys` (`--chi_bg_mode physical`: no moving background, tracking still steers the sampling)
+and `drift_fixed` (`--chi_bg_mode physical --bh_center_mode fixed`: no background, no tracking).
+Drift is compared through the chi-minimum position (`chi_min_x` in `puncture_track.txt`), which is
+independent of the tracker and agrees with it in `single_a` (-0.125 vs -0.121 at t = 10).
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
