@@ -1129,7 +1129,24 @@ the exact LM step gaining ~10%: for soft_all, rank is not the whole story.
 Round 2 (Mendieta, submitted 2026-10-16): the targets' two halves separately
 (`pp_soft_all_t075`, `pp_soft_all_dmin8`), the targets with the warm start
 (`pp_soft_all_targets_warm`, no overshoot rule), and the targets on the hard cell at s = 1500
-(`pp_hard_targets_s1500`).  Results: pending.
+(`pp_hard_targets_s1500`).  Results (space-time rel L2, T = 20; BATCH_REPORT.md):
+
+| run | what changes against the batch defaults | rel L2 | compare |
+|---|---|---|---|
+| `pp_soft_all_t075` | target 0.075 only | **2.99e-8** | baseline 7.8e-6; both targets 7.8e-9 |
+| `pp_soft_all_dmin8` | Delta_min 1e-8 only | 6.18e-6 | baseline 7.8e-6 |
+| `pp_soft_all_targets_warm` | both targets + warm start | **9.04e-2** | targets alone 7.8e-9 |
+| `pp_hard_targets_s1500` | both targets, hard hand-over, s = 1500, 2201 points | **3.98e-7** | best hard so far 2.7e-6 (s = 1500, 8192 points) |
+
+* **The target 0.075 is what does it**: alone it gives 3.0e-8, 260x the baseline, and Delta_min 1e-8
+  alone gives nothing (6.2e-6, within the x4 run-to-run variation); together 7.8e-9.
+* **The warm start breaks it**: window 1 stops at loss 5.7e-7 (the other runs reach ~1e-17 there)
+  with a window error of 1.0e-2, and every later window inherits it (x1.1-1.9 per hand-over, 0.15 at
+  T = 20).  Window 1 has no previous window to warm-start from, so the warm-start code path itself
+  changes what window 1 does -- not yet understood.
+* **The targets fix the hard hand-over too**: 3.98e-7 at only 2201 points, 7x below the best hard run
+  of the old batch (which used 8192).  Its window losses are 1e-18..1e-21 and the amplification
+  x0.8-5 per hand-over.
 
 ## 7. Tests
 
