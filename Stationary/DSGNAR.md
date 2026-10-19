@@ -863,6 +863,17 @@ condition tying the mlp's independent Gamma to its h (compat residual 3.2e3 in a
 2.57e-4; h error 9.4 rms against the rotated reference).  `weyl_rot45_hub` had compat weight 1.
 Rerun with compat on as round 19 (`rot_mlpc_*`).
 
+Round 18 (`rot_ssbm2`, 8750 more merged-SSBroyden iterations): 2.28e-6 -> **1.58e-6**, stopped on the
+plateau rule; fresh/training 1.06.  The errors did not move: rms |dlambda| 1.74e-5, rms |dh|
+1.14e-3, still dominated by h in rho 1-3 (2.35e-3, against a perturbation of 2.3e-2).  So the 3-D
+hybrid on the rotated data floors at ~1.6e-6, four orders above the axisymmetric network on the
+same objective (`wf_ssbm` 1.1e-10) -- the cost of the general ansatz, as for the Weyl rods
+(README 8.12).  Whether more points or a wider network lowers that floor is open.
+
+Round 16 control (`ctl_hyb_dsg`: the 3-D hybrid, ON-axis data, DSGNAR): 0.99 -> 3.25e-2 -> 2.30e-2,
+then cycle 3 accepted 0 of 15 -- the same DSGNAR stall as the rotated `rot_dsg`, so that stall was
+DSGNAR, not the rotation.
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
