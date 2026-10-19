@@ -136,7 +136,7 @@ submit rot_dsg              rot_adam $DSG --dsgnar-sketch 2000 --dsgnar-stage2-r
                               --init-from runs/rot_adam/params.pkl --dsgnar-cycles 5 --dsgnar-cycle-steps 60
 submit rot_ssb              rot_dsg --steps 0 --init-from runs/rot_dsg/params.pkl --qn-method ssbroyden \
                               --qn-linesearch wolfe --lbfgs-steps 10000 --resample-every 500 \
-                              --plateau-patience 8 $ROT $RHO4 $PP $COM
+                              --plateau-patience 8 --qn-reuse-objective $ROT $RHO4 $PP $COM
 if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssb]:-}" ] && ! squeue -h -u "$USER" -n check_rot -o %i | grep -q .; then
     echo "  submit   check_rot -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
           sbatch --parsable -J check_rot --dependency=afterany:${JID[rot_ssb]} \
@@ -154,13 +154,16 @@ submit m12_ssbw_rho4_reuse  - --steps 0 --init-from $INIT $WOLFE $RHO4 --qn-reus
 #   wf_ssb   SSBroyden (strong Wolfe), resampling every 500, plateau over 8 blocks (a resample moves
 #            the loss by ~ the 1% the plateau rule asks for, so 3 blocks stopped runs early)
 #   then mendieta_check.sbatch: the loss on 5 fresh samples (scripts/fresh_sample_loss.py)
+# 2026-10-19: wf_ssb and rot_ssb were cancelled before they started (jobs 1180615/1180619 and their
+# checks) and resubmitted with --qn-reuse-objective: without it every Wolfe SSBroyden run so far grew
+# 3-8 GB per block and the 10000-iteration plan would pass the 48 GB job limit (REPORT_OPTIMISERS.md)
 BEST="$RHO4 $PP $COM"
 submit wf_adam              - --steps 5000 --plateau-min-iters -1 --lbfgs-steps 0 $BEST
 submit wf_dsg               wf_adam $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $BEST \
                               --init-from runs/wf_adam/params.pkl --dsgnar-cycles 5 --dsgnar-cycle-steps 60
 submit wf_ssb               wf_dsg --steps 0 --init-from runs/wf_dsg/params.pkl --qn-method ssbroyden \
                               --qn-linesearch wolfe --lbfgs-steps 10000 --resample-every 500 \
-                              --plateau-patience 8 $BEST
+                              --plateau-patience 8 --qn-reuse-objective $BEST
 if [ "$DRY" != "1" ] && [ -n "${JID[wf_ssb]:-}" ] && ! squeue -h -u "$USER" -n check -o %i | grep -q .; then
     echo "  submit   check -> job $(sbatch --parsable --dependency=afterany:${JID[wf_ssb]} \
           mendieta_check.sbatch runs/wf_dsg runs/wf_ssb) (after wf_ssb)"

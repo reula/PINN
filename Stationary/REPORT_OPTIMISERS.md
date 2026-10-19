@@ -114,8 +114,11 @@ Each step is a new compile of `jit_minimize_bfgs` (~2 min each, the "slow compil
 `fun` and `initial_scale` are static arguments, so a resample (every 500 iterations here: 4 of them)
 or `initial_scale` flipping (block 1 -> 2; again after a failed block) compiles a new executable,
 and the old one stays cached.  For a run that resamples every 500 iterations up to 10000 that is
-still ~20 steps, ~60 GB -- over the 48 GB job limit if it does not plateau first.  Fix in progress
-(clear JAX's caches when the objective changes); see below.
+still ~20 steps, ~60 GB -- over the 48 GB job limit if it does not plateau first.  So the reuse path
+now also calls `jax.clear_caches()` whenever the objective changes (9126a46; every cached executable
+recompiles once, which the new objective needs anyway).  Not yet measured: the first runs with it
+are `wf_ssb` and `rot_ssb` (round 10/11, resubmitted 2026-10-19 with `--qn-reuse-objective` after the
+queued versions without it were cancelled) -- their per-block `rss=` lines are the test.
 
 Time: m9 did ~21 blocks in 96.6 min (~4.6 min/block), m12 16 blocks in 30.7 min (~1.9 min/block),
 **~2.4x faster** on the A30 nodes (less than the CPU test's 5x: there the compile dominated more).  The iterates agree for block 1
