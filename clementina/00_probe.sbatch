@@ -79,6 +79,8 @@ run bash -c 'python3 -c "import numpy; print(\"numpy\", numpy.__version__)" 2>&1
 section "storage"
 run bash -c 'df -h /home /data 2>/dev/null'
 run bash -c 'ls -ld /data/contrib /data/contrib/pci_143 2>&1'
+run bash -c 'id'
+run bash -c 'touch /data/contrib/pci_143/.w_probe_$USER 2>/dev/null && rm -f /data/contrib/pci_143/.w_probe_$USER && echo "pci_143 dir: writable" || echo "pci_143 dir: NOT writable"'
 run bash -c 'echo HOME=$HOME; du -sh "$HOME" 2>/dev/null'
 
 section "scheduler: real partition names, limits, and the account"

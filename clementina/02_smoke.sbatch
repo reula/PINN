@@ -21,7 +21,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
 #SBATCH --mem=32G
-#SBATCH --time=00:20:00
+#SBATCH --time=00:15:00
 # Logs are absolute on purpose: Slurm resolves a relative --output against the
 # directory you submit FROM, so a relative path scatters logs across the tree.
 #SBATCH --output=/home/oreula/Julia/PINN/clementina/smoke_%j.out

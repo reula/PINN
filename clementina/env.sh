@@ -36,23 +36,25 @@ export no_proxy="${no_proxy:-localhost,127.0.0.1,ssh.clementinaxxi.org.ar,172.28
 export NO_PROXY="$no_proxy"
 
 # ---------------------------------------------------------------------------
-# Intel GPU visibility (wiki: Desarrollo/gpus).
+# Intel GPU visibility (wiki: Desarrollo/gpus).  Probe job 1547927 on cn034, a
+# --gpus=1 allocation, showed:
 #
-# Slurm sets ZE_AFFINITY_MASK for the allocation, but the wiki documents that it
-# is buggy: with --gpus=N it exposes only the first *tile* of each GPU, so each
-# visible "device" is a 64 GB half-card rather than the 128 GB card.  Two knobs:
+#   * Slurm here does NOT set ZE_AFFINITY_MASK; the allocation is enforced one
+#     level lower, in the cgroup: xpu-smi discovery listed only Device ID 0
+#     (physical, /dev/dri/card1) and xpu-smi topology showed just GPU 0/0 and
+#     0/1.  Nothing outside the allocation is visible to the job.
+#   * with the default hierarchy (FLAT, unset) each *tile* is a device, so JAX
+#     reports [OneapiDevice(0), OneapiDevice(1)]: two 64 GB devices.  Single
+#     device code like wave_pinn uses device 0 and has 64 GB, which is 2-3x what
+#     the A30 runs used.
 #
-#   CXXI_ZE_MODE            unset (default): leave the Slurm allocation alone.
-#                           COMPOSITE: 4 devices/node, each a full 2-tile 128 GB
-#                                      GPU (best for one job per GPU).
-#                           FLAT     : 8 devices/node, one per tile, 64 GB each.
-#   CXXI_UNSET_ZE_MASK=1    unset Slurm's mask and expose every device on the node.
-#                           ONLY safe when you own the whole node (--gpus=4).
-#
-# Do not switch modes blindly: the mask has different syntax in FLAT (tile
-# indices 0..7) and COMPOSITE (device.tile pairs 0.0, 0.1, 1.0, ...), so a mask
-# that is right in one mode can be wrong and even out of range in the other.
-# Run 00_probe.sbatch first and look at what Slurm actually sets.
+# Knobs:
+#   CXXI_ZE_MODE=COMPOSITE   one 128 GB device spanning both tiles (the wiki's
+#                            recommendation for programs that want the whole
+#                            card).  Worth a smoke-test measurement, not needed.
+#   CXXI_ZE_MODE=FLAT        the default; one device per tile.
+#   CXXI_UNSET_ZE_MASK=1     drop a ZE_AFFINITY_MASK set by Slurm.  There is none
+#                            on CXXI today; kept for other clusters.
 # ---------------------------------------------------------------------------
 if [ -n "${CXXI_ZE_MODE:-}" ]; then
     export ZE_FLAT_DEVICE_HIERARCHY="$CXXI_ZE_MODE"

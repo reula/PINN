@@ -154,6 +154,15 @@ mkdir -p /data/contrib/pci_143/pinn
 `env.sh` exports `CXXI_DATA=/data/contrib/pci_143/pinn`, and falls back to
 `~/pinn_runs` if that path is not writable (probe step 1 checks this).
 
+The shared directory belongs to the `pci_143` group; check your groups and that
+you can write before trusting it with a long run:
+
+```bash
+id
+touch /data/contrib/pci_143/.w_oreula && rm -f /data/contrib/pci_143/.w_oreula \
+    && echo "pci_143: writable" || echo "pci_143: NOT writable -> use ~/pinn_runs"
+```
+
 ---
 
 ## 4. Step 1 — probe the machine
@@ -178,7 +187,21 @@ which `python3` exists, `/home` vs `/data`, the real partition names and limits,
 the `pci_143` association, and whether PyPI is reachable with and without the
 proxy.
 
-**Send back `probe_*.out` and `probe_*.err`.** The three answers that matter:
+**What probe job 1547927 (cn034, 2026-10-19) found** — the assumptions held, with
+three corrections, and the scripts are written against these answers:
+
+| Question | Answer |
+|---|---|
+| partitions | `gpunode` is real (67 nodes, 266 GPUs, 2-day limit) and `testing` has only **two** nodes (`cn034`, `cn053`) with the 20-min cap — keep it for probes only |
+| Level Zero | `libze_loader.so.1` and `libze_intel_gpu.so.1.6.33578` are in `/lib64`, i.e. the default search path: the pip JAX plugin needs **no** `LD_LIBRARY_PATH` help |
+| python | `python3` is 3.9.18 **without pip**, `uv` absent, and `sycl-ls` does not exist even after `module load oneapi` — so the `uv` route in step 2 is the right one (plan D in §5 if its download is refused) |
+| Intel GPU visibility | Slurm sets `CUDA_VISIBLE_DEVICES`/`ROCR_VISIBLE_DEVICES` but **no** `ZE_AFFINITY_MASK`; the cgroup exposes only the allocated card, so `--gpus=1` gives the two tiles of one Max 1550 |
+| storage | `/home` 47 TB (113 MB used), `/data` 1.1 PB, `/data/contrib/pci_143` exists for group `pci_143` |
+| account | `pci_143` with `qos_pci_143`, `MaxJobs=50`, fairshare ~0.77 |
+| proxy | PyPI unrestolvable **without** the proxy, HTTP 200 in ~50 ms **with** it |
+| modules | `stages/2025`, `stages/2026`, `python/3.14.3` (needs `stages/2026`), `intel/2025.3.0`, `oneapi/2025.1.0`; no JAX module |
+
+The three answers that matter:
 
 * does `xpu-smi`/`sycl-ls` see the 4 Max 1550s (they should; the node is a GPU node);
 * where the Level Zero loader is (`ldconfig -p | grep libze`) — the pip plugin
@@ -238,6 +261,13 @@ pip download -d wheelhouse --only-binary :all: \
     "jax[oneapi]==0.11.2" numpy scipy optax matplotlib pytest tqdm
 rsync -avz wheelhouse/ oreula@ssh.clementinaxxi.org.ar:~/wheelhouse/
 ```
+
+**Alternative (plan D)** if uv's managed CPython cannot be fetched: the cluster
+has a `python/3.14.3-ejkoyow` module behind `stages/2026`
+(`module purge && module load stages/2026 && module load python`), and a plain
+`python -m venv` + `pip install "jax[oneapi]==0.11.2"` does the same job. Use it
+only as a fallback: loading the stage module also puts its compiler environment
+on `LD_LIBRARY_PATH`, which the pip oneAPI runtime does not need.
 
 **Alternative (plan B)** if the pip runtime refuses to talk to the node's
 driver: load the cluster's oneAPI module and install the plugin *without* the
@@ -336,13 +366,12 @@ sacct -j <jobid> --format=JobID,JobName,State,Elapsed,MaxRSS,MaxVMSize
 scontrol show job <jobid> | grep -E 'ExitCode|RunTime|NodeList'
 ```
 
-Note on GPU visibility in production: the default is to leave Slurm's
-`ZE_AFFINITY_MASK` alone, so a `--gpus=1` job gets what Slurm allocated. If the
-probe shows only a 64 GB tile and the run needs the whole 128 GB card, the knob is
-`CXXI_ZE_MODE=COMPOSITE` (see `env.sh`) — but read the comment there first: the
-mask syntax differs between FLAT and COMPOSITE and a mask from one mode can be
-invalid or point at another user's GPU in the other. Only `CXXI_UNSET_ZE_MASK=1`
-when you own all four GPUs (`--gpus=4`).
+Note on GPU visibility in production: this cluster's Slurm does not set
+`ZE_AFFINITY_MASK`; the job's cgroup exposes only the allocated card, so
+`--gpus=1` is the two tiles of one Max 1550 and nothing else. With the default
+FLAT hierarchy JAX lists two 64 GB devices and single-device code uses one;
+`CXXI_ZE_MODE=COMPOSITE` collapses them into a single 128 GB device if a recipe
+needs the whole card (nothing in this repo has needed more than ~24 GB).
 
 ---
 
