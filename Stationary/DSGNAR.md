@@ -830,10 +830,15 @@ nothing yet about the rotated physics -- it needs a converged run first.
 Round 14 (2026-10-19): `rot_dsg2` -- DSGNAR from `rot_ssb` with 10 cycles and the sketch at 0.9 d
 (2100): **0 of 150 steps accepted** (every cycle 15 rejections, then the trust radius), parameters
 unchanged (the grade is `rot_ssb`'s to every digit), 61 min.  The loss is Ricci-dominated (1.9e-2 of
-2.4e-2).  Nothing has ever converged with the 3-D `hybrid` network -- the Weyl runs (README 8.9) were
-axisymmetric -- so round 16 runs the control: the same network, objective and budget on ON-axis
+2.4e-2).  **Correction (same day):** the 3-D solver HAS converged on a rotated problem --
+`weyl_rot45_hub` (README 8.12: two Weyl rods rotated 45 deg, rotated cylindrical gauge source) reached
+6.93e-8 with max |dh| 1.1e-3, max |dlambda| 1.0e-4 -- but with the 25-field `mlp` network (h, Gamma
+and lambda independent, 2725 parameters), exponents 1,2,1,2, ratio-10 shell, 8192 points, SSBroyden
+from cold.  What has never converged is the metric-only 3-D `hybrid` network used here, with the
+ratio-100 rho^4 objective.  Round 16 runs the control: the same network, objective and budget on ON-axis
 data (`ctl_hyb_adam` -> `ctl_hyb_dsg`, graded against the unrotated reference), and SSBroyden on the
-merged Crunch from `rot_ssb` (`rot_ssbm`).
+merged Crunch from `rot_ssb` (`rot_ssbm`).  Round 17: the rotated quadrupole with the network that converged on the rotated Weyl
+problem (`rot_mlp_adam` -> `rot_mlp_ssb`, `--arch mlp --width 20 --depth 6`, otherwise as `rot_*`).
 
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed

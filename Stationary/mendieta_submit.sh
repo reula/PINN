@@ -181,6 +181,19 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssbm]:-}" ] && ! squeue -h -u "$USER" -n
           sbatch --parsable -J check_rotm --dependency=afterany:${JID[rot_ssbm]} \
           mendieta_check.sbatch runs/rot_ssbm) (after rot_ssbm)"
 fi
+# round 17 (2026-10-19): the rotated quadrupole with the 3-D network that DID converge on a rotated
+# problem (weyl_rot45_hub, README 8.12: --arch mlp, 25 fields, 6.9e-8): rot_* used the metric-only
+# 3-D hybrid, which has never converged.  Same data and objective as rot_*; Adam, then SSBroyden on
+# the merged Crunch (as weyl_rot45 used SSBroyden), graded against the rotated reference.
+ROTM="--arch mlp --width 20 --depth 6 --lam-bc-axis 1,0,1"
+submit rot_mlp_adam         - --steps 5000 --plateau-min-iters -1 --lbfgs-steps 0 $ROTM $RHO4 $PP $COM
+submit rot_mlp_ssb          rot_mlp_adam --steps 0 --init-from runs/rot_mlp_adam/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $ROTM $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_mlp_ssb]:-}" ] && ! squeue -h -u "$USER" -n check_rotmlp -o %i | grep -q .; then
+    echo "  submit   check_rotmlp -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_rotmlp --dependency=afterany:${JID[rot_mlp_ssb]} \
+          mendieta_check.sbatch runs/rot_mlp_adam runs/rot_mlp_ssb) (after rot_mlp_ssb)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
