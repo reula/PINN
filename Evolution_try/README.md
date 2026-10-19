@@ -152,6 +152,10 @@ Evolution_try/
 │   └── t20_diagnosis.py          the T = 20 figure: loss against error
 ├── tests/test_wave_pinn.py       unittest suite (no pytest needed)
 ├── vendor/Crunch/                vendored SSBroyden (from this repo's Jax/Crunch)
+├── vendor/dsgnar_pinn/           vendored `pinn` package of the DSGNAR paper (github.com/wephy/
+│                                 physics-informed-neural-networks, 2026-10-04); not used by
+│                                 wave_pinn -- ../ldc/ imports it from here (moved 2026-10-19 from
+│                                 the retired Evolution/third_party/dsgnar; see VENDORED.md)
 └── runs/<label>/                 one directory per run, see §5
 ```
 
