@@ -113,6 +113,55 @@ The collaborators' 1D reference (`reference_1d/compare_pinn.py` + `ref_single_m0
 17 MB) would turn residuals into errors, but it was not in the bundle (not on the laptop or Mendieta
 either, searched 2026-10-18); it has to be requested from them.
 
+**Results (2026-10-19; held-out grading, job 1180648, `tools/eval_heldout.py`).** All three
+branches took the same wall time (3 h 46, 3 h 45, 3 h 32 for 10 windows on one A30). Window 15,
+shared by all, gives identical numbers in all three (the check that the grading is consistent).
+Held-out total loss per window, and its ratio to the baseline:
+
+| window (t_end) | `qn` | `fixed` | `dsg` | fixed/qn | dsg/qn |
+|---|---|---|---|---|---|
+| 16 (4.00) | 2.28e-5 | 4.90e-5 | 1.55e-5 | 2.2 | 0.68 |
+| 17 (4.25) | 8.10e-6 | 4.82e-4 | 2.70e-5 | 60 | 3.3 |
+| 18 (4.50) | 3.32e-6 | 4.98e-4 | 2.43e-5 | 150 | 7.3 |
+| 19 (4.75) | 1.02e-5 | 5.47e-4 | 1.19e-5 | 53 | 1.2 |
+| 20 (5.00) | 3.91e-6 | 5.50e-4 | 1.13e-5 | 141 | 2.9 |
+| 21 (5.25) | 1.75e-6 | 5.70e-4 | 6.74e-6 | 326 | 3.9 |
+| 22 (5.50) | 4.13e-6 | 5.58e-4 | 1.70e-5 | 135 | 4.1 |
+| 23 (5.75) | 6.41e-6 | 5.84e-4 | 1.36e-5 | 91 | 2.1 |
+| 24 (6.00) | 9.94e-6 | 8.36e-4 | 2.89e-5 | 84 | 2.9 |
+| 25 (6.25) | 4.15e-6 | 6.00e-4 | 9.40e-6 | 145 | 2.3 |
+
+* **`--qn_fixed_batch` overfits.** Its training loss is the lowest of the three (4e-8), but on new
+  points it is 50-330x worse than the baseline, mostly in the gauge rows (1e4x worse) and the
+  interior Einstein rows (20-230x); only the window-end and IC terms, whose points it fits, look
+  better. One fixed sample of 80000 points in 3+1 dimensions does not represent the solution here
+  (unlike Stationary's 2D problem). Do not use it for production.
+* **QN -> DSGNAR (24 restarts + 12 DSGNAR iterations, s = 1024) loses to plain QN** at equal wall
+  time: held-out loss 2-7x worse in 9 of 10 windows (better only in window 16). DSGNAR accepted
+  every step, but 12 Gauss-Newton iterations do not make up for the 24 QN restarts they replace;
+  its gauge rows end 8-15x and its IC fit 2-24x worse. DSGNAR stays available, not recommended.
+* **The baseline's own generalisation gap:** held-out loss 2e-6-2e-5 against 3e-7-1e-6 logged
+  in training, i.e. 5-10x. The logged loss understates the error on new points.
+* The constraint monitors Theta and Z are similar in the three branches (see below for their growth).
+
+**The single-puncture baseline drifts (single_a, t <= 10).** The tracked puncture should stay at
+the origin (one non-boosted puncture). It moves, and the motion accelerates:
+
+| t | 1 | 2 | 3 | 4 | 6 | 8 | 10 |
+|---|---|---|---|---|---|---|---|
+| x | -5.6e-4 | -1.1e-3 | -1.0e-2 | -1.9e-2 | -3.5e-2 | -6.7e-2 | -0.121 |
+| y | 5.6e-5 | 8.9e-4 | 2.7e-3 | 4.7e-3 | 1.0e-2 | 2.2e-2 | 0.039 |
+
+The puncture itself is intact at t = 10 (alpha 0.033 at the centre, chi_min 0.002, g_xx up to 500).
+The momentum-constraint monitor on the 1D cut grows with it: |Z^i|_L2 = 5.8e-5, 6.4e-3, 9.7e-3,
+1.7e-2 at t = 0, 3.3, 6.7, 10 (|Theta| ~4e-2 after t ~ 3, roughly flat). All three window-15
+branches drift by similar amounts (0.025-0.037 at t = 6.25), so it is not the optimiser. Not yet
+investigated. One hypothesis: the tracking integrates dx/dt = -beta(x) from the network's shift,
+and the moving chi background is centred on that track, so a small spurious shift at the puncture
+moves the background, which the network then has to correct -- a possible feedback loop. Tests
+that would separate the causes: `--chi_bg_mode physical`, or a fixed centre (`--bh_center_mode
+fixed`), on the same single-puncture setup.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
