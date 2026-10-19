@@ -23,3 +23,10 @@ Stationary/runs/
 Stationary/logs/
 Stationary/.mplcache/
 Stationary/.venv/
+ldc/figures/
+ldc/*.npy
+
+# Clementina XXI: job logs written next to the scripts by clementina/*.sbatch
+clementina/*.out
+clementina/*.err
+clementina/__pycache__/
