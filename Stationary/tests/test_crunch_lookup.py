@@ -32,8 +32,8 @@ def _make_crunch(root, minimize_src=MINIMIZE):
     open(os.path.join(root, "line_search_backtracking.py"), "w").write(LINE_SEARCH)
     open(os.path.join(root, "Crunch", "__init__.py"), "w").write("")
     open(os.path.join(root, "Crunch", "Optimizers", "__init__.py"), "w").write("")
-    open(os.path.join(root, "Crunch", "Optimizers", "minimize_backtracking.py"), "w").write(
-        minimize_src)
+    for name in ("minimize_backtracking.py", "minimize_backtracking_legacy.py"):
+        open(os.path.join(root, "Crunch", "Optimizers", name), "w").write(minimize_src)
     return root
 
 
@@ -130,7 +130,8 @@ def test_the_real_checkout_is_found_without_an_override(monkeypatch):
 # ------------------------------------------------- the copy that travels with Stationary/
 MIN_PATH = ("Crunch/Optimizers/__init__.py", "Crunch/Optimizers/bfgs.py",
             "Crunch/Optimizers/bfgs_backtracking.py", "Crunch/Optimizers/minimize.py",
-            "Crunch/Optimizers/minimize_backtracking.py", "Crunch/__init__.py",
+            "Crunch/Optimizers/minimize_backtracking.py",
+            "Crunch/Optimizers/minimize_backtracking_legacy.py", "Crunch/__init__.py",
             "line_search_backtracking.py")
 
 
@@ -180,3 +181,27 @@ def test_the_two_copies_do_not_drift():
         elif norm(a) != norm(b):
             differing.append(rel)
     assert differing == [], f"the Stationary/Jax copy has drifted: {differing}"
+
+
+def test_the_merged_crunch_is_what_both_checkouts_hold(monkeypatch):
+    """`impl="merged"` resolves to the merged minimize_backtracking.py of 2026-10-17 -- in the
+    tracked Jax/ and in the Stationary/Jax copy -- for both line searches."""
+    monkeypatch.delenv("CRUNCH_ROOT", raising=False)
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))      # <repo>/Stationary
+    roots = [None] + ([os.path.join(here, "Jax")] if os.path.isdir(os.path.join(here, "Jax")) else [])
+    for root in roots:
+        for ls in ("armijo", "wolfe"):
+            minimize, where = T._crunch_minimize(root=root, linesearch=ls, impl="merged")
+            if minimize is None and root is None:
+                pytest.skip(f"no Crunch in this checkout: {where}")
+            assert minimize is not None, where
+            assert minimize.__code__.co_varnames[:3] == ("fun_val", "fun_val_grad", "x0")
+
+
+def test_an_old_file_under_the_merged_name_is_refused(tmp_path, monkeypatch):
+    """A pre-merge minimize_backtracking.py (no LINE_SEARCHES / SCALE_INVARIANT) must not be taken
+    for the merged one: the phase would call it with the wrong interface."""
+    root = _make_crunch(str(tmp_path / "old"))
+    monkeypatch.setenv("CRUNCH_ROOT", root)
+    minimize, reason = T._crunch_minimize(impl="merged")
+    assert minimize is None and "not the merged Crunch" in reason

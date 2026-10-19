@@ -28,8 +28,9 @@ import numpy as np
 from stationary import train as T
 from stationary.train import parse_args
 
+# the legacy Crunch's interface and status codes (the merged one: tests/test_qn_merged.py)
 TINY = ["--arch", "sym_hybrid", "--n-coll", "32", "--n-bnd", "8",
-        "--width", "4", "--depth", "2", "--no-figures"]
+        "--width", "4", "--depth", "2", "--no-figures", "--qn-crunch", "legacy"]
 POISON = 99.0          # a hess_inv that must NOT reach the next block
 
 

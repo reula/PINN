@@ -231,7 +231,9 @@ What the Stationary experiments of 2026-10 converged on (REPORT_PIN_COM.md, REPO
    COM-gauge DSGNAR result the Wolfe line search failed on every block (`wf_ssb`, also `m9_ssbw_com`);
    Armijo failed there too, with and without resampling (round 13, DSGNAR.md): from a DSGNAR result
    at ~1e-4 SSBroyden took no first step, while from one at 1.2e-10 it polished to 3.75e-11
-   (`m8_ssb_com`).  Cause unknown; until it is found, run DSGNAR further (more cycles) before step 4.
+   (`m8_ssb_com`).  **Cause found (later that day): the old Crunch's line search.**  With the merged
+   Crunch of 2026-10-17, now the default (`--qn-crunch merged`, REPORT_OPTIMISERS.md), SSBroyden moves
+   from the same start with either line search, and `--qn-reuse-objective` is no longer needed.
 5. **Check the result is sample-stable**: `scripts/fresh_sample_loss.py runs/<run>` -- the loss on 5
    fresh samples against the training loss (a ratio ~1 is stable), and the centre-of-mass flux.
 6. **Grade** against a nonlinear spectral reference when one exists (`stationary.specref`,

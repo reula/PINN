@@ -438,8 +438,14 @@ def _crunch_candidates(here: str):
     return out
 
 
-def _crunch_minimize(root: str | None = None, linesearch: str = "armijo"):
-    """Crunch's SciPy-style `minimize`, or (None, reason) when it is not available.
+def _crunch_minimize(root: str | None = None, linesearch: str = "armijo", impl: str = "legacy"):
+    """Crunch's `minimize`, or (None, reason) when it is not available.
+
+    `impl="merged"`: the merged `Optimizers/minimize_backtracking.py` of 2026-10-17, whose
+    `minimize(fun_val, fun_val_grad, x0, options)` does both line searches; a copy without its
+    `LINE_SEARCHES` / `SCALE_INVARIANT` flags is an older file under the same name and is refused.
+    `impl="legacy"`: the SciPy-style `minimize(fun, x0, ...)` -- `Optimizers/minimize.py` (strong
+    Wolfe, bfgs.py) or `Optimizers/minimize_backtracking_legacy.py` (Armijo, bfgs_backtracking.py).
 
     Looks in every location `_crunch_candidates` lists and returns the first that imports;
     the phase prints which one it was.  `CRUNCH_ROOT`, or the `root` argument, overrides the
@@ -478,10 +484,16 @@ def _crunch_minimize(root: str | None = None, linesearch: str = "armijo"):
             sys.path.insert(0, cand)
         _purge_crunch_modules(except_under=cand)
         try:
-            if linesearch == "wolfe":
+            if impl == "merged":
+                import Crunch.Optimizers.minimize_backtracking as _mb      # both line searches
+                if not (getattr(_mb, "SCALE_INVARIANT", False)
+                        and linesearch in getattr(_mb, "LINE_SEARCHES", ())):
+                    raise ImportError(f"{_mb.__file__} is not the merged Crunch of 2026-10-17")
+                minimize = _mb.minimize
+            elif linesearch == "wolfe":
                 from Crunch.Optimizers.minimize import minimize            # strong Wolfe (bfgs.py)
             else:
-                from Crunch.Optimizers.minimize_backtracking import minimize  # Armijo
+                from Crunch.Optimizers.minimize_backtracking_legacy import minimize  # Armijo
         except Exception as exc:                                         # pragma: no cover
             # A root can hold a Crunch that does not import: an incomplete copy, or one whose
             # line_search_backtracking is missing.  Undo what the attempt left behind -- in
@@ -825,10 +837,12 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     H describes the old function, and the first step of a new objective needs the same
     treatment the first block gets.
     """
-    minimize, where = _crunch_minimize(linesearch=getattr(cfg, "qn_linesearch", "armijo"))
+    merged = getattr(cfg, "qn_crunch", "merged") == "merged"
+    minimize, where = _crunch_minimize(linesearch=getattr(cfg, "qn_linesearch", "armijo"),
+                                       impl="merged" if merged else "legacy")
     reuse = [None, None]                 # (sample/weights key, the objective handed to Crunch)
     crunch_bfgs = None
-    if minimize is not None and getattr(cfg, "qn_reuse_objective", False):
+    if minimize is not None and not merged and getattr(cfg, "qn_reuse_objective", False):
         import importlib
         crunch_bfgs = importlib.import_module(
             "Crunch.Optimizers.bfgs" if getattr(cfg, "qn_linesearch", "armijo") == "wolfe"
@@ -876,6 +890,11 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         _traces[0] += 1
         value, _ = loss_fn(unflatten(flat), batch, 1.0, weights)
         return value
+
+    # The merged Crunch takes the loss and the loss+gradient as two callables and runs its loop in
+    # Python, so these are the only compiled pieces: batch and weights are ARGUMENTS, and a resample
+    # or a reweight (same shapes, new values) reuses the same executables.
+    fun_vg = jax.jit(jax.value_and_grad(fun)) if merged else None
 
     @jax.jit
     def loss_value_and_parts(flat, batch, weights):
@@ -1035,7 +1054,10 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
     status = -1
     t0 = time.time()
     if verbose:
-        print(f"[qn] SSBroyden (ssbroyden2, {getattr(cfg, 'qn_linesearch', 'armijo')} line search) "
+        print(f"[qn] SSBroyden (ssbroyden2, {getattr(cfg, 'qn_linesearch', 'armijo')} line search, "
+              f"{'merged' if merged else 'legacy'} Crunch"
+              + (f", scale_invariant={int(bool(getattr(cfg, 'qn_scale_invariant', True)))}"
+                 if merged else "") + ") "
               f"from {where}: {n} parameters, {gb:.2f} GB "
               f"inverse Hessian, blocks of {block} up to {cfg.lbfgs_steps} iterations "
               f"({n_blocks} blocks, plateau_tol {cfg.plateau_tol:g} over "
@@ -1115,7 +1137,23 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                                 # same I and the same unscaled first step that failed.
                                 "update_method": "ssbroyden2",
                                 "initial_scale": (b == 0 or reweighted or fail_streak > 0)}
-        if getattr(cfg, "qn_reuse_objective", False):
+        if merged:
+            mopts = {"maxiter": block, "gtol": cfg.qn_gtol, "initial_H": H,
+                     "update_method": "ssbroyden2", "initial_scale": opts["initial_scale"],
+                     "line_search": getattr(cfg, "qn_linesearch", "armijo"),
+                     "alphamin": 1e-15, "max_iter": int(getattr(cfg, "qn_ls_max", 100)),
+                     "scale_invariant": bool(getattr(cfg, "qn_scale_invariant", True)),
+                     "rescale_carried": bool(getattr(cfg, "qn_rescale_carried", False))}
+            r = minimize(lambda w, _b=batch, _w=weights: fun(w, _b, _w),
+                         lambda w, _b=batch, _w=weights: fun_vg(w, _b, _w), x, mopts)
+            # No status in the merged result: its loop leaves early only when |g| <= gtol, and its
+            # line searches never fail (Armijo stops at alphamin and takes that step) -- a block
+            # that cannot move shows up as a loss that did not fall, which is what the stall rule
+            # and the H rule below test.  0 = converged, 1 = the block's iterations ran out.
+            res = types.SimpleNamespace(x=r.x, fun=r.fun, nit=r.nit,
+                                        status=0 if int(r.nit) < block else 1,
+                                        hess_inv=r.hess_inv, stats=r.stats)
+        elif getattr(cfg, "qn_reuse_objective", False):
             # one objective object per (sample, weights): Crunch's static-argument jit cache hits
             # on every later block instead of compiling (and keeping) a new line search
             key = (id(batch), id(weights))
@@ -1145,12 +1183,21 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         f = float(res.fun)
         total += int(res.nit)
         status = int(res.status)
+        qstats = getattr(res, "stats", None)      # merged Crunch's per-call counters (`res` is reused below)
         # A FAILED BLOCK'S HESSIAN IS NOT INFORMATION.  Crunch returns the state unchanged on a
         # failed line search and hands back a hess_inv with it; accepting that estimate is how
         # pq_c100_vac turned ONE bad block into 120.  Every later block then started from the
         # failed call's H, took ZERO iterations and failed again -- the "49 iterations" on 109
         # consecutive lines is the cumulative counter, frozen at 500 Adam + 49.
-        if status == 0 and res.hess_inv is not None:
+        if merged:
+            # Carry H whenever the block made progress.  (The legacy rule below carries it only on
+            # status 0 = converged, so a block that ran out of iterations -- status 1, the normal
+            # case -- dropped its H and the next block started again from the unscaled identity:
+            # the carried inverse Hessian was in effect never carried.  Kept there for bitwise
+            # reproduction of the older runs.)  A block that did not lower the loss starts the
+            # next one from the identity, which initial_scale (fail_streak > 0) rescales.
+            H = res.hess_inv if f < f_before else jnp.eye(n, dtype=flat0.dtype)
+        elif status == 0 and res.hess_inv is not None:
             H = res.hess_inv
         o, parts_b = outer_res(x)
         losses.append(f)
@@ -1223,7 +1270,10 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
                   f"bc_in={sum(v for k, v in parts_b.items() if k.startswith('inner_')):.2e} "
                   f"bc_out={sum(parts_b[k] for k in parts_b if k.startswith('outer_')):.2e}"
                   + (f"  pin={pins:.2e}" if pins else "")
-                  + f"  (status {status})", flush=True)
+                  + f"  (status {status})"
+                  + (f"  [upd {qstats['n_update']} skip {qstats['n_skip']} "
+                     f"first {qstats['n_first']}]" if qstats else ""),
+                  flush=True)
         pat = int(cfg.plateau_patience)
         # A PHASE THAT CANNOT MOVE MUST SAY SO AND STOP, and this is NOT gated by
         # `plateau_min_iters`: a stalled phase is not warm-up.  The plateau rule below misses
@@ -1669,6 +1719,16 @@ def parse_args(argv=None):
     p.add_argument("--qn-reuse-objective", action="store_true", dest="qn_reuse_objective",
                    help="hand Crunch the same objective object across blocks (no per-block "
                         "recompilation, no per-block memory growth); numerically identical")
+    p.add_argument("--qn-crunch", choices=("merged", "legacy"), default=None, dest="qn_crunch",
+                   help="which Crunch runs SSBroyden: the merged minimize_backtracking.py of "
+                        "2026-10-17 (default) or the legacy lax.while_loop one (bitwise older runs)")
+    p.add_argument("--qn-scale-invariant", type=int, choices=(0, 1), default=None,
+                   dest="qn_scale_invariant",
+                   help="merged Crunch: relative curvature guards and rescaled update (default 1)")
+    p.add_argument("--qn-rescale-carried", action="store_true", dest="qn_rescale_carried",
+                   help="merged Crunch: rescale a carried H by y.s/y.H.y at each block's first pair")
+    p.add_argument("--qn-ls-max", type=int, default=None, dest="qn_ls_max",
+                   help="merged Crunch: line-search trials per iteration (default 100)")
     p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs", "dsgnar"), default=None,
                    help="quasi-Newton phase: Crunch's SSBroyden (default), optax.lbfgs, or "
                         "DSGNAR -- the doubly-sketched Gauss-Newton method of "
@@ -2214,6 +2274,14 @@ def parse_args(argv=None):
         cfg.qn_linesearch = a.qn_linesearch
     if a.qn_reuse_objective:
         cfg.qn_reuse_objective = True
+    if a.qn_crunch:
+        cfg.qn_crunch = a.qn_crunch
+    if a.qn_scale_invariant is not None:
+        cfg.qn_scale_invariant = bool(a.qn_scale_invariant)
+    if a.qn_rescale_carried:
+        cfg.qn_rescale_carried = True
+    if a.qn_ls_max is not None:
+        cfg.qn_ls_max = a.qn_ls_max
     if a.com_pin:
         cfg.com_radii = tuple(float(v) for v in a.com_pin.split(","))
     if a.w_com is not None:

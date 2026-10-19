@@ -64,8 +64,10 @@ def test_the_objective_handed_to_crunch_is_jitted(tmp_path, monkeypatch):
         return spy, where
 
     monkeypatch.setattr(T, "_crunch_minimize", fake_minimize)
+    # the legacy interface hands Crunch ONE objective; the merged one two thin wrappers around
+    # jitted functions, whose no-retrace property tests/test_qn_merged.py checks instead
     cfg = parse_args(TINY + ["--outdir", str(tmp_path / "run"), "--steps", "0",
-                             "--lbfgs-steps", "20", "--qn-block", "20"])
+                             "--lbfgs-steps", "20", "--qn-block", "20", "--qn-crunch", "legacy"])
     T.train(cfg, verbose=False)
 
     if not captured:

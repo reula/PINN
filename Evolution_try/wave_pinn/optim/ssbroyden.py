@@ -103,7 +103,7 @@ def load_minimize(kind: str = "backtracking"):
         return None, "no Crunch checkout found (set CRUNCH_ROOT)"
     if root not in sys.path:
         sys.path.insert(0, root)
-    module = {"backtracking": "Crunch.Optimizers.minimize_backtracking",
+    module = {"backtracking": "Crunch.Optimizers.minimize_backtracking_legacy",
               "wolfe": "Crunch.Optimizers.minimize"}.get(str(kind).lower())
     if module is None:
         return None, f"unknown linesearch {kind!r} (use 'backtracking' or 'wolfe')"

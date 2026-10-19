@@ -805,8 +805,8 @@ Round 10 results (2026-10-19), from scratch with the recipe as written:
   search and not the resampling: from `wf_dsg` (8.6e-5) SSBroyden cannot take its first step, while
   from `m7_dsg_com` (1.2e-10) the same objective went to 3.75e-11.  The other first-step stalls so far:
   m3 (Armijo, rho^4, from the rho^2 Adam start) and m9_ssbw_com (Wolfe, from m5 with the COM term at
-  0.395).  Cause not known; a gradient-vs-finite-difference check at `wf_dsg`'s parameters is the
-  obvious next test.
+  0.395).  **Cause: the legacy Crunch** -- with the merged Crunch of 2026-10-17 the same start moves
+  with both line searches (Mac test, REPORT_OPTIMISERS.md "The merged Crunch").
 - So the from-scratch budget ends 6 orders above the best run (3.75e-11), which got there through
   many more DSGNAR iterations over rounds 3-7: 5 cycles x 60 are not enough, and the recipe's step 4
   as written does nothing at this point.

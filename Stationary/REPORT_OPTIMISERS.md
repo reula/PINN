@@ -125,6 +125,51 @@ Time: m9 did ~21 blocks in 96.6 min (~4.6 min/block), m12 16 blocks in 30.7 min 
 and then drift apart through the evaluation order (block 11: m9 1.76e-1, m12 1.25e-2); a single pair,
 so this is not evidence that the reuse path converges faster.
 
+## The merged Crunch (2026-10-19): the first-step failures were the old Crunch
+
+**What changed.**  The collaborators' merged `Crunch/Optimizers/minimize_backtracking.py` of
+2026-10-17 (the file SBH uses; SBH/README.md section 5) is now installed in every copy -- `Jax/Crunch`,
+`Stationary/Jax/Crunch`, `Evolution_try/vendor/Crunch` -- under its own name; the old file is kept as
+`minimize_backtracking_legacy.py`, and the callers of the old SciPy-style interface (Evolution_try,
+Evolution/, Jax/Helmholtz_QN_bactracking.py) import that one.  The other modules (`bfgs.py`,
+`bfgs_backtracking.py`, `minimize.py`) are untouched.  The merged file is a Python-loop BFGS,
+`minimize(fun_val, fun_val_grad, x0, options)`, with both line searches (Armijo: up to `max_iter`
+halvings down to alphamin 1e-15; strong Wolfe with interpolation), and optional `scale_invariant`
+(relative curvature guards), `rescale_carried`, `reuse_first_trial`.
+
+Stationary's SSBroyden phase uses it by default (`--qn-crunch merged`; Config.qn_crunch), with
+`scale_invariant` on (`--qn-scale-invariant 0` to turn off), line-search trials 100 (`--qn-ls-max`,
+as SBH), `--qn-rescale-carried` optional.  The loss and loss+gradient are jitted functions of
+(flat, batch, weights), so neither a block nor a resample nor a reweight compiles anything: the
+per-block and per-resample memory growth of the legacy path cannot occur (a test checks that the
+trace count stays constant across blocks and resamples), and `--qn-reuse-objective` only matters
+for `--qn-crunch legacy`, which reproduces the earlier runs bitwise.  The block line now ends with
+`[upd n skip n first n]`, the merged Crunch's counters.
+
+**A bug in the phase, fixed on the merged path only.**  Since 9f859d6 (2026-10-05) the phase carried
+the block's inverse Hessian only when `status == 0` (converged); a block that ran its iterations out
+returns status 1, so H was dropped after every normal block and the next one restarted from the
+unscaled identity -- the carried Hessian was in effect never carried.  The merged path carries H
+whenever the block lowered the loss, and restarts from the identity with `initial_scale` otherwise.
+The legacy path keeps the old rule, for reproduction.
+
+**The first-step failure, measured on the Mac** (`wf_dsg`'s parameters, the production objective).
+At `wf_dsg` (loss 8.49e-5) |g| = 3.16, and the identity step -g is far too long: the loss is NaN at
+alpha = 1, 8.8e6 at 1/16, and Armijo needs 26 halvings (at `m7_dsg_com`, 1.2e-10: 29).  The gradient
+is right (central differences agree with |g|^2 to 4 digits).  Then two blocks of 25 iterations:
+
+| Crunch | 50 iterations from wf_dsg | Mac CPU |
+|---|---|---|
+| legacy, Armijo | 0 iterations, status 3 both blocks (as `wf_ssba` on Mendieta) | 228 s |
+| merged, Armijo | 8.08e-5 -> 7.95e-5 (50 updates, 0 skipped) | 441 s |
+| merged, Wolfe | 8.08e-5 -> 7.94e-5 | 344 s |
+
+And on a tiny network from Adam (smoke): legacy Armijo 0 iterations in 3 blocks; merged Armijo
+41.7 -> 0.145 and merged Wolfe 41.7 -> 0.152 in 60.  So the round 10/13 stalls (`wf_ssb`, `wf_ssba`,
+`wf_ssba_nors`) and very likely `m9_ssbw_com` and m3's were the old Crunch's line search, not the
+problem.  Why `m8_ssb_com` moved from m7 with the legacy Armijo despite needing more halvings is not
+understood (its backtracking interpolates, so it is not pure halving).
+
 ## Recommendation
 
 1. **Default: DSGNAR with restart cycles** (`--qn-method dsgnar --dsgnar-sketch ~0.9 d --dsgnar-cycles

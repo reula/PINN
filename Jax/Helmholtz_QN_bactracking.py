@@ -27,7 +27,7 @@ import random
 from Crunch.Models.layers import  *
 from Crunch.Models.polynomials import  *
 from Crunch.Auxiliary.metrics import  *
-from Crunch.Optimizers.minimize_backtracking import minimize
+from Crunch.Optimizers.minimize_backtracking_legacy import minimize
 jax.config.update("jax_enable_x64", True)
 #################################################
 

@@ -467,6 +467,20 @@ class Config:
     # stayed in JAX's cache -- the host memory that grew per block until the node killed the job
     # (60 GB).  Numerically identical; off by default until measured on the GPU.
     qn_reuse_objective: bool = False
+    # WHICH Crunch (2026-10-19).  "merged": the collaborators' merged minimize_backtracking.py of
+    # 2026-10-17 (the one SBH uses), installed in every Jax/Crunch copy: Python-loop BFGS around two
+    # jitted functions of (flat, batch, weights) -- nothing recompiles per block or per resample --
+    # with Armijo (up to qn_ls_max halvings, alphamin 1e-15) or strong Wolfe, and the options below.
+    # "legacy": the old lax.while_loop Crunch (bfgs.py / bfgs_backtracking.py, now reached through
+    # minimize_backtracking_legacy.py), bitwise the runs before this date.
+    qn_crunch: str = "merged"
+    # merged only: relative curvature guards y.s <= 1e-14 |s||y| and the update on the rescaled pair
+    # (the authors' recommendation; off freezes the Hessian updates once the loss is ~1e-12)
+    qn_scale_invariant: bool = True
+    # merged only: rescale a carried (non-identity) H by y.s / y.H.y at a block's first pair
+    qn_rescale_carried: bool = False
+    # merged only: line-search trials per iteration (Armijo halvings or Wolfe evaluations; SBH 100)
+    qn_ls_max: int = 100
     plateau_tol: float = 1e-4
     plateau_patience: int = 3
     plateau_min_iters: int = 100   # negative DISABLES the plateau stop (train.py);
