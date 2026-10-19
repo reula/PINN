@@ -1120,6 +1120,12 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             # on every later block instead of compiling (and keeping) a new line search
             key = (id(batch), id(weights))
             if reuse[0] != key:
+                if reuse[0] is not None:
+                    # a new sample or new weights: the executables compiled for the old objective
+                    # are never hit again but stay in JAX's caches (~3 GB of host RSS per resample
+                    # on Mendieta, m12_ssbw_rho4_reuse); drop them -- everything recompiles once
+                    reuse[1] = None
+                    jax.clear_caches()
                 reuse[0] = key
                 reuse[1] = jax.jit(lambda flat, _b=batch, _w=weights: fun(flat, _b, _w))
             r = crunch_bfgs(fun=reuse[1], x0=x, **opts)
