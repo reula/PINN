@@ -827,6 +827,14 @@ only cycle 1 at budget, cycles 3-5 accepted 1, 3 and 0 of 15-17 steps) -> `rot_s
 network (2347 parameters, s = 2000 = 0.85 d) stalls 300x higher.  The off-axis test therefore says
 nothing yet about the rotated physics -- it needs a converged run first.
 
+Round 14 (2026-10-19): `rot_dsg2` -- DSGNAR from `rot_ssb` with 10 cycles and the sketch at 0.9 d
+(2100): **0 of 150 steps accepted** (every cycle 15 rejections, then the trust radius), parameters
+unchanged (the grade is `rot_ssb`'s to every digit), 61 min.  The loss is Ricci-dominated (1.9e-2 of
+2.4e-2).  Nothing has ever converged with the 3-D `hybrid` network -- the Weyl runs (README 8.9) were
+axisymmetric -- so round 16 runs the control: the same network, objective and budget on ON-axis
+data (`ctl_hyb_adam` -> `ctl_hyb_dsg`, graded against the unrotated reference), and SSBroyden on the
+merged Crunch from `rot_ssb` (`rot_ssbm`).
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
