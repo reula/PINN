@@ -496,8 +496,9 @@ class Config:
     def __post_init__(self):
         if self.weyl and self.weyl_rotate_deg and self.arch in ("sym", "sym_hybrid",
                                                                  "axisym_hybrid"):
-            # a rotated configuration has no axis of symmetry left
-            self.arch = "mlp"
+            # a rotated configuration has no axis of symmetry left: the general 3-D METRIC-ONLY
+            # network (the first-order mlp is inferior and needs the compat term; train.check_formulation)
+            self.arch = "hybrid"
         if self.weyl and self.arch in ("sym", "sym_hybrid"):
             # Not a preference: these ansaetze have no angular freedom, so the loss has no
             # zero at a two-black-hole field.  Use the axisymmetric ansatz (valid, since

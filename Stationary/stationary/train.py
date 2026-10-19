@@ -103,8 +103,37 @@ def exact_asset(cfg: Config, n_quad: int | None = None):
     return None
 
 
+def check_formulation(cfg: Config, model, verbose: bool = True) -> None:
+    """Refuse a first-order network trained without its compatibility equation.
+
+    A network whose Gamma is an independent output (`derives_gamma = False`: `--arch mlp`, `sym`) is
+    tied to its own metric ONLY by the compat residual, Gamma = Christoffel(h).  With
+    `eq_weights["compat"] == 0` -- the shared recipe's setting, right for the metric-only networks,
+    whose Gamma is h's Christoffel symbol by construction -- Ricci is computed from a Gamma unrelated
+    to h, the loss can fall while h is wrong, and the run is meaningless.  Measured: `rot_mlp_ssb`
+    (2026-10-19) reached loss 2.6e-4 with the compat residual at 3.2e3 and an h error of 9.4.
+    The metric-only networks (`hybrid`, `sym_hybrid`, `axisym_hybrid`) need no compat term and are
+    the ones to use; the 3-D `mlp` is kept only to reproduce older runs (it also converged far worse
+    than `hybrid` on the rotated quadrupole: 2.8e-3 against 1.6e-6, DSGNAR.md rounds 16-20).
+    """
+    if getattr(model, "derives_gamma", False):
+        return
+    w = float(cfg.eq_weights.get("compat", 0.0))
+    if not w > 0.0:
+        raise SystemExit(
+            f"--arch {cfg.arch} has an INDEPENDENT Gamma, tied to h only by the compat equation, and "
+            f"its weight is {w:g} (--eq-weights compat=...; the recipes set 0, which is right only "
+            f"for the metric-only networks).  Use a metric-only network (--arch hybrid / "
+            f"axisym_hybrid / sym_hybrid), or give compat a positive weight.")
+    if verbose:
+        print(f"[arch] WARNING: --arch {cfg.arch} is the first-order formulation (independent Gamma). "
+              f"The metric-only networks are superior here -- use --arch hybrid (3-D) or "
+              f"axisym_hybrid; {cfg.arch} is kept for reproducing older runs.", flush=True)
+
+
 def build(cfg: Config, init_from: str | None = None):
     model = make_model(cfg)
+    check_formulation(cfg, model)
     key = jax.random.PRNGKey(cfg.seed)
     k1, k2 = jax.random.split(key)
     x0 = sample_shell(k1, min(cfg.n_coll, 64), cfg)
@@ -2315,8 +2344,9 @@ def parse_args(argv=None):
         cfg.inner_bc = "reference"
         cfg.gauge_source = "cylindrical"
         if a.arch is None and cfg.weyl_rotate_deg:
-            # rotated: no symmetry left, so the general 3-D ansatz is the only correct choice
-            cfg.arch = "mlp"
+            # rotated: no symmetry left, so a general 3-D ansatz is the only correct choice -- the
+            # metric-only one (until 2026-10-19 this picked the first-order mlp, which is inferior)
+            cfg.arch = "hybrid"
         if a.arch is None:
             # A spherically symmetric ansatz has no angular freedom at all, so it cannot
             # represent a two-black-hole field: it would converge to a compromise and its

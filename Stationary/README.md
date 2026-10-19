@@ -571,8 +571,19 @@ degenerate direction: compatibility holds exactly, the compat residual and three
 six scalar outputs disappear, and the PINN then reproduces the known solution to ~1e-4.
 
 The first-order (h, Gamma, lambda) formulation the project asked for remains available
-as `arch="sym"` / `arch="3d"` (`stationary/model.py`), with the hybrid as
+as `arch="sym"` / `arch="mlp"` (`stationary/model.py`), with the hybrid as
 `arch="sym_hybrid"` / `arch="hybrid"`.
+
+**Use the metric-only networks (2026-10-19).**  `hybrid` (3-D), `axisym_hybrid` and `sym_hybrid`
+are the ones to train; the first-order `mlp` / `sym` are kept only to reproduce older runs.  On the
+rotated quadrupole the 3-D hybrid reached 1.6e-6 with errors 600x (lambda) / 10x (h) below the
+perturbation, the 3-D mlp stalled at 2.8e-3 with errors the size of the perturbation (DSGNAR.md
+rounds 16-20).  A first-order network is tied to its own metric only by the compat equation, so
+**training one with `eq_weights["compat"] == 0` is refused** (`train.check_formulation`, called by
+`build`; tests/test_formulation_guard.py): the shared recipes set compat=0, correct for the
+metric-only networks, and `rot_mlp_ssb` trained that way reached loss 2.6e-4 with the compat
+residual at 3.2e3 and an h error of 9.4.  Any first-order run prints a warning.  `--weyl` with a
+rotation now picks `hybrid`, not `mlp` (untested on the Weyl rods so far; `weyl_rot45*` used mlp).
 
 ### 8.7 Milestone 2 solved with the real (non-manufactured) Robin data
 
