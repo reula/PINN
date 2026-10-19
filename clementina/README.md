@@ -164,6 +164,13 @@ sbatch 00_probe.sbatch
 tail -n +1 probe_*.out probe_*.err        # the testing queue is short; ~2 min
 ```
 
+The log paths in the `#SBATCH` lines are absolute
+(`/home/oreula/Julia/PINN/clementina/...`), so the logs land there no matter
+which directory you submit from.  A `tail: cannot open ... No such file` right
+after submitting means the job is still **pending** (Slurm creates the file when
+it starts) or it was rejected — check `squeue --me` and `sacct -u oreula
+--starttime today`.
+
 It prints, without touching anything: the GPU allocation and `ZE_*` variables,
 `xpu-smi discovery/topology`, `sycl-ls` with and without Slurm's mask, where
 `libze_loader`/`libsycl` live, the real `module avail`/`module spider` output,
@@ -362,6 +369,7 @@ and heading to 500 GB per IPAC, while `/data/contrib` is ~1 PB shared by the IPA
 | `ssh: Could not resolve hostname` | DNS, or VPN down | `ssh oreula@172.29.3.3`, or set DNS `8.8.8.8` (wiki: Errores Frecuentes) |
 | `Permission denied (publickey,...)` | key not in `authorized_keys` | wiki's *Autenticación sin contraseña*; password login always works |
 | `sbatch: error: invalid partition` | `gpunode` vs `gpunodes` | use the name printed by `sinfo` in the probe |
+| log file not there right after `sbatch` | job still `PD`, or log went to the submit directory (older relative paths) | `squeue --me`; `ls -t ~/Julia/PINN/*.out ~/Julia/PINN/clementina/*.out` |
 | `sbatch: error: invalid account` | `pci_143` association | `sacctmgr show assoc user=$USER` in the probe output |
 | `git clone`: `Could not resolve host: github.com` | proxy not exported **and** no external DNS — expected before `env.sh` is available | export `http_proxy`/`https_proxy` inline (see §3); `rsync` from the Mac otherwise |
 | pip/uv/git hang or 403 | proxy missing | `export https_proxy=http://172.28.3.3:3128` (and `http_proxy`) |

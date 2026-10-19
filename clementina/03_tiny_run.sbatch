@@ -24,8 +24,10 @@
 #SBATCH --gpus=1
 #SBATCH --mem=64G
 #SBATCH --time=00:40:00
-#SBATCH --output=tiny_%j.out
-#SBATCH --error=tiny_%j.err
+# Logs are absolute on purpose: Slurm resolves a relative --output against the
+# directory you submit FROM, so a relative path scatters logs across the tree.
+#SBATCH --output=/home/oreula/Julia/PINN/clementina/tiny_%j.out
+#SBATCH --error=/home/oreula/Julia/PINN/clementina/tiny_%j.err
 
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

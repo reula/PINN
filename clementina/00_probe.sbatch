@@ -23,8 +23,10 @@
 #SBATCH --gpus=1
 #SBATCH --mem=16G
 #SBATCH --time=00:10:00
-#SBATCH --output=probe_%j.out
-#SBATCH --error=probe_%j.err
+# Logs are absolute on purpose: Slurm resolves a relative --output against the
+# directory you submit FROM, so a relative path scatters logs across the tree.
+#SBATCH --output=/home/oreula/Julia/PINN/clementina/probe_%j.out
+#SBATCH --error=/home/oreula/Julia/PINN/clementina/probe_%j.err
 
 set -u
 
