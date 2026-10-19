@@ -204,6 +204,18 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssbm2]:-}" ] && ! squeue -h -u "$USER" -
           sbatch --parsable -J check_rotm2 --dependency=afterany:${JID[rot_ssbm2]} \
           mendieta_check.sbatch runs/rot_ssbm2) (after rot_ssbm2)"
 fi
+# round 19 (2026-10-19): round 17 was INVALID -- the recipe's --eq-weights compat=0 (right for the hybrid,
+# whose Gamma is derived from h) left the mlp's independent Gamma untied to its h: compat 3.2e3 in a
+# loss of 2.6e-4, h error 9.4.  Again with compat on (weight 1, as weyl_rot45_hub had).
+ROTMC="$ROTM --eq-weights compat=1,ricci=1,gauge=1,lam_eq=1"
+submit rot_mlpc_adam        - --steps 5000 --plateau-min-iters -1 --lbfgs-steps 0 $ROTMC $RHO4 $PP $COM
+submit rot_mlpc_ssb         rot_mlpc_adam --steps 0 --init-from runs/rot_mlpc_adam/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $ROTMC $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_mlpc_ssb]:-}" ] && ! squeue -h -u "$USER" -n check_rotmlpc -o %i | grep -q .; then
+    echo "  submit   check_rotmlpc -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_rotmlpc --dependency=afterany:${JID[rot_mlpc_ssb]} \
+          mendieta_check.sbatch runs/rot_mlpc_adam runs/rot_mlpc_ssb) (after rot_mlpc_ssb)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation

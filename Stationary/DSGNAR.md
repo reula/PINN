@@ -857,6 +857,12 @@ accepted, every cycle stopped on the trust radius -- while `wf_ssbm` (merged SSB
 reached 1.11e-10.  DSGNAR stalls near 1e-4 on this objective; SSBroyden on the merged Crunch does
 not.
 
+Round 17 (`rot_mlp_*`, the 25-field mlp on the rotated quadrupole) was **invalid**: the recipe's
+`--eq-weights compat=0` -- right for the hybrid, whose Gamma is derived from h -- switched off the
+condition tying the mlp's independent Gamma to its h (compat residual 3.2e3 in a total loss of
+2.57e-4; h error 9.4 rms against the rotated reference).  `weyl_rot45_hub` had compat weight 1.
+Rerun with compat on as round 19 (`rot_mlpc_*`).
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
