@@ -28,9 +28,24 @@
 #SBATCH --error=/home/oreula/Julia/PINN/clementina/smoke_%j.err
 
 set -uo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Slurm copies this script to /var/spool/slurmd/job<id>/slurm_script, so
+# dirname "$BASH_SOURCE" is the spool directory, NOT this one.  Locate env.sh by
+# absolute path (override with CXXI_DIR=... or sbatch --export=ALL,CXXI_DIR=...),
+# falling back to whatever directory the job was submitted from.
+CXXI_DIR="${CXXI_DIR:-/home/oreula/Julia/PINN/clementina}"
+if [ ! -f "$CXXI_DIR/env.sh" ]; then
+    for d in "${SLURM_SUBMIT_DIR:-$PWD}/clementina" "${SLURM_SUBMIT_DIR:-$PWD}" \
+             "$PWD/clementina" "$PWD"; do
+        if [ -f "$d/env.sh" ]; then CXXI_DIR="$(cd "$d" && pwd)"; break; fi
+    done
+fi
+if [ ! -f "$CXXI_DIR/env.sh" ]; then
+    echo "FATAL: cannot find env.sh; set CXXI_DIR=/path/to/clementina" >&2
+    exit 1
+fi
 # shellcheck source=env.sh
-source "$HERE/env.sh"
+source "$CXXI_DIR/env.sh"
 cxxi_pick_data
 
 PY="$(cxxi_python)" || { echo "FATAL: no venv with jax; run 01_setup_env.sh first" >&2; exit 1; }
@@ -45,10 +60,10 @@ echo "ZE        ZE_FLAT_DEVICE_HIERARCHY=${ZE_FLAT_DEVICE_HIERARCHY:-<unset>}  Z
 echo "          (CXXI_ZE_MODE=${CXXI_ZE_MODE:-<unset>} CXXI_UNSET_ZE_MASK=${CXXI_UNSET_ZE_MASK:-0})"
 echo
 echo "--- xpu-smi discovery"
-xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not available"
+command -v xpu-smi >/dev/null 2>&1 && xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not on this node"
 echo
 
-"$PY" "$HERE/smoke.py" --json "$CXXI_DATA/smoke_${SLURM_JOB_ID:-local}.json" "$@"
+"$PY" "$CXXI_DIR/smoke.py" --json "$CXXI_DATA/smoke_${SLURM_JOB_ID:-local}.json" "$@"
 rc=$?
 echo
 echo "smoke.py exit $rc"

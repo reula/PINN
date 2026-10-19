@@ -400,6 +400,7 @@ and heading to 500 GB per IPAC, while `/data/contrib` is ~1 PB shared by the IPA
 | `sbatch: error: invalid partition` | `gpunode` vs `gpunodes` | use the name printed by `sinfo` in the probe |
 | log file not there right after `sbatch` | job still `PD`, or log went to the submit directory (older relative paths) | `squeue --me`; `ls -t ~/Julia/PINN/*.out ~/Julia/PINN/clementina/*.out` |
 | `sbatch: error: invalid account` | `pci_143` association | `sacctmgr show assoc user=$USER` in the probe output |
+| stderr says `/var/spool/slurmd/job*/env.sh: No such file` | older checkout: the script looked for `env.sh` next to the slurmd spool copy | `git pull --ff-only`; the scripts now locate `env.sh` through an absolute `CXXI_DIR`, overridable with `sbatch --export=ALL,CXXI_DIR=/path/to/clementina` |
 | `git clone`: `Could not resolve host: github.com` | proxy not exported **and** no external DNS — expected before `env.sh` is available | export `http_proxy`/`https_proxy` inline (see §3); `rsync` from the Mac otherwise |
 | pip/uv/git hang or 403 | proxy missing | `export https_proxy=http://172.28.3.3:3128` (and `http_proxy`) |
 | `python3: not found`/3.6 | Rocky 8 base | irrelevant: `01_setup_env.sh` brings CPython 3.12 via uv |

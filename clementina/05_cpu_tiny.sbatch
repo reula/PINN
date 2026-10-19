@@ -32,9 +32,24 @@
 #SBATCH --error=/home/oreula/Julia/PINN/clementina/tinycpu_%j.err
 
 set -uo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Slurm copies this script to /var/spool/slurmd/job<id>/slurm_script, so
+# dirname "$BASH_SOURCE" is the spool directory, NOT this one.  Locate env.sh by
+# absolute path (override with CXXI_DIR=... or sbatch --export=ALL,CXXI_DIR=...),
+# falling back to whatever directory the job was submitted from.
+CXXI_DIR="${CXXI_DIR:-/home/oreula/Julia/PINN/clementina}"
+if [ ! -f "$CXXI_DIR/env.sh" ]; then
+    for d in "${SLURM_SUBMIT_DIR:-$PWD}/clementina" "${SLURM_SUBMIT_DIR:-$PWD}" \
+             "$PWD/clementina" "$PWD"; do
+        if [ -f "$d/env.sh" ]; then CXXI_DIR="$(cd "$d" && pwd)"; break; fi
+    done
+fi
+if [ ! -f "$CXXI_DIR/env.sh" ]; then
+    echo "FATAL: cannot find env.sh; set CXXI_DIR=/path/to/clementina" >&2
+    exit 1
+fi
 # shellcheck source=env.sh
-source "$HERE/env.sh"
+source "$CXXI_DIR/env.sh"
 cxxi_pick_data
 
 export JAX_PLATFORMS=cpu

@@ -34,9 +34,24 @@
 #SBATCH --error=/home/oreula/Julia/PINN/clementina/prod_%x_%j.err
 
 set -uo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Slurm copies this script to /var/spool/slurmd/job<id>/slurm_script, so
+# dirname "$BASH_SOURCE" is the spool directory, NOT this one.  Locate env.sh by
+# absolute path (override with CXXI_DIR=... or sbatch --export=ALL,CXXI_DIR=...),
+# falling back to whatever directory the job was submitted from.
+CXXI_DIR="${CXXI_DIR:-/home/oreula/Julia/PINN/clementina}"
+if [ ! -f "$CXXI_DIR/env.sh" ]; then
+    for d in "${SLURM_SUBMIT_DIR:-$PWD}/clementina" "${SLURM_SUBMIT_DIR:-$PWD}" \
+             "$PWD/clementina" "$PWD"; do
+        if [ -f "$d/env.sh" ]; then CXXI_DIR="$(cd "$d" && pwd)"; break; fi
+    done
+fi
+if [ ! -f "$CXXI_DIR/env.sh" ]; then
+    echo "FATAL: cannot find env.sh; set CXXI_DIR=/path/to/clementina" >&2
+    exit 1
+fi
 # shellcheck source=env.sh
-source "$HERE/env.sh"
+source "$CXXI_DIR/env.sh"
 cxxi_pick_data
 
 LABEL="${1:-}"; IC="${2:-}"; SKETCH="${3:-}"
@@ -56,7 +71,7 @@ OUTDIR="$RUNROOT/runs/$LABEL"
 
 echo "=== $LABEL  job ${SLURM_JOB_ID:-?} on $(hostname)  $(date -u '+%F %T UTC')  HEAD $(git rev-parse --short HEAD)"
 echo "python $PY   outdir $OUTDIR"
-xpu-smi discovery 2>&1 | head -20 || true
+command -v xpu-smi >/dev/null 2>&1 && xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not on this node"
 echo
 
 # A JAX that cannot see the GPU falls back to the CPU silently and the run then
