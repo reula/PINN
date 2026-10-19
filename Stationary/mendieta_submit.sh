@@ -142,6 +142,19 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_ssb]:-}" ] && ! squeue -h -u "$USER" -n 
           sbatch --parsable -J check_rot --dependency=afterany:${JID[rot_ssb]} \
           mendieta_check.sbatch runs/rot_dsg runs/rot_ssb) (after rot_ssb)"
 fi
+# round 14 (2026-10-19): more DSGNAR.  rot_dsg2 (priority -- the physics run): the off-axis 3-D run
+# continued from rot_ssb (2.36e-2, error the size of the quadrupole) with 10 cycles and the sketch at
+# 0.9 d (2100 of 2347; rot_dsg's 2000 collapsed its trust region after cycle 2).  wf_dsg2: the
+# workflow's DSGNAR continued (10 more cycles) from wf_dsg (8.6e-5), where SSBroyden took no first step.
+submit rot_dsg2             rot_ssb $DSG --dsgnar-sketch 2100 --dsgnar-stage2-ratio 0.075 $ROT $RHO4 $PP $COM \
+                              --init-from runs/rot_ssb/params.pkl --dsgnar-cycles 10 --dsgnar-cycle-steps 60
+submit wf_dsg2              wf_dsg $DSG --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 $RHO4 $PP $COM \
+                              --init-from runs/wf_dsg/params.pkl --dsgnar-cycles 10 --dsgnar-cycle-steps 60
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_dsg2]:-}" ] && ! squeue -h -u "$USER" -n check_rot2 -o %i | grep -q .; then
+    echo "  submit   check_rot2 -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_rot2 --dependency=afterany:${JID[rot_dsg2]} \
+          mendieta_check.sbatch runs/rot_dsg2) (after rot_dsg2)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
