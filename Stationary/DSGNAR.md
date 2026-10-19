@@ -872,7 +872,12 @@ same objective (`wf_ssbm` 1.1e-10) -- the cost of the general ansatz, as for the
 
 Round 16 control (`ctl_hyb_dsg`: the 3-D hybrid, ON-axis data, DSGNAR): 0.99 -> 3.25e-2 -> 2.30e-2,
 then cycle 3 accepted 0 of 15 -- the same DSGNAR stall as the rotated `rot_dsg`, so that stall was
-DSGNAR, not the rotation.
+DSGNAR, not the rotation.  Its grade at that point is the stuck rotated run's (rms |dlambda| 1.26e-2, |dh| 6.8e-2).
+
+Round 19 (`rot_mlpc_*`, mlp with compat on): Adam 44.7 -> merged SSBroyden **2.7e-3** in 10000
+iterations (12 min), still falling at the cap; errors still the size of the perturbation (rms
+|dlambda| 1.04e-2, |dh| 5.6e-2).  Much slower than the hybrid.  Round 20: the control polished with
+2 x 10000 merged SSBroyden (`ctl_hyb_ssbm`, `ctl_hyb_ssbm2`) for its floor, and `rot_mlpc_ssb2`.
 
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed

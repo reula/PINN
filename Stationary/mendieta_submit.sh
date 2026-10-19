@@ -216,6 +216,25 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_mlpc_ssb]:-}" ] && ! squeue -h -u "$USER
           sbatch --parsable -J check_rotmlpc --dependency=afterany:${JID[rot_mlpc_ssb]} \
           mendieta_check.sbatch runs/rot_mlpc_adam runs/rot_mlpc_ssb) (after rot_mlpc_ssb)"
 fi
+# round 20 (2026-10-19): the control polished like the rotated run -- ctl_hyb_dsg (on-axis, 3-D hybrid,
+# DSGNAR-stalled at 2.3e-2) + 2 x 10000 merged SSBroyden, to compare its floor with rot_ssbm2's 1.6e-6:
+# equal floors = the rotation costs nothing.  And rot_mlpc continued (2.7e-3, still falling).
+submit ctl_hyb_ssbm         ctl_hyb_dsg --steps 0 --init-from runs/ctl_hyb_dsg/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $HYB $RHO4 $PP $COM
+submit ctl_hyb_ssbm2        ctl_hyb_ssbm --steps 0 --init-from runs/ctl_hyb_ssbm/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $HYB $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[ctl_hyb_ssbm2]:-}" ] && ! squeue -h -u "$USER" -n check_ctl2 -o %i | grep -q .; then
+    echo "  submit   check_ctl2 -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_ctl2 --dependency=afterany:${JID[ctl_hyb_ssbm2]} \
+          mendieta_check.sbatch runs/ctl_hyb_ssbm runs/ctl_hyb_ssbm2) (after ctl_hyb_ssbm2)"
+fi
+submit rot_mlpc_ssb2        rot_mlpc_ssb --steps 0 --init-from runs/rot_mlpc_ssb/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $ROTMC $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_mlpc_ssb2]:-}" ] && ! squeue -h -u "$USER" -n check_rotmlpc2 -o %i | grep -q .; then
+    echo "  submit   check_rotmlpc2 -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_rotmlpc2 --dependency=afterany:${JID[rot_mlpc_ssb2]} \
+          mendieta_check.sbatch runs/rot_mlpc_ssb2) (after rot_mlpc_ssb2)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
