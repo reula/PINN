@@ -789,6 +789,21 @@ Round 10 (2026-10-18): the recommended workflow from scratch (README 6.1; `wf_ad
 `wf_ssb` -> fresh-sample check).  The best run so far, `m8_ssb_com`, passes that check: loss on two
 fresh samples 3.65e-11 and 3.88e-11 against 3.75e-11 in training (ratio 1.01).
 
+Round 10 results (2026-10-19), from scratch with the recipe as written:
+- `wf_adam` (5000 Adam steps): loss 1.74 under the final objective.
+- `wf_dsg` (5 cycles, 216 iterations, 66 min): **8.64e-5**; cycles 1-3 at budget, 4 and 5 stopped on
+  the trust radius (9/21 and 2/15 steps accepted).  Fresh-sample check: 5 samples 7.7e-5 .. 8.7e-5,
+  mean/training **0.95** -- sample-stable.
+- `wf_ssb` (Wolfe, resampling every 500): **no step at all** -- 8 blocks of one iteration, each a
+  failed line search (status 5 = 2 + 3: the strong-Wolfe search hit its iteration limit in both
+  tries), stop = stall after 10 min, loss 8.08e-5 on its own sample, parameters unchanged (the check
+  gives the identical fresh losses).  Same failure as `m9_ssbw_com`; the one SSBroyden run that moved
+  from a COM start (`m8_ssb_com`) used Armijo and no resampling.  Round 13 separates the two:
+  `wf_ssba` (Armijo, resampling 500) and `wf_ssba_nors` (Armijo, none).
+- So the from-scratch budget ends 6 orders above the best run (3.75e-11), which got there through
+  many more DSGNAR iterations over rounds 3-7: 5 cycles x 60 are not enough, and the recipe's step 4
+  as written does nothing at this point.
+
 Round 11 (2026-10-18): off-axis data with the 3-D network -- S2 = -1/12 about e = (1,0,1)/sqrt 2
 (`--lam-bc-axis 1,0,1`, Config.lam_bc_axis; tests/test_lam_bc_axis.py), `--arch hybrid --width 20
 --depth 6` (2347 parameters), the same workflow (`rot_adam` -> `rot_dsg` -> `rot_ssb`), graded against the

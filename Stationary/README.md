@@ -226,8 +226,11 @@ What the Stationary experiments of 2026-10 converged on (REPORT_PIN_COM.md, REPO
    --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 --dsgnar-cycles 5 --dsgnar-cycle-steps 60` -- each
    cycle a fresh sample and a fresh trust region.  The sketch should be ~0.9 of the parameter count.
 4. **SSBroyden to polish**: `--qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000
-   --resample-every 500 --plateau-patience 8` (jobs of <= 10000 iterations: its host memory grows per
-   block).
+   --resample-every 500 --plateau-patience 8 --qn-reuse-objective` (`--qn-reuse-objective`: without it
+   the host memory grows ~3.4 GB per block, REPORT_OPTIMISERS.md).  **Caveat (2026-10-19):** from the
+   COM-gauge DSGNAR result the Wolfe line search failed on every block (`wf_ssb`, also `m9_ssbw_com`);
+   the run that worked from a COM start used the default Armijo search (`m8_ssb_com`).  Being tested
+   (round 13, DSGNAR.md); until then prefer Armijo here.
 5. **Check the result is sample-stable**: `scripts/fresh_sample_loss.py runs/<run>` -- the loss on 5
    fresh samples against the training loss (a ratio ~1 is stable), and the centre-of-mass flux.
 6. **Grade** against a nonlinear spectral reference when one exists (`stationary.specref`,

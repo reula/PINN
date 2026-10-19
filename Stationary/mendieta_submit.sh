@@ -168,5 +168,14 @@ if [ "$DRY" != "1" ] && [ -n "${JID[wf_ssb]:-}" ] && ! squeue -h -u "$USER" -n c
     echo "  submit   check -> job $(sbatch --parsable --dependency=afterany:${JID[wf_ssb]} \
           mendieta_check.sbatch runs/wf_dsg runs/wf_ssb) (after wf_ssb)"
 fi
+# round 13 (2026-10-19): wf_ssb (Wolfe) stalled at its start, 8 blocks of one failed line search
+# (status 5 = maxiter in both Wolfe tries) -- as m9_ssbw_com did; the one SSBroyden run that moved
+# from a COM start, m8_ssb_com, used Armijo and no resampling.  Both arms Armijo, with and without
+# the resampling of step 4; --qn-reuse-objective (with the cache clearing on a new objective)
+submit wf_ssba              wf_dsg --steps 0 --init-from runs/wf_dsg/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 \
+                              --qn-reuse-objective $BEST
+submit wf_ssba_nors         wf_dsg --steps 0 --init-from runs/wf_dsg/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 0 --qn-reuse-objective $BEST
 }
 squeue -u "$USER" -o "%.10i %.24j %.8T %.10M %R" 2>/dev/null
