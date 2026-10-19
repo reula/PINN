@@ -159,7 +159,7 @@ fi
 # wf_dsg, where the legacy one took no step (rounds 10, 13); on the Mac it moves with both line
 # searches.  Recipe step 4 as written, the Armijo default; compare with wf_dsg2 (more DSGNAR, same start)
 submit wf_ssbm              wf_dsg --steps 0 --init-from runs/wf_dsg/params.pkl --qn-method ssbroyden \
-                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $BEST
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-patience 8 $RHO4 $PP $COM
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
