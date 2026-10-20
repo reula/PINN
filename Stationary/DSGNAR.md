@@ -943,7 +943,26 @@ on-axis control uses the same one and keeps improving).  Two measurements:
   1.36e-6 -> **2.60e-7** (fresh/training 1.01); rms dlambda 1.72e-5 -> 1.36e-5, rms dh 1.17e-3 ->
   **7.2e-4** (rho 1-3: 2.4e-3 -> 1.5e-3; rho 30-100 dlambda 2.1e-7 -> 2.7e-8).  The rotated run is now
   at the on-axis control's level (2.58e-7, dh 5.5e-4 at 16384 points).  So the rotated floor was (at
-  least partly) the interior sampling.  Round 25: 4x again (`rot_coll256k`, 262144 points).
+  least partly) the interior sampling.  Round 25: 4x again (`rot_coll256k`, 262144 points).  Its first try ran out of GPU memory (17.76 GiB asked; JAX's default fraction 0.75 leaves
+  17.7 of an A30's 24); resubmitted with `MEMFRAC=0.95` (mendieta_train.sbatch).
+
+**Round 24 result: PINN training from the regression fit** (`rot_from_fit`, merged SSBroyden,
+16384 points, 10000 iterations, 14 min): loss 3.4e-2 -> **2.0e-7** (fresh/training 1.05), and the
+error grows on the way, from the fit's 7.5e-6 to **rms dh 3.2e-4** (rho 1-3: 6.7e-4), rms dlambda
+6.5e-6:
+
+| | loss | rms dh | dh, rho 1-3 | rms dlambda |
+|---|---|---|---|---|
+| fit to the reference (start) | 3.4e-2 | 7.5e-6 | 1.4e-5 | 3.3e-6 |
+| `rot_from_fit` | 2.0e-7 | **3.2e-4** | 6.7e-4 | **6.5e-6** |
+| `rot_ssbm3` (from scratch, 16384 points) | 1.3e-6 | 1.17e-3 | 2.4e-3 | 1.7e-5 |
+| `rot_coll64k` (65536 points) | 2.6e-7 | 7.2e-4 | 1.5e-3 | 1.4e-5 |
+
+Both readings hold in part.  The PINN loss does pull the field away from the reference (40x in h
+while the loss falls five orders): its minimum within this network on 16384 points is not at the
+reference, consistent with more points helping.  But it stops 3.6x better in h than the from-scratch
+run on the same points, and below the 4x-points run: the from-scratch optimisation also ends in a
+worse basin.  The best rotated result so far.
 
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
