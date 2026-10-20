@@ -416,9 +416,19 @@ final-settings run and the t <= 4 / window-15 plans; the 1D reference will cover
 | run | job | settings |
 |---|---|---|
 | `w8_qn` | 1181117 | final settings of the 10-19 Oct summary (48k core points, `--core_radius 0.5`), SSBroyden 24k its per window, 1 A30 |
-| `w8_gn` | 1181118 | same sampling, DSGNAR only (`--EPOCHS_QN 0`): rows Jacobian, s = n/3, `--dsgnar_paper --no-dsgnar_reject_overshoot` (accept any step that lowers the loss), 4200 s per window to match `w8_qn` |
+| `w8_gn` | 1181118 -> cancelled, rerun with fixed weights (below) | same sampling, DSGNAR only (`--EPOCHS_QN 0`): rows Jacobian, s = n/3, `--dsgnar_paper --no-dsgnar_reject_overshoot` (accept any step that lowers the loss), 4200 s per window to match `w8_qn` |
 | `w16_drift_initc` | see below | `single_a` settings + `--sampling_centers initial`, 16 windows (t <= 4) |
 | `w16_drift_symm` | see below | `single_a` settings + `--symmetric_focus`, 16 windows (t <= 4) |
+
+**`w8_gn` first attempt (job 1181118, cancelled after 41 iterations).** Rows-mode DSGNAR ran at ~15 s per
+iteration on the A30 (9.7 GB, s = 3100, 128k interior points; the column method took ~125 s at s = 3100 with
+88k points), all steps accepted -- but the `--dsgnar_paper` per-condition reweighting had collapsed: weights
+1e-11..7, the reweighted loss 1e-13 while the actual loss stayed at 1.38e-2. Cause: the positivity
+condition is identically zero while chi, alpha > 0, so (mean/(0 + eps))^0.05 raised its weight every
+iteration and the normalisation drove every real condition to zero. Fixed in `dsgnar.py` (conditions with
+zero loss keep their weight and are left out of the update and normalisation; verified locally: weights stay
+in 0.3-1.8, loss halves in 15 steps). The rerun uses fixed weights (`--dsgnar_reweight 0`), as the `ldc`
+notebook does.
 
 Both comparison runs use ONE optimizer each (Adam is off by default; `w8_gn` has `--EPOCHS_QN 0`).
 The drift tests were lengthened to 16 windows (jobs 1181119/20 cancelled before starting): at t = 2

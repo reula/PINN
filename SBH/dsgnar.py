@@ -888,8 +888,17 @@ def dsgnar_phase(objective, flat0, cfg,
         if reweight:
             r_np = np.asarray(residual, dtype=np.float64)
             ells = np.array([float(np.sum(c * c)) for c in np.split(r_np, np.cumsum(sizes)[:-1])])
-            w_hat = cond_w * (np.mean(ells) / (ells + 1.0e-8)) ** alpha_w
-            cond_w = w_hat / np.mean(w_hat)
+            # SBH fix (2026-10-20): a condition whose residual is identically zero (the positivity
+            # penalty while chi, alpha > 0) must not take part. Otherwise (mean/(0+eps))^alpha
+            # makes its weight grow every iteration and the normalisation drives every REAL
+            # condition's weight to zero (w8_gn, job 1181118: weights 1e-11..7 after 40
+            # iterations, the reweighted loss 1e-13 while the actual loss did not move).
+            live = ells > 0.0
+            if live.sum() >= 2:
+                w_hat = cond_w.copy()
+                w_hat[live] = cond_w[live] * (np.mean(ells[live]) / (ells[live] + 1.0e-8)) ** alpha_w
+                w_hat[live] = w_hat[live] / np.mean(w_hat[live]) * np.mean(cond_w[live])
+                cond_w = w_hat
             rs = rows_of(cond_w)
             loss = float(loss_s(flat, rs))            # the objective just changed
             loss_base = float(loss_s(flat, ones_rs))
