@@ -193,6 +193,23 @@ beta. One run per setting (one seed each): consistent over t >= 2.75 but not rep
 remedy for the binary runs is in how the sampling follows the punctures (e.g. drawing the clouds
 symmetrically about each tracked centre).
 
+**Figures and the mass function (2026-10-20; `plots/2026-10-20/`, `tools/plot_report_figures.py`).**
+`loss_history.png` (training loss window by window), `errors.png` (held-out loss of the window-15
+branches; rms Theta and |Z^i| on the x-axis cut), `mass_function.png`. The mass function is new:
+for one non-spinning puncture the spacetime is Schwarzschild, so the Misner-Sharp mass
+m = (R/2)[1 - (d_x R)^2/gamma_xx + R^2 (K_yy/gamma_yy)^2], R = x sqrt(gamma_yy), on the x-axis through
+the puncture must equal M = 0.5 at every radius, time and slicing (`tools/mass_function.py`;
+verified: 4e-15 on the exact initial data). Unlike the loss, m/M - 1 is a coordinate-independent
+error. Findings:
+
+* max |m/M - 1| over r in [0.5, 10] grows in all three runs alike up to t = 4 (to 3-7 %), so the
+  growth is not caused by the drift or the tracking; in `single_a` it keeps growing, roughly
+  exponentially, to **35 % at t = 10**, with the largest error between r ~ 0.3 and 2 (the strong-field
+  region around the horizon) and a clear +x/-x asymmetry.
+* The training loss does not show it: the logged loss DEcreases after t ~ 2.5, from 1e-6 to 2e-7.
+* |Z^i| on the cut grows to 3e-2 in `single_a`; with a fixed centre it is not smaller (1.6e-2 at
+  t = 4 against 7e-3 for tracking only), so the drift and the constraint growth are separate issues.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
@@ -385,3 +402,5 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/test_scale_invariance.py`: the loss-scale test of section 5.
 * `tools/eval_heldout.py`: held-out grading of finished runs (identical fresh samples per window).
 * `tools/puncture_probe.py RUN... -- <physics flags>`: shift at the origin and fine-grid chi minimum per saved window.
+* `tools/mass_function.py RUN --out X.npz -- <physics flags>`: Misner-Sharp mass, Theta, |Z^i| along the x-axis per window.
+* `tools/plot_report_figures.py DATA OUT`: the figures in `plots/2026-10-20/`.
