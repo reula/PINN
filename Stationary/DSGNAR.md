@@ -911,6 +911,22 @@ loss of 1.2e-6; the rest is interior: Ricci 5.7e-7, gauge 3.9e-7, lambda 1.3e-7)
 sampling is ruled out**.  Left: the interior collocation (density near the inner sphere), the
 centre-of-mass condition, the network's capacity for the rotated angular structure.
 
+Round 23 (2026-10-20).  The centre-of-mass condition is left as it is (no sign of an error in it; the
+on-axis control uses the same one and keeps improving).  Two measurements:
+
+* **The reference under the run's own objective** (`scripts/fit_reference.py`, part (a)): the fine
+  reference rotated onto (1,0,1)/sqrt 2 and evaluated with `rot_ssbm3`'s training loss on fresh
+  training samples gives **2.83e-11** (Ricci 1.4e-13, gauge 2.2e-13, lambda 1.2e-13, pins <=
+  1.5e-13, the rest below) -- 50,000x below the network's 1.38e-6.  So the objective's minimum is at
+  the reference: the floor is not the objective, the network does not find (or cannot represent)
+  that minimum.
+* **The representation ceiling** (part (b)): the same 3-D hybrid fitted by regression to the rotated
+  reference's h and lambda (16384 training-distribution points, merged SSBroyden), warm-started from
+  the PINN run (`fit_warm`, 5000 iterations) and from scratch (`fit_scratch`, 10000), then graded and
+  its PINN loss evaluated.  Pending.  (A 512-point smoke fit halved the h error to 6.7e-4 while its
+  PINN loss rose to 5.5e-2: too few points constrain values, not derivatives.)
+* `rot_coll64k`: `rot_ssbm3` continued with 4x the interior points (65536).  Pending.
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
