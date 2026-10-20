@@ -475,6 +475,24 @@ With the safeguards DSGNAR accepts every step and uses the whole budget (~272 it
 own-sample and held-out losses, so not a sampling artefact. Held-out and mass grading follow when the
 runs finish.
 
+**Against the 1D reference (2026-10-20; `w8_qn` 5 windows, `w8_gn_scan` 3, `w8_gn` 8 at the time;
+`reference_1d/compare_pinn.py`).** alpha at r = 0.03 (PINN / reference) and the L2 error of alpha in the
+core [0.05, 0.5) and mid [0.5, 5) bands:
+
+| run | t | alpha(0.03) | error | alpha core | alpha mid |
+|---|---|---|---|---|---|
+| `w8_qn` (SSBroyden, final settings) | 0.25 | 0.130 / 0.108 | **0.022** | 1.0e-3 | 3.2e-5 |
+| | 1.0 | 0.180 / 0.147 | **0.032** | 3.1e-3 | 8.5e-5 |
+| `w8_gn_scan` (DSGNAR, safeguards) | 0.25 | 0.623 / 0.108 | 0.52 | 0.27 | 9.3e-2 |
+| | 0.75 | 0.604 / 0.125 | 0.48 | 0.23 | 0.15 |
+| `w8_gn` (DSGNAR, paper step rule) | 0.25 | 0.933 / 0.108 | 0.82 | 0.56 | 0.12 |
+| | 1.0 | 0.480 / 0.147 | 0.33 | 0.14 | 0.38 |
+
+SSBroyden with the final settings reproduces the 10-19 Oct summary's "+ both" column (0.019 / 0.024 at
+t = 0.25 / 1) and improves 5x on the first baseline (`single_a`: 0.108 / 0.153). Pure DSGNAR is ~250x
+worse in the core and ~3000x at mid radii and does not capture the collapsed lapse (0.6 instead of
+0.11 at the puncture). **For this problem DSGNAR, in either form, is not competitive with SSBroyden.**
+
 Both comparison runs use ONE optimizer each (Adam is off by default; `w8_gn` has `--EPOCHS_QN 0`).
 The drift tests were lengthened to 16 windows (jobs 1181119/20 cancelled before starting): at t = 2
 the push at the origin separates tracking from a fixed centre by 4x, at t = 4 by 10x. They keep
