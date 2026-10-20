@@ -119,7 +119,15 @@ REFERENCE = pathlib.Path(ARGS.reference or (REPO / "ldc" / "reference_gen" / "ld
 import numpy as np                                            # noqa: E402
 import jax                                                     # noqa: E402
 import jax.numpy as jnp                                        # noqa: E402
-import equinox as eqx                                          # noqa: E402
+
+try:
+    import equinox as eqx                                      # noqa: E402
+    import jaxtyping                                           # noqa: E402,F401  (pinn's annotations)
+except ModuleNotFoundError as exc:                             # pragma: no cover
+    sys.exit(f"[run ] FATAL: {exc.name!r} is missing from {sys.executable}.\n"
+             f"        The vendored paper package needs equinox and jaxtyping.  Install with:\n"
+             f"        uv pip install --python {sys.executable} equinox jaxtyping")
+
 import matplotlib.pyplot as plt                                # noqa: E402
 import pinn                                                    # noqa: E402
 from pinn.optimiser import Optimiser                           # noqa: E402  paper's sketched TR-LM

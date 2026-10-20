@@ -86,10 +86,13 @@ PY="$CXXI_VENV/bin/python"
 "$PY" -V
 
 say "packages: jax[oneapi]==${JAX_PIN} + the project's dependencies"
+# equinox/jaxtyping are what the vendored dsgnar_pinn package (used by the LDC
+# notebook) imports; wave_pinn itself does not need them.
 # jax first, so pip/uv resolves jaxlib and the Intel PJRT/plugin to the same
 # version instead of pulling a CUDA-less jaxlib and then fighting about it.
 uv pip install --python "$PY" "jax[oneapi]==${JAX_PIN}" || die "installing jax[oneapi] failed"
 uv pip install --python "$PY" "numpy" "scipy" "optax" "matplotlib" "pytest" "tqdm" \
+    "equinox" "jaxtyping" \
     || die "installing the remaining dependencies failed"
 
 say "verify"
