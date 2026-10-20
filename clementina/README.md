@@ -85,6 +85,7 @@ Three consequences that decide everything below:
 | `02_smoke.sbatch` | step 3 wrapper, inside a GPU allocation | `testing`, 1 GPU, 20 min |
 | `03_tiny_run.sbatch` | step 4 — the real `wave_pinn` CLI, tiny, on one Intel GPU | `gpunode`, 40 min |
 | `04_prod_run.sbatch` | step 5 — the Mendieta production recipe, one GPU | `gpunode`, 8 h (override) |
+| `04b_prod_run_cpu.sbatch` | the same production recipe on 64 CPU cores, for when the bench says CPU wins | `cpunode`, 8 h (override) |
 | `05_cpu_tiny.sbatch` | step 4b — same tiny run on CPU, for correctness + performance baseline | `cpunode`, 40 min |
 
 All of them are idempotent enough to re-run: an existing
