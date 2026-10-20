@@ -344,6 +344,42 @@ the probe jobs below. Taylor mode makes the JVPs cheaper too.
     # production-size probe: window 0 only, 3 DSGNAR iterations, no QN
     sbatch -t 06:00:00 --export=ALL,PRESET=single,OUTDIR=dsg_probe_s1024,EXTRA_ARGS="--N_window 1 --EPOCHS_QN 0 --dsgnar_steps 3 --dsgnar_sketch 1024" jobs/mendieta/bh.sbatch
 
+### 4.1 Our DSGNAR against the paper's own code (`ldc/ldc.ipynb`, 2026-10-20)
+
+`ldc/ldc.ipynb` (lid-driven cavity, Re = 100) drives the AUTHORS' implementation, vendored in
+`Evolution_try/vendor/dsgnar_pinn` (`pinn.optimiser.Optimiser`), step by step as its `trainer64`
+does; our `dsgnar.py` is Stationary's re-implementation (from `Evolution_try/wave_pinn`). The
+notebooks have no saved outputs, so this compares the methods, not results.
+
+| aspect | paper code (ldc) | our port (SBH) |
+|---|---|---|
+| sketched Jacobian | dense rows per macro-batch: `jacrev` vmapped over 4-point sub-batches, then DCT (parameter sketch) and CountSketch, in a `lax.scan` | s forward tangents (JVPs) through the whole residual, CountSketch fused (`sketched_jvp_columns`) |
+| its cost (CPU, 6x40, 64 interior points, `tools/bench_jacobian_sketch.py`) | 200 ms at s = 1024, 534 ms at s = 3072 | 530 / 1343 ms: **2.5-2.6x slower** (same J Omega to 1.5e-15) |
+| sketch | s = d/3 (a30 preset: 1665 for 5k params; paper preset 4000 for 11k) | s = 1024 = d/9 in the window-15 branch |
+| role | primary optimiser from the initial network, 200 steps, then SSBroyden polish; graded by rel. L2 against a reference | 12 steps after 24 QN restarts in every window |
+| step, radius | evaluated once; accept iff rho > 0 -- the code does NOT reject overshoots (it only expands the radius on a rejected overshoot), although the paper's text does; radius -> PCHIP radius | default: line scan, calibration, grow-only radius with floor; `--dsgnar_paper` follows the TEXT (rejects overshoots) |
+| target ratio | 0.075 fixed in the notebook; `trainer64` switches to 0.5 after lambda bottoms out (grace 80) | 0.15 -> 0.5 (paper preset 0.075 -> 0.5) |
+| weights | fixed (pde 1e-2, bc 1) in the notebook; `trainer64` reweights with alpha = 0.05 | the loss's lambda-weights; `--dsgnar_reweight` |
+| precision, network | float32 pre-pass, then float64; SIREN | float64 only; tanh MLP |
+
+So the window-15 branch was not the paper's use of DSGNAR (a third of its sketch, a tenth of its
+iterations, a slower Jacobian): it showed that a short DSGNAR phase does not help QN, not that
+DSGNAR cannot be a better primary optimiser here. The naive "rows" variant (`jacrev` of the whole
+block at once) is 3x SLOWER than ours: the speed comes from vmapping `jacrev` over small
+sub-batches. The 2.5x is a lower bound (the bench applies the parameter sketch as a dense matrix;
+the paper's DCT is cheaper and nearly independent of s); not measured on the GPU.
+
+**Loss plots by optimiser (2026-10-20).** `loss_window{w}.png` now shades each stretch of the
+history by the optimizer that produced it (Adam, QN, DSGNAR) and names it at the top, instead of
+one Adam -> BFGS line.
+
+**Executive summary** for the PINN team, in the format of J. Masso's 10-19 Oct summary
+(`originals/BH_PINN_executive_summary.pdf`): `docs/exec_2026-10-20/SBH_optimisers_drift_mass_2026-10-20.pdf`
+(source `summary.html`, figures from `tools/plot_exec_summary.py`). Note from that summary: our runs
+used the code's defaults, i.e. its "first baseline" (no core points, 12k QN steps per window); its
+final settings (48k core points, 24k QN steps) gave +7-8 % mass error and 0.023 drift at t = 10
+where `single_a` has 35 % and 0.127.
+
 ## 5. Crunch update and QN scale invariance (2026-10-19)
 
 **The new Crunch.** `Crunch/Optimizers/minimize_backtracking.py` is now the collaborators' merged
@@ -404,3 +440,5 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/puncture_probe.py RUN... -- <physics flags>`: shift at the origin and fine-grid chi minimum per saved window.
 * `tools/mass_function.py RUN --out X.npz -- <physics flags>`: Misner-Sharp mass, Theta, |Z^i| along the x-axis per window.
 * `tools/plot_report_figures.py DATA OUT`: the figures in `plots/2026-10-20/`.
+* `tools/plot_exec_summary.py DATA OUT`: the figures of the executive summary.
+* `tools/bench_jacobian_sketch.py [--s 1024]`: rows (paper) vs columns (ours) for DSGNAR's sketched Jacobian.

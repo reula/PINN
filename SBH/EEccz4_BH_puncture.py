@@ -5608,12 +5608,39 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
     loss_history   = []
     _csv_written   = [False]
 
+    _OPT_STYLE = {"adam": ("Adam", "#eda100"), "bfgs": ("QN (SSBroyden)", "#2a78d6"),
+                  "dsgnar": ("DSGNAR", "#1baf7a")}
+
+    def _shade_optimizer_spans(ax, label_top=True):
+        """Shade each contiguous stretch of loss_history by the optimizer that produced it
+        and name it at the top of the panel, so a loss curve shows which part belongs to
+        which optimizer (Adam, QN, DSGNAR -- in a DSGNAR run before or after the QN restarts)."""
+        spans, cur = [], None
+        for r in loss_history:
+            o = r["optimizer"]
+            if cur is None or cur[0] != o:
+                cur = [o, r["step"], r["step"]]
+                spans.append(cur)
+            else:
+                cur[2] = r["step"]
+        # step 0 is logged before any optimizer runs (named "bfgs" when there is no Adam):
+        # a single-point leading span is the starting point, not an optimizer stretch
+        if len(spans) > 1 and spans[0][1] == spans[0][2]:
+            spans[1][1] = spans[0][1]
+            spans.pop(0)
+        for k, (o, a, b) in enumerate(spans):
+            if k > 0:
+                a = spans[k - 1][2]            # starts where the previous optimizer's last step ended
+            name, col = _OPT_STYLE.get(o, (o, "#888888"))
+            ax.axvspan(a, b, color=col, alpha=0.10, lw=0)
+            if label_top and len(spans) > 1:
+                ax.text(0.5 * (a + b), 0.97, name, transform=ax.get_xaxis_transform(),
+                        ha="center", va="top", fontsize=8, color="#444444")
+
     def save_loss_plot():
         if len(loss_history) < 2:
             return
         steps  = [r["step"] for r in loss_history]
-        adam_steps = [r["step"] for r in loss_history if r["optimizer"] == "adam"]
-        adam_split = max(adam_steps) if adam_steps else None
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 5))
         fig.suptitle(f"Window {window_idx}", fontsize=13)
@@ -5636,8 +5663,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
                 ax1.semilogy(steps, vals, label=label,
                              linewidth=1.5 if fk == "loss_total" else 1.0,
                              linestyle="-" if fk == "loss_total" else "--", color=color)
-        if adam_split is not None:
-            ax1.axvline(adam_split, color="gray", linestyle=":", linewidth=1, label="Adam→BFGS")
+        _shade_optimizer_spans(ax1)
         ax1.set_xlabel("Step"); ax1.set_ylabel("Loss")
         ax1.set_title("Major components"); ax1.legend(fontsize=8, ncol=2)
         ax1.grid(True, which="both", alpha=0.3)
@@ -5676,8 +5702,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
             ax2b.set_ylabel(r"Gradient norm", color="dimgray", fontsize=9)
             ax2b.tick_params(axis="y", labelcolor="dimgray")
             ax2b.legend(loc="lower right", fontsize=7, ncol=2)
-        if adam_split is not None:
-            ax2.axvline(adam_split, color="gray", linestyle=":", linewidth=1)
+        _shade_optimizer_spans(ax2, label_top=False)
         ax2.set_xlabel("Step"); ax2.set_ylabel("Loss")
         ax2.set_title("IC sub-losses & gauge"); ax2.legend(fontsize=8, ncol=2)
         ax2.grid(True, which="both", alpha=0.3)

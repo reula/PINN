@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SBH Optimiser Summary</title>
+<style>
+  @page { size: A4; margin: 11mm 13mm; }
+  :root { --ink: #1f1f1e; --muted: #5d5c57; --rule: #d9d8d2; --box: #eef0f3; --head: #1d3a6e; }
+  body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink);
+         background: #ffffff; font-size: 8.9pt; line-height: 1.32; margin: 0; }
+  h1 { font-size: 17pt; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 8.4pt; margin-bottom: 7px; }
+  .bottom { background: var(--box); padding: 7px 10px; margin: 6px 0 8px; }
+  h2 { color: var(--head); font-size: 10.5pt; margin: 8px 0 2px; }
+  p { margin: 3px 0 5px; }
+  img { width: 100%; display: block; margin: 4px 0 1px; }
+  .cap { color: var(--muted); font-size: 7.8pt; margin-bottom: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.1pt; margin: 3px 0 5px; }
+  th { background: var(--box); text-align: left; font-weight: 600; padding: 3px 6px; }
+  td { border-bottom: 1px solid var(--rule); padding: 2px 6px; vertical-align: top; }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  .page2 { break-before: page; }
+  tr { break-inside: avoid; }
+  ul { margin: 3px 0 4px 16px; padding: 0; }
+  li { margin: 2px 0; }
+  code { font-family: Menlo, Consolas, monospace; font-size: 8pt; }
+</style>
+</head>
+<body>
+
+<h1>Black-hole puncture CCZ4 PINN — optimisers, drift and the mass invariant</h1>
+<div class="sub">Work of 17–20 October 2026 · Mendieta (CCAD-UNC, A30) · O. Reula, with Claude ·
+same code and problem as the 10–19 October summary (J. Massó): one 6×40 network per 0.25 M window, single puncture
+m = 0.5, t ≤ 10 M. <b>All runs below use the code's default settings, i.e. that summary's “first baseline”</b>
+(no core points, 12k QN steps per window), not its final settings.</div>
+
+<div class="bottom"><b>Bottom line.</b> On one A30 the merged code runs the production problem in 9.5 GB at
+~31 s per QN restart. At equal GPU time, plain QN with a fresh sample per restart beats both alternatives we tried:
+QN on one fixed sample (50–330× worse on new points) and QN followed by DSGNAR (2–7× worse). The puncture drifts
+because the sampling follows the tracked position (the push grows 10× with tracking, not with a fixed centre), and
+the Misner–Sharp mass error grows to 35 % by t = 10 M while the training loss falls.</div>
+
+<img src="overview.png" alt="Overview: optimisers at equal GPU time, mass error, spurious push">
+<div class="cap"><b>Overview.</b> (a) Branches forked after window 15, graded on identical fresh points per window
+(section 2). (b) Worst Misner–Sharp mass error at r ∈ [0.5, 10] (section 4). (c) |β| at the origin, the shift that moves a tracked puncture
+(section 4). In (b) and (c): baseline <code>single_a</code> to 10 M; the two drift diagnostics to 4 M.</div>
+
+<h2>1. One code, faster derivatives</h2>
+<p>The three received versions (bundle base, multi-GPU <code>_gpus</code>, Oct-16 optimiser update) were merged by a
+three-way merge over a reconstructed ancestor; with default flags the merged script reproduces the Oct-16 loss history
+<b>byte for byte</b>. The merged Crunch of 17 Oct is installed (bit-identical with its options off) and
+<code>scale_invariant</code> is now on by default: without it QN freezes at loss ~1e-11 (39 of 40 updates skipped
+when the loss is scaled by 1e-8). A batched second-order forward pass for the residual's derivatives
+(<code>--deriv_mode taylor</code>) agrees with autodiff to 1e-15 and is <b>1.75× faster</b> on the A30.
+The production size fits one A30: 9.5 of 24 GB, ~25 min per window.</p>
+
+<h2>2. Optimisers at equal GPU time (windows 16–25)</h2>
+<p>Three branches forked from the same window-15 network (same seeds), ~3 h 45 each, graded on fresh points
+identical for all (the logged loss is measured on each run's own samples and is 5–10× optimistic):</p>
+<table>
+<tr><th>branch</th><th>per window</th><th class="n">held-out loss / baseline</th><th>reading</th></tr>
+<tr><td>QN, resampled (baseline)</td><td>48 restarts × 250 its</td><td class="n">1</td><td>production setting</td></tr>
+<tr><td>QN, one fixed sample</td><td>same, no resampling</td><td class="n">50–330</td><td>overfits the sample; gauge rows 10⁴× worse</td></tr>
+<tr><td>QN → DSGNAR</td><td>24 restarts + 12 DSGNAR its, s = 1024</td><td class="n">2–7 (one window 0.7)</td><td>every DSGNAR step accepted, too few of them</td></tr>
+</table>
+<img src="loss_by_optimizer.png" alt="Training loss of the QN to DSGNAR branch coloured by optimiser">
+<div class="cap">Which part of the loss belongs to which optimiser. Each DSGNAR stretch starts on a fresh sample, ~10× above QN's
+last value on its own sample, and removes 30–50 % of it in its half of the window's time.</div>
+
+<h2 class="page2">3. DSGNAR here and in the paper's own code (<code>ldc/ldc.ipynb</code>)</h2>
+<p>The lid-driven-cavity notebook drives the authors' implementation (vendored in
+<code>Evolution_try/vendor/dsgnar_pinn</code>) step by step; ours is Stationary's re-implementation. Same algorithm,
+but these differences matter for comparing results:</p>
+<table>
+<tr><th>aspect</th><th>paper code (ldc)</th><th>our port (SBH)</th></tr>
+<tr><td>sketched Jacobian</td><td>dense rows per macro-batch (<code>jacrev</code> vmapped over 4-point sub-batches), DCT, CountSketch, in a <code>lax.scan</code></td><td>s forward tangents (JVPs) through the whole residual, CountSketch fused</td></tr>
+<tr><td>its cost, measured (CPU, 6×40, 64 pts)</td><td>200 ms (s = 1024)</td><td>530 ms: <b>2.5–2.6× slower</b>, also at s = 3072</td></tr>
+<tr><td>sketch size</td><td>s = d/3 (a30 preset 1665 for 5k params; paper 4000 for 11k)</td><td>s = 1024 ≈ d/9 in the branch test</td></tr>
+<tr><td>role</td><td>primary optimiser from the initial network, 200 steps, then SSBroyden polish; graded by rel. L2 vs a reference</td><td>12 steps after 24 QN restarts, in every window</td></tr>
+<tr><td>step and radius</td><td>step evaluated once; accept iff ρ &gt; 0 (no overshoot rejection in the code); radius → PCHIP radius</td><td>default: line scan, calibration, grow-only radius with a floor; <code>--dsgnar_paper</code> follows the paper's text (rejects overshoots)</td></tr>
+<tr><td>target ratio</td><td>0.075 fixed in the notebook; the trainer switches to 0.5 after λ bottoms out</td><td>0.15 → 0.5 (paper preset 0.075 → 0.5)</td></tr>
+<tr><td>precision, weights, network</td><td>float32 pre-pass then float64; fixed weights (1e-2, 1); SIREN</td><td>float64 only; λ-weights of the loss, optional reweighting; tanh MLP</td></tr>
+</table>
+<p>So the branch test is not the paper's use of DSGNAR: a third of its sketch, a tenth of its iterations, and a slower Jacobian.
+It answers “does a short DSGNAR phase help QN?” (no), not “is DSGNAR a better primary optimiser here?”.</p>
+
+<h2>4. The puncture drifts through the sampling, and the mass invariant degrades</h2>
+<p>A single puncture should not move; in <code>single_a</code> the tracked position reaches (−0.121, 0.039) by t = 10 M. The shift at the
+origin, which drives the tracker, measures the push directly (a χ minimum cannot: χ ~ (2r/m)⁴ is flat to the network's error within r ≈ 0.05):</p>
+<table>
+<tr><th>run (t ≤ 4 M)</th><th class="n">βˣ(0), t = 2.75</th><th class="n">βˣ(0), t = 4</th><th>reading</th></tr>
+<tr><td>moving χ background + tracking (<code>single_a</code>)</td><td class="n">2.9e-2</td><td class="n">2.8e-2</td><td rowspan="2">background not needed for the drift</td></tr>
+<tr><td>tracking only (<code>--chi_bg_mode physical</code>)</td><td class="n">3.5e-3</td><td class="n">3.0e-2</td></tr>
+<tr><td>fixed centre, no tracking</td><td class="n">4.0e-3</td><td class="n">2.9e-3</td><td>10× smaller: tracking is the cause</td></tr>
+</table>
+<p>The likely loop: the focused point clouds follow the track, a small asymmetric β moves the track, the off-centre clouds teach a
+larger asymmetric β. One seed per setting. The Misner–Sharp mass (verified exact, 4e-15, on the initial data) grows alike in all three
+runs to t = 4 M and to 35 % by 10 M in <code>single_a</code>, mostly at r ≈ 0.3–2, while the logged loss falls from 1e-6 to 2e-7;
+the 10–19 Oct summary reports +7–8 % with its final settings, so most of our larger error is the first-baseline configuration.</p>
+<img src="mass_and_constraints.png" alt="Mass function profiles and momentum constraint">
+<div class="cap">(a) m(r)/M − 1 of <code>single_a</code>; below r ≈ 0.1 the curves are noise. (b) |Zⁱ| grows in all runs, with or without tracking:
+the drift and the constraint growth are separate problems.</div>
+
+<h2>Next steps</h2>
+<ul>
+<li><b>Rerun the baseline with the final settings</b> of the 10–19 Oct summary (48k core points, 24k QN steps) and judge every later test by the
+mass invariant, not the loss.</li>
+<li><b>DSGNAR the paper's way:</b> build its Jacobian by rows (≥ 2.5× cheaper here), s ≈ d/3, as the primary optimiser of a window, graded
+on held-out points and the mass.</li>
+<li><b>Sampling that follows a puncture without becoming lopsided:</b> first, tracking on with the clouds held at the origin; then clouds drawn
+symmetrically about each tracked centre, for the binary.</li>
+</ul>
+</body>
+</html>
