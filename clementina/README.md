@@ -29,9 +29,14 @@ Support is only through <https://tickets.clementinaxxi.org.ar> (same credentials
   breakdown says why (`batched JVPs 7.4 s` on GPU vs `2.6 s` on 64 CPU cores,
   plus ~29 s of per-step host-sync overhead).  At 512 points and 2201 parameters
   the problem is far too small to fill a GPU.
-* **next**: `bench.sh` via `06_bench_gpu.sbatch` + `07_bench_cpu.sbatch` decides
-  the queue for production — same DSGNAR at n_coll = 2201 and 16384, GPU vs CPU,
-  `ms/iter` in `/data/contrib/pci_143/pinn/bench_cxxi.csv`.
+* **GPU-hours only from here.** This allocation has few CPU hours: the one CPU
+  job (1548107, the correctness baseline) cost ~0.7 CPU-hours, and a full
+  production recipe on 64 cores would cost ~640 CPU-hours versus ~15-25
+  GPU-hours. All CPU scripts were removed so they cannot be submitted by
+  accident.
+* **next**: `06_bench_gpu.sbatch` measures DSGNAR at n_coll = 2201 and 16384 in
+  both FLAT and COMPOSITE tile modes, and projects the GPU cost of the full
+  10-window recipe from `ms/iter`.
 
 ## 0. What is different from Mendieta, in one table
 
@@ -64,9 +69,10 @@ Three consequences that decide everything below:
 3. **The plugin is experimental** (JAX upstream labels Intel GPU support
    "experimental"; see the [JAX installation docs](https://docs.jax.dev/en/latest/installation.html#intel-gpu)).
    The plan is therefore staged: probe → environment → smoke test → tiny physics
-   run → production, with a CPU baseline to fall back on. If the GPU path turns
-   out to be unusable for a particular recipe, the same tiny run on 64 Xeon cores
-   still produces correct results.
+   run → production. There is **no CPU fallback**, by choice: CPU hours are
+   scarce, and the numbers below show why (one production recipe ≈ 640
+   CPU-hours on 64 cores vs ≈ 15-25 GPU-hours on one card). The one CPU run that
+   was made — the 512-point correctness baseline — is kept as a reference point.
 
 ---
 
@@ -78,15 +84,12 @@ Three consequences that decide everything below:
 | `00_probe.sbatch` | step 1 — discovers drivers, modules, python, partitions, ZE mask, proxy | `testing`, 1 GPU, 10 min |
 | `01_setup_env.sh` | step 2 — builds `~/venvs/pinn-oneapi` with `jax[oneapi]==0.11.2` | **login node** |
 | `smoke.py` | step 4 — checks the JAX primitives the DSGNAR optimiser needs; names the one that fails | any node |
-| `bench.sh` | DSGNAR micro-benchmark, one grid run by both of the next two | any node |
-| `06_bench_gpu.sbatch` | the same DSGNAR steps on one Intel GPU (n_coll 2201 / 16384) | `gpunode`, 40 min |
-| `07_bench_cpu.sbatch` | the same on 64 CPU cores; the two CSVs are comparable | `cpunode`, 40 min |
+| `bench.sh` | DSGNAR micro-benchmark on one GPU, FLAT vs COMPOSITE tiles; projects the full-recipe GPU cost | any GPU node |
+| `06_bench_gpu.sbatch` | runs `bench.sh` in flat and composite modes (≈6 GPU-minutes total) | `gpunode`, 40 min |
 | `debug_oneapi.sbatch` | when a job prints nothing and runs to its limit: every diagnostic wrapped in `timeout`, so `rc=124` names the hanging step | `gpunode`, 20 min |
 | `02_smoke.sbatch` | step 3 wrapper, inside a GPU allocation | `testing`, 1 GPU, 20 min |
 | `03_tiny_run.sbatch` | step 4 — the real `wave_pinn` CLI, tiny, on one Intel GPU | `gpunode`, 40 min |
 | `04_prod_run.sbatch` | step 5 — the Mendieta production recipe, one GPU | `gpunode`, 8 h (override) |
-| `04b_prod_run_cpu.sbatch` | the same production recipe on 64 CPU cores, for when the bench says CPU wins | `cpunode`, 8 h (override) |
-| `05_cpu_tiny.sbatch` | step 4b — same tiny run on CPU, for correctness + performance baseline | `cpunode`, 40 min |
 
 All of them are idempotent enough to re-run: an existing
 `runs/<label>/report.md` makes the run scripts exit immediately.
@@ -327,36 +330,36 @@ Exit code tells you where you are:
 
 ---
 
-## 7. Step 4 — tiny end-to-end run (GPU), plus the CPU baseline
+## 7. Step 4 — tiny end-to-end run (GPU)
 
 ```bash
 cd ~/Julia/PINN/clementina
-sbatch 03_tiny_run.sbatch          # gpunode, one Intel GPU, ~40 min
-sbatch 05_cpu_tiny.sbatch          # cpunode, 64 cores, ~40 min
+sbatch 03_tiny_run.sbatch          # gpunode, one Intel GPU, ~1 min of work
 ```
 
-Both run the same command — `python -m wave_pinn.cli`, `T=2`, 512 collocation
-points, 10 DSGNAR iterations, sketch 256, float64 — with the same seed and only
-the platform different. Outputs:
+Already done, as job 1548106:
 
-`/data/contrib/pci_143/pinn/Evolution_try/runs/cxxi_tiny/` and
-`.../cxxi_tiny_cpu/`.
+* `pinned ZE_AFFINITY_MASK=0,1`, two `OneapiDevice`s, `backend gpu`;
+* the real CLI ran the DSGNAR path in float64 and finished in 43.8 s of run time
+  (1:05 of job time), exit 0;
+* one CPU run on 64 cores (job 1548107) gave **the same loss to every printed
+  digit** — `1.303484e-01` — which is the validation that the oneAPI port is
+  numerically faithful. Its 15.2 s is also the whole CPU baseline we are
+  spending: see §8 for why production cannot go that way.
 
-Measured for the 512-point case: both runs give **the same loss to all printed
-digits** (`1.303484e-01`), GPU 43.8 s vs CPU 15.2 s.  At that size the CPU wins;
-hence the bench in §7b before choosing a queue for production.
+## 7b. Step 4b — what will the production run cost in GPU hours?
 
-Check:
+```bash
+cd ~/Julia/PINN/clementina
+sbatch 06_bench_gpu.sbatch
+sleep 60; cat /data/contrib/pci_143/pinn/bench_gpu.csv
+```
 
-1. the GPU job's final loss and the CPU job's final loss agree to ~1e-8
-   (`report.md` / `report.json` in each directory); bigger differences are a
-   porting problem, not rounding;
-2. the wall time ratio — this is the number that decides whether the production
-   runs move to Clementina or stay on Mendieta;
-3. if the GPU job dies, the traceback names the failing op, and `smoke.py`
-   (step 3) narrows it down further.
-
----
+Four cases, ~6 GPU-minutes: n_coll = 2201 (production) and 16384
+(Stationary-sized) × FLAT (one 64 GB tile) and COMPOSITE (one 128 GB device).
+Each row reports `ms/iter` for DSGNAR and
+`projected_10window_h = ms/iter × 15000 / 3600` — the cost of the full
+`T=20`, 10-window, 5-round production recipe.
 
 ## 8. Step 5 — production
 
@@ -394,6 +397,20 @@ scancel <jobid>
 sacct -j <jobid> --format=JobID,JobName,State,Elapsed,MaxRSS,MaxVMSize
 scontrol show job <jobid> | grep -E 'ExitCode|RunTime|NodeList'
 ```
+
+### Spend GPU hours in stages
+
+1. **reduced-fidelity run of the same recipe** — 10 windows, but 100 DSGNAR steps
+   and one resample round instead of 300×5 (~1-1.5 GPU-h).  Enough to exercise
+   the whole pipeline, windows, snapshots and report; nothing scientific.
+2. **the full recipe** (≈15-25 GPU-h by the bench projection, under the 48 h
+   limit) once stage 1 is trusted.
+
+   ```bash
+   sbatch -t 04:00:00 04_prod_run.sbatch cxxi_stage1 soft_all 0 \
+       --set dsgnar_steps=100 --set resample_rounds=1
+   sbatch -t 24:00:00 04_prod_run.sbatch cxxi_full soft_all 0
+   ```
 
 Note on GPU visibility in production: the device nodes are not filtered per job.
 A `--gpus=1` allocation can still enumerate several Max 1550s, so the *default*

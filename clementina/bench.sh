@@ -1,25 +1,35 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# DSGNAR benchmark: is one Intel GPU or 64 CPU cores the right place for these
-# PINNs?  Called by 06_bench_gpu.sbatch and 07_bench_cpu.sbatch; both run the
-# same grid, so the two CSVs are directly comparable.
+# DSGNAR benchmark on ONE Intel GPU, FLAT vs COMPOSITE tiles.
 #
-#     bash bench.sh gpu|cpu
+#     bash bench.sh gpu [flat|composite]
 #
-# Env knobs: NCOLLS (default "2201 16384"), STEPS (20), SKETCH (300).
+# CPU runs are deliberately NOT offered: this allocation has few CPU hours, and a
+# production recipe would cost ~640 CPU-hours on 64 cores against ~20 GPU-hours.
+# Everything here is GPU-only.
 #
-# The tiny run (512 points) was 2.9x faster on the CPU: at that size the DSGNAR
-# step is dominated by per-step Python/host-sync overhead, which the GPU makes
-# worse, not better.  This bench asks whether the production batch (n_coll=2201)
-# and a Stationary-sized batch (16384) change that.
+# Env knobs: NCOLLS (default "2201 16384"), STEPS (15), SKETCH (300),
+#            STEP_TIMEOUT (900 s per case).
+#
+# The tiny run (512 points) was 2.9x faster on the CPU than on one tile: at that
+# size the DSGNAR step is dominated by per-step Python/host-sync overhead, which
+# a GPU makes worse.  This bench measures the production batch (2201) and a
+# Stationary-sized batch (16384) to project the real GPU cost, and checks whether
+# COMPOSITE (both tiles as one 128 GB device) beats FLAT.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
 TAG="${1:-gpu}"
+MODE="${2:-flat}"
 CXXI_DIR="${CXXI_DIR:-/home/oreula/Julia/PINN/clementina}"
 [ -f "$CXXI_DIR/env.sh" ] || { echo "FATAL: no $CXXI_DIR/env.sh" >&2; exit 1; }
 # shellcheck source=env.sh
 source "$CXXI_DIR/env.sh"
+
+if [ "$TAG" != "gpu" ]; then
+    echo "FATAL: this benchmark is GPU-only (CPU hours are scarce on this allocation)." >&2
+    exit 1
+fi
 
 # The login shell's Lmod environment is exported into the job by Slurm; the pip
 # oneAPI runtime needs none of it.
@@ -28,21 +38,23 @@ cxxi_pick_data
 
 PY="$(cxxi_python)" || { echo "FATAL: no venv; run 01_setup_env.sh" >&2; exit 1; }
 NCOLLS="${NCOLLS:-2201 16384}"
-STEPS="${STEPS:-20}"
+STEPS="${STEPS:-15}"
 SKETCH="${SKETCH:-300}"
+STEP_TIMEOUT="${STEP_TIMEOUT:-900}"
 RUNROOT="${RUNROOT:-$CXXI_DATA/Evolution_try}"
 PROJ="$CXXI_REPO/Evolution_try"
-CSV="$CXXI_DATA/bench_cxxi.csv"
+CSV="$CXXI_DATA/bench_gpu.csv"
 cd "$PROJ" || { echo "FATAL: no $PROJ" >&2; exit 1; }
 mkdir -p "$RUNROOT/runs"
 
-if [ "$TAG" = "cpu" ]; then
-    export JAX_PLATFORMS=cpu
-else
-    cxxi_pin_gpu
-fi
+case "$MODE" in
+    composite) export ZE_FLAT_DEVICE_HIERARCHY=COMPOSITE; unset ZE_AFFINITY_MASK ;;
+    flat)      unset ZE_FLAT_DEVICE_HIERARCHY ZE_AFFINITY_MASK ;;
+    *) echo "FATAL: MODE must be flat or composite" >&2; exit 1 ;;
+esac
+cxxi_pin_gpu
 
-echo "tag        $TAG"
+echo "mode       $MODE"
 echo "host       $(hostname)   $(date -u '+%F %T UTC')"
 echo "job        ${SLURM_JOB_ID:-?}  ${SLURM_JOB_PARTITION:-?}  cpus ${SLURM_CPUS_PER_TASK:-?}"
 echo "python     $PY"
@@ -53,16 +65,16 @@ echo "ZE         ZE_FLAT_DEVICE_HIERARCHY=${ZE_FLAT_DEVICE_HIERARCHY:-<unset=FLA
 "$PY" -c "import jax; print('devices', jax.devices(), '| backend', jax.default_backend())"
 echo
 
-[ -f "$CSV" ] || echo "tag,n_coll,steps,dsgnar_s,ms_per_iter,wall_s,rc" > "$CSV"
+[ -f "$CSV" ] || echo "mode,n_coll,steps,dsgnar_s,ms_per_iter,projected_10window_h,wall_s,rc" > "$CSV"
 
 for NC in $NCOLLS; do
-    LABEL="cxxi_bench_${TAG}_nc${NC}"
+    LABEL="cxxi_bench_${MODE}_nc${NC}"
     OUT="$RUNROOT/runs/$LABEL"
     rm -rf "$OUT"
     mkdir -p "$OUT"
     echo "########## $(date -u '+%T')  $LABEL"
     t0=$(date +%s)
-    "$PY" -m wave_pinn.cli --label "$LABEL" --outdir "$OUT" \
+    timeout "$STEP_TIMEOUT" "$PY" -m wave_pinn.cli --label "$LABEL" --outdir "$OUT" \
         --set T=2 --set windows=1 --set ansatz=t2 \
         --set window_ic=hard --set w_ic=100 \
         --set n_coll="$NC" --set sampler=random \
@@ -78,18 +90,20 @@ for NC in $NCOLLS; do
     secs=$(printf '%s\n' "$line" | grep -oE '\([0-9.]+s\)' | tr -d '()s')
     timing=$(grep -E 'DSGNAR: timing:' "$OUT/run.log" | tail -1)
 
-    ms="NA"
+    ms="NA"; proj="NA"
     if [ -n "${secs:-}" ] && [ -n "${its:-}" ] && [ "$its" -gt 0 ] 2>/dev/null; then
-        ms=$("$PY" -c "print(f'{1000*float('$secs')/int('$its'):.1f}')")
+        read -r ms proj <<< "$("$PY" -c "
+secs, its = float('$secs'), int('$its')
+print(f'{1000*secs/its:.1f}', f'{secs/its*15000/3600:.1f}')")"
     fi
     echo
-    echo "[bench] $TAG n_coll=$NC steps=${its:-?} dsgnar=${secs:-?}s  ms/iter=$ms  wall=${wall}s  rc=$rc"
+    echo "[bench] mode=$MODE n_coll=$NC steps=${its:-?} dsgnar=${secs:-?}s  ms/iter=$ms  -> ~${proj} GPU-h for the full 10-window recipe  wall=${wall}s  rc=$rc"
     echo "        ${timing:-no timing line}"
-    echo "$TAG,$NC,${its:-NA},${secs:-NA},$ms,$wall,$rc" >> "$CSV"
+    echo "$MODE,$NC,${its:-NA},${secs:-NA},$ms,$proj,$wall,$rc" >> "$CSV"
     echo
 done
 
 echo "===== $CSV ====="
 cat "$CSV"
 echo
-echo "Lower ms/iter is better; the row where the tag stops mattering is the crossover."
+echo "projected_10window_h = ms/iter * 15000 steps (10 windows x 5 rounds x 300 steps) / 3600"
