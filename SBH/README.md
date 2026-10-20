@@ -430,6 +430,20 @@ zero loss keep their weight and are left out of the update and normalisation; ve
 in 0.3-1.8, loss halves in 15 steps). The rerun uses fixed weights (`--dsgnar_reweight 0`), as the `ldc`
 notebook does.
 
+**`w8_gn` (paper settings, fixed weights; job 1181134): the trust region collapses in every window.**
+With the paper's step rule (step evaluated once, no line scan, radius to the PCHIP value, no floor,
+delta_min 1e-8) each window stops on "radius below threshold" after 4-11 minutes of its 70: window 1
+2 accepted / 14 rejected, loss 12.9 -> 11.1 (SSBroyden reaches ~1e-7 in the same window); window 2
+2 / 16; window 3 27 / 12, 0.14 -> 7.6e-3. The full Gauss-Newton step overshoots about half the time on
+this problem (seen already in the production probes: ratio -5e6 at the full step, +1.2 at half of it),
+and without a scan every overshoot divides the radius by 3 -- the collapse Stationary saw and that
+its port's safeguards were added for. Kept as the record of the paper's settings.
+
+**`w8_gn_scan` (job below):** the same pure-GN run (rows, s = n/3, fixed weights, any step that
+lowers the loss is accepted, 4200 s per window) with the port's step safeguards instead of the
+paper's: the line scan (1, 1/2, ..., 1/16, 1e-3, 1e-2 of the step; first that lowers the loss is
+taken), a grow-only radius with a floor at 1e-3 of its high-water mark, calibration, targets 0.15/0.5.
+
 Both comparison runs use ONE optimizer each (Adam is off by default; `w8_gn` has `--EPOCHS_QN 0`).
 The drift tests were lengthened to 16 windows (jobs 1181119/20 cancelled before starting): at t = 2
 the push at the origin separates tracking from a fixed centre by 4x, at t = 4 by 10x. They keep
