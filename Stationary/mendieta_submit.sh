@@ -266,6 +266,19 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_coll64k]:-}" ] && ! squeue -h -u "$USER"
           sbatch --parsable -J check_coll64k --dependency=afterany:${JID[rot_coll64k]} \
           mendieta_check.sbatch runs/rot_coll64k) (after rot_coll64k)"
 fi
+# round 24 (2026-10-20): the network CAN represent the rotated reference (fit_scratch: rms dh 7.5e-6,
+# 150x below the PINN's 1.2e-3) but that fit's PINN loss is 3.4e-2.  Does PINN training from the fit
+# stay near the reference (the optimiser never found that basin) or drift back to dh ~1e-3 (the
+# objective's minimum in this network is there)?  rot_from_fit: merged SSBroyden from the scratch fit.
+if [ -f runs/rot_ssbm3/params_fit_scratch.pkl ]; then
+submit rot_from_fit         - --steps 0 --init-from runs/rot_ssbm3/params_fit_scratch.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 $ROT $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_from_fit]:-}" ] && ! squeue -h -u "$USER" -n check_fromfit -o %i | grep -q .; then
+    echo "  submit   check_fromfit -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_fromfit --dependency=afterany:${JID[rot_from_fit]} \
+          mendieta_check.sbatch runs/rot_from_fit) (after rot_from_fit)"
+fi
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation

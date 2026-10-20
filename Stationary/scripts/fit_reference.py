@@ -17,7 +17,8 @@ Two measurements for a run whose error against the spectral reference has stoppe
 Reading: if the fit cannot get h much below the PINN run's error, the floor is the network's
 capacity; if it can, but its PINN loss is ABOVE the run's, the PINN optimum trades the exact
 solution for a lower residual -- the objective, not the network, sets the floor.
-Writes <run>/fit_reference.json (fit_reference_scratch.json with --scratch).
+Writes <run>/fit_reference.json and the fitted state <run>/params_fit.pkl (an --init-from file);
+with --scratch, fit_reference_scratch.json and params_fit_scratch.pkl.
 """
 from __future__ import annotations
 
@@ -43,7 +44,7 @@ from stationary.losses import total_loss                  # noqa: E402
 from stationary.model import point_fields                 # noqa: E402
 from stationary.problem import sample_shell               # noqa: E402
 from stationary.specref import SpectralAxisym, compare    # noqa: E402
-from stationary.train import _crunch_minimize, exact_asset, make_batch  # noqa: E402
+from stationary.train import _crunch_minimize, exact_asset, make_batch, write_params  # noqa: E402
 
 
 class RotatedReference:
@@ -180,6 +181,8 @@ def main(argv=None):
     print(f"[fit]     its PINN loss: " + " ".join(f"{v:.3e}" for v in res["fit_pinn_loss"])
           + "   parts: " + "  ".join(f"{k}={v:.2e}" for k, v in rf[0][1].items() if v), flush=True)
     tag = "_scratch" if a.scratch else ""
+    # the fitted state, in the format --init-from reads: a PINN run can start from it
+    write_params(a.run, st_fit, name=f"params_fit{tag}.pkl")
     with open(os.path.join(a.run, f"fit_reference{tag}.json"), "w") as fh:
         json.dump(res, fh, indent=1, default=float)
 
