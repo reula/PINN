@@ -89,6 +89,8 @@ Three consequences that decide everything below:
 | `debug_oneapi.sbatch` | when a job prints nothing and runs to its limit: every diagnostic wrapped in `timeout`, so `rc=124` names the hanging step | `gpunode`, 20 min |
 | `02_smoke.sbatch` | step 3 wrapper, inside a GPU allocation | `testing`, 1 GPU, 20 min |
 | `03_tiny_run.sbatch` | step 4 — the real `wave_pinn` CLI, tiny, on one Intel GPU | `gpunode`, 40 min |
+| `ldc_paper_run.py` | **the paper's own trainer** (`pinn.train64` + `RunConfig`, i.e. `ldc_pinn.ipynb`), which is the reference implementation | any GPU node |
+| `09_ldc_paper.sbatch` | runs `ldc_paper_run.py` with `MODE=smoke|paper` | `gpunode`, 24 h (override) |
 | `ldc_run.py` | `ldc/ldc.ipynb` as a headless script: DSGNAR vs SSBroyden on the lid-driven cavity, graded against the reference field | any GPU node |
 | `08_ldc.sbatch` | runs `ldc_run.py` with `MODE=smoke|a30|paper` (default a30) | `gpunode`, 8 h (override) |
 | `04_prod_run.sbatch` | step 5 — the Mendieta production recipe, one GPU | `gpunode`, 8 h (override) |
@@ -461,6 +463,39 @@ The paper preset fits a 48 GiB tile comfortably (Jacobian ~1.1 GiB, sketch
 comparison runs DSGNAR 200 float64 steps and SSBroyden 2 x 1000 quasi-Newton
 iterations at 2^15 points, so submit with `-t 24:00:00` and expect hours rather
 than minutes.
+
+## 8c. Which LDC driver — use the paper's own trainer (`09_ldc_paper.sbatch`)
+
+The hub's `ldc/` folder has four generations of this notebook, and they are not
+the same driver. Measured on the hub (A30, jax 0.11.1, CUDA):
+
+| notebook | driver | hub result |
+|---|---|---|
+| `ldc_pinn.ipynb` | **`pinn.train64` + `pinn.RunConfig`** — the reference implementation, with its `auto_adjust` weight/λ schedule | **final rel error 6.384e-02 in 11.5 s** (SMOKE config, 2^11 pts, 40-40-40) |
+| `ldc_before_warmup.ipynb` (`PAPER=True`) | `stationary.dsgnar.dsgnar_phase`, 5×60 cycles at s=128, then SSBroyden | 1.27e-2 / 1.92e-2 / 4.90e-2 (u/v/p) |
+| `ldc-paper.ipynb` (PAPER mode) | `dsgnar_phase`, 200 iters at s=1665 — accepted **0** steps — then SSBroyden | 2.21e-2 / 3.54e-2 / 5.59e-2 |
+| `ldc.ipynb` | hand-driven `pinn.optimiser.Optimiser` loop + own SSBroyden — what `08_ldc.sbatch` ports | cluster job 1548247: DSGNAR stuck at rel L2 ≈ 0.68 |
+
+So: **the paper's trainer is both the reference implementation and the cheapest
+good result**, and the hand-driven variant in `ldc.ipynb` is the one that stalls.
+`09_ldc_paper.sbatch` runs the former:
+
+```bash
+sbatch --export=ALL,MODE=smoke clementina/09_ldc_paper.sbatch     # minutes
+sbatch clementina/09_ldc_paper.sbatch                             # MODE=paper, 2^15 pts
+```
+
+Outputs in `/data/contrib/pci_143/pinn/ldc/ldc_paper_<mode>/`: `summary.json`
+(trainer rel-L2 per channel and mean, config, wall time), `results.npz`,
+`figures/fields_{u,v,p}.png`. `ldc_paper_run.py` locally reproduces the hub smoke
+run on CPU: mean rel L2 6.64e-02 (u 3.4e-2, v 3.9e-2, p 1.3e-1).
+
+Note the loss/accuracy question: inside this trainer the two track each other —
+it prints the rel error at the end of each precision pass and stops on the trust
+radius — which is why the reference implementation is the fair test of the
+paper's claim. The decoupling seen in job 1548247 is a property of the
+hand-driven `ldc.ipynb` loop (fixed residual weights, no `auto_adjust`), not of
+the problem.
 
 ## 9. Files back, and where results live
 
