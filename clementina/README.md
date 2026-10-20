@@ -402,6 +402,31 @@ sacct -j <jobid> --format=JobID,JobName,State,Elapsed,MaxRSS,MaxVMSize
 scontrol show job <jobid> | grep -E 'ExitCode|RunTime|NodeList'
 ```
 
+### Intel-backend codegen: paper shapes compile, smoke shapes do not
+
+The paper trainer (`09_ldc_paper.sbatch`) hits an XLA-SYCL codegen crash on the
+**smoke** configuration:
+
+```
+LLVM Fatal Error while compiling target binary for module: jit__step_impl
+Reason: OpTypeVector with 32 components requires the following SPIR-V
+        extension: SPV_EXT_long_vector
+```
+
+It is not the float32 pre-pass (job 1548876 with `--float32-steps 0` fails the
+same way) and not our code: the **paper** shapes compile and run
+(job 1548877: `Compile complete 398.8 s` for float32, `927.8 s` for float64, then
+the trainer stepped). The 32-lane vector is produced by the vectoriser on the
+small smoke shapes, which is where the SYCL backend's SPIR-V legaliser gives up.
+Consequences:
+
+* use `MODE=paper` for this trainer on Clementina; `MODE=smoke` only on the hub
+  or on the CPU (locally it gives mean rel L2 5.8-6.6e-02);
+* the persistent compile cache cannot be written on this backend
+  (`Unsupported platform ID for XlaExecutableAbiVersion`), so **every run pays
+  ~22 min of compile** before training starts — budget it in GPU hours;
+* the trainer logs only at pass boundaries, so a long float64 pass is silent.
+
 ### Spend GPU hours in stages
 
 1. **reduced-fidelity run of the same recipe** — 10 windows, but 100 DSGNAR steps
