@@ -23,7 +23,15 @@ Support is only through <https://tickets.clementinaxxi.org.ar> (same credentials
   `jax 0.11.2` + `jax-oneapi-plugin 0.11.2`, `backend gpu`, six
   `OneapiDevice`s (3 unfiltered cards × 2 tiles), f32 matmul ≈ 10.7 TFLOP/s,
   f64 ≈ 370 GFLOP/s, f64 6×20 MLP `value_and_grad` at batch 2201 ≈ 2.9 ms/iter.
-* **next**: tiny `wave_pinn` run on one card + CPU baseline (§7).
+* **tiny end-to-end** (jobs 1548106 GPU / 1548107 CPU, §7): both `COMPLETED`,
+  **identical floats** — `final_loss = 1.303484e-01` in both — which validates
+  the port.  But the GPU was *slower*: 43.8 s vs 15.2 s wall, and DSGNAR's own
+  breakdown says why (`batched JVPs 7.4 s` on GPU vs `2.6 s` on 64 CPU cores,
+  plus ~29 s of per-step host-sync overhead).  At 512 points and 2201 parameters
+  the problem is far too small to fill a GPU.
+* **next**: `bench.sh` via `06_bench_gpu.sbatch` + `07_bench_cpu.sbatch` decides
+  the queue for production — same DSGNAR at n_coll = 2201 and 16384, GPU vs CPU,
+  `ms/iter` in `/data/contrib/pci_143/pinn/bench_cxxi.csv`.
 
 ## 0. What is different from Mendieta, in one table
 
@@ -70,6 +78,9 @@ Three consequences that decide everything below:
 | `00_probe.sbatch` | step 1 — discovers drivers, modules, python, partitions, ZE mask, proxy | `testing`, 1 GPU, 10 min |
 | `01_setup_env.sh` | step 2 — builds `~/venvs/pinn-oneapi` with `jax[oneapi]==0.11.2` | **login node** |
 | `smoke.py` | step 4 — checks the JAX primitives the DSGNAR optimiser needs; names the one that fails | any node |
+| `bench.sh` | DSGNAR micro-benchmark, one grid run by both of the next two | any node |
+| `06_bench_gpu.sbatch` | the same DSGNAR steps on one Intel GPU (n_coll 2201 / 16384) | `gpunode`, 40 min |
+| `07_bench_cpu.sbatch` | the same on 64 CPU cores; the two CSVs are comparable | `cpunode`, 40 min |
 | `debug_oneapi.sbatch` | when a job prints nothing and runs to its limit: every diagnostic wrapped in `timeout`, so `rc=124` names the hanging step | `gpunode`, 20 min |
 | `02_smoke.sbatch` | step 3 wrapper, inside a GPU allocation | `testing`, 1 GPU, 20 min |
 | `03_tiny_run.sbatch` | step 4 — the real `wave_pinn` CLI, tiny, on one Intel GPU | `gpunode`, 40 min |
@@ -329,6 +340,10 @@ the platform different. Outputs:
 
 `/data/contrib/pci_143/pinn/Evolution_try/runs/cxxi_tiny/` and
 `.../cxxi_tiny_cpu/`.
+
+Measured for the 512-point case: both runs give **the same loss to all printed
+digits** (`1.303484e-01`), GPU 43.8 s vs CPU 15.2 s.  At that size the CPU wins;
+hence the bench in §7b before choosing a queue for production.
 
 Check:
 
