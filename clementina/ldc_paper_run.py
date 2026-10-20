@@ -46,6 +46,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--reference", default=None,
                     help="reference npz (default <repo>/ldc/reference_gen/ldc_reference.npz)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--float32-steps", type=int, default=None,
+                    help="override the preset's float32 pre-pass length.  0 makes the "
+                         "trainer quit the pre-pass after its first step; note train64 "
+                         "iterates [32, 64] hard-coded, so the float32 graph is still "
+                         "traced/compiled.")
     ap.add_argument("--precompile", action="store_true",
                     help="warm the compile cache first (the notebook does this for a "
                          "production run; costs minutes and is pointless for smoke)")
@@ -221,7 +226,7 @@ cfg = pinn.RunConfig(
     cache_dir=str(CACHE_DIR),
     pde_weight=1e-2,
     min_radius=1e-2 if SMOKE else None,       # None -> 1e-8 in double precision
-    float32_steps=2 if SMOKE else 10,
+    float32_steps=(2 if SMOKE else 10) if ARGS.float32_steps is None else ARGS.float32_steps,
 )
 print(f"[cfg ] smoke={SMOKE}  n_pde={cfg.n_pde} n_bc={cfg.n_bc} sketch={cfg.residual_sketch} "
       f"batch={cfg.batch_size} float32_steps={cfg.float32_steps} min_radius={cfg.min_radius}",
