@@ -923,8 +923,21 @@ on-axis control uses the same one and keeps improving).  Two measurements:
 * **The representation ceiling** (part (b)): the same 3-D hybrid fitted by regression to the rotated
   reference's h and lambda (16384 training-distribution points, merged SSBroyden), warm-started from
   the PINN run (`fit_warm`, 5000 iterations) and from scratch (`fit_scratch`, 10000), then graded and
-  its PINN loss evaluated.  Pending.  (A 512-point smoke fit halved the h error to 6.7e-4 while its
-  PINN loss rose to 5.5e-2: too few points constrain values, not derivatives.)
+  its PINN loss evaluated.  **The network can represent it, 150x better than the PINN finds:**
+
+  | | rms dh | max dh | rms dlambda | dh, rho 1-3 | its PINN loss |
+  |---|---|---|---|---|---|
+  | the PINN run (`rot_ssbm3`) | 1.17e-3 | 7.4e-3 | 1.72e-5 | 2.4e-3 | 1.4e-6 |
+  | fit, warm start (5000 it, 17 min) | 1.69e-5 | 3.6e-4 | 7.0e-6 | 3.4e-5 | 1.2e-2 |
+  | fit, scratch (10000 it, 30 min) | **7.5e-6** | 1.5e-4 | **3.3e-6** | 1.4e-5 | 3.4e-2 |
+
+  But a fit accurate to 1e-5 in VALUE has a PINN loss of 1e-2 (its second derivatives, which the
+  rho^4-weighted Ricci and gauge residuals see, are not accurate), while the PINN sits at a residual
+  of 1.4e-6 with h wrong by 1e-3: there is a direction in which h is wrong at little cost in
+  residual.  Round 24 (`rot_from_fit`) starts PINN training from the scratch fit to tell the two
+  readings apart: it stays near the reference (the optimiser never found that basin) or drifts back
+  to dh ~ 1e-3 (the objective's minimum within this network is there).  (A 512-point smoke fit had
+  halved the h error while its PINN loss rose to 5.5e-2.)
 * `rot_coll64k`: `rot_ssbm3` continued with 4x the interior points (65536).  Pending.
 
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
