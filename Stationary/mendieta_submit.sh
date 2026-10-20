@@ -255,6 +255,17 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_bnd4k]:-}" ] && ! squeue -h -u "$USER" -
           sbatch --parsable -J check_bnd4k --dependency=afterany:${JID[rot_bnd4k]} \
           mendieta_check.sbatch runs/rot_bnd4k) (after rot_bnd4k)"
 fi
+# round 23 (2026-10-20): the interior collocation -- rot_ssbm3 continued with 4x the interior points
+# (--n-coll 65536; boundaries as rot_ssbm3), everything else unchanged; rot_ssbm3 and rot_bnd4k are the
+# controls.  If the 17.7 GB here is not enough, this moves to a larger GPU.
+submit rot_coll64k          rot_ssbm3 --steps 0 --init-from runs/rot_ssbm3/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 --n-coll 65536 \
+                              $ROT $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_coll64k]:-}" ] && ! squeue -h -u "$USER" -n check_coll64k -o %i | grep -q .; then
+    echo "  submit   check_coll64k -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_coll64k --dependency=afterany:${JID[rot_coll64k]} \
+          mendieta_check.sbatch runs/rot_coll64k) (after rot_coll64k)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
