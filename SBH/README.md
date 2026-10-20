@@ -169,6 +169,30 @@ and `drift_fixed` (`--chi_bg_mode physical --bh_center_mode fixed`: no backgroun
 Drift is compared through the chi-minimum position (`chi_min_x` in `puncture_track.txt`), which is
 independent of the tracker and agrees with it in `single_a` (-0.125 vs -0.121 at t = 10).
 
+**Result (2026-10-20; `tools/puncture_probe.py` on the saved windows).** The chi minimum turned out
+to be useless as a yardstick at these drifts: near a puncture chi ~ (2r/m)^4 is so flat (1.6e-3 at
+r = 0.05, the size of the network's error there) that its minimum wanders by +-0.05 in all three
+runs, even on a 0.002 grid. The discriminating quantity is the spurious shift at the origin, the
+push that moves a tracked puncture (dx/dt = -beta):
+
+| t_end | `single_a` (moving bg + tracking) beta^x(0) | `drift_phys` (tracking only) | `drift_fixed` (neither) |
+|---|---|---|---|
+| 0.5 | +1.2e-3 | -4.1e-4 | +1.2e-3 |
+| 1.5 | +2.0e-3 | +1.0e-3 | +5.9e-3 |
+| 2.75 | +2.9e-2 | +3.5e-3 | +4.0e-3 |
+| 3.5 | +2.8e-2 | +2.4e-2 | +6.0e-3 |
+| 4.0 | +2.8e-2 | +3.0e-2 | +2.9e-3 |
+
+With tracking (with or without the moving background) the push grows to 2-3e-2 by t ~ 3-4; with a
+fixed centre it stays at a few 1e-3, 10x smaller at t = 4. So the moving chi background is NOT the
+cause; the tracking is. Since `drift_phys` has no moving background but its sampling clouds still
+follow the track, the likely loop goes through the SAMPLING: a small random asymmetry in beta moves
+the track, the focused clouds become off-centre, the off-centre sample teaches a larger asymmetric
+beta. One run per setting (one seed each): consistent over t >= 2.75 but not repeated. Next test
+(needs a small flag): tracking on, sampling clouds held at the origin. If the push stays small, the
+remedy for the binary runs is in how the sampling follows the punctures (e.g. drawing the clouds
+symmetrically about each tracked centre).
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
@@ -359,3 +383,5 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/smoke_local.sh`: the laptop smoke run.
 * `tools/test_dsgnar_bh.py [--quick]`: the DSGNAR tests above.
 * `tools/test_scale_invariance.py`: the loss-scale test of section 5.
+* `tools/eval_heldout.py`: held-out grading of finished runs (identical fresh samples per window).
+* `tools/puncture_probe.py RUN... -- <physics flags>`: shift at the origin and fine-grid chi minimum per saved window.
