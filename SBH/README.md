@@ -390,6 +390,16 @@ core clouds at the punctures' t = 0 positions while tracking and the moving back
 `--symmetric_focus` draws each cloud in point-reflected pairs about its centre (offsets sum to zero to
 round-off). Both off by default (bitwise as before).
 
+**Short comparisons, 8 windows (t <= 2), submitted 2026-10-20** (replacing the 40-window
+final-settings run and the t <= 4 / window-15 plans; the 1D reference will cover this span):
+
+| run | job | settings |
+|---|---|---|
+| `w8_qn` | 1181117 | final settings of the 10-19 Oct summary (48k core points, `--core_radius 0.5`), SSBroyden 24k its per window, 1 A30 |
+| `w8_gn` | 1181118 | same sampling, DSGNAR only (`--EPOCHS_QN 0`): rows Jacobian, s = n/3, `--dsgnar_paper --no-dsgnar_reject_overshoot` (accept any step that lowers the loss), 4200 s per window to match `w8_qn` |
+| `w8_drift_initc` | 1181119 | `single_a` settings + `--sampling_centers initial` |
+| `w8_drift_symm` | 1181120 | `single_a` settings + `--symmetric_focus` |
+
 **Loss plots by optimiser (2026-10-20).** `loss_window{w}.png` now shades each stretch of the
 history by the optimizer that produced it (Adam, QN, DSGNAR) and names it at the top, instead of
 one Adam -> BFGS line.
