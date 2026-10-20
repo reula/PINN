@@ -21,6 +21,9 @@ NAME="$1"; shift
 cd "${SLURM_SUBMIT_DIR:-$HOME/Julia/PINN/Stationary}"
 source recipe_pq16k.sh
 export JAX_ENABLE_X64=1 XLA_PYTHON_CLIENT_PREALLOCATE=false MPLBACKEND=Agg
+# MEMFRAC=0.95 sbatch ... : the share of the GPU's memory JAX may use (its default is 0.75, i.e.
+# 17.7 GiB of an A30's 24; rot_coll256k's first allocation needed 17.76 GiB)
+[ -n "${MEMFRAC:-}" ] && export XLA_PYTHON_CLIENT_MEM_FRACTION="$MEMFRAC"
 export JAX_COMPILATION_CACHE_DIR="$HOME/.cache/jax" MPLCONFIGDIR="$HOME/.cache/mpl"
 mkdir -p logs runs "$MPLCONFIGDIR"
 
