@@ -397,8 +397,13 @@ final-settings run and the t <= 4 / window-15 plans; the 1D reference will cover
 |---|---|---|
 | `w8_qn` | 1181117 | final settings of the 10-19 Oct summary (48k core points, `--core_radius 0.5`), SSBroyden 24k its per window, 1 A30 |
 | `w8_gn` | 1181118 | same sampling, DSGNAR only (`--EPOCHS_QN 0`): rows Jacobian, s = n/3, `--dsgnar_paper --no-dsgnar_reject_overshoot` (accept any step that lowers the loss), 4200 s per window to match `w8_qn` |
-| `w8_drift_initc` | 1181119 | `single_a` settings + `--sampling_centers initial` |
-| `w8_drift_symm` | 1181120 | `single_a` settings + `--symmetric_focus` |
+| `w16_drift_initc` | see below | `single_a` settings + `--sampling_centers initial`, 16 windows (t <= 4) |
+| `w16_drift_symm` | see below | `single_a` settings + `--symmetric_focus`, 16 windows (t <= 4) |
+
+Both comparison runs use ONE optimizer each (Adam is off by default; `w8_gn` has `--EPOCHS_QN 0`).
+The drift tests were lengthened to 16 windows (jobs 1181119/20 cancelled before starting): at t = 2
+the push at the origin separates tracking from a fixed centre by 4x, at t = 4 by 10x. They keep
+`single_a`'s settings so that `single_a`, `drift_phys` and `drift_fixed` are their comparisons.
 
 **Loss plots by optimiser (2026-10-20).** `loss_window{w}.png` now shades each stretch of the
 history by the optimizer that produced it (Adam, QN, DSGNAR) and names it at the top, instead of
