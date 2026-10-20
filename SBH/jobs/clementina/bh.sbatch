@@ -39,6 +39,10 @@ PRESET=${PRESET:-single}
 PROD_ARGS=${PROD_ARGS---fast_hessian --loss_plot_every 10 --blowup_factor 100 --deriv_mode taylor}
 echo "$(hostname) | ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK:-unset} ZE_FLAT_DEVICE_HIERARCHY=${ZE_FLAT_DEVICE_HIERARCHY:-FLAT} | python $PYTHON"
 
+if [ "$PRESET" = probe ]; then          # which ops fail on the oneAPI backend (tools/oneapi_probe.py)
+  $PYTHON -u tools/oneapi_probe.py
+  exit 0
+fi
 if [ "$PRESET" = bench ]; then
   for n in 8000 32000; do $PYTHON -u tools/bench_loss.py --n $n --reps 5; done
   $PYTHON -u tools/check_taylor.py --n 32000 --reps 5
