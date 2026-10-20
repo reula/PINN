@@ -489,6 +489,34 @@ comparison runs DSGNAR 200 float64 steps and SSBroyden 2 x 1000 quasi-Newton
 iterations at 2^15 points, so submit with `-t 24:00:00` and expect hours rather
 than minutes.
 
+## 8b-bis. Trained parameters are saved with their architecture
+
+Every run written by `ldc_run.py` and `ldc_paper_run.py` now saves
+
+    <run>/params_flat.npy   the trainable arrays, flattened, float64
+    <run>/network.json      hidden_dims, seed, SIREN options, driver, config,
+                            jax/jaxlib versions, backend, rel L2 per channel
+    <run>/params.eqx        exact equinox leaves (same numbers, with structure)
+
+because a flat vector is meaningless without the net that produced it.  To score or
+plot a saved network, with or without having produced it here:
+
+```bash
+python clementina/ldc_params.py --run /data/contrib/pci_143/pinn/ldc/ldc_paper_paper
+python clementina/ldc_params.py --params ldc/params/hub_a30_dsgnar_48x48x48.npy \
+                                --network ldc/params/hub_a30_dsgnar_48x48x48.json --outdir /tmp/eval
+```
+
+The A30 solution (hub `ldc.ipynb`, `MODE=a30`, 238 DSGNAR iterations in 203.5 s,
+paper loss 1.8e-7) is stored that way in `ldc/params/`: the loader rebuilds the
+48-48-48 SIREN and scores it at **u 0.00177, v 0.00337, p 0.02266, mean 0.00927**.
+
+The `a30` preset in `ldc_run.py` now matches that run (`dsgnar_steps=400,
+qn_maxiter=10000, min_radius=1e-14`); the previous 200-step / 1e-8 version came from
+an older copy of the notebook.  `bench_gpu.csv`-style projection: the hub did 238
+iterations in 203.5 s on an A30; the Intel tile is several times slower per iteration
+at equal size.
+
 ## 8c. Which LDC driver — use the paper's own trainer (`09_ldc_paper.sbatch`)
 
 The hub's `ldc/` folder has four generations of this notebook, and they are not

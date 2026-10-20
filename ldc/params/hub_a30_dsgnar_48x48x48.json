@@ -1,0 +1,31 @@
+{
+  "model": "SIREN",
+  "hidden_dims": [48, 48, 48],
+  "seed": 0,
+  "time_dependent": false,
+  "periodic_bc": false,
+  "n_inputs": 2,
+  "n_outputs": 3,
+  "omega_0": 1.0,
+  "omega_hidden": 1.0,
+  "n_fourier": 0,
+  "learnable_omega": true,
+  "skip_connection": false,
+  "n_parameters": 4998,
+  "params_file": "hub_a30_dsgnar_48x48x48.npy",
+  "driver": "ldc.ipynb on the hub's A30 (MODE=a30): paper's Optimiser driven by hand",
+  "config": {
+    "mode": "a30",
+    "n_pde": 8192,
+    "n_bc": 4096,
+    "sketch": 1665,
+    "batch": 1024,
+    "probe": 128,
+    "dsgnar_steps": 400,
+    "min_radius": 1e-14,
+    "qn_maxiter": 10000
+  },
+  "source": "serafin.ccad.unc.edu.ar:~/Julia/PINN/ldc/dsgnar_flat.npy (2026-10-20 19:37)",
+  "note": "238 DSGNAR iterations in 203.5 s on the A30; notebook reports paper loss 1.8351e-07 and rel L2 0.0093.  Scored independently against ldc_reference.npz: u 0.00177, v 0.00337, p 0.02266, mean 0.00927.",
+  "saved_utc": "2026-10-20T19:37:00Z"
+}

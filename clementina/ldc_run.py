@@ -132,6 +132,7 @@ import matplotlib.pyplot as plt                                # noqa: E402
 import pinn                                                    # noqa: E402
 from pinn.optimiser import Optimiser                           # noqa: E402  paper's sketched TR-LM
 from Crunch.Optimizers.minimize_backtracking import minimize as minimize_qn   # noqa: E402
+from ldc_network_io import model_meta, save_network             # noqa: E402  params + architecture
 
 jax.config.update("jax_enable_x64", True)
 CACHE_DIR = pathlib.Path(os.environ.get("JAX_COMPILATION_CACHE_DIR")
@@ -237,11 +238,11 @@ PRESETS = {
                   batch=2 ** 8, probe=2 ** 7, float32_steps=2, dsgnar_steps=40,
                   qn_maxiter=200, min_radius=1e-2),
     "a30":   dict(hidden=(48, 48, 48), n_pde=2 ** 13, n_bc=2 ** 12, sketch=1665,
-                  batch=1024, probe=128, float32_steps=4, dsgnar_steps=200,
-                  qn_maxiter=1000, min_radius=1e-8),
+                  batch=1024, probe=128, float32_steps=4, dsgnar_steps=400,
+                  qn_maxiter=10000, min_radius=1e-14),
     "paper": dict(hidden=(60, 60, 60, 60), n_pde=2 ** 15, n_bc=2 ** 14, sketch=4000,
                   batch=2 ** 12, probe=2 ** 8, float32_steps=10, dsgnar_steps=200,
-                  qn_maxiter=1000, min_radius=1e-8),
+                  qn_maxiter=1000, min_radius=1e-10),
 }
 P = dict(PRESETS[ARGS.mode])
 for k, v in (("dsgnar_steps", ARGS.dsgnar_steps), ("qn_maxiter", ARGS.qn_maxiter),
@@ -498,6 +499,27 @@ if not ARGS.skip_fields:
 # ---------------------------------------------------------------------------
 # Everything that a later analysis needs, in the run directory
 # ---------------------------------------------------------------------------
+# ── parameters + the information needed to rebuild the network ───────────────
+# A flat vector alone is useless: save also hidden_dims/seed/SIREN options/config.
+_net_meta = model_meta(
+    hidden_dims=HIDDEN,
+    seed=ARGS.seed,
+    driver=f"ldc.ipynb hand-driven Optimiser ({ARGS.mode} preset) + Crunch SSBroyden",
+    config={"mode": ARGS.mode, "preset": dict(P), "n_pde": N_PDE, "n_bc": N_BC,
+            "sketch": SKETCH, "batch": BATCH, "probe": PROBE,
+            "pde_weight": PDE_WEIGHT, "target_rho": TARGET_RHO},
+    backend=BACKEND, devices=DEVICES,
+    extra={"best_by_accuracy": best_name,
+           "rel_l2": {k: float(v) for k, v in rel_l2(best).items()},
+           "paper_loss": float(paper_loss_jit(best)),
+           "note": "best = the best-by-accuracy of DSGNAR / SSBroyden-from-x0 / "
+                   "SSBroyden-polish; the other three vectors are saved next to it"})
+save_network(OUTDIR, eqx.combine(unflatten(best), static), _net_meta)
+for _name, _flat in (("dsgnar", ds_flat), ("ssb_x0", qn_flat), ("ssb_polish", qn_pol_flat)):
+    np.save(OUTDIR / f"params_{_name}.npy", np.asarray(_flat))
+print(f"[net ] saved parameters + network.json in {OUTDIR} "
+      f"({int(np.asarray(best).size)} params)", flush=True)
+
 np.savez_compressed(OUTDIR / "results.npz",
                     ds_flat=np.asarray(ds_flat), qn_flat=np.asarray(qn_flat),
                     qn_polish_flat=np.asarray(qn_pol_flat), best=np.asarray(best),

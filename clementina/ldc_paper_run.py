@@ -109,12 +109,16 @@ except ModuleNotFoundError as exc:                             # pragma: no cove
 import matplotlib.pyplot as plt                                # noqa: E402
 import pinn                                                    # noqa: E402
 from pinn.plotting import Plotter                              # noqa: E402
+from ldc_network_io import model_meta, save_network             # noqa: E402  params + architecture
 
-# Batch context: the trainer calls plotter.prime(), whose only job is to display an
-# ipywidgets.Image in Jupyter.  The plotter's matplotlib rendering happens on its own
-# thread and does not need the widget, so make prime() a no-op instead of dragging
-# IPython/ipywidgets into the cluster environment.
+# Batch context: the trainer calls plotter.prime() and plotter.finalize(), whose only
+# jobs are to display an ipywidgets.Image / the saved PNG in Jupyter.  The plotter's
+# matplotlib rendering happens on its own thread and does not need them, so make both
+# no-ops instead of dragging IPython/ipywidgets into the cluster environment.
+# (finalize() crashed job 1548877 *after* training had finished: "No module named
+#  'IPython'" -- the run had reached rel error 6.372e-02 and then lost everything.)
 Plotter.prime = lambda self: None                              # noqa: E731
+Plotter.finalize = lambda self: None                           # noqa: E731
 
 jax.config.update("jax_enable_x64", True)
 CACHE_DIR = pathlib.Path(os.environ.get("JAX_COMPILATION_CACHE_DIR")
@@ -227,6 +231,7 @@ cfg = pinn.RunConfig(
     pde_weight=1e-2,
     min_radius=1e-2 if SMOKE else None,       # None -> 1e-8 in double precision
     float32_steps=(2 if SMOKE else 10) if ARGS.float32_steps is None else ARGS.float32_steps,
+    return_network=True,        # so the trained parameters (not just predictions) are saved
 )
 print(f"[cfg ] smoke={SMOKE}  n_pde={cfg.n_pde} n_bc={cfg.n_bc} sketch={cfg.residual_sketch} "
       f"batch={cfg.batch_size} float32_steps={cfg.float32_steps} min_radius={cfg.min_radius}",
@@ -242,7 +247,7 @@ if ARGS.precompile:
     print(f"[cfg ] precompile done in {time.perf_counter() - t_pc:.1f}s", flush=True)
 
 t0 = time.perf_counter()
-results = pinn.train64(LidDrivenCavityProblem, cfg)
+results, model = pinn.train64(LidDrivenCavityProblem, cfg)
 elapsed = time.perf_counter() - t0
 
 # ---------------------------------------------------------------------------
@@ -253,33 +258,35 @@ x0, x1 = results["plot_x0"], results["plot_x1"]
 lx, ly = results["plot_axes"]
 extent = [x0[0], x0[-1], x1[0], x1[-1]]
 
-channel_rel = {}
-for ch in ref.channels:
-    pred = np.array(results["u_pred_plot"][ch])
-    exact = np.array(ref.plot_grids[ch])
-    err = np.abs(pred - exact)
-    rel = float(np.linalg.norm(pred - exact) / np.linalg.norm(exact))
-    channel_rel[str(ch)] = rel
-    if ARGS.skip_fields:
-        continue
-    fig, axs = plt.subplots(1, 3, figsize=(13, 4), constrained_layout=True)
-    for ax, data, title, cmap in zip(
-            axs, [pred, exact, err],
-            [f"PINN  ${ch}$", f"reference  ${ch}$",
-             f"abs error  (rel $\\ell_2$={rel:.2e})"],
-            ["RdBu_r", "RdBu_r", "magma"]):
-        im = ax.imshow(data.T, origin="lower", aspect="auto", extent=extent, cmap=cmap)
-        ax.set(xlabel=f"${lx}$", ylabel=f"${ly}$", title=title)
-        fig.colorbar(im, ax=ax)
-    fig.savefig(FIGDIR / f"fields_{ch}.png", dpi=140, bbox_inches="tight")
-    plt.close(fig)
-    print(f"[fig ] {FIGDIR / f'fields_{ch}.png'}  (rel L2 {rel:.3e})", flush=True)
+ref_channels = [str(c) for c in ref.channels]
+pred = {c: np.array(results["u_pred_plot"][c]) for c in ref_channels}
+
+# ── save first, plot second: a finished run must never be lost to a plotting bug ──
+# ── parameters + the information needed to rebuild the network ───────────────
+_net_meta = model_meta(
+    hidden_dims=(40, 40, 40) if SMOKE else (60, 60, 60, 60),
+    seed=ARGS.seed,
+    driver="pinn.train64 + RunConfig (ldc_pinn.ipynb, the paper's trainer)",
+    config={"mode": ARGS.mode, "n_pde": cfg.n_pde, "n_bc": cfg.n_bc,
+            "residual_sketch": cfg.residual_sketch, "parameter_sketch": cfg.parameter_sketch,
+            "batch_size": cfg.batch_size, "sub_batch_size": cfg.sub_batch_size,
+            "probe_batch_size": cfg.probe_batch_size, "n_probes": cfg.n_probes,
+            "window_scale": cfg.window_scale, "target_rho": cfg.target_rho,
+            "pde_weight": cfg.pde_weight, "auto_adjust": cfg.auto_adjust,
+            "alpha": cfg.alpha, "float32_steps": cfg.float32_steps,
+            "min_radius": cfg.min_radius, "wall_seconds": elapsed},
+    backend=BACKEND, devices=DEVICES,
+    extra={"note": "the trainer's own best parameters for the last slab; "
+                   "rel_l2_per_channel_from_plot_grid is written after the figures"})
+save_network(OUTDIR, model, _net_meta)
+print(f"[net ] saved parameters + network.json in {OUTDIR}", flush=True)
 
 np.savez_compressed(OUTDIR / "results.npz",
-                    u_pred_plot=np.array([np.array(results["u_pred_plot"][c]) for c in ref.channels]),
+                    u_pred_plot=np.array([pred[c] for c in ref_channels]),
                     plot_x0=np.asarray(x0), plot_x1=np.asarray(x1),
                     ref_solution=np.asarray(ref.solution), ref_coords=np.asarray(ref.coords),
                     u_pred_final=np.asarray(results["u_pred_final"]))
+
 def _plain(v):
     """numpy/json-friendly copy of a slab field (the trainer stores per-channel dicts)."""
     if isinstance(v, dict):
@@ -290,13 +297,12 @@ def _plain(v):
         return float(v)
     return None
 
-
 slabs = []
 for slab in results["slabs"]:
     slabs.append({k: _plain(v) for k, v in slab.items()
                   if k in ("t0", "t1", "global_step", "wall_time", "rel_l2", "pure_l2",
                            "n_steps", "final_weights")})
-final_rel = slabs[-1]["rel_l2"]                      # {channel: relative L2}
+final_rel = slabs[-1]["rel_l2"]                       # {channel: relative L2}
 final_rel_mean = float(np.mean(list(final_rel.values())))
 summary = {
     "label": LABEL, "mode": ARGS.mode, "smoke": SMOKE,
@@ -313,14 +319,42 @@ summary = {
     "slabs": slabs,
     "final_rel_l2_slab": final_rel,
     "final_rel_l2_slab_mean": final_rel_mean,
-    "rel_l2_per_channel_from_plot_grid": channel_rel,
     "outdir": str(OUTDIR),
 }
 (OUTDIR / "summary.json").write_text(json.dumps(summary, indent=2))
-
 print("\n[final] " + json.dumps({"label": LABEL, "mode": ARGS.mode,
                                  "trainer_final_rel_l2_mean": final_rel_mean,
                                  "trainer_final_rel_l2": final_rel,
-                                 "per_channel": {k: round(v, 5) for k, v in channel_rel.items()},
                                  "wall_seconds": round(elapsed, 1)}, indent=0), flush=True)
+print(f"[saved] {OUTDIR}/results.npz  {OUTDIR}/summary.json", flush=True)
+
+# ── figures last, and a plotting failure must not mask the numbers ───────────────
+channel_rel = {}
+try:
+    for ch in ref_channels:
+        p_ = pred[ch]
+        exact = np.array(ref.plot_grids[ch])
+        err = np.abs(p_ - exact)
+        rel = float(np.linalg.norm(p_ - exact) / np.linalg.norm(exact))
+        channel_rel[ch] = rel
+        if ARGS.skip_fields:
+            continue
+        fig, axs = plt.subplots(1, 3, figsize=(13, 4), constrained_layout=True)
+        for ax, data, title, cmap in zip(
+                axs, [p_, exact, err],
+                [f"PINN  ${ch}$", f"reference  ${ch}$",
+                 f"abs error  (rel $\\ell_2$={rel:.2e})"],
+                ["RdBu_r", "RdBu_r", "magma"]):
+            im = ax.imshow(data.T, origin="lower", aspect="auto", extent=extent, cmap=cmap)
+            ax.set(xlabel=f"${lx}$", ylabel=f"${ly}$", title=title)
+            fig.colorbar(im, ax=ax)
+        fig.savefig(FIGDIR / f"fields_{ch}.png", dpi=140, bbox_inches="tight")
+        plt.close(fig)
+        print(f"[fig ] {FIGDIR / f'fields_{ch}.png'}  (rel L2 {rel:.3e})", flush=True)
+except Exception as exc:                                       # noqa: BLE001
+    print(f"[warn] figures failed ({type(exc).__name__}: {exc}); "
+          f"results.npz and summary.json are already saved", flush=True)
+
+summary["rel_l2_per_channel_from_plot_grid"] = channel_rel
+(OUTDIR / "summary.json").write_text(json.dumps(summary, indent=2))
 print(f"[done ] {OUTDIR}", flush=True)
