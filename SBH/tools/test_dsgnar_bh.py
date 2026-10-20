@@ -94,5 +94,39 @@ if not a.quick:
     print(f"   {'ok ' if ok else 'FAIL'} loss {l0:.6e} -> {l1:.6e} in {info['iterations']} iterations, "
           f"{info['accepted']} accepted; true loss at the result {true1:.6e}")
 
+if not a.quick:
+    print("4. rows-first sketched Jacobian (--dsgnar_jacobian rows) == the column construction")
+    import dsgnar
+    for name, extra in (("default", []), ("ic_log+dirichlet", ["--lam_ic_log", "0.3", "--metric_bc", "dirichlet"]),
+                        ("physical", ["--chi_bg_mode", "physical"])):
+        ns, params, fn, args = setup(extra + ["--deriv_mode", "taylor"], perturb=0.3)
+        jax, jnp = ns["jax"], ns["jnp"]
+        flat0, unflatten = jax.flatten_util.ravel_pytree(params)
+        obj = ns["_DsgnarObjective"](fn, unflatten, args, flat0, row_batch=40)
+        n, s_ = int(flat0.size), 96
+        M = int(obj.residual(flat0).shape[0])
+        key = jax.random.PRNGKey(7)
+        k1, k2 = jax.random.split(key)
+        srct = dsgnar.make_srct(k1, n, s_)
+        signs, buckets = dsgnar.count_sketch_draws(k2, M, s_, 4, flat0.dtype)
+        w = jnp.ones((M,), flat0.dtype)
+        B = dsgnar.srct_columns(srct, n, s_, flat0.dtype)
+        cols = dsgnar.sketched_jvp_columns(lambda f: obj._residual(f) * w, flat0, B, signs, buckets, s_, 16)
+        rows = dsgnar.apply_srct(obj.sketch_rows(flat0, signs, buckets, s_, w), srct)
+        rel = float(jnp.max(jnp.abs(rows - cols)) / jnp.max(jnp.abs(cols)))
+        ok = rel < 1e-11
+        fails += not ok
+        print(f"   {'ok ' if ok else 'FAIL'} {name:17s} max|rows - cols| / max|cols| = {rel:.1e}  (M = {M} rows, s = {s_})")
+    ns, params, fn, args = setup(["--deriv_mode", "taylor", "--dsgnar_steps", "6", "--dsgnar_jacobian", "rows"])
+    jax, jnp = ns["jax"], ns["jnp"]
+    flat0, unflatten = jax.flatten_util.ravel_pytree(params)
+    obj = ns["_DsgnarObjective"](fn, unflatten, args, flat0)
+    flat, hist, info = dsgnar.dsgnar_phase(obj, flat0, ns["_dsgnar_cfg"](seed=0, resample_every=0, dsgnar_sketch=120),
+                                           verbose=False)
+    ok = hist[-1]["loss"] < hist[0]["loss"] and info["jacobian"] == "rows"
+    fails += not ok
+    print(f"   {'ok ' if ok else 'FAIL'} DSGNAR with rows: loss {hist[0]['loss']:.6e} -> {hist[-1]['loss']:.6e}, "
+          f"{info['accepted']} accepted, jacobian {info['jacobian']}")
+
 print("ALL PASSED" if not fails else f"{fails} FAILED")
 sys.exit(1 if fails else 0)

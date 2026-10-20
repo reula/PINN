@@ -80,6 +80,16 @@ parser.add_argument("--N_change", type=int,   default=250,   help="Resampling in
 # Loss weights
 parser.add_argument("--lam_bc",       type=float, default=1.0)
 parser.add_argument("--lamg0",        type=float, default=10.0,   help="Soft IC weight for metric")
+parser.add_argument("--sampling_centers", type=str, default="track", choices=["track", "initial"],
+                    help="Where the focused/core sampling clouds are centred. 'track' (default): the "
+                         "current puncture centres (--bh_center_mode). 'initial': the punctures' t = 0 "
+                         "positions in every window, while tracking (and the moving chi background) "
+                         "still run -- a diagnostic for the drift (SBH/README.md): it removes the "
+                         "loop tracked position -> off-centre clouds -> asymmetric shift.")
+parser.add_argument("--symmetric_focus", action="store_true",
+                    help="Draw each focused/core Gaussian cloud in point-reflected pairs (c + d, c - d), "
+                         "so the cloud is exactly symmetric about its centre (up to --min_puncture_dist "
+                         "rejections and projection at the outer sphere). Off by default (bitwise as before).")
 parser.add_argument("--follow_puncture_sampling", action=argparse.BooleanOptionalAction, default=False,
                     help="Make the near-puncture focused collocation clouds follow the punctures' "
                          "motion INSIDE a window (default off = previous behavior). Without this the "
@@ -565,8 +575,20 @@ parser.add_argument("--dsgnar_reweight", type=float, default=None,
                     help="Per-condition reweighting exponent (paper: 0.05; default 0 = off). Conditions: "
                          "einstein/gauge x interior/tapa, bc, ic, (ic_log), pos.")
 parser.add_argument("--dsgnar_fixed_sketch", action="store_true", help="One sketch for the whole cycle.")
-parser.add_argument("--dsgnar_reject_overshoot", action="store_true", default=None,
-                    help="Reject a step whose ratio overshoots target + 0.1 and expand the radius (paper 3.4).")
+parser.add_argument("--dsgnar_reject_overshoot", action=argparse.BooleanOptionalAction, default=None,
+                    help="Reject a step whose ratio overshoots target + 0.1 and expand the radius (the paper's "
+                         "TEXT, 3.4; on in --dsgnar_paper). --no-dsgnar_reject_overshoot: accept any step that "
+                         "lowers the loss, as the paper's own CODE does (ldc/ldc.ipynb).")
+parser.add_argument("--dsgnar_jacobian", type=str, default="cols", choices=["cols", "rows"],
+                    help="How the sketched Jacobian C J Omega S is built. cols (default): s forward "
+                         "tangents through the whole residual. rows: the paper code's way -- per-point "
+                         "reverse-mode Jacobians vmapped over --dsgnar_row_batch points, folded into the "
+                         "CountSketch buckets, SRCT applied once; 2.5x cheaper on CPU, same J~ to round-off.")
+parser.add_argument("--dsgnar_row_batch", type=int, default=64,
+                    help="Points per macro-batch of --dsgnar_jacobian rows (memory ~ batch x 24 x n_params x 8 B).")
+parser.add_argument("--dsgnar_max_seconds", type=float, default=0.0,
+                    help="Wall-time budget of each DSGNAR cycle in seconds (0 = none): the phase stops after "
+                         "the iteration that exceeds it -- for comparisons at equal GPU time.")
 parser.add_argument("--dsgnar_paper", action="store_true",
                     help="The paper's settings (reweight 0.05, reject overshoot, no line scan, no "
                          "calibration, shrink on accept, no floor, K 4, targets 0.075/0.5, delta_min 1e-8); "
@@ -775,6 +797,7 @@ if dsgnar_steps > 0:
     print(f"DSGNAR: {dsgnar_steps} iterations x {args.dsgnar_cycles} cycle(s) per window "
           f"({args.dsgnar_order}), sketch {args.dsgnar_sketch or 'n/3'}, "
           + ", ".join(f"{k[7:]}={v}" for k, v in _dsg.items())
+          + f", jacobian={args.dsgnar_jacobian}" + (f", max {args.dsgnar_max_seconds:g} s/cycle" if args.dsgnar_max_seconds else "")
           + (" [paper preset]" if args.dsgnar_paper else ""))
 
 
@@ -796,7 +819,8 @@ def _dsgnar_cfg(**over):
         dsgnar_reweight_alpha=float(_dsg["dsgnar_reweight"]),
         dsgnar_fixed_sketch=bool(args.dsgnar_fixed_sketch),
         dsgnar_reject_overshoot=bool(_dsg["dsgnar_reject_overshoot"]),
-        seed=0, resample_every=int(args.dsgnar_resample_every), log_every=int(args.dsgnar_log_every))
+        seed=0, resample_every=int(args.dsgnar_resample_every), log_every=int(args.dsgnar_log_every),
+        dsgnar_jacobian=str(args.dsgnar_jacobian), dsgnar_max_seconds=float(args.dsgnar_max_seconds))
     for k, v in over.items():
         setattr(cfg, k, v)
     return cfg
@@ -1855,8 +1879,13 @@ def sample_sphere_focused_multistar(key, n, fraction, radius, centers):
     chunks = []
     for k, (cx, cy, cz) in enumerate(centers):
         n_k  = N_focused - n_per * (n_centers - 1) if k == n_centers - 1 else n_per
-        pts  = jnp.array([cx, cy, cz], dtype=jnp.float64) + radius * jax.random.normal(
-               subkeys[k + 1], (n_k, 3), dtype=jnp.float64)
+        if args.symmetric_focus:
+            # point-reflected pairs: the cloud is symmetric about its centre by construction
+            d = radius * jax.random.normal(subkeys[k + 1], ((n_k + 1) // 2, 3), dtype=jnp.float64)
+            d = jnp.vstack([d, -d])[:n_k]
+        else:
+            d = radius * jax.random.normal(subkeys[k + 1], (n_k, 3), dtype=jnp.float64)
+        pts  = jnp.array([cx, cy, cz], dtype=jnp.float64) + d
         pts  = _project_to_sphere(pts)
         chunks.append(pts)
 
@@ -3205,7 +3234,7 @@ def compute_bfgs_loss(apply_fn, net_params,
 def bfgs_residual_vector(apply_fn, net_params,
                          lam_bc, lamg0, w_pos, traj_tt, traj_xx,
                          lam_einstein, lam_gauge, r_eps,
-                         *train_data, _blocks=None):
+                         *train_data, _blocks=None, _scales=None):
     """compute_bfgs_loss in least-squares form, for --dsgnar_steps (DSGNAR is a
     Gauss-Newton method and needs the residual VECTOR): rows r with
 
@@ -3217,7 +3246,9 @@ def bfgs_residual_vector(apply_fn, net_params,
     weights already are (see _causal_weights), so the Jacobian is that of the
     weighted residual with the weights held fixed, exactly as in the QN gradient.
     `_blocks`, if a list, receives (label, n_rows) per condition in row order
-    (static shapes; DSGNAR's per-condition reweighting, --dsgnar_reweight)."""
+    (static shapes; DSGNAR's per-condition reweighting, --dsgnar_reweight). `_scales`, if
+    a list, receives each row's (stop-gradiented) scale factor, in row order (used by the
+    rows-first sketched Jacobian, --dsgnar_jacobian rows)."""
     params = net_params if traj_tt is None else _bundle_params(net_params, traj_tt, traj_xx)
     (t, x, y, z, tf, xf, yf, zf, tb, xb, yb, zb, gb,
      ti, xi, yi, zi, ic_ccz4,
@@ -3231,6 +3262,8 @@ def bfgs_residual_vector(apply_fn, net_params,
         rows.append(r)
         if _blocks is not None:
             _blocks.append((label, int(r.shape[0])))
+        if _scales is not None:
+            _scales.append(jnp.broadcast_to(sg(scale), res.shape).reshape(-1))
 
     def wrows(weight, w, res):      # rows of weight * _wmean(res**2, w)
         return jnp.sqrt(weight * w / (jnp.sum(w) * res.shape[1] + 1e-30)), res
@@ -3269,16 +3302,27 @@ class _DsgnarObjective:
     0.5 * mean(residual**2) == compute_bfgs_loss: DSGNAR's model decrease is in
     those units (Stationary/DSGNAR.md section 2.2). `args` are compute_bfgs_loss's
     arguments after net_params; they are closed over, so a new sample is a new
-    objective (the phase rebuilds its jitted maps on resample)."""
+    objective (the phase rebuilds its jitted maps on resample).
 
-    def __init__(self, apply_fn, unflatten, args, flat_like):
+    sketch_rows (--dsgnar_jacobian rows, the paper's construction): C J for the
+    CountSketch C given by (signs, buckets), built ROW-wise. Every residual row
+    depends on one collocation point (its scale factor is stop-gradiented), so a
+    point's rows come from one reverse-mode Jacobian of that point's residuals;
+    jacrev is vmapped over macro-batches of points and each batch's rows are
+    folded into the s hash buckets at once (CountSketch is linear, so
+    C J Omega S = (C J) Omega S: the parameter sketch is applied once, to the
+    s x n result). Equal to the column construction to round-off
+    (tools/test_dsgnar_bh.py)."""
+
+    def __init__(self, apply_fn, unflatten, args, flat_like, row_batch=64):
         self.n = int(flat_like.size)
         self.dtype = flat_like.dtype
         blocks = []
         jax.eval_shape(lambda f: bfgs_residual_vector(apply_fn, unflatten(f), *args, _blocks=blocks),
                        flat_like)
         self.blocks = blocks
-        k = float(np.sqrt(2.0 * sum(b[1] for b in blocks)))
+        M = sum(b[1] for b in blocks)
+        k = float(np.sqrt(2.0 * M))
 
         @jax.jit
         def _residual(f):
@@ -3286,6 +3330,119 @@ class _DsgnarObjective:
 
         self._residual = _residual
         self._loss = jax.jit(lambda f: 0.5 * jnp.mean(_residual(f) ** 2))
+
+        # ---------------- rows-first sketched Jacobian ----------------
+        (lam_bc_, lamg0_, w_pos_, traj_tt_, traj_xx_, lam_e_, lam_g_, r_eps_) = args[:8]
+        (t, x, y, z, tf, xf, yf, zf, tb, xb, yb, zb, gb,
+         ti, xi, yi, zi, ic_ccz4,
+         w_int, w_tapa, w_ic, ws, we) = args[8:]
+        off, o = {}, 0
+        for lab, nr in blocks:
+            off[lab] = o
+            o += nr
+        has_log = "ic_log" in off
+
+        def P(f):
+            p = unflatten(f)
+            return p if traj_tt_ is None else _bundle_params(p, traj_tt_, traj_xx_)
+
+        def one(q):
+            return [q[i:i + 1].reshape(1, 1) for i in range(4)]
+
+        def f_int(f, q, _):      # 22 CCZ4 rows + 2 positivity rows of one interior point
+            T, X, Y, Z = one(q)
+            r = r_ccz4_evolution(apply_fn, P(f), T, X, Y, Z, ws, we)[0]
+            o_ = full_output(apply_fn, P(f), T, X, Y, Z, ws, we)[0]
+            return jnp.concatenate([r, jnp.stack([jax.nn.relu(-o_[CHI_IDX]), jax.nn.relu(-o_[ALPHA_IDX])])])
+
+        def f_tapa(f, q, _):
+            T, X, Y, Z = one(q)
+            return r_ccz4_evolution(apply_fn, P(f), T, X, Y, Z, ws, we)[0]
+
+        def f_bc(f, q, g):
+            T, X, Y, Z = one(q)
+            if metric_bc_mode == "dirichlet":
+                return metric_dirichlet_residual(apply_fn, P(f), T, X, Y, Z, ws, we, g.reshape(1, -1), lam_bc_)[0]
+            return metric_sommerfeld_residual(apply_fn, P(f), T, X, Y, Z, ws, we, c, lam_bc_, r_eps_)[0]
+
+        def f_ic(f, q, g):
+            T, X, Y, Z = one(q)
+            ug = full_output(apply_fn, P(f), T, X, Y, Z, ws, we)[0]
+            out = [ug[CCZ4_SLICE] - g]
+            if has_log:
+                idx = jnp.array([CHI_IDX, ALPHA_IDX])
+                out.append(jnp.log(_smooth_floor(ug[idx], _IC_LOG_EPS))
+                           - jnp.log(_smooth_floor(g[idx], _IC_LOG_EPS)))
+            return jnp.concatenate(out)
+
+        def rows_of(n_pts, parts):
+            """(n_pts, K) global row indices for a point group: parts = [(block, width), ...]."""
+            cols = [off[b] + np.arange(n_pts)[:, None] * wdt + np.arange(wdt)[None, :] for b, wdt in parts]
+            return np.concatenate(cols, axis=1)
+
+        hcat = lambda *a: jnp.concatenate(a, axis=1)
+        Ni, Nf, Nb_, N0 = int(t.shape[0]), int(tf.shape[0]), int(tb.shape[0]), int(ti.shape[0])
+        groups = [
+            (f_int,  hcat(t, x, y, z),     jnp.zeros((Ni, 1)),
+             rows_of(Ni, [("einstein_int", 18), ("gauge_int", 4), ("pos", 2)])),
+            (f_tapa, hcat(tf, xf, yf, zf), jnp.zeros((Nf, 1)),
+             rows_of(Nf, [("einstein_tapa", 18), ("gauge_tapa", 4)])),
+            (f_bc,   hcat(tb, xb, yb, zb), gb,
+             rows_of(Nb_, [("bc", 22)])),
+            (f_ic,   hcat(ti, xi, yi, zi), ic_ccz4,
+             rows_of(N0, [("ic", 22)] + ([("ic_log", 2)] if has_log else []))),
+        ]
+        # the ROW order of each point function above must match these index columns
+        for fn_, Q, G, idx in groups:
+            K = jax.eval_shape(lambda f, q, g: fn_(f, q, g), flat_like, Q[0], G[0]).shape[0]
+            assert K == idx.shape[1], (fn_.__name__, K, idx.shape)
+        B = int(row_batch)
+
+        def _scales(f):
+            sc = []
+            bfgs_residual_vector(apply_fn, unflatten(f), *args, _scales=sc)
+            return jnp.concatenate(sc)
+
+        def make(s_):
+            @jax.jit
+            def sketch_rows(f, signs, buckets, w):
+                coef_all = k * _scales(f) * w                      # (M,): frozen scale x reweighting
+                acc = jnp.zeros((s_, f.shape[0]), dtype=f.dtype)
+                for fn_, Q, G, idx in groups:
+                    n_pts = Q.shape[0]
+                    pad = (-n_pts) % B
+                    idx_p = np.concatenate([idx, np.zeros((pad, idx.shape[1]), dtype=idx.dtype)]) if pad else idx
+                    valid = np.concatenate([np.ones(n_pts), np.zeros(pad)])
+                    Qp = jnp.concatenate([Q, jnp.repeat(Q[:1], pad, 0)]) if pad else Q
+                    Gp = jnp.concatenate([G, jnp.repeat(G[:1], pad, 0)]) if pad else G
+                    nb = (n_pts + pad) // B
+                    data = (Qp.reshape(nb, B, -1), Gp.reshape(nb, B, -1),
+                            jnp.asarray(idx_p.reshape(nb, B, -1)), jnp.asarray(valid.reshape(nb, B)))
+                    jac = jax.vmap(jax.jacrev(fn_), in_axes=(None, 0, 0))
+
+                    def body(a, d):
+                        q, g, ix, v = d
+                        J = jac(f, q, g)                                   # (B, K, n)
+                        cf = coef_all[ix] * v[:, None]                     # (B, K)
+                        Jr = J.reshape(-1, J.shape[-1])
+                        for h in range(signs.shape[0]):
+                            sgn = (signs[h][ix] * cf).reshape(-1)
+                            a = a + jax.ops.segment_sum(Jr * sgn[:, None], buckets[h][ix].reshape(-1),
+                                                        num_segments=s_)
+                        return a, None
+
+                    acc, _ = jax.lax.scan(body, acc, data)
+                return acc
+            return sketch_rows
+
+        self._sketch_rows_cache = {}
+        self._make_sketch_rows = make
+
+    def sketch_rows(self, flat, signs, buckets, s, w):
+        """C J (the (s, n) bucketed row sketch); apply the SRCT to get C J Omega S."""
+        if s not in self._sketch_rows_cache:
+            self._sketch_rows_cache[s] = self._make_sketch_rows(s)
+        return self._sketch_rows_cache[s](jnp.asarray(flat), signs, buckets, w)
 
     def residual(self, flat):
         return self._residual(jnp.asarray(flat))
@@ -3729,6 +3886,7 @@ def find_bh_centers_lapse(prev_state, t_val, n_scan=2000, min_center_separation=
 # find_bh_centers_lapse) and is logged as the trajectory diagnostic.
 # --------------------------------------------------------------------------------
 _shift_track_xy = [[c[0], 0.0] for c in _bh_center_list(BL_masses)]   # [[x_A,y_A], ...], y=0 at t=0
+_INITIAL_CENTERS = [(xy[0], xy[1], 0.0) for xy in _shift_track_xy]     # --sampling_centers initial
 
 
 def _wrap_moving_chi_bg_if_needed(fn, p, traj_tt, traj_xx):
@@ -5106,7 +5264,8 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
         # had three places to update in lockstep instead of one.
         nonlocal key
         data, key = build_train_data(window_start, window_end, key, prev_state=prev_state,
-                                     star_centers=star_centers,
+                                     star_centers=(_INITIAL_CENTERS if args.sampling_centers == "initial"
+                                                   else star_centers),
                                      sigma_time=_sigma_time_at(_resample_count),
                                      follow=((traj_tt, traj_xx) if follow_puncture_sampling and traj_tt is not None else None))
         return _shard_train_data(data)  # [GPUS]
@@ -5888,7 +6047,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
 
         def make_obj(p_flat):
             a_ = (lam_bc, lamg0, w_pos, traj_tt, traj_xx, lam_einstein * ramp, lam_gauge, r_eps, *train_data)
-            return _DsgnarObjective(train_apply_fn, unflat, a_, p_flat)
+            return _DsgnarObjective(train_apply_fn, unflat, a_, p_flat, row_batch=int(args.dsgnar_row_batch))
 
         def new_sample():
             nonlocal train_data, _resample_count

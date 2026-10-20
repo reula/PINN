@@ -369,6 +369,27 @@ block at once) is 3x SLOWER than ours: the speed comes from vmapping `jacrev` ov
 sub-batches. The 2.5x is a lower bound (the bench applies the parameter sketch as a dense matrix;
 the paper's DCT is cheaper and nearly independent of s); not measured on the GPU.
 
+**Rows-first DSGNAR, implemented (2026-10-20).** `--dsgnar_jacobian rows` builds DSGNAR's sketched
+Jacobian the paper code's way: per-point reverse-mode Jacobians (`jacrev` vmapped over
+`--dsgnar_row_batch` points), folded straight into the CountSketch buckets with each row's frozen
+scale, and the parameter sketch (SRCT) applied once to the s x n result -- C J Omega S = (C J) Omega S
+by linearity, which avoids even the paper's per-row DCT. `_DsgnarObjective.sketch_rows` does it;
+`dsgnar.py` uses it when asked (default stays `cols`). Verified (`tools/test_dsgnar_bh.py`, test 4):
+equal to the column construction to 1.6e-13 for the default, Dirichlet + log-IC and physical-chi row
+layouts, and a rows-mode DSGNAR phase reproduces the cols-mode loss history. **Cost on the whole
+objective** (CPU, production 6x40 network, 19680 rows, s = n/3 = 3100): rows 1.6 s, cols 18.4 s per
+sketched Jacobian, **11.5x**. GPU not yet measured.
+
+Related flags: `--dsgnar_max_seconds T` (stop a cycle after T s, for equal-time comparisons; an
+addition to `dsgnar.py`), and `--dsgnar_reject_overshoot` is now on/off (`--dsgnar_paper
+--no-dsgnar_reject_overshoot` = the paper's settings with "accept any step that lowers the loss",
+which is what the paper's code does).
+
+**Sampling flags for the drift (2026-10-20).** `--sampling_centers initial` keeps the focused and
+core clouds at the punctures' t = 0 positions while tracking and the moving background run;
+`--symmetric_focus` draws each cloud in point-reflected pairs about its centre (offsets sum to zero to
+round-off). Both off by default (bitwise as before).
+
 **Loss plots by optimiser (2026-10-20).** `loss_window{w}.png` now shades each stretch of the
 history by the optimizer that produced it (Adam, QN, DSGNAR) and names it at the top, instead of
 one Adam -> BFGS line.
@@ -441,4 +462,4 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/mass_function.py RUN --out X.npz -- <physics flags>`: Misner-Sharp mass, Theta, |Z^i| along the x-axis per window.
 * `tools/plot_report_figures.py DATA OUT`: the figures in `plots/2026-10-20/`.
 * `tools/plot_exec_summary.py DATA OUT`: the figures of the executive summary.
-* `tools/bench_jacobian_sketch.py [--s 1024]`: rows (paper) vs columns (ours) for DSGNAR's sketched Jacobian.
+* `tools/bench_jacobian_sketch.py [--s 1024]`: rows (paper) vs columns (ours) for DSGNAR's sketched Jacobian, one block of points.

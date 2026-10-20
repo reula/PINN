@@ -579,7 +579,14 @@ def dsgnar_phase(objective, flat0, cfg,
     scale = 0.5 * inv_m
 
     res_fn = objective._residual                      # jitted scalar-to-residual map
-    dct = _dct_matrix(n, dtype)                       # constant: built once, not per iteration
+    # SBH addition (2026-10-20): 'rows' builds C J row-wise in the objective (the paper code's
+    # construction; objective.sketch_rows), then applies the SRCT to the s x n result; 'cols'
+    # (default) is the JVP construction below. Same J~ to round-off.
+    rows_mode = (str(getattr(cfg, "dsgnar_jacobian", "cols")) == "rows"
+                 and hasattr(objective, "sketch_rows"))
+    max_seconds = float(getattr(cfg, "dsgnar_max_seconds", 0.0) or 0.0)
+    srct_apply = jax.jit(apply_srct)
+    dct = None if rows_mode else _dct_matrix(n, dtype)   # constant: built once, not per iteration
     # The 25 trust-region probes are evaluated SEQUENTIALLY, not in one vmap.  A vmap of the
     # loss over the probes materialises the whole residual computation -- every collocation
     # point, every equation component, the second derivatives of lambda -- 25 times over: XLA's
@@ -697,7 +704,7 @@ def dsgnar_phase(objective, flat0, cfg,
         if fixed_sketch:
             k_srct, k_ck = fixed_srct_key, fixed_ck_key
         srct = make_srct(k_srct, n, s)
-        B = srct_columns(srct, n, s, dtype, dct_matrix=dct)   # (s, n); B.T is Omega S
+        B = None if rows_mode else srct_columns(srct, n, s, dtype, dct_matrix=dct)   # (s, n); B.T is Omega S
 
         residual = res_fn(flat) * rs                  # r in R^M, in full (reweighted)
 
@@ -707,7 +714,10 @@ def dsgnar_phase(objective, flat0, cfg,
         # same hash draws then give r~ as well, keeping the two sketches identical.
         tic = time.time()
         signs, buckets = count_sketch_draws(k_ck, int(residual.shape[0]), s, k_hashes, dtype)
-        j_sketch = sketched_jacobian(flat, B, signs, buckets, rs)      # (s, s)
+        if rows_mode:
+            j_sketch = srct_apply(objective.sketch_rows(flat, signs, buckets, s, rs), srct)   # (s, s)
+        else:
+            j_sketch = sketched_jacobian(flat, B, signs, buckets, rs)      # (s, s)
         r_tilde = apply_count_sketch(residual[:, None], signs, buckets, s)[:, 0]
         t_jvp += time.time() - tic
 
@@ -889,6 +899,8 @@ def dsgnar_phase(objective, flat0, cfg,
         # --- Algorithm 1 lines 12-15: stopping and the target-ratio update ----
         if radius < STOP_MARGIN * delta_min:
             stopped = "radius below threshold"
+        elif max_seconds > 0 and time.time() - t0 >= max_seconds:
+            stopped = "time budget"
         elif step >= int(cfg.dsgnar_steps):
             stopped = "budget"
         else:
@@ -912,6 +924,7 @@ def dsgnar_phase(objective, flat0, cfg,
 
     info = {
         "optimizer": "dsgnar",
+        "jacobian": "rows" if rows_mode else "cols",
         "chunk": chunk,
         "row_chunk": row_chunk,
         "iterations": step,
