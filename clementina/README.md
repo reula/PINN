@@ -89,6 +89,8 @@ Three consequences that decide everything below:
 | `debug_oneapi.sbatch` | when a job prints nothing and runs to its limit: every diagnostic wrapped in `timeout`, so `rc=124` names the hanging step | `gpunode`, 20 min |
 | `02_smoke.sbatch` | step 3 wrapper, inside a GPU allocation | `testing`, 1 GPU, 20 min |
 | `03_tiny_run.sbatch` | step 4 — the real `wave_pinn` CLI, tiny, on one Intel GPU | `gpunode`, 40 min |
+| `ldc_run.py` | `ldc/ldc.ipynb` as a headless script: DSGNAR vs SSBroyden on the lid-driven cavity, graded against the reference field | any GPU node |
+| `08_ldc.sbatch` | runs `ldc_run.py` with `MODE=smoke|a30|paper` (default a30) | `gpunode`, 8 h (override) |
 | `04_prod_run.sbatch` | step 5 — the Mendieta production recipe, one GPU | `gpunode`, 8 h (override) |
 
 All of them are idempotent enough to re-run: an existing
@@ -425,6 +427,40 @@ given and has 64 GB; `CXXI_ZE_MODE=COMPOSITE` collapses each card into one
 128 GB device if a recipe needs more (nothing in this repo has needed ~24 GB).
 
 ---
+
+## 8b. The LDC notebook as a job (`08_ldc.sbatch`)
+
+`ldc/ldc.ipynb` (lid-driven cavity, Re = 100; DSGNAR from the paper's vendored
+package vs Crunch SSBroyden, every iterate graded against
+`ldc/reference_gen/ldc_reference.npz`) has a batch twin: `ldc_run.py` — same
+numerics, headless, no writes into the checkout, outputs under `/data`.
+
+```bash
+sbatch clementina/08_ldc.sbatch                                        # a30 preset
+sbatch --export=ALL,MODE=smoke clementina/08_ldc.sbatch                # minutes: pipeline check
+sbatch -t 24:00:00 --export=ALL,MODE=paper clementina/08_ldc.sbatch    # the paper's numbers
+```
+
+| MODE | net | points (pde/bc) | sketch | batch | dense Jacobian |
+|---|---|---|---|---|---|
+| `smoke` | 40-40-40 | 2^11 / 2^10 | 256 | 256 | 0.02 GiB |
+| `a30` | 48-48-48 | 2^13 / 2^12 | 1665 | 1024 | 0.12 GiB |
+| `paper` | 60-60-60-60 | 2^15 / 2^14 | 4000 | 4096 | ~1.1 GiB |
+
+Outputs in `/data/contrib/pci_143/pinn/ldc/ldc_<mode>/`: `summary.json` (grades,
+losses, timings), `history.json`, `results.npz`, `dsgnar_flat.npy`,
+`figures/optimizers_loss_and_relL2.png`, `figures/fields_{u,v,p}.png`.
+
+Budgets can be trimmed without changing the preset:
+`--dsgnar-steps`, `--qn-maxiter`, `--float32-steps` (pass them after the sbatch
+script, e.g. `sbatch clementina/08_ldc.sbatch --dsgnar-steps 20`), and
+`--skip-fields` drops the per-channel field figures.
+
+The paper preset fits a 48 GiB tile comfortably (Jacobian ~1.1 GiB, sketch
+0.12 GiB, XLA temporaries 2-3x the Jacobian). What it costs is **time**: the
+comparison runs DSGNAR 200 float64 steps and SSBroyden 2 x 1000 quasi-Newton
+iterations at 2^15 points, so submit with `-t 24:00:00` and expect hours rather
+than minutes.
 
 ## 9. Files back, and where results live
 
