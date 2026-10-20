@@ -64,7 +64,7 @@ echo "    python $PY"
 echo "    outdir $OUT"
 echo
 
-cxxi_pin_gpu
+cxxi_pin_gpu "$PY"
 echo
 
 "$PY" -u "$CXXI_DIR/ldc_paper_run.py" --mode "$MODE" --outdir "$OUT" --label "$LABEL" "$@"

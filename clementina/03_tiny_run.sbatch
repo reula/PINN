@@ -72,7 +72,7 @@ echo "outdir    $RUNROOT/runs/$LABEL"
 command -v xpu-smi >/dev/null 2>&1 && timeout 20 xpu-smi discovery 2>&1 | head -20 || echo "xpu-smi not on this node (or timed out)"
 echo
 
-cxxi_pin_gpu
+cxxi_pin_gpu "$PY"
 
 cxxi_assert_accelerator "$PY" || { echo "FATAL: no Intel GPU visible to JAX" >&2; exit 2; }
 echo

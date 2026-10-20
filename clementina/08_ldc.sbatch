@@ -75,7 +75,7 @@ echo
 
 # One GPU per job: pin Level Zero to the card Slurm allocated (the device nodes
 # are not filtered per job, so JAX would otherwise enumerate every card).
-cxxi_pin_gpu
+cxxi_pin_gpu "$PY"
 echo
 
 "$PY" -u "$CXXI_DIR/ldc_run.py" --mode "$MODE" --outdir "$OUT" --label "$LABEL" "$@"

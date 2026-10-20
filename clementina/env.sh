@@ -81,23 +81,49 @@ fi
 # CXXI_ZE_MASK=off disables the pinning.
 # ---------------------------------------------------------------------------
 cxxi_pin_gpu() {
+    # Usage: cxxi_pin_gpu [<python-in-venv>]
+    # With a python argument the mask is verified by actually starting JAX: Slurm's GPU
+    # index does NOT always equal the Level Zero device index (cn001: Slurm GPU 3 ->
+    # mask 6,7 -> "No SYCL devices found"), so try the derived mask, then the
+    # card-relative one, then leave the runtime unmasked rather than fail the job.
+    local py="${1:-}"
     [ "${CXXI_ZE_MASK:-on}" = "off" ] && return 0
     [ -n "${ZE_AFFINITY_MASK:-}" ] && return 0
     [ -n "${SLURM_JOB_GPUS:-}" ] || return 0
-    local g out="" IFS=,
+
+    local g out="" rel="" IFS=,
     for g in $SLURM_JOB_GPUS; do
         g="${g//[!0-9]/}"                       # "0" or "0,1" or gres syntax
         [ -n "$g" ] || continue
         if [ "${ZE_FLAT_DEVICE_HIERARCHY:-FLAT}" = "COMPOSITE" ]; then
             out="${out:+$out,}$g.0,$g.1"
+            rel="${rel:-0.0,0.1}"
         else
             out="${out:+$out,}$((2 * g)),$((2 * g + 1))"
+            rel="${rel:-0,1}"
         fi
     done
-    if [ -n "$out" ]; then
-        export ZE_AFFINITY_MASK="$out"
-        echo "pinned ZE_AFFINITY_MASK=$out  (Slurm GPUs: ${SLURM_JOB_GPUS}; CXXI_ZE_MASK=off to disable)"
-    fi
+    [ -n "$out" ] || return 0
+
+    _cxxi_mask_works() {                         # $1 = candidate mask
+        [ -n "$py" ] || return 0                 # no interpreter to verify with
+        ZE_AFFINITY_MASK="$1" "$py" -c \
+            'import jax, sys; sys.exit(0 if len(jax.devices()) else 3)' >/dev/null 2>&1
+    }
+
+    local cand
+    for cand in "$out" "$rel"; do
+        if [ -n "$py" ]; then
+            _cxxi_mask_works "$cand" || continue
+        fi
+        export ZE_AFFINITY_MASK="$cand"
+        echo "pinned ZE_AFFINITY_MASK=$cand  (Slurm GPUs: ${SLURM_JOB_GPUS}; CXXI_ZE_MASK=off to disable)"
+        return 0
+    done
+
+    unset ZE_AFFINITY_MASK
+    echo "WARNING: neither ZE_AFFINITY_MASK=$out nor $rel exposes a device on this node;" >&2
+    echo "         leaving the runtime unmasked (JAX will use the first visible card)." >&2
 }
 
 # ---------------------------------------------------------------------------
