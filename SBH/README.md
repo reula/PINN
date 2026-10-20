@@ -230,6 +230,22 @@ an option for this problem. SBH stays on Mendieta. Possible next attempts if Cle
 `CXXI_ZE_MODE=COMPOSITE`, a newer plugin build, or a report to the cluster's support
 (tickets.clementinaxxi.org.ar) with `tools/oneapi_probe.py` as the reproducer.
 
+**The 1D reference (received 2026-10-20, `originals/reference_1d.zip`, unpacked in `reference_1d/`).**
+The collaborators' validation solution for one m = 0.5 puncture: the BH code's own `r_ccz4_evolution`
+evolved in spherical symmetry (4th-order finite differences, dr = 0.005, outer boundary causally
+disconnected; error <= 1e-5 for r >= 0.1), t = 0..10 at every window boundary, plus their tools
+(`compare_pinn.py`, `misner_sharp.py`, `BH_invariants.py`, ...). See `reference_1d/README.md`. The two
+17 MB `.npz` files are git-ignored (unzip `originals/reference_1d.zip` to get them). Their tools load
+the BH script through `tests/load_module.py`, which here is a shim over `tools/load_defs.py`:
+
+    cd reference_1d && JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 python compare_pinn.py RUN_DIR ref_single_m0.5_dr0.005.npz
+
+First comparison, `single_a` (the code's defaults = the 10-19 Oct summary's "first baseline"): alpha at
+r = 0.03 is ~2x the reference from t = 0 on (0.215 vs 0.108 at t = 0.25, 0.300 vs 0.147 at t = 1, 0.081 vs
+0.034 at t = 10), i.e. errors 0.108 / 0.153 -- the summary reports 0.125 / 0.156 for its first baseline, so
+reference, shim and run agree. The non-spherical part (`off_form`) grows from 0.01 to 1.4 by t = 10;
+mid-radius alpha L2 error from 1e-4 to 0.10.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
