@@ -444,6 +444,21 @@ lowers the loss is accepted, 4200 s per window) with the port's step safeguards 
 paper's: the line scan (1, 1/2, ..., 1/16, 1e-3, 1e-2 of the step; first that lowers the loss is
 taken), a grow-only radius with a floor at 1e-3 of its high-water mark, calibration, targets 0.15/0.5.
 
+**First result, pure GN vs pure Broyden at equal time (2026-10-20, end-of-window training loss on each
+run's own samples):**
+
+| window | `w8_gn` (paper step rule) | `w8_gn_scan` (line scan + radius floor) | `w8_qn` (SSBroyden) |
+|---|---|---|---|
+| 1 | 12.9 -> 11.1, collapsed after 4 min | 12.9 -> 1.07e-2, 275 its, all accepted | -- |
+| 2 | -> 0.19, collapsed | 9.0e-3 -> 5.9e-3 | 2.4e-7 |
+| 3 | -> 7.6e-3, collapsed | 5.6e-3 -> 4.7e-3 | 3.8e-7 |
+| 4-8 | 5.0e-3 ... 3.0e-3, collapsed every window | (running) | 5.8e-7, 8.8e-7, ... |
+
+With the safeguards DSGNAR accepts every step and uses the whole budget (~272 iterations of ~15 s per
+70-min window), and still ends each window ~1e4 above SSBroyden -- far beyond the 5-10x between
+own-sample and held-out losses, so not a sampling artefact. Held-out and mass grading follow when the
+runs finish.
+
 Both comparison runs use ONE optimizer each (Adam is off by default; `w8_gn` has `--EPOCHS_QN 0`).
 The drift tests were lengthened to 16 windows (jobs 1181119/20 cancelled before starting): at t = 2
 the push at the origin separates tracking from a fixed centre by 4x, at t = 4 by 10x. They keep
