@@ -904,6 +904,13 @@ so the rotation itself should not matter -- but the rotated inner data have more
 on the sampled points of the inner sphere (n_bnd 1024), or the 45-deg data excite modes the
 centre-of-mass condition (radii 1 .. 100) handles differently.
 
+Round 22 (`rot_bnd4k`: `rot_ssbm3` continued with 4x the inner-sphere points, `--n-bnd 4096`):
+1.34e-6 -> **1.16e-6** in 10000 (18 min), errors unchanged (rms dlambda 1.86e-5, dh 1.21e-3; rho 1-3
+dh 2.5e-3), fresh/training 1.03.  The inner boundary term was already negligible (bc_in 8e-10 of a
+loss of 1.2e-6; the rest is interior: Ricci 5.7e-7, gauge 3.9e-7, lambda 1.3e-7), so **the inner
+sampling is ruled out**.  Left: the interior collocation (density near the inner sphere), the
+centre-of-mass condition, the network's capacity for the rotated angular structure.
+
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed
 algebraically from d h and never differentiated (model.point_fields exposes `hl_of`, h and lambda
