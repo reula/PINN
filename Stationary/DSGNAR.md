@@ -938,7 +938,12 @@ on-axis control uses the same one and keeps improving).  Two measurements:
   readings apart: it stays near the reference (the optimiser never found that basin) or drifts back
   to dh ~ 1e-3 (the objective's minimum within this network is there).  (A 512-point smoke fit had
   halved the h error while its PINN loss rose to 5.5e-2.)
-* `rot_coll64k`: `rot_ssbm3` continued with 4x the interior points (65536).  Pending.
+* **`rot_coll64k`: more interior points move the floor.**  `rot_ssbm3` continued with 4x the
+  interior points (65536), 10000 merged-SSBroyden iterations (23.5 min, GPU 0.09 GB, RSS 3.3 GB):
+  1.36e-6 -> **2.60e-7** (fresh/training 1.01); rms dlambda 1.72e-5 -> 1.36e-5, rms dh 1.17e-3 ->
+  **7.2e-4** (rho 1-3: 2.4e-3 -> 1.5e-3; rho 30-100 dlambda 2.1e-7 -> 2.7e-8).  The rotated run is now
+  at the on-axis control's level (2.58e-7, dh 5.5e-4 at 16384 points).  So the rotated floor was (at
+  least partly) the interior sampling.  Round 25: 4x again (`rot_coll256k`, 262144 points).
 
 Also `--ricci-form harmonic_direct`: the same reduced tensor computed from h, d h and d d h only,
 R^H_ab = -1/2 h^cd d_c d_d h_ab + h^cd h^ef (d_e h_ca d_f h_db - G_ace G_bdf), Gamma formed

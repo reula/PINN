@@ -279,6 +279,16 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_from_fit]:-}" ] && ! squeue -h -u "$USER
           mendieta_check.sbatch runs/rot_from_fit) (after rot_from_fit)"
 fi
 fi
+# round 25 (2026-10-20): rot_coll64k (4x interior points) moved the rotated floor -- 1.36e-6 -> 2.60e-7,
+# rms dh 1.17e-3 -> 7.2e-4 -- on 0.09 GB of GPU memory.  Continue it with 4x again (262144 points).
+submit rot_coll256k         rot_coll64k --steps 0 --init-from runs/rot_coll64k/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 --n-coll 262144 \
+                              $ROT $RHO4 $PP $COM
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_coll256k]:-}" ] && ! squeue -h -u "$USER" -n check_coll256k -o %i | grep -q .; then
+    echo "  submit   check_coll256k -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_coll256k --dependency=afterany:${JID[rot_coll256k]} \
+          mendieta_check.sbatch runs/rot_coll256k) (after rot_coll256k)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
