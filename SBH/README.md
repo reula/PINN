@@ -210,6 +210,26 @@ error. Findings:
 * |Z^i| on the cut grows to 3e-2 in `single_a`; with a fixed centre it is not smaller (1.6e-2 at
   t = 4 against 7e-3 for tracking only), so the drift and the constraint growth are separate issues.
 
+**Clementina XXI (2026-10-20): not usable for SBH yet.** `jobs/clementina/bh.sbatch` runs the same
+presets on the Intel Data Center GPU Max 1550 nodes (JAX 0.11.2 + the experimental `jax-oneapi-plugin`,
+venv `~/venvs/pinn-oneapi` shared with other JAX jobs; flax 0.12.9 was ADDED to it with jax/jaxlib
+pinned -- only flax and 18 new dependencies were written, nothing existing changed). The device is
+found and pinned, but the float64 code does not compile reliably (`PRESET=probe`,
+`tools/oneapi_probe.py`, job 1548870):
+
+* every float64 forward product used here passes alone (network matmuls, the 9302^2 matvec and
+  outer product, batched 3x3 products, the RHS einsums, 3x3 inverses and determinants);
+* the GRADIENT of a trivial float64 matmul loss fails (`IndexError: _Map_base::at`); float32 passes;
+* the residual's forward pass fails with the same error in autodiff mode and crashes Intel's graphics
+  compiler in taylor mode (`IGC: Internal Compiler Error: Segmentation violation`), while taylor
+  value+grad passes; the full BFGS loss (bench job 1548869) dies in oneDNN ("could not create a
+  primitive descriptor for the matmul primitive").
+
+Fusion-dependent compiler/plugin bugs in float64, not something to fix in this code; float32 is not
+an option for this problem. SBH stays on Mendieta. Possible next attempts if Clementina is needed:
+`CXXI_ZE_MODE=COMPOSITE`, a newer plugin build, or a report to the cluster's support
+(tickets.clementinaxxi.org.ar) with `tools/oneapi_probe.py` as the reproducer.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
