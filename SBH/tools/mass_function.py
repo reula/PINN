@@ -29,6 +29,7 @@ ap.add_argument("--out", required=True)
 ap.add_argument("--nr", type=int, default=200)
 ap.add_argument("--rmin", type=float, default=0.05)
 ap.add_argument("--rmax", type=float, default=20.0)
+ap.add_argument("--both_ends", action="store_true", help="evaluate every window at t_start and t_end")
 argv = sys.argv[1:]
 rest = argv[argv.index("--") + 1:] if "--" in argv else []
 a = ap.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
@@ -88,9 +89,13 @@ def profile(st, t, center, sgn):
     return np.asarray(m), np.asarray(theta).reshape(-1), np.asarray(zn)
 
 
-out = {k: [] for k in ("t", "m_plus", "m_minus", "theta_plus", "theta_minus", "z_plus", "z_minus", "center")}
-evals = [(states[0], float(states[0]["t_start"]))] + [(st, float(st["t_end"])) for st in states]
-for st, t in evals:
+out = {k: [] for k in ("t", "m_plus", "m_minus", "theta_plus", "theta_minus", "z_plus", "z_minus", "center", "window", "side")}
+if a.both_ends:   # every window at its start AND its end: separates in-window growth from hand-off jumps
+    evals = [(st, float(st[key]), i, side) for i, st in enumerate(states)
+             for key, side in (("t_start", 0), ("t_end", 1))]
+else:
+    evals = [(states[0], float(states[0]["t_start"]), 0, 0)] + [(st, float(st["t_end"]), i, 1) for i, st in enumerate(states)]
+for st, t, wi, side in evals:
     if "traj_xx" in st and "traj_tt" in st:
         tt = np.asarray(st["traj_tt"]); xx = np.asarray(st["traj_xx"])
         center = (float(np.interp(t, tt, xx[0, 0])), float(np.interp(t, tt, xx[0, 1])))
@@ -99,7 +104,7 @@ for st, t in evals:
     mp, thp, zp = profile(st, t, center, +1.0)
     mm, thm, zm = profile(st, t, center, -1.0)
     for k, v in (("t", t), ("m_plus", mp), ("m_minus", mm), ("theta_plus", thp), ("theta_minus", thm),
-                 ("z_plus", zp), ("z_minus", zm), ("center", center)):
+                 ("z_plus", zp), ("z_minus", zm), ("center", center), ("window", wi), ("side", side)):
         out[k].append(v)
     sel = (r >= 0.5) & (r <= 10.0)
     err = max(np.max(np.abs(mp[sel] / M - 1)), np.max(np.abs(mm[sel] / M - 1)))

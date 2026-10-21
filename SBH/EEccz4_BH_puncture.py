@@ -584,6 +584,12 @@ parser.add_argument("--dsgnar_jacobian", type=str, default="cols", choices=["col
                          "tangents through the whole residual. rows: the paper code's way -- per-point "
                          "reverse-mode Jacobians vmapped over --dsgnar_row_batch points, folded into the "
                          "CountSketch buckets, SRCT applied once; 2.5x cheaper on CPU, same J~ to round-off.")
+parser.add_argument("--dsgnar_residual_sketch", type=str, default="count", choices=["count", "none"],
+                    help="count (default, the paper): CountSketch on the residual rows too. none (needs "
+                         "--dsgnar_jacobian rows): exact residual, only the parameters sketched -- the "
+                         "s x s Gram matrix (J Omega S)^T (J Omega S) and (J Omega S)^T r are accumulated over "
+                         "every row. Near the residual floor the row sketch's noise swamps the true gradient "
+                         "and makes ~half the steps uphill (tools/sketch_noise.py); this mode does not.")
 parser.add_argument("--dsgnar_row_batch", type=int, default=64,
                     help="Points per macro-batch of --dsgnar_jacobian rows (memory ~ batch x 24 x n_params x 8 B).")
 parser.add_argument("--dsgnar_max_seconds", type=float, default=0.0,
@@ -797,7 +803,7 @@ if dsgnar_steps > 0:
     print(f"DSGNAR: {dsgnar_steps} iterations x {args.dsgnar_cycles} cycle(s) per window "
           f"({args.dsgnar_order}), sketch {args.dsgnar_sketch or 'n/3'}, "
           + ", ".join(f"{k[7:]}={v}" for k, v in _dsg.items())
-          + f", jacobian={args.dsgnar_jacobian}" + (f", max {args.dsgnar_max_seconds:g} s/cycle" if args.dsgnar_max_seconds else "")
+          + f", jacobian={args.dsgnar_jacobian}, residual_sketch={args.dsgnar_residual_sketch}" + (f", max {args.dsgnar_max_seconds:g} s/cycle" if args.dsgnar_max_seconds else "")
           + (" [paper preset]" if args.dsgnar_paper else ""))
 
 
@@ -820,7 +826,8 @@ def _dsgnar_cfg(**over):
         dsgnar_fixed_sketch=bool(args.dsgnar_fixed_sketch),
         dsgnar_reject_overshoot=bool(_dsg["dsgnar_reject_overshoot"]),
         seed=0, resample_every=int(args.dsgnar_resample_every), log_every=int(args.dsgnar_log_every),
-        dsgnar_jacobian=str(args.dsgnar_jacobian), dsgnar_max_seconds=float(args.dsgnar_max_seconds))
+        dsgnar_jacobian=str(args.dsgnar_jacobian), dsgnar_max_seconds=float(args.dsgnar_max_seconds),
+        dsgnar_residual_sketch=str(args.dsgnar_residual_sketch))
     for k, v in over.items():
         setattr(cfg, k, v)
     return cfg
@@ -3435,14 +3442,61 @@ class _DsgnarObjective:
                 return acc
             return sketch_rows
 
+        def make_gram(s_):
+            """--dsgnar_residual_sketch none: no CountSketch on the rows. Accumulates, over every
+            row, A = (J Omega S) (rows x s, the SRCT applied to each row of J by a DCT) into
+            G = A^T A (s x s) and b = A^T r (s): the parameter-sketched Gauss-Newton system with
+            the EXACT residual, whose step is never uphill for a small enough radius."""
+            import dsgnar as _dm
+
+            @jax.jit
+            def gram(f, srct_signs, srct_perm, w):
+                coef_all = k * _scales(f) * w
+                r_all = _residual(f) * w
+                G = jnp.zeros((s_, s_), dtype=f.dtype)
+                b = jnp.zeros((s_,), dtype=f.dtype)
+                for fn_, Q, G_in, idx in groups:
+                    n_pts = Q.shape[0]
+                    pad = (-n_pts) % B
+                    idx_p = np.concatenate([idx, np.zeros((pad, idx.shape[1]), dtype=idx.dtype)]) if pad else idx
+                    valid = np.concatenate([np.ones(n_pts), np.zeros(pad)])
+                    Qp = jnp.concatenate([Q, jnp.repeat(Q[:1], pad, 0)]) if pad else Q
+                    Gp = jnp.concatenate([G_in, jnp.repeat(G_in[:1], pad, 0)]) if pad else G_in
+                    nb = (n_pts + pad) // B
+                    data = (Qp.reshape(nb, B, -1), Gp.reshape(nb, B, -1),
+                            jnp.asarray(idx_p.reshape(nb, B, -1)), jnp.asarray(valid.reshape(nb, B)))
+                    jac = jax.vmap(jax.jacrev(fn_), in_axes=(None, 0, 0))
+
+                    def body(c, d):
+                        Gc, bc = c
+                        q, g, ix, v = d
+                        J = jac(f, q, g)                                   # (B, K, n)
+                        cf = (coef_all[ix] * v[:, None]).reshape(-1)       # (B*K,)
+                        Jr = J.reshape(-1, J.shape[-1]) * cf[:, None]
+                        A = _dm.apply_srct(Jr, (srct_signs, srct_perm))    # (B*K, s)
+                        rr = r_all[ix].reshape(-1) * v.repeat(ix.shape[1])
+                        return (Gc + A.T @ A, bc + A.T @ rr), None
+
+                    (G, b), _ = jax.lax.scan(body, (G, b), data)
+                return G, b
+            return gram
+
         self._sketch_rows_cache = {}
         self._make_sketch_rows = make
+        self._gram_cache = {}
+        self._make_gram = make_gram
 
     def sketch_rows(self, flat, signs, buckets, s, w):
         """C J (the (s, n) bucketed row sketch); apply the SRCT to get C J Omega S."""
         if s not in self._sketch_rows_cache:
             self._sketch_rows_cache[s] = self._make_sketch_rows(s)
         return self._sketch_rows_cache[s](jnp.asarray(flat), signs, buckets, w)
+
+    def gram_rows(self, flat, srct, s, w):
+        """(G, b) = ((J Omega S)^T (J Omega S), (J Omega S)^T r) over every row (no row sketch)."""
+        if s not in self._gram_cache:
+            self._gram_cache[s] = self._make_gram(s)
+        return self._gram_cache[s](jnp.asarray(flat), srct[0], srct[1], w)
 
     def residual(self, flat):
         return self._residual(jnp.asarray(flat))

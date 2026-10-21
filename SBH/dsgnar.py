@@ -585,6 +585,13 @@ def dsgnar_phase(objective, flat0, cfg,
     rows_mode = (str(getattr(cfg, "dsgnar_jacobian", "cols")) == "rows"
                  and hasattr(objective, "sketch_rows"))
     max_seconds = float(getattr(cfg, "dsgnar_max_seconds", 0.0) or 0.0)
+    # SBH addition (2026-10-21): 'none' drops the CountSketch on the residual rows (needs rows mode).
+    # Near a nonzero-residual floor the sketched gradient J^T C^T C r is dominated by the sketch
+    # noise J^T (C^T C - I) r ~ |J||r|/sqrt(s) once |J^T r| falls below it, and the step goes uphill
+    # in ~half the draws however small the radius (tools/sketch_noise.py): the trust region
+    # collapses. With the exact residual, (J Omega S)^T r is the projected TRUE gradient.
+    exact_residual = (rows_mode and str(getattr(cfg, "dsgnar_residual_sketch", "count")) == "none"
+                      and hasattr(objective, "gram_rows"))
     srct_apply = jax.jit(apply_srct)
     dct = None if rows_mode else _dct_matrix(n, dtype)   # constant: built once, not per iteration
     # The 25 trust-region probes are evaluated SEQUENTIALLY, not in one vmap.  A vmap of the
@@ -714,11 +721,22 @@ def dsgnar_phase(objective, flat0, cfg,
         # same hash draws then give r~ as well, keeping the two sketches identical.
         tic = time.time()
         signs, buckets = count_sketch_draws(k_ck, int(residual.shape[0]), s, k_hashes, dtype)
-        if rows_mode:
+        if exact_residual:
+            # G = A^T A, b = A^T r with A = J Omega S over all rows; an equivalent square system
+            # J~ = Sigma V^T, r~ = Sigma^-1 V^T b has J~^T J~ = G and J~^T r~ = b, so everything below
+            # (secular solve, model decrease, PCHIP radius) is unchanged and exact in the subspace.
+            G_ex, b_ex = objective.gram_rows(flat, srct, s, rs)
+            ev, V_ex = jnp.linalg.eigh(0.5 * (G_ex + G_ex.T))
+            sig = jnp.sqrt(jnp.maximum(ev, 0.0))
+            j_sketch = sig[:, None] * V_ex.T
+            vb = V_ex.T @ b_ex
+            r_tilde = jnp.where(sig > 1e-14 * jnp.max(sig), vb / jnp.where(sig > 0, sig, 1.0), 0.0)
+        elif rows_mode:
             j_sketch = srct_apply(objective.sketch_rows(flat, signs, buckets, s, rs), srct)   # (s, s)
         else:
             j_sketch = sketched_jacobian(flat, B, signs, buckets, rs)      # (s, s)
-        r_tilde = apply_count_sketch(residual[:, None], signs, buckets, s)[:, 0]
+        if not exact_residual:
+            r_tilde = apply_count_sketch(residual[:, None], signs, buckets, s)[:, 0]
         t_jvp += time.time() - tic
 
         # --- Algorithm 1 line 4: one SVD serves every lambda ------------------
@@ -934,6 +952,7 @@ def dsgnar_phase(objective, flat0, cfg,
     info = {
         "optimizer": "dsgnar",
         "jacobian": "rows" if rows_mode else "cols",
+        "residual_sketch": "none" if exact_residual else "count",
         "chunk": chunk,
         "row_chunk": row_chunk,
         "iterations": step,

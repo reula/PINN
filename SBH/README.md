@@ -246,6 +246,43 @@ r = 0.03 is ~2x the reference from t = 0 on (0.215 vs 0.108 at t = 0.25, 0.300 v
 reference, shim and run agree. The non-spherical part (`off_form`) grows from 0.01 to 1.4 by t = 10;
 mid-radius alpha L2 error from 1e-4 to 0.10.
 
+**Why DSGNAR stops: the residual sketch (2026-10-21).** The LDC notebook gives DSGNAR's two faces on
+identical code and settings: on the hub's A30 it reaches loss 2.0e-7, rel. L2 0.0093 in 210 iterations /
+203 s (SSBroyden: 0.0114 after 10000), every ratio near its 0.075 target; on Clementina's Intel card the
+first step's ratio is NaN, later ones -1 to -15, and it stops at 82 iterations, rel. L2 0.57 -- the oneAPI
+float64 problems of the probe above, so Clementina's DSGNAR numbers are not usable. Even on the hub it
+finally flattens at 2e-7 with rejections (rho ~ -0.01, radius down to 1e-13), and `tools/sketch_noise.py`
+shows why. DSGNAR's gradient is J^T C^T C r; its error J^T (C^T C - I) r stays ~|J||r|/sqrt(s) while the
+TRUE gradient |J^T r| shrinks as the residual becomes orthogonal to range(J) at a nonzero-residual floor:
+
+| point (small BH problem, n = 998, s = 332) | loss | relative gradient |J^T r|/(|J||r|) | DSGNAR step: cos with g, uphill draws | exact residual: cos |
+|---|---|---|---|---|
+| initial network | 2.9e-2 | 4.7e-2 (~ 1/sqrt(s) = 5.5e-2) | +0.37, 0/20 uphill | +0.57 |
+| after 300 SSBroyden its | 6.6e-4 | 9.3e-3 | +0.10, 4/20 | +0.57 |
+| after 1500 | 6.0e-5 | 2.4e-3 | +0.04, **8/20** | +0.58 |
+
+Once the true gradient is below the sketch noise the step is close to random and goes uphill in ~half the
+draws however small the radius; the trust region collapses. **`--dsgnar_residual_sketch none`** (with
+`--dsgnar_jacobian rows`) keeps the parameter sketch but uses the exact residual: G = (J Omega S)^T (J Omega S)
+and b = (J Omega S)^T r accumulated over every row (`_DsgnarObjective.gram_rows`; equal to the dense
+product to 2.5e-13), turned into an equivalent square system for the unchanged DSGNAR code. From the
+1500-iteration stall point (paper step rule): residual-sketched 2 accepted / 13 rejected, radius 7e-8; exact
+residual 30 / 0 (`tools/test_exact_residual.py`).
+
+**Where the mass error comes from (2026-10-21; `tools/mass_function.py --both_ends`,
+`tools/plot_mass_budget.py`, `plots/2026-10-21/mass_budget_*.png`).** Telescoping each window's mass at its
+start and end splits the error at every radius exactly into the initial-data fit, the growth INSIDE windows
+and the JUMPS at hand-offs. `single_a` at t = 10: r = 1: initial -1e-4, in-window +0.30, hand-offs -0.015,
+total +0.28 (r = 0.5: +0.35 / -0.07; r = 2: +0.21 / +0.03). So it is built up inside the windows, the
+hand-offs partly undo it, and the initial data are fitted to 1e-3. Its radial density d(m - m0)/d ln r is
+positive only at r <~ 0.3 (around the horizon) and ~0 from 0.3 to 3: the error is PRODUCED in the core and
+carried outward by the integral, with a separate oscillating part beyond r ~ 4 where the gauge pulse
+passes. `w8_qn` (final settings, t = 2): +-0.5 % beyond r = 0.3, in-window and hand-off terms of similar size
+and opposite sign, -2 to -4 % at r = 0.1-0.2. A constraint-violating solution still satisfies the CCZ4
+EVOLUTION equations (Theta, Z^i != 0), so the residual loss sees that mode only through the initial data;
+candidates: penalise Theta and Z^i (zero for the true solution) in the loss, constraint damping (weak in the
+core, where alpha ~ 0.1), a mass pin.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
@@ -592,5 +629,7 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/mass_function.py RUN --out X.npz -- <physics flags>`: Misner-Sharp mass, Theta, |Z^i| along the x-axis per window.
 * `tools/plot_report_figures.py DATA OUT`: the figures in `plots/2026-10-20/`.
 * `tools/plot_exec_summary.py DATA OUT`: the figures of the executive summary.
+* `tools/sketch_noise.py`, `tools/test_exact_residual.py`: DSGNAR's step vs the true gradient; the exact-residual mode.
+* `tools/plot_mass_budget.py RUN.npz OUT.png`: the mass-error budget (initial / in-window / hand-off) by radius.
 * `tools/plot_clouds.py OUT.png`: the interior points around a single puncture, default vs `--symmetric_focus` (`plots/2026-10-21/sampling_clouds.png`; centroid of the points within r < 1: 2.8e-3 vs 1e-5).
 * `tools/bench_jacobian_sketch.py [--s 1024]`: rows (paper) vs columns (ours) for DSGNAR's sketched Jacobian, one block of points.
