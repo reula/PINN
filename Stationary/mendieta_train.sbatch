@@ -24,6 +24,8 @@ export JAX_ENABLE_X64=1 XLA_PYTHON_CLIENT_PREALLOCATE=false MPLBACKEND=Agg
 # MEMFRAC=0.95 sbatch ... : the share of the GPU's memory JAX may use (its default is 0.75, i.e.
 # 17.7 GiB of an A30's 24; rot_coll256k's first allocation needed 17.76 GiB)
 [ -n "${MEMFRAC:-}" ] && export XLA_PYTHON_CLIENT_MEM_FRACTION="$MEMFRAC"
+# two GPUs (SBATCH_GRES=gpu:2 sbatch ... with --shard-coll): say what JAX sees
+.venv/bin/python -c "import jax; print('[devices]', jax.devices())" 2>/dev/null || true
 export JAX_COMPILATION_CACHE_DIR="$HOME/.cache/jax" MPLCONFIGDIR="$HOME/.cache/mpl"
 mkdir -p logs runs "$MPLCONFIGDIR"
 

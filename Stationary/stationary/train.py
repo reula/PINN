@@ -292,7 +292,26 @@ def make_batch(key, cfg: Config):
         keys = jax.random.split(k3, len(radii))
         batch["outer_extra"] = jnp.concatenate([
             sample_sphere(keys[i], cfg.n_bnd_outer or cfg.n_bnd, r) for i, r in enumerate(radii)])
+    if getattr(cfg, "shard_coll", False):
+        batch["coll"] = shard_points(batch["coll"])
     return batch
+
+
+def shard_points(x):
+    """`x` (N, 3) split along N over every visible device (a 1-D mesh), or `x` unchanged on one.
+
+    The losses reduce over the point axis, so a jitted loss of sharded points is computed as one
+    partial sum per device plus an all-reduce; the result (and its gradient) is replicated.
+    """
+    devs = jax.devices()
+    if len(devs) < 2:
+        return x
+    if x.shape[0] % len(devs):
+        raise SystemExit(f"--shard-coll: {x.shape[0]} points do not split over {len(devs)} devices")
+    import numpy as np
+    from jax.sharding import Mesh, NamedSharding, PartitionSpec
+    mesh = Mesh(np.array(devs), ("d",))
+    return jax.device_put(x, NamedSharding(mesh, PartitionSpec("d", None)))
 
 
 CKPT_NAME = "ckpt.pkl"
@@ -1756,6 +1775,8 @@ def parse_args(argv=None):
                    help="merged Crunch: relative curvature guards and rescaled update (default 1)")
     p.add_argument("--qn-rescale-carried", action="store_true", dest="qn_rescale_carried",
                    help="merged Crunch: rescale a carried H by y.s/y.H.y at each block's first pair")
+    p.add_argument("--shard-coll", action="store_true", dest="shard_coll",
+                   help="split the interior collocation points over every visible GPU")
     p.add_argument("--qn-ls-max", type=int, default=None, dest="qn_ls_max",
                    help="merged Crunch: line-search trials per iteration (default 100)")
     p.add_argument("--qn-method", choices=("ssbroyden", "lbfgs", "dsgnar"), default=None,
@@ -2311,6 +2332,8 @@ def parse_args(argv=None):
         cfg.qn_rescale_carried = True
     if a.qn_ls_max is not None:
         cfg.qn_ls_max = a.qn_ls_max
+    if a.shard_coll:
+        cfg.shard_coll = True
     if a.com_pin:
         cfg.com_radii = tuple(float(v) for v in a.com_pin.split(","))
     if a.w_com is not None:

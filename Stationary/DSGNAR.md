@@ -947,7 +947,11 @@ on-axis control uses the same one and keeps improving).  Two measurements:
   17.7 of an A30's 24); with `MEMFRAC=0.95` (mendieta_train.sbatch, 22.4 GiB) it ran out again:
   262144 points do not fit one A30 (chunked evaluation or the node's second GPU would be needed).
   Round 26: 131072 points (`rot_coll128k`, from `rot_coll64k`), and the regression-fit start at
-  65536 points (`rot_fit64k`).
+  65536 points (`rot_fit64k`).  Round 27: the 262144 points on BOTH A30s of a node (`rot_coll256k_2g`): `--shard-coll`
+  (Config.shard_coll) puts the interior points on a 1-D mesh of all visible devices, split along
+  the point axis, and jit splits the loss sum (parameters and H replicated);
+  tests/test_shard_coll.py checks on two fake CPU devices that loss and gradient equal the
+  unsharded ones (1e-12 / 1e-10) and that a sharded merged-SSBroyden phase trains.
 
 **Round 24 result: PINN training from the regression fit** (`rot_from_fit`, merged SSBroyden,
 16384 points, 10000 iterations, 14 min): loss 3.4e-2 -> **2.0e-7** (fresh/training 1.05), and the

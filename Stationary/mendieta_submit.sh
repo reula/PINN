@@ -311,6 +311,19 @@ for r in rot_coll128k rot_fit64k; do
               mendieta_check.sbatch runs/$r) (after $r)"
     fi
 done
+# round 27 (2026-10-21): the 262144-point run on BOTH A30s of a node: --shard-coll splits the interior
+# points over the visible devices (tests/test_shard_coll.py: same loss to 1e-12, gradient to 1e-10),
+# SBATCH_GRES overrides the script's gpu:1.  From rot_coll64k, as rot_coll256k was meant to.
+export MEMFRAC=0.95 SBATCH_GRES=gpu:2
+submit rot_coll256k_2g      rot_coll64k --steps 0 --init-from runs/rot_coll64k/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 --n-coll 262144 \
+                              --shard-coll $ROT $RHO4 $PP $COM
+unset MEMFRAC SBATCH_GRES
+if [ "$DRY" != "1" ] && [ -n "${JID[rot_coll256k_2g]:-}" ] && ! squeue -h -u "$USER" -n check_coll256k_2g -o %i | grep -q .; then
+    echo "  submit   check_coll256k_2g -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+          sbatch --parsable -J check_coll256k_2g --dependency=afterany:${JID[rot_coll256k_2g]} \
+          mendieta_check.sbatch runs/rot_coll256k_2g) (after rot_coll256k_2g)"
+fi
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation

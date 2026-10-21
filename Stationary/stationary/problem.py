@@ -481,6 +481,11 @@ class Config:
     qn_rescale_carried: bool = False
     # merged only: line-search trials per iteration (Armijo halvings or Wolfe evaluations; SBH 100)
     qn_ls_max: int = 100
+    # Spread the interior collocation points over every visible device (2026-10-21): make_batch puts
+    # batch["coll"] on a 1-D mesh of all devices, split along the point axis, and jit splits the
+    # loss sum accordingly; parameters and the inverse Hessian stay replicated.  For a point count
+    # that does not fit one GPU (262144 on a 24 GB A30): `--gres=gpu:2` and --shard-coll.
+    shard_coll: bool = False
     plateau_tol: float = 1e-4
     plateau_patience: int = 3
     plateau_min_iters: int = 100   # negative DISABLES the plateau stop (train.py);
