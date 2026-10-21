@@ -490,24 +490,31 @@ def _step_impl(
     for i, (fn, pts) in enumerate(zip(residual_fns, points_list)):
         subkey, ck = jax.random.split(subkey)
         if exact_residual:
-            # Accumulate macro-batch by macro-batch: the dense jacrev over ALL points at
-            # once (e.g. 8192) makes XLA emit 32-wide vectors and the Intel SYCL backend
-            # dies with SPV_EXT_long_vector; the 1024-point blocks are exactly the shapes
-            # the count-sketch path already compiles on this backend.
+            # Scan over the macro-batches (like the count-sketch path) instead of
+            # unrolling them in Python: at the paper sizes the unrolled graph is 48
+            # jacrev blocks, and its temporaries starve the cuFFT scratch allocator of
+            # the SRCT DCT ("Failed to create cuFFT batched plan").  A lax.scan keeps
+            # one block in the executable.  The Gram accumulation is unchanged.
             n_pts   = pts.shape[0]
             n_macro = n_pts // batch_size
-            r_parts = []
-            for j in range(n_macro):
-                x_macro = pts[j * batch_size:(j + 1) * batch_size]
-                Ji, ri  = _jacobian_block(params_flat, unflatten, static, fn,
-                                          x_macro, sub_batch_size)
-                scale2  = weights_arr[i] / n_pts
-                Ji      = _apply_srct(Ji, srct)         # (rows, parameter_sketch)
-                G_exact += scale2 * (Ji.T @ Ji)
-                b_exact += scale2 * (Ji.T @ ri)
-                r_parts.append(ri)
-            rfi = jnp.concatenate(r_parts)
-            all_r.append(rfi)
+            batched = pts.reshape(n_macro, batch_size, -1)
+            scale2  = weights_arr[i] / n_pts
+
+            def _exact_body(carry, x_macro):
+                G_acc, b_acc = carry
+                Ji, ri = _jacobian_block(params_flat, unflatten, static, fn,
+                                         x_macro, sub_batch_size)
+                Jr = _apply_srct(Ji, srct)             # (rows, parameter_sketch)
+                return (G_acc + scale2 * (Jr.T @ Jr),
+                        b_acc + scale2 * (Jr.T @ ri)), ri
+
+            (G_cond, b_cond), r_batched = jax.lax.scan(
+                _exact_body,
+                (jnp.zeros_like(G_exact), jnp.zeros_like(b_exact)),
+                batched)
+            G_exact = G_exact + G_cond
+            b_exact = b_exact + b_cond
+            all_r.append(r_batched.reshape(-1))
             continue
         Bi, rsi, rfi = _kernel_sketch(
             params_flat, unflatten, static, fn, pts, ck, srct,
