@@ -65,7 +65,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--qn-maxiter", type=int, default=None,
                     help="override the preset's SSBroyden iteration budget")
     ap.add_argument("--float32-steps", type=int, default=None,
-                    help="override the preset's float32 pre-pass length")
+                    help="override the preset's float32 pre-pass length: on the Intel tile "
+                         "the float32 pass overflows in the probe evaluation, so 0 skips it")
+    ap.add_argument("--exact-residual", action="store_true",
+                    help="skip the CountSketch on the residual rows and use the exact Gram "
+                         "system (SBH/06fac11): the residual-sketch noise swamps the true "
+                         "gradient near the floor and turns the trust-region step near-random")
     ap.add_argument("--skip-fields", action="store_true",
                     help="skip the per-channel field figures at the end")
     ap.add_argument("--autotune", action="store_true",
