@@ -219,8 +219,6 @@ for bits in (32, 64):
     lambdas = O._solve_subproblems(S, g, probe_radii, NEWTON_ITERS)
     jax.block_until_ready(lambdas)
     _stats(f"{tag} probe_lambdas", lambdas, st)
-    _stats(f"{tag} resid(||p(lam)||-r)", O._solve_subproblems.__globals__ and
-          (lambdas * 0 + 0), st) if False else None
 
     # predicted reductions exactly as _step_and_pred does
     def _pred(lam):

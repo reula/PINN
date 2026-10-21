@@ -148,8 +148,9 @@ problem = LidDrivenCavityProblem(n_pde=N_PDE, n_bc=N_BC)
 fns, samplers = problem.residual_fns(), problem.samplers()
 key, _ = jax.random.split(key)                      # initial CONDITIONS
 key, sk = jax.random.split(key)                     # this pass's points
-conds = (("pde", fns["pde"], samplers["pde"](sk, N_PDE, 0.0, 0.0)),
-         ("bc",  fns["bc"],  samplers["bc"](sk,  N_BC,  0.0, 0.0)))
+# solver.step expects (residual_fn, points) pairs (as ldc_run.py builds them)
+conds = ((fns["pde"], samplers["pde"](sk, N_PDE, 0.0, 0.0)),
+         (fns["bc"],  samplers["bc"](sk,  N_BC,  0.0, 0.0)))
 
 solver = pinn.optimiser.Optimiser(
     residual_sketch=SKETCH, parameter_sketch=SKETCH, n_hashes=4, sub_batch_size=SUB_BATCH,
@@ -171,11 +172,13 @@ for k in ("S", "probe_radii", "probe_rhos", "probe_losses", "pchip_y", "cond_los
     a = np.asarray(metrics[k])
     finite = a[np.isfinite(a)]
     report["stages"][k] = {
-        "shape": list(a.shape), "nan": int(np.isnan(a).sum()), "size": int(a.size),
+        "shape": list(a.shape), "nan": int(np.isnan(a).sum()),
+        "inf": int(np.isinf(a).sum()), "size": int(a.size),
         "min": float(finite.min()) if finite.size else None,
         "max": float(finite.max()) if finite.size else None,
     }
-    print(f"[step] {k:14s} nan={report['stages'][k]['nan']:5d}/{a.size:7d} "
+    print(f"[step] {k:14s} nan={report['stages'][k]['nan']:5d} inf={report['stages'][k]['inf']:5d} "
+          f"/{a.size:7d} "
           f"min={report['stages'][k]['min']} max={report['stages'][k]['max']}", flush=True)
 print(f"[step] rho={report['rho']} accepted={report['accepted']} loss={report['loss']}",
       flush=True)
