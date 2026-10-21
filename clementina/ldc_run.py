@@ -363,6 +363,24 @@ solver = Optimiser(residual_sketch=SKETCH, parameter_sketch=SKETCH, n_hashes=4,
                    pchip_grid=512, newton_iters=80,
                    exact_residual=ARGS.exact_residual)
 
+def _dsgnar_meta(step_total, seconds, rl, loss, stage="dsgnar"):
+    """Network metadata for a DSGNAR (intermediate or final) checkpoint."""
+    return model_meta(
+        hidden_dims=HIDDEN, seed=ARGS.seed,
+        driver=f"ldc.ipynb hand-driven Optimiser ({ARGS.mode} preset), DSGNAR phase",
+        config={"mode": ARGS.mode, "preset": dict(P), "n_pde": N_PDE, "n_bc": N_BC,
+                "sketch": SKETCH, "batch": BATCH, "probe": PROBE,
+                "pde_weight": PDE_WEIGHT, "target_rho": TARGET_RHO,
+                "exact_residual": ARGS.exact_residual},
+        backend=BACKEND, devices=DEVICES,
+        extra={"stage": stage, "dsgnar_steps": step_total,
+               "dsgnar_seconds": seconds, "paper_loss": loss,
+               "rel_l2": {k: float(v) for k, v in rl.items()}})
+
+
+SAVE_EVERY = 20       # periodic DSGNAR checkpoint: a long paper-size phase must not
+                      # lose everything if the job hits its time limit mid-DSGNAR
+
 ds_hist = []          # (iteration, paper loss, rel L2 mean, radius, rho, accepted, pass)
 step_total = 0
 key, k2 = jax.random.split(key)
@@ -390,6 +408,17 @@ for bits, n_steps in ((32, FLOAT32_STEPS), (64, DSGNAR_STEPS)):
                   f"relL2 {rl:.4f}  radius {float(opt_state.radius):.2e}  "
                   f"rho {float(metrics['rho']):+.3f}  {'acc' if accepted else 'rej'}",
                   flush=True)
+        if step_total % SAVE_EVERY == 0:
+            _flat_now = flat_of(params)
+            _rl_now = rel_l2(_flat_now)
+            save_network(
+                OUTDIR, eqx.combine(unflatten(_flat_now), static),
+                _dsgnar_meta(step_total, time.perf_counter() - t_dsgnar, _rl_now,
+                             float(paper_loss_jit(_flat_now)), stage="dsgnar-running"),
+                name="params_dsgnar_partial_flat.npy",
+                network_name="network_dsgnar_partial.json")
+            print(f"[net ] DSGNAR progress checkpoint at step {step_total} "
+                  f"(relL2 {_rl_now['mean']:.4f})", flush=True)
         if float(opt_state.radius) < 10 * MIN_RADIUS:
             print(f"[dsgnar] radius below threshold after {step_total} iterations", flush=True)
             break
@@ -407,17 +436,8 @@ print(f"[dsgnar] done: {step_total} iterations in {t_dsgnar:.1f}s | "
 # The SSBroyden phase below is two runs of up to 10^4 iterations; a job killed
 # there must not lose the DSGNAR solution (that is exactly how the paper-preset
 # run 1548247 ended: 2 h of work and nothing on disk).
-_net_meta_ds = model_meta(
-    hidden_dims=HIDDEN, seed=ARGS.seed,
-    driver=f"ldc.ipynb hand-driven Optimiser ({ARGS.mode} preset), DSGNAR phase only",
-    config={"mode": ARGS.mode, "preset": dict(P), "n_pde": N_PDE, "n_bc": N_BC,
-            "sketch": SKETCH, "batch": BATCH, "probe": PROBE,
-            "pde_weight": PDE_WEIGHT, "target_rho": TARGET_RHO},
-    backend=BACKEND, devices=DEVICES,
-    extra={"stage": "dsgnar", "dsgnar_steps": step_total,
-           "dsgnar_seconds": t_dsgnar,
-           "paper_loss": ds_final["loss"],
-           "rel_l2": {k: float(v) for k, v in ds_final["rel_l2"].items()}})
+_net_meta_ds = _dsgnar_meta(step_total, t_dsgnar, ds_final["rel_l2"],
+                            ds_final["loss"])
 save_network(OUTDIR, eqx.combine(unflatten(ds_flat), static), _net_meta_ds,
              name="params_dsgnar_flat.npy", network_name="network_dsgnar.json")
 print(f"[net ] DSGNAR checkpoint saved (before SSBroyden): {OUTDIR}/params_dsgnar_flat.npy",
