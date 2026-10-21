@@ -70,6 +70,23 @@ smoothly 1.0000 -> 0.9547.  The estimator reproduces the exact solution's own dr
 zero for every exact l >= 1, so the quadrupole's 12x is a property of the run, not of the
 measurement.  Two independent quadratures agree to six digits throughout.
 
+RESOLVED (2026-10-18), and NOT by an outer coefficient condition.  See `COM_GAUGE.md` and
+`REPORT_PIN_COM.md`, and the pin in the code (`--com-pin`, weight `--w-com`):
+
+* the TAIL DIPOLE was not physics but the coordinate image of the freedom to translate the
+  asymptotic chart; the invariant object is the CENTER OF MASS, and pinning it (`--com-pin`) is
+  what removes it.  That is why the l = 1 row above grew from an imposed zero;
+* the remaining error needed the rho^4 WEIGHTING of the residual, which makes the far field count
+  in the loss instead of being buried by the near field;
+* together they took the error against the nonlinear reference from ~2e-3 to ~7e-8 near the inner
+  sphere and from ~2e-5 to ~3e-9 far out -- 4-5 orders of magnitude, now 5-6 orders BELOW the size
+  of the quadrupole perturbation.  The diagnostic has since moved to the Geroch-Hansen potential
+  (`P_multipole_decay.png`), which is the invariant form of the same statement.
+
+So the S_20 table above is the RECORD OF THE DEFECT, not the present state of the solver: it is
+what the pre-COM runs looked like, kept because it is what the S_lm diagnostic was built to
+expose.  An outer condition on S_lm was considered and is NOT needed.
+
 Verified: tests/test_multipole_constants.py (7 tests) pins the definition against a synthetic
 pure tail and against reconstruction of the inner data.
 
