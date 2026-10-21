@@ -283,7 +283,8 @@ fi
 # rms dh 1.17e-3 -> 7.2e-4 -- on 0.09 GB of GPU memory.  Continue it with 4x again (262144 points).
 # first try: out of memory (17.76 GiB asked, 17.7 usable at JAX's default 0.75); again at 0.95
 export MEMFRAC=0.95
-submit rot_coll256k         rot_coll64k --steps 0 --init-from runs/rot_coll64k/params.pkl --qn-method ssbroyden \
+# rot_coll256k: out of memory twice (0.75 and 0.95); not resubmitted
+: submit rot_coll256k         rot_coll64k --steps 0 --init-from runs/rot_coll64k/params.pkl --qn-method ssbroyden \
                               --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 --n-coll 262144 \
                               $ROT $RHO4 $PP $COM
 if [ "$DRY" != "1" ] && [ -n "${JID[rot_coll256k]:-}" ] && ! squeue -h -u "$USER" -n check_coll256k -o %i | grep -q .; then
