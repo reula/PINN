@@ -65,6 +65,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--qn-maxiter", type=int, default=None,
                     help="override the preset's SSBroyden iteration budget")
     ap.add_argument("--float32-steps", type=int, default=None,
+                    help="override the preset's float32 pre-pass.  0 skips it: on the "
+                         "Intel tile the float32 pass overflows in the probe evaluation "
+                         "and only produces rejected steps (see README 8b-quater).")
+    ap.add_argument("--float32-steps", type=int, default=None,
                     help="override the preset's float32 pre-pass length")
     ap.add_argument("--skip-fields", action="store_true",
                     help="skip the per-channel field figures at the end")

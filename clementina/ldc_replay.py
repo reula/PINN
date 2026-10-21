@@ -154,6 +154,7 @@ opt_state = solver.init_state(k2, initial_radius=1.0)
 
 report = {"backend": BACKEND, "devices": [str(d) for d in jax.devices()],
           "jax": jax.__version__, "steps": []}
+_ALL_METRICS: list = []
 
 step_total = 0
 for bits, n_steps in ((32, ARGS.float32_steps), (64, ARGS.float64_steps)):
@@ -181,6 +182,9 @@ for bits, n_steps in ((32, ARGS.float32_steps), (64, ARGS.float64_steps)):
                 "nan": int(np.isnan(a).sum()), "inf": int(np.isinf(a).sum()),
                 "min": float(finite.min()) if finite.size else None,
                 "max": float(finite.max()) if finite.size else None}
+        _ALL_METRICS.append({k: np.asarray(metrics[k]) for k in
+                             ("S", "probe_radii", "probe_rhos", "probe_losses",
+                              "pchip_y", "lam")})
         report["steps"].append(entry)
         print(f"[repl] {step_total:3d} float{bits}  loss {entry['loss']:.4e}  "
               f"rho {entry['rho']:+.3f}  {'acc' if entry['accepted'] else 'rej'}  "
@@ -189,5 +193,11 @@ for bits, n_steps in ((32, ARGS.float32_steps), (64, ARGS.float64_steps)):
         if bad:
             print(f"[repl]      NaN/inf stages: {bad}", flush=True)
 
+# keep the raw arrays of every step for cross-platform diffing
+np.savez_compressed(
+    OUT / "replay_arrays.npz",
+    **{f"step{e['step']}_{k}": np.asarray(a)
+       for e, m in zip(report["steps"], _ALL_METRICS)
+       for k, a in m.items()})
 (OUT / "replay.json").write_text(json.dumps(report, indent=2))
 print(f"[repl] written {OUT}/replay.json", flush=True)
