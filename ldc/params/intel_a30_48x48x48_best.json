@@ -1,0 +1,82 @@
+{
+  "model": "SIREN",
+  "hidden_dims": [
+    48,
+    48,
+    48
+  ],
+  "seed": 0,
+  "time_dependent": false,
+  "periodic_bc": false,
+  "n_inputs": 2,
+  "n_outputs": 3,
+  "omega_0": 1.0,
+  "omega_hidden": 1.0,
+  "n_fourier": 0,
+  "learnable_omega": true,
+  "skip_connection": false,
+  "driver": "ldc.ipynb hand-driven Optimiser (a30 preset) + Crunch SSBroyden",
+  "config": {
+    "mode": "a30",
+    "preset": {
+      "hidden": [
+        48,
+        48,
+        48
+      ],
+      "n_pde": 8192,
+      "n_bc": 4096,
+      "sketch": 1665,
+      "batch": 1024,
+      "probe": 128,
+      "float32_steps": 4,
+      "dsgnar_steps": 400,
+      "qn_maxiter": 10000,
+      "min_radius": 1e-14
+    },
+    "n_pde": 8192,
+    "n_bc": 4096,
+    "sketch": 1665,
+    "batch": 1024,
+    "probe": 128,
+    "pde_weight": 0.01,
+    "target_rho": 0.075
+  },
+  "jax_version": "0.11.2",
+  "jaxlib_version": null,
+  "backend": "gpu",
+  "devices": [
+    "oneapi:0",
+    "oneapi:1"
+  ],
+  "best_by_accuracy": "SSBroyden from x0",
+  "rel_l2": {
+    "u": 0.001380588018168984,
+    "v": 0.0027033682381087812,
+    "p": 0.03007392759594033,
+    "mean": 0.011385961284072698
+  },
+  "paper_loss": 3.16008711724889e-08,
+  "note": "Clementina XXI, one Intel Max 1550 tile (pinned ZE_AFFINITY_MASK=0,1), job 1549369, 24m36s total.  DSGNAR itself stalled at 82 iterations (radius floor 1e-13) with rel L2 0.5703; the SSBroyden phase (10000 iterations, from x0) reached loss 3.16e-08 and rel L2 u 0.00138 / v 0.00270 / p 0.03007 / mean 0.01139.  Compare the A30 hub run (ldc/params/hub_a30_dsgnar_48x48x48.*): DSGNAR reached mean 0.00927 there, so the Intel backend changes DSGNAR's accept/reject trajectory while SSBroyden still converges.",
+  "n_parameters": 4998,
+  "params_file": "params_flat.npy",
+  "saved_utc": "2026-10-20T22:08:03Z",
+  "leaves_file": "params.eqx",
+  "grades_rel_l2": {
+    "DSGNAR": 0.570270301602199,
+    "SSBroyden from x0": 0.011385961284072698,
+    "SSBroyden polish": 0.01139189056959196
+  },
+  "losses": {
+    "DSGNAR": 0.00044307600306977315,
+    "SSBroyden from x0": 3.16008711724889e-08,
+    "SSBroyden polish": 3.165914489958639e-08
+  },
+  "final_rel_l2": {
+    "u": 0.001380588018168984,
+    "v": 0.0027033682381087812,
+    "p": 0.03007392759594033,
+    "mean": 0.011385961284072698
+  },
+  "source": "clementina/08_ldc.sbatch on Clementina (MODE=a30), outdir /data/contrib/pci_143/pinn/ldc/ldc_a30"
+}

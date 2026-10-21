@@ -489,6 +489,29 @@ comparison runs DSGNAR 200 float64 steps and SSBroyden 2 x 1000 quasi-Newton
 iterations at 2^15 points, so submit with `-t 24:00:00` and expect hours rather
 than minutes.
 
+## 8b-ter. Result on the Intel tile (`a30` preset, job 1549369)
+
+`08_ldc.sbatch` (MODE=a30, one pinned Max 1550), **completed in 24 m 36 s**:
+
+| phase | iterations | time | paper loss | rel L2 (u / v / p / mean) |
+|---|---|---|---|---|
+| DSGNAR (paper code) | 82 | 440 s | 4.43e-04 | 0.511 / 0.665 / 0.535 / **0.5703** |
+| SSBroyden from x0 | 10 000 | 1 050 s | **3.16e-08** | 0.00138 / 0.00270 / 0.03007 / **0.01139** |
+| SSBroyden polish from DSGNAR | 10 000 | 520 s | 3.17e-08 | 0.01139 |
+
+Best by accuracy: **SSBroyden from x0, mean rel L2 0.01139** — the same class as the
+A30 hub run (`0.00927`, loss 1.8e-07), reached with a different route.  Saved and
+re-loadable: `ldc/params/intel_a30_48x48x48_best.npy` + `.json`; the loader scores it
+at mean 0.011386.  Figures: `clementina/results/ldc_a30_intel_optimizers.png`,
+`..._fields_u.png`; full run in `/data/contrib/pci_143/pinn/ldc/ldc_a30/`.
+
+**Open question:** with the *same* initial state (loss 6.3471e-01, rel L2 4.696, identical
+to the A30 run) DSGNAR on the Intel tile collapses its trust region to 1e-13 after 82
+iterations and stops at 0.57, while on the A30 it ran 238 iterations to 0.0093.  The
+SSBroyden phase is unaffected.  Whether DSGNAR's rho estimates are perturbed by the SYCL
+reductions (accept iff rho > 0 is a knife-edge) is the thing to check if the paper's
+DSGNAR advantage must be reproduced on this hardware.
+
 ## 8b-bis. Trained parameters are saved with their architecture
 
 Every run written by `ldc_run.py` and `ldc_paper_run.py` now saves
