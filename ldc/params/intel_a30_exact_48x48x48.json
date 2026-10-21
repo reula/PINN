@@ -1,0 +1,64 @@
+{
+  "model": "SIREN",
+  "hidden_dims": [
+    48,
+    48,
+    48
+  ],
+  "seed": 0,
+  "time_dependent": false,
+  "periodic_bc": false,
+  "n_inputs": 2,
+  "n_outputs": 3,
+  "omega_0": 1.0,
+  "omega_hidden": 1.0,
+  "n_fourier": 0,
+  "learnable_omega": true,
+  "skip_connection": false,
+  "driver": "ldc.ipynb hand-driven Optimiser (a30 preset) + Crunch SSBroyden",
+  "config": {
+    "mode": "a30",
+    "preset": {
+      "hidden": [
+        48,
+        48,
+        48
+      ],
+      "n_pde": 8192,
+      "n_bc": 4096,
+      "sketch": 1665,
+      "batch": 1024,
+      "probe": 128,
+      "float32_steps": 0,
+      "dsgnar_steps": 400,
+      "qn_maxiter": 10000,
+      "min_radius": 1e-14
+    },
+    "n_pde": 8192,
+    "n_bc": 4096,
+    "sketch": 1665,
+    "batch": 1024,
+    "probe": 128,
+    "pde_weight": 0.01,
+    "target_rho": 0.075
+  },
+  "jax_version": "0.11.2",
+  "jaxlib_version": null,
+  "backend": "gpu",
+  "devices": [
+    "oneapi:0",
+    "oneapi:1"
+  ],
+  "best_by_accuracy": "DSGNAR",
+  "rel_l2": {
+    "u": 0.0014893174834196637,
+    "v": 0.0024881175568217543,
+    "p": 0.021923396289654125,
+    "mean": 0.008633610443298514
+  },
+  "paper_loss": 3.117764490818805e-07,
+  "note": "best = the best-by-accuracy of DSGNAR / SSBroyden-from-x0 / SSBroyden-polish; the other three vectors are saved next to it",
+  "n_parameters": 4998,
+  "params_file": "params_flat.npy",
+  "saved_utc": "2026-10-21T15:28:13Z"
+}

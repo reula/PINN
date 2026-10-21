@@ -489,6 +489,49 @@ comparison runs DSGNAR 200 float64 steps and SSBroyden 2 x 1000 quasi-Newton
 iterations at 2^15 points, so submit with `-t 24:00:00` and expect hours rather
 than minutes.
 
+## 8b-sexies. RESULT: DSGNAR now works on the Intel tile (job 1549619)
+
+With the exact residual rows (default-off `exact_residual=True` in the vendored optimiser,
+`--exact-residual` on the drivers) and the float32 pre-pass skipped, the a30 preset **beats the
+A30 hub run**:
+
+| run (a30 preset, 48-48-48, 2^13/2^12, sketch 1665) | loss | rel L2 mean | u | v | p |
+|---|---|---|---|---|---|
+| **Intel, exact residual, float64 only (1549619)** | **3.12e-07** | **0.008634** | 0.00149 | 0.00249 | 0.0219 |
+| A30 hub, count sketch (`hub_a30_dsgnar_48x48x48`) | 1.84e-07 | 0.009266 | 0.00177 | 0.00337 | 0.02266 |
+| Intel, count sketch, float64 only (1549432) | 6.05e-04 | 0.6617 | 0.553 | 0.820 | 0.611 |
+| Intel, count sketch + SSBroyden (1549369, old best) | 3.16e-08 | 0.01139 | 0.00138 | 0.00270 | 0.03007 |
+
+400/400 DSGNAR steps accepted, rho pinned at 0.074-0.076 (the plot's target 0.075), radius
+staying ~1e-2, loss still falling at the 400-step budget: 2076 s of DSGNAR + 541.8 s of
+SSBroyden polish (10000 iterations), 52 min wall on one tile.  Saved and re-verified:
+
+```bash
+python clementina/ldc_params.py   --params ldc/params/intel_a30_exact_48x48x48.npy   --network ldc/params/intel_a30_exact_48x48x48.json
+# [score ] {"u": 0.001489, "v": 0.002488, "p": 0.021923, "mean": 0.008634}
+```
+
+How to reproduce / rerun:
+
+```bash
+# the a30 run (exact residual, float64 only, + SSBroyden)
+sbatch -p gpunode -t 01:30:00 clementina/17_gpu_a30_exact.sbatch
+# the 8-step smoke of the change
+sbatch -p gpunode -t 00:30:00 clementina/16_gpu_replay_exact.sbatch
+# or directly
+python clementina/ldc_run.py --mode a30 --exact-residual --float32-steps 0
+```
+
+Two Intel-specific compile fixes were needed on top of the ported algebra (both committed):
+the dense `jacrev` must run on the usual 1024-point macro-batches and the Gram system be
+accumulated block by block — a single `jacrev` over a whole condition's 8192 points makes XLA
+emit 32-wide vectors and the SYCL backend dies with `SPV_EXT_long_vector` — and the
+eigendecomposition of the Gram matrix must be an SVD (`S = sqrt(sigma)`, `Vt = V^T`,
+`g = V^T b`): `jnp.linalg.eigh` on the 1665x1665 matrix crashes the same way, the SVD compiles.
+
+Artifacts: `ldc/params/intel_a30_exact_48x48x48.{npy,json}` (parameters + architecture), and
+`clementina/results/ldc_a30_exact_{summary,history}.json` / `_results.npz` (full per-step trace).
+
 ## 8b-quinquies. The fix to test: exact residual rows (from SBH/06fac11)
 
 The other agent's DSGNAR work (`Stationary`/`SBH`, commit 06fac11) found the mechanism behind

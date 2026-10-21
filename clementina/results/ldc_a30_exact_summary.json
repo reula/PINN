@@ -1,0 +1,79 @@
+{
+  "label": "ldc_a30_exact",
+  "mode": "a30",
+  "preset": {
+    "hidden": [
+      48,
+      48,
+      48
+    ],
+    "n_pde": 8192,
+    "n_bc": 4096,
+    "sketch": 1665,
+    "batch": 1024,
+    "probe": 128,
+    "float32_steps": 0,
+    "dsgnar_steps": 400,
+    "qn_maxiter": 10000,
+    "min_radius": 1e-14
+  },
+  "overrides": {
+    "float32_steps": 0
+  },
+  "backend": "gpu",
+  "devices": [
+    "oneapi:0",
+    "oneapi:1"
+  ],
+  "jax": "0.11.2",
+  "n_parameters": 4998,
+  "grid": {
+    "n_pde": 8192,
+    "n_bc": 4096,
+    "sketch": 1665,
+    "batch": 1024,
+    "probe": 128
+  },
+  "initial": {
+    "loss": 0.6347081961938947,
+    "rel_l2": {
+      "u": 6.2558,
+      "v": 3.8278,
+      "p": 4.0033,
+      "mean": 4.6956
+    }
+  },
+  "dsgnar": {
+    "loss": 3.117764490818805e-07,
+    "rel_l2": {
+      "u": 0.0014893174834196637,
+      "v": 0.0024881175568217543,
+      "p": 0.021923396289654125,
+      "mean": 0.008633610443298514
+    },
+    "steps": 400,
+    "seconds": 2075.9955406240188
+  },
+  "grades_rel_l2": {
+    "DSGNAR": 0.008633610443298514,
+    "SSBroyden from x0": 0.011401958972703928,
+    "SSBroyden polish": 0.011086549118108599
+  },
+  "losses": {
+    "DSGNAR": 3.117764490818805e-07,
+    "SSBroyden from x0": 3.105388891879043e-08,
+    "SSBroyden polish": 3.6457568679706964e-08
+  },
+  "best_by_accuracy": "DSGNAR",
+  "final": {
+    "rel_l2": {
+      "u": 0.0014893174834196637,
+      "v": 0.0024881175568217543,
+      "p": 0.021923396289654125,
+      "mean": 0.008633610443298514
+    },
+    "loss": 3.117764490818805e-07
+  },
+  "outdir": "/data/contrib/pci_143/pinn/ldc/ldc_a30_exact",
+  "exact_residual": true
+}
