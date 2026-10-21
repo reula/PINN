@@ -944,7 +944,10 @@ on-axis control uses the same one and keeps improving).  Two measurements:
   **7.2e-4** (rho 1-3: 2.4e-3 -> 1.5e-3; rho 30-100 dlambda 2.1e-7 -> 2.7e-8).  The rotated run is now
   at the on-axis control's level (2.58e-7, dh 5.5e-4 at 16384 points).  So the rotated floor was (at
   least partly) the interior sampling.  Round 25: 4x again (`rot_coll256k`, 262144 points).  Its first try ran out of GPU memory (17.76 GiB asked; JAX's default fraction 0.75 leaves
-  17.7 of an A30's 24); resubmitted with `MEMFRAC=0.95` (mendieta_train.sbatch).
+  17.7 of an A30's 24); with `MEMFRAC=0.95` (mendieta_train.sbatch, 22.4 GiB) it ran out again:
+  262144 points do not fit one A30 (chunked evaluation or the node's second GPU would be needed).
+  Round 26: 131072 points (`rot_coll128k`, from `rot_coll64k`), and the regression-fit start at
+  65536 points (`rot_fit64k`).
 
 **Round 24 result: PINN training from the regression fit** (`rot_from_fit`, merged SSBroyden,
 16384 points, 10000 iterations, 14 min): loss 3.4e-2 -> **2.0e-7** (fresh/training 1.05), and the

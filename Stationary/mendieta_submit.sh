@@ -292,6 +292,24 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_coll256k]:-}" ] && ! squeue -h -u "$USER
           mendieta_check.sbatch runs/rot_coll256k) (after rot_coll256k)"
 fi
 unset MEMFRAC
+# round 26 (2026-10-21): rot_coll256k ran out of memory again at MEMFRAC 0.95 (22.4 GiB): 262144 points do
+# not fit one A30.  rot_coll128k: rot_coll64k continued at 131072.  rot_fit64k: the two things that each
+# helped, together -- PINN training from the regression fit (rot_from_fit's start) at 65536 points.
+export MEMFRAC=0.95
+submit rot_coll128k         rot_coll64k --steps 0 --init-from runs/rot_coll64k/params.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 --n-coll 131072 \
+                              $ROT $RHO4 $PP $COM
+submit rot_fit64k           - --steps 0 --init-from runs/rot_ssbm3/params_fit_scratch.pkl --qn-method ssbroyden \
+                              --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 --n-coll 65536 \
+                              $ROT $RHO4 $PP $COM
+unset MEMFRAC
+for r in rot_coll128k rot_fit64k; do
+    if [ "$DRY" != "1" ] && [ -n "${JID[$r]:-}" ] && ! squeue -h -u "$USER" -n check_$r -o %i | grep -q .; then
+        echo "  submit   check_$r -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+              sbatch --parsable -J check_$r --dependency=afterany:${JID[$r]} \
+              mendieta_check.sbatch runs/$r) (after $r)"
+    fi
+done
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
