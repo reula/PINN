@@ -67,6 +67,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--float32-steps", type=int, default=None,
                     help="override the preset's float32 pre-pass length: on the Intel tile "
                          "the float32 pass overflows in the probe evaluation, so 0 skips it")
+    ap.add_argument("--batch", type=int, default=None,
+                    help="override the preset's macro-batch size.  In exact-residual mode "
+                         "it only chunks the Gram accumulation (mathematically identical), "
+                         "so reduce it if the paper-size batched FFT plan fails: the DCT in "
+                         "SRCT/lift needs a cuFFT scratch plan for (3*batch) x 2^14 blocks")
     ap.add_argument("--exact-residual", action="store_true",
                     help="skip the CountSketch on the residual rows and use the exact Gram "
                          "system (SBH/06fac11): the residual-sketch noise swamps the true "
@@ -251,7 +256,7 @@ PRESETS = {
 }
 P = dict(PRESETS[ARGS.mode])
 for k, v in (("dsgnar_steps", ARGS.dsgnar_steps), ("qn_maxiter", ARGS.qn_maxiter),
-             ("float32_steps", ARGS.float32_steps)):
+             ("float32_steps", ARGS.float32_steps), ("batch", ARGS.batch)):
     if v is not None:
         P[k] = v
 HIDDEN, N_PDE, N_BC = P["hidden"], P["n_pde"], P["n_bc"]
