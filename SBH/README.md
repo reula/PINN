@@ -493,6 +493,28 @@ t = 0.25 / 1) and improves 5x on the first baseline (`single_a`: 0.108 / 0.153).
 worse in the core and ~3000x at mid radii and does not capture the collapsed lapse (0.6 instead of
 0.11 at the puncture). **For this problem DSGNAR, in either form, is not competitive with SSBroyden.**
 
+**Final results of the 8- and 16-window runs (2026-10-21).**
+
+*Optimizers, all 8 windows, against the 1D reference:* SSBroyden (`w8_qn`) at t = 2: alpha(0.03) 0.276 vs
+0.281 (error 0.005), core alpha L2 1.2e-2, mid 3.5e-4, max |m/M - 1| on r in [0.5, 10] = 1.1e-2.
+DSGNAR with safeguards (`w8_gn_scan`) at t = 2: alpha(0.03) 0.541 vs 0.281, core 0.15, mid 0.21, mass
+error 0.50. The verdict above stands.
+
+*Drift, 16 windows (t <= 4), `single_a` settings:*
+
+| run | puncture drift t = 4 | `off_form` t = 4 | |beta| at origin t = 2 / 3 / 4 | mass error t = 4 |
+|---|---|---|---|---|
+| `single_a` (clouds follow the track) | 0.020 | ~0.6 (0.36 at t = 3) | 1.1e-2 / 3.5e-2 / 2.9e-2 | 6.9e-2 |
+| `w16_drift_initc` (clouds at the origin) | 0.010 | 0.32 | 4.9e-3 / 1.8e-2 / 1.7e-2 | 1.9e-2 |
+| `drift_fixed` (no tracking) | -- | -- | 2.0e-3 / 8.4e-3 / 2.9e-3 | 3.4e-2 |
+| **`w16_drift_symm`** (`--symmetric_focus`) | **0.0008** | **0.17** | **2.2e-3 / 8.3e-4 / 2.1e-3** | 3.4e-2 |
+
+Point-reflected sampling clouds stop the drift (25x less than `single_a`, the push at the origin as
+low as with tracking off), while holding the clouds at the origin only halves it. So the seed is the
+random lopsidedness WITHIN each cloud, which the tracking then amplifies -- not mainly the clouds
+following the track. Tracking can stay on with `--symmetric_focus`; it does not fix the mass error
+(a separate problem, as the |Z| growth already suggested).
+
 Both comparison runs use ONE optimizer each (Adam is off by default; `w8_gn` has `--EPOCHS_QN 0`).
 The drift tests were lengthened to 16 windows (jobs 1181119/20 cancelled before starting): at t = 2
 the push at the origin separates tracking from a fixed centre by 4x, at t = 4 by 10x. They keep
