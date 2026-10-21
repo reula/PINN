@@ -30,6 +30,8 @@ ap.add_argument("--outdir", required=True)
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--float32-steps", type=int, default=4)
 ap.add_argument("--float64-steps", type=int, default=2)
+ap.add_argument("--exact-residual", action="store_true",
+                help="exact residual rows instead of the CountSketch (SBH/06fac11)")
 ARGS = ap.parse_args()
 OUT = pathlib.Path(ARGS.outdir).resolve()
 OUT.mkdir(parents=True, exist_ok=True)
@@ -148,7 +150,8 @@ WEIGHTS = (PDE_WEIGHT, 1.0)
 solver = pinn.optimiser.Optimiser(
     residual_sketch=SKETCH, parameter_sketch=SKETCH, n_hashes=4, sub_batch_size=SUB_BATCH,
     batch_size=BATCH, probe_batch_size=PROBE_BATCH, n_probes=24, window_scale=3.0,
-    min_radius=MIN_RADIUS, max_radius=1e3, pchip_grid=512, newton_iters=80)
+    min_radius=MIN_RADIUS, max_radius=1e3, pchip_grid=512, newton_iters=80,
+    exact_residual=ARGS.exact_residual)
 key, k2 = jax.random.split(key)
 opt_state = solver.init_state(k2, initial_radius=1.0)
 

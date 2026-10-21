@@ -355,7 +355,8 @@ print(f"[ref ] initial: loss {_initial['loss']:.4e} | rel L2 "
 solver = Optimiser(residual_sketch=SKETCH, parameter_sketch=SKETCH, n_hashes=4,
                    sub_batch_size=4, batch_size=BATCH, probe_batch_size=PROBE,
                    n_probes=24, window_scale=3.0, min_radius=MIN_RADIUS, max_radius=1e3,
-                   pchip_grid=512, newton_iters=80)
+                   pchip_grid=512, newton_iters=80,
+                   exact_residual=ARGS.exact_residual)
 
 ds_hist = []          # (iteration, paper loss, rel L2 mean, radius, rho, accepted, pass)
 step_total = 0
@@ -560,6 +561,7 @@ summary = {
     "grades_rel_l2": grades, "losses": losses, "best_by_accuracy": best_name,
     "final": {"rel_l2": rel_l2(best), "loss": losses[best_name]},
     "outdir": str(OUTDIR),
+    "exact_residual": ARGS.exact_residual,
 }
 (OUTDIR / "summary.json").write_text(json.dumps(summary, indent=2))
 

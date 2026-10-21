@@ -350,6 +350,7 @@ class Optimiser:
         max_radius:       float = 1e5,
         pchip_grid:       int   = 1024,
         newton_iters:     int   = 60,
+        exact_residual:   bool  = False,
     ) -> None:
         self.residual_sketch      = residual_sketch
         self.parameter_sketch      = parameter_sketch
@@ -363,6 +364,14 @@ class Optimiser:
         self.max_radius       = max_radius
         self.pchip_grid       = pchip_grid
         self.newton_iters     = newton_iters
+        # LOCAL PATCH (2026-10-21, after SBH/06fac11): skip the CountSketch on the residual
+        # rows and accumulate the exact Gram system G = (J Omega S)^T (J Omega S),
+        # b = (J Omega S)^T r.  Near a nonzero-residual floor the sketched gradient
+        # J^T C^T C r is swamped by the sketch noise J^T (C^T C - I) r ~ |J||r|/sqrt(s),
+        # which turns the trust-region step into a near-random direction on any backend
+        # (on the Intel tile the near-null space of the sketched matrix makes the probe
+        # steps platform-sensitive, rho erratic/NaN).  Default False: unchanged behaviour.
+        self.exact_residual   = exact_residual
 
         self._step_jit = jax.jit(
             _step_impl,
@@ -380,6 +389,7 @@ class Optimiser:
                 "max_radius",
                 "pchip_grid",
                 "newton_iters",
+                "exact_residual",
             ),
         )
 
@@ -426,6 +436,7 @@ class Optimiser:
             max_radius=self.max_radius,
             pchip_grid=self.pchip_grid,
             newton_iters=self.newton_iters,
+            exact_residual=self.exact_residual,
         )
 
 
@@ -450,6 +461,7 @@ def _step_impl(
     max_radius:       float,
     pchip_grid:       int,
     newton_iters:     int,
+    exact_residual:   bool = False,
 ) -> tuple[Array, Pytree, SolverState, dict]:
 
     params_flat, unflatten = ravel_pytree(params)
@@ -469,8 +481,23 @@ def _step_impl(
     r_sketch = jnp.zeros((residual_sketch,),             params_flat.dtype)
     all_r    = []
 
+    # LOCAL PATCH: exact-residual (rows) mode accumulates the Gram system instead of
+    # the count-sketch of the rows.  Same weighted least-squares convention: every row
+    # of condition i is scaled by sqrt(w_i / n_i), so its contribution to G is
+    # (w_i/n_i) J^T J and to b is (w_i/n_i) J^T r.
+    G_exact = jnp.zeros((parameter_sketch, parameter_sketch), params_flat.dtype)
+    b_exact = jnp.zeros((parameter_sketch,), params_flat.dtype)
     for i, (fn, pts) in enumerate(zip(residual_fns, points_list)):
         subkey, ck = jax.random.split(subkey)
+        if exact_residual:
+            Ji, rfi = _jacobian_block(params_flat, unflatten, static, fn, pts,
+                                      sub_batch_size)
+            scale2 = weights_arr[i] / rfi.shape[0]
+            Ji     = _apply_srct(Ji, srct)              # (rows, parameter_sketch)
+            G_exact += scale2 * (Ji.T @ Ji)
+            b_exact += scale2 * (Ji.T @ rfi)
+            all_r.append(rfi)
+            continue
         Bi, rsi, rfi = _kernel_sketch(
             params_flat, unflatten, static, fn, pts, ck, srct,
             residual_sketch=residual_sketch, parameter_sketch=parameter_sketch,
@@ -493,9 +520,20 @@ def _step_impl(
         w_i = weights_arr[i]
         current_loss += w_i * jnp.mean(jnp.square(rfi))
 
-    # ── 3. SVD of the sketched core matrix ─────────────────────────────
-    U, S, Vt = jnp.linalg.svd(B, full_matrices=False)
-    g        = S * (U.T @ r_sketch)
+    # ── 3. Factorisation of the core matrix ────────────────────────────
+    if exact_residual:
+        # G = V diag(eig) V^T, b = V^T g with g = S U^T r_sketch in the sketch case:
+        # supplying S = sqrt(eig), g = V^T b and Vt = V^T makes everything downstream
+        # (secular solve, predicted decrease, pchip radius) identical and exact in the
+        # sketched parameter subspace.  Null directions are truncated as in SBH/06fac11.
+        ev, V_ex   = jnp.linalg.eigh(0.5 * (G_exact + G_exact.T))
+        S          = jnp.sqrt(jnp.maximum(ev, 0.0))
+        Vt         = V_ex.T
+        g          = Vt @ b_exact
+        g          = jnp.where(S > 1e-14 * jnp.max(S), g, 0.0)
+    else:
+        U, S, Vt = jnp.linalg.svd(B, full_matrices=False)
+        g        = S * (U.T @ r_sketch)
 
     def _step_and_pred(lam_val: Array) -> tuple[Array, Array]:
         denom   = S**2 + lam_val

@@ -489,6 +489,34 @@ comparison runs DSGNAR 200 float64 steps and SSBroyden 2 x 1000 quasi-Newton
 iterations at 2^15 points, so submit with `-t 24:00:00` and expect hours rather
 than minutes.
 
+## 8b-quinquies. The fix to test: exact residual rows (from SBH/06fac11)
+
+The other agent's DSGNAR work (`Stationary`/`SBH`, commit 06fac11) found the mechanism behind
+the floor: DSGNAR's step direction is `J^T C^T C r`, whose sketch-noise term
+`J^T (C^T C - I) r ~ |J||r|/sqrt(s)` does not shrink with the residual, while the true gradient
+`|J^T r|` does as the residual becomes orthogonal to range(J).  Near the floor the step is then
+close to random (uphill in 8/20 sketch draws in their small-problem test) and the trust region
+collapses — exactly the rho -> 0 / negative / NaN pattern seen here.  Their fix keeps the
+parameter sketch but **drops the CountSketch on the residual rows**, accumulating the exact
+Gram system `G = (J Omega S)^T (J Omega S)`, `b = (J Omega S)^T r` over every row and
+eigendecomposing it (from a stall point: 30/30 accepted vs 2/13).
+
+That is now available in the vendored paper optimiser behind a default-off flag
+(`Optimiser(exact_residual=True)`, a LOCAL PATCH in
+`Evolution_try/vendor/dsgnar_pinn/pinn/optimiser.py`) and exposed as:
+
+```bash
+python clementina/ldc_run.py    --mode a30 --exact-residual ...      # training
+python clementina/ldc_replay.py --float32-steps 0 --exact-residual   # 6-step test
+```
+
+Why it should also cure the Intel-specific instability: the count-sketch is what leaves the
+1665x1665 system with only ~258 singular values above 1e-12*max (down to 1e-17); the exact Gram
+system has the spectrum of `J Omega S` squared, with no sketch-induced null space, so the
+`S/(S^2+lam)` amplification that makes the large-radius probe steps platform-sensitive
+disappears.  Validate on CPU (free) first, then on one Intel GPU; keep the flag off elsewhere
+until it is confirmed.
+
 ## 8b-quater. Why DSGNAR stalls on the Intel tile: a float32-only overflow
 
 With an identical initial state (`loss 6.3471e-01`, rel L2 4.696) and byte-identical
