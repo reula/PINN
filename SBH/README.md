@@ -283,6 +283,14 @@ EVOLUTION equations (Theta, Z^i != 0), so the residual loss sees that mode only 
 candidates: penalise Theta and Z^i (zero for the true solution) in the loss, constraint damping (weak in the
 core, where alpha ~ 0.1), a mass pin.
 
+**Constraint penalty (2026-10-21): `--w_constraint W`** adds W * mean(Theta^2 + |Z^i|^2) over the interior
+points to the QN loss and the logged loss (new CSV column `loss_constraint`). Default 0 = off; with it
+off every original column of the smoke run's loss history is still identical to the Oct-16 original. Not
+with DSGNAR yet, and only for constraint-satisfying initial data (single puncture). Submitted with the
+exact-residual DSGNAR test, all three in the `w8_qn` setting (final settings, 8 windows, one A30):
+`w8_gn_exact` (DSGNAR, `--dsgnar_residual_sketch none`, paper step rule, any decrease accepted, s = n/3,
+4200 s per window), `w8_qn_con1` and `w8_qn_con10` (SSBroyden + `--w_constraint 1` / `10`).
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 

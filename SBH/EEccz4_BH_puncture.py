@@ -168,6 +168,14 @@ parser.add_argument("--eta", type=float, default=0.1,
                          "ADM mass M of the system -- set explicitly per run, no auto-detection. "
                          "Default 0.1 (bbh_headon_bssn_pinn_shift_driven_puncture.py's own default "
                          "is 0.0 -- pass --eta 0.0 explicitly to match it).")
+parser.add_argument("--w_constraint", type=float, default=0.0,
+                    help="Weight of a constraint penalty mean(Theta^2 + |Z^i|^2) on the interior points "
+                         "(Z^i = chi (Ghat^i - Gt^i)/2). Both vanish for the true solution, and a constraint-"
+                         "violating solution still satisfies the CCZ4 evolution equations, so the residual "
+                         "loss alone sees that mode only through the initial data (SBH/README.md, mass "
+                         "budget). 0 = off (default). Not with --dsgnar_steps (not in its residual vector). "
+                         "Only for constraint-satisfying initial data (single puncture; NOT the Bowen-York "
+                         "binary, whose Hamiltonian constraint is not solved).")
 parser.add_argument("--w_pos", type=float, default=10.0,
                     help="Weight of the positivity penalty relu(-chi)^2 + relu(-alpha)^2 on the "
                          "interior collocation points, keeping chi and alpha from crossing zero "
@@ -788,6 +796,9 @@ min_delta      = args.min_delta
 line_search    = args.line_search
 deriv_mode   = args.deriv_mode
 qn_fixed_batch = bool(args.qn_fixed_batch)
+w_constraint = float(args.w_constraint)
+if w_constraint > 0 and int(args.dsgnar_steps) > 0:
+    raise SystemExit("--w_constraint is not part of DSGNAR's residual vector yet; use it with QN only.")
 _DSGNAR_DEFAULTS = dict(dsgnar_hashes=4, dsgnar_delta_min=1e-14, dsgnar_stage1_ratio=0.15,
                         dsgnar_stage2_ratio=0.5, dsgnar_line_scan=True, dsgnar_calibrate=True,
                         dsgnar_shrink_on_accept=False, dsgnar_radius_floor=1e-3, dsgnar_reweight=0.0,
@@ -3054,10 +3065,12 @@ def apply_model(apply_fn, params,
         ein_l, gauge_l = loss_ccz4(p)
         bc_l           = loss_bc(p)
         pos_l          = loss_pos(p)
-        tot = ein_l + gauge_l + bc_l + lamg0*(g_ic_l + ic_log_l) + w_pos*pos_l
-        return tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l)
+        con_l          = (constraint_penalty(apply_fn, p, t, x, y, z, window_start, window_end)
+                          if w_constraint > 0 else jnp.zeros(()))
+        tot = ein_l + gauge_l + bc_l + lamg0*(g_ic_l + ic_log_l) + w_pos*pos_l + w_constraint*con_l
+        return tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l)
 
-    (tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l)), grads = \
+    (tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l)), grads = \
         jax.value_and_grad(total_loss, has_aux=True)(params)
 
     all_loss = {
@@ -3070,6 +3083,7 @@ def apply_model(apply_fn, params,
         "loss_ic_log":   lamg0*ic_log_l,
         "loss_gt0":      jnp.array(0.0, dtype=jnp.float64),
         "loss_pos":      pos_l,
+        "loss_constraint": w_constraint * con_l,
     }
     return all_loss, grads
 
@@ -3198,6 +3212,13 @@ def per_term_grad_norms(apply_fn, params,
 # --------------------------------------------------------------------------------
 # LOSS FUNCTION (BFGS scalar)
 # --------------------------------------------------------------------------------
+def constraint_penalty(apply_fn, params, t, x, y, z, window_start, window_end):
+    """mean(Theta^2 + |Z^i|^2) over the given points (--w_constraint)."""
+    theta = full_output(apply_fn, params, t, x, y, z, window_start, window_end)[:, THETA_IDX]
+    zv = gauge_source_vector(apply_fn, params, t, x, y, z, window_start, window_end)
+    return jnp.mean(theta ** 2 + jnp.sum(zv ** 2, axis=1))
+
+
 @partial(jax.jit, static_argnums=(0,))
 def compute_bfgs_loss(apply_fn, net_params,
                       lam_bc, lamg0, w_pos, traj_tt, traj_xx,
@@ -3233,9 +3254,12 @@ def compute_bfgs_loss(apply_fn, net_params,
     pos_l = jnp.mean(positivity_penalty(apply_fn, params, t, x, y, z, window_start, window_end))
 
     ic_abs, ic_log = _ic_fit(ug, ic_ccz4, w_ic)
+    con_l = (w_constraint * constraint_penalty(apply_fn, params, t, x, y, z, window_start, window_end)
+             if w_constraint > 0 else 0.0)
     return (ein_l + gauge_l + bc_l
             + lamg0  * (ic_abs + ic_log)
-            + w_pos  * pos_l)
+            + w_pos  * pos_l
+            + con_l)
 
 
 def bfgs_residual_vector(apply_fn, net_params,
@@ -5940,6 +5964,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
             "loss_ic_log": float(all_loss_it["loss_ic_log"]),
             "loss_gt0": float(all_loss_it["loss_gt0"]),
             "loss_pos": float(all_loss_it["loss_pos"]),
+            "loss_constraint": float(all_loss_it.get("loss_constraint", 0.0)),
             "grad_norm": float(grad_norm) if grad_norm is not None else float("nan"),
             "gn_ein":   float(tgn["gn_ein"])   if "gn_ein"   in tgn else float("nan"),
             "gn_gauge": float(tgn["gn_gauge"]) if "gn_gauge" in tgn else float("nan"),
