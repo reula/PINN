@@ -72,7 +72,8 @@ def model_meta(*, hidden_dims, seed=0, driver="", config=None, jax_version=None,
 
 
 def save_network(outdir, model, meta: dict, *, name: str = PARAMS_FILE,
-                 write_leaves: bool = True) -> int:
+                 network_name: str = NETWORK_FILE,
+                 write_leaves: bool = False) -> int:
     """Write the flat parameters (+ optional equinox leaves) and the metadata JSON."""
     outdir = pathlib.Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -91,7 +92,7 @@ def save_network(outdir, model, meta: dict, *, name: str = PARAMS_FILE,
             meta["leaves_file"] = LEAVES_FILE
         except Exception as exc:                                  # noqa: BLE001
             meta["leaves_file"] = f"(not written: {type(exc).__name__}: {exc})"
-    (outdir / NETWORK_FILE).write_text(__import__("json").dumps(meta, indent=2))
+    (outdir / network_name).write_text(__import__("json").dumps(meta, indent=2))
     return int(flat.size)
 
 

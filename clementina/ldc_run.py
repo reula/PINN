@@ -397,6 +397,26 @@ print(f"[dsgnar] done: {step_total} iterations in {t_dsgnar:.1f}s | "
       f"paper loss {ds_final['loss']:.4e} | rel L2 {ds_final['rel_l2']['mean']:.4f}",
       flush=True)
 
+# ── checkpoint the DSGNAR result NOW ────────────────────────────────────────
+# The SSBroyden phase below is two runs of up to 10^4 iterations; a job killed
+# there must not lose the DSGNAR solution (that is exactly how the paper-preset
+# run 1548247 ended: 2 h of work and nothing on disk).
+_net_meta_ds = model_meta(
+    hidden_dims=HIDDEN, seed=ARGS.seed,
+    driver=f"ldc.ipynb hand-driven Optimiser ({ARGS.mode} preset), DSGNAR phase only",
+    config={"mode": ARGS.mode, "preset": dict(P), "n_pde": N_PDE, "n_bc": N_BC,
+            "sketch": SKETCH, "batch": BATCH, "probe": PROBE,
+            "pde_weight": PDE_WEIGHT, "target_rho": TARGET_RHO},
+    backend=BACKEND, devices=DEVICES,
+    extra={"stage": "dsgnar", "dsgnar_steps": step_total,
+           "dsgnar_seconds": t_dsgnar,
+           "paper_loss": ds_final["loss"],
+           "rel_l2": {k: float(v) for k, v in ds_final["rel_l2"].items()}})
+save_network(OUTDIR, eqx.combine(unflatten(ds_flat), static), _net_meta_ds,
+             name="params_dsgnar_flat.npy", network_name="network_dsgnar.json")
+print(f"[net ] DSGNAR checkpoint saved (before SSBroyden): {OUTDIR}/params_dsgnar_flat.npy",
+      flush=True)
+
 paper_loss_qn = jax.jit(lambda flat: paper_loss(flat, CONDITIONS_QN, WEIGHTS))
 paper_loss_qn_grad = jax.jit(jax.value_and_grad(lambda flat: paper_loss(flat, CONDITIONS_QN,
                                                                          WEIGHTS)))
