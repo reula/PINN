@@ -339,6 +339,11 @@ curvature; a trust-region Gauss-Newton method builds its model from them and fai
 search just takes short steps. Once the network's chi there has moved off the floor (later windows) the
 loss is smooth and DSGNAR works.
 
+Submitted (2026-10-21, jobs 1181539/40): `w8_qn_md05` (SSBroyden) and `w8_gn_exact_md05` (exact-residual
+DSGNAR, paper step rule, any decrease accepted, s = n/3, 4200 s per window), both the `w8_qn` setting with
+`--min_puncture_dist 0.05`, so the optimizers are compared on a smooth loss. Note it changes the sampling
+of the 10-19 Oct summary (no points within 0.05 of the puncture) for both.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
