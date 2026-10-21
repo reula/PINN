@@ -527,10 +527,16 @@ def _step_impl(
         # (secular solve, predicted decrease, pchip radius) identical and exact in the
         # sketched parameter subspace.  Null directions are truncated as in SBH/06fac11.
         ev, V_ex   = jnp.linalg.eigh(0.5 * (G_exact + G_exact.T))
-        S          = jnp.sqrt(jnp.maximum(ev, 0.0))
+        S_raw      = jnp.sqrt(jnp.maximum(ev, 0.0))
         Vt         = V_ex.T
         g          = Vt @ b_exact
-        g          = jnp.where(S > 1e-14 * jnp.max(S), g, 0.0)
+        g          = jnp.where(S_raw > 1e-14 * jnp.max(S_raw), g, 0.0)
+        # The exact Gram system has EXACT zeros for the null directions (the count-sketch
+        # leaves ~1e-17 noise there instead), and _solve_subproblems starts from lam = 0:
+        # p = g / (S^2 + lam) would be 0/0 there.  Floor S well above the truncation
+        # threshold; g is already zero in those directions, so the step is unaffected.
+        _s_max     = jnp.max(S_raw)
+        S          = jnp.maximum(S_raw, jnp.maximum(1e-12 * _s_max, 1e-30))
     else:
         U, S, Vt = jnp.linalg.svd(B, full_matrices=False)
         g        = S * (U.T @ r_sketch)
