@@ -51,4 +51,7 @@ echo "step_probe(32) exit $?"
 echo "===== ldc_step_probe.py --bits 64 ====="
 "$PY" -u "$CXXI_DIR/ldc_step_probe.py" --outdir "$OUT" --bits 64
 echo "step_probe(64) exit $?"
+echo "===== ldc_replay.py (exact ldc_run key chain, first 6 steps) ====="
+"$PY" -u "$CXXI_DIR/ldc_replay.py" --outdir "$OUT" --float32-steps 4 --float64-steps 2
+echo "replay exit $?"
 echo "===== done $(date -u '+%F %T UTC') ====="
