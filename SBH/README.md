@@ -291,6 +291,32 @@ exact-residual DSGNAR test, all three in the `w8_qn` setting (final settings, 8 
 `w8_gn_exact` (DSGNAR, `--dsgnar_residual_sketch none`, paper step rule, any decrease accepted, s = n/3,
 4200 s per window), `w8_qn_con1` and `w8_qn_con10` (SSBroyden + `--w_constraint 1` / `10`).
 
+**Constraint propagation from the contracted Bianchi identity (2026-10-21): `--w_bianchi W`.** The Z4 field
+equations E_mn = R_mn + nabla_m Z_n + nabla_n Z_m = 0 (vacuum, kappa = 0) satisfy, for ANY metric and
+covector, nabla^m (E_mn - 1/2 g_mn E) = box Z_n + R_nm Z^m: the constraint variables obey a linear wave
+equation sourced only by the DIVERGENCE of the field-equation residual -- the part of the error that the
+L2 residual loss does not control and that pumps the constraint-violating (mass) modes. `--w_bianchi`
+adds W * mean(B_n^2), B_n = box Z_n + R_nm Z^m, on the last `--bianchi_points` interior points (the core
+cloud with the final settings, where the mass error is produced). It needs third derivatives of the
+network (nested forward-mode autodiff), ~35x the per-point cost of the residual.
+
+`z4_bianchi.py` (generic 4D: Christoffel symbols and their derivatives, Ricci, nabla Z, box) and
+`EEccz4_BH_puncture.py:z4_spacetime_fields` (CCZ4 -> (g_mn, Z_m), Alic et al. conventions: Theta =
+alpha Z^0, Z_i = 1/2 gt_ij (Ghat^j - Gt^j), Z_0 = beta^k Z_k - alpha Theta). Verified
+(`tools/test_z4_bianchi.py`):
+
+* the identity, on random smooth analytic metrics and covectors: to 4.7e-16 at five points (B ~ 4-10);
+* exact static Schwarzschild in CCZ4 variables through the mapping: E_mn <= 7e-15 at r = 0.4 (curvature
+  scale 8), B = 0;
+* on the trained `w8_qn`, E_mn rms 0.2 at r in [0.3, 0.7), 7e-3 at [0.7, 1.5), 4e-4 at [3, 6) in window 1
+  (CCZ4 residual 2.4e-4): **the network's spacetime is not Ricci-flat at the ~5 % level around the
+  horizon**, where the mass budget puts the error source. With Z non-negligible (window 5) the Alic
+  mapping gives the smallest E of the alternatives tried (Theta sign flipped, Z^i used as Z_i, Z ignored).
+
+Submitted: `w8_qn_bia3`, `w8_qn_bia4` (the `w8_qn` setting, SSBroyden, + `--w_bianchi 1e-3` / `1e-4`,
+`--bianchi_points 4096`); at W = 1e-3 the term is ~5e-8 at initialisation and comparable to the
+Einstein term (~1e-6) once a window is trained.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 

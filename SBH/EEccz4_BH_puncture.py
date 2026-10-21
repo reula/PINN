@@ -176,6 +176,15 @@ parser.add_argument("--w_constraint", type=float, default=0.0,
                          "budget). 0 = off (default). Not with --dsgnar_steps (not in its residual vector). "
                          "Only for constraint-satisfying initial data (single puncture; NOT the Bowen-York "
                          "binary, whose Hamiltonian constraint is not solved).")
+parser.add_argument("--w_bianchi", type=float, default=0.0,
+                    help="Weight of the constraint-propagation residual mean(B_n^2), B_n = box Z_n + R_nm Z^m "
+                         "(z4_bianchi.py): by the contracted Bianchi identity, the divergence of the Z4 "
+                         "field-equation residual, i.e. the part of the error that sources the constraint "
+                         "modes; zero on the true solution. Needs third derivatives of the network, so it is "
+                         "evaluated on --bianchi_points points only. 0 = off (default). QN only.")
+parser.add_argument("--bianchi_points", type=int, default=4096,
+                    help="Interior points (the LAST ones of each sample: the core cloud when --core_points > 0) "
+                         "on which --w_bianchi is evaluated.")
 parser.add_argument("--w_pos", type=float, default=10.0,
                     help="Weight of the positivity penalty relu(-chi)^2 + relu(-alpha)^2 on the "
                          "interior collocation points, keeping chi and alpha from crossing zero "
@@ -797,6 +806,10 @@ line_search    = args.line_search
 deriv_mode   = args.deriv_mode
 qn_fixed_batch = bool(args.qn_fixed_batch)
 w_constraint = float(args.w_constraint)
+w_bianchi = float(args.w_bianchi)
+bianchi_points = int(args.bianchi_points)
+if w_bianchi > 0 and int(args.dsgnar_steps) > 0:
+    raise SystemExit("--w_bianchi is not part of DSGNAR's residual vector; use it with QN only.")
 if w_constraint > 0 and int(args.dsgnar_steps) > 0:
     raise SystemExit("--w_constraint is not part of DSGNAR's residual vector yet; use it with QN only.")
 _DSGNAR_DEFAULTS = dict(dsgnar_hashes=4, dsgnar_delta_min=1e-14, dsgnar_stage1_ratio=0.15,
@@ -3067,10 +3080,13 @@ def apply_model(apply_fn, params,
         pos_l          = loss_pos(p)
         con_l          = (constraint_penalty(apply_fn, p, t, x, y, z, window_start, window_end)
                           if w_constraint > 0 else jnp.zeros(()))
-        tot = ein_l + gauge_l + bc_l + lamg0*(g_ic_l + ic_log_l) + w_pos*pos_l + w_constraint*con_l
-        return tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l)
+        bia_l          = (bianchi_penalty(apply_fn, p, t, x, y, z, window_start, window_end)
+                          if w_bianchi > 0 else jnp.zeros(()))
+        tot = (ein_l + gauge_l + bc_l + lamg0*(g_ic_l + ic_log_l) + w_pos*pos_l + w_constraint*con_l
+               + w_bianchi*bia_l)
+        return tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l, bia_l)
 
-    (tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l)), grads = \
+    (tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l, bia_l)), grads = \
         jax.value_and_grad(total_loss, has_aux=True)(params)
 
     all_loss = {
@@ -3084,6 +3100,7 @@ def apply_model(apply_fn, params,
         "loss_gt0":      jnp.array(0.0, dtype=jnp.float64),
         "loss_pos":      pos_l,
         "loss_constraint": w_constraint * con_l,
+        "loss_bianchi":  w_bianchi * bia_l,
     }
     return all_loss, grads
 
@@ -3212,6 +3229,58 @@ def per_term_grad_norms(apply_fn, params,
 # --------------------------------------------------------------------------------
 # LOSS FUNCTION (BFGS scalar)
 # --------------------------------------------------------------------------------
+def z4_spacetime_fields(apply_fn, params, q, window_start, window_end, theta_sign=1.0, z_mode="covariant"):
+    """(g_mn (4,4), Z_m (4,)) of the network at one point q = (t, x, y, z), for z4_bianchi.py.
+    Alic et al. (2012) conventions, the ones r_ccz4_evolution is verified against:
+        gamma_ij = gt_ij / chi,   g_00 = -alpha^2 + beta_k beta^k,   g_0i = beta_i,
+        Theta = alpha Z^0,        Ghat^i = Gt^i + 2 gt^ij Z_j  =>  Z_i = 1/2 gt_ij (Ghat^j - Gt^j),
+        Z_0 = g_0m Z^m = beta^k Z_k - alpha Theta.
+    theta_sign / z_mode exist only for the mapping test (tools/test_z4_bianchi.py)."""
+    xyz = q[1:4]
+
+    def gt_of(p3):
+        return unpack_sym3(point_output_from_q(apply_fn, params, jnp.concatenate([q[0:1], p3]),
+                                               window_start, window_end)[GT_SLICE])
+    out = point_output_from_q(apply_fn, params, q, window_start, window_end)
+    gt = unpack_sym3(out[GT_SLICE])
+    chi = _chi_safe(out[CHI_IDX])
+    alpha, beta = out[ALPHA_IDX], out[BETA_SLICE]
+    Theta, Ghat = out[THETA_IDX], out[GHAT_SLICE]
+    _, _, Gt_upper, _ = _christoffel3(gt, jax.jacfwd(gt_of)(xyz))
+    gam = gt / chi
+    bl = gam @ beta
+    if z_mode == "covariant":
+        Zi = 0.5 * gt @ (Ghat - Gt_upper)
+    elif z_mode == "contravariant_as_covariant":      # wrong on purpose (mapping test)
+        Zi = 0.5 * chi * (Ghat - Gt_upper)
+    else:                                              # "zero": ignore Z entirely
+        Zi = jnp.zeros(3, dtype=gt.dtype)
+    Th = theta_sign * Theta if z_mode != "zero" else 0.0 * Theta
+    g4 = jnp.vstack([jnp.concatenate([jnp.array([-alpha ** 2 + beta @ bl]), bl])[None, :],
+                     jnp.hstack([bl[:, None], gam])])
+    Z = jnp.concatenate([jnp.array([beta @ Zi - alpha * Th]), Zi])
+    return g4, Z
+
+
+def bianchi_residual(apply_fn, params, t, x, y, z, window_start, window_end):
+    """(N, 4): B_n = box Z_n + R_nm Z^m of the network at the given points (z4_bianchi.wave_z):
+    the constraint-propagation equation implied by the contracted Bianchi identity (--w_bianchi)."""
+    import z4_bianchi as _zb
+
+    def one(qq):
+        g_fn = lambda q_: z4_spacetime_fields(apply_fn, params, q_, window_start, window_end)[0]
+        z_fn = lambda q_: z4_spacetime_fields(apply_fn, params, q_, window_start, window_end)[1]
+        return _zb.wave_z(g_fn, z_fn, qq)
+    return jax.vmap(one)(jnp.concatenate([t, x, y, z], axis=1))
+
+
+def bianchi_penalty(apply_fn, params, t, x, y, z, window_start, window_end):
+    """mean(B_n^2) on the last --bianchi_points interior points (--w_bianchi)."""
+    n = min(bianchi_points, t.shape[0])
+    B = bianchi_residual(apply_fn, params, t[-n:], x[-n:], y[-n:], z[-n:], window_start, window_end)
+    return jnp.mean(B ** 2)
+
+
 def constraint_penalty(apply_fn, params, t, x, y, z, window_start, window_end):
     """mean(Theta^2 + |Z^i|^2) over the given points (--w_constraint)."""
     theta = full_output(apply_fn, params, t, x, y, z, window_start, window_end)[:, THETA_IDX]
@@ -3256,10 +3325,12 @@ def compute_bfgs_loss(apply_fn, net_params,
     ic_abs, ic_log = _ic_fit(ug, ic_ccz4, w_ic)
     con_l = (w_constraint * constraint_penalty(apply_fn, params, t, x, y, z, window_start, window_end)
              if w_constraint > 0 else 0.0)
+    bia_l = (w_bianchi * bianchi_penalty(apply_fn, params, t, x, y, z, window_start, window_end)
+             if w_bianchi > 0 else 0.0)
     return (ein_l + gauge_l + bc_l
             + lamg0  * (ic_abs + ic_log)
             + w_pos  * pos_l
-            + con_l)
+            + con_l + bia_l)
 
 
 def bfgs_residual_vector(apply_fn, net_params,
@@ -5965,6 +6036,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
             "loss_gt0": float(all_loss_it["loss_gt0"]),
             "loss_pos": float(all_loss_it["loss_pos"]),
             "loss_constraint": float(all_loss_it.get("loss_constraint", 0.0)),
+            "loss_bianchi": float(all_loss_it.get("loss_bianchi", 0.0)),
             "grad_norm": float(grad_norm) if grad_norm is not None else float("nan"),
             "gn_ein":   float(tgn["gn_ein"])   if "gn_ein"   in tgn else float("nan"),
             "gn_gauge": float(tgn["gn_gauge"]) if "gn_gauge" in tgn else float("nan"),
