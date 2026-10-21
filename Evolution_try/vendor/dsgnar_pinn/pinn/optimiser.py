@@ -490,12 +490,23 @@ def _step_impl(
     for i, (fn, pts) in enumerate(zip(residual_fns, points_list)):
         subkey, ck = jax.random.split(subkey)
         if exact_residual:
-            Ji, rfi = _jacobian_block(params_flat, unflatten, static, fn, pts,
-                                      sub_batch_size)
-            scale2 = weights_arr[i] / rfi.shape[0]
-            Ji     = _apply_srct(Ji, srct)              # (rows, parameter_sketch)
-            G_exact += scale2 * (Ji.T @ Ji)
-            b_exact += scale2 * (Ji.T @ rfi)
+            # Accumulate macro-batch by macro-batch: the dense jacrev over ALL points at
+            # once (e.g. 8192) makes XLA emit 32-wide vectors and the Intel SYCL backend
+            # dies with SPV_EXT_long_vector; the 1024-point blocks are exactly the shapes
+            # the count-sketch path already compiles on this backend.
+            n_pts   = pts.shape[0]
+            n_macro = n_pts // batch_size
+            r_parts = []
+            for j in range(n_macro):
+                x_macro = pts[j * batch_size:(j + 1) * batch_size]
+                Ji, ri  = _jacobian_block(params_flat, unflatten, static, fn,
+                                          x_macro, sub_batch_size)
+                scale2  = weights_arr[i] / n_pts
+                Ji      = _apply_srct(Ji, srct)         # (rows, parameter_sketch)
+                G_exact += scale2 * (Ji.T @ Ji)
+                b_exact += scale2 * (Ji.T @ ri)
+                r_parts.append(ri)
+            rfi = jnp.concatenate(r_parts)
             all_r.append(rfi)
             continue
         Bi, rsi, rfi = _kernel_sketch(
