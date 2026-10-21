@@ -32,5 +32,5 @@ mkdir -p "$OUT"
 echo "host $(hostname) | job ${SLURM_JOB_ID:-?} | $(date -u '+%F %T UTC')"
 cxxi_pin_gpu "$PY"
 "$PY" -u "$CXXI_DIR/ldc_replay.py" --outdir "$OUT" \
-      --float32-steps 4 --float64-steps 6 --exact-residual
+      --float32-steps 0 --float64-steps 8 --exact-residual
 echo "replay exit $?"

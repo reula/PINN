@@ -33,6 +33,6 @@ OUT="$CXXI_DATA/ldc/ldc_a30_exact"
 mkdir -p "$OUT"
 echo "host $(hostname) | job ${SLURM_JOB_ID:-?} | $(date -u '+%F %T UTC')"
 cxxi_pin_gpu "$PY"
-"$PY" -u "$CXXI_DIR/ldc_run.py" --mode a30 --exact-residual \
+"$PY" -u "$CXXI_DIR/ldc_run.py" --mode a30 --exact-residual --float32-steps 0 \
       --outdir "$OUT" --label ldc_a30_exact
 echo "ldc_run exit $?"
