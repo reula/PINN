@@ -489,6 +489,36 @@ comparison runs DSGNAR 200 float64 steps and SSBroyden 2 x 1000 quasi-Newton
 iterations at 2^15 points, so submit with `-t 24:00:00` and expect hours rather
 than minutes.
 
+## 8b-quater. Why DSGNAR stalls on the Intel tile: a float32-only overflow
+
+With an identical initial state (`loss 6.3471e-01`, rel L2 4.696) and byte-identical
+vendored code (md5 checked on Mac, cluster and hub), the hand-driven DSGNAR behaves
+completely differently per platform:
+
+| platform | step 1 (float32) | later |
+|---|---|---|
+| A30 (hub) | loss 1.0695e-01, rho +0.824, **accept** | rho pinned at the 0.075 target, loss → 2e-07 in 215 steps |
+| CPU (Mac, jax 0.11.1 CPU) | 1.0924e-01, rho +0.820, accept | same trajectory as the A30 |
+| Intel tile (oneAPI 0.11.2) | loss 6.3501e-01, **rho +NaN, reject** | radius ratchets 3e-1 → 1e-13, loss freezes at 4.6e-04 |
+
+Diagnostics (jobs 1549424/1549425/1549426, all ~1-4 GPU-minutes):
+
+* the dense Jacobian, the count-sketch `B`, the SVD, the secular solve and the
+  predicted reductions are **clean** on the Intel tile in both dtypes (no NaN, no inf);
+* the faithful replay (`ldc_replay.py`, key for key with `ldc_run.py`) reproduces the
+  failure: in the **float32** pass `probe_losses` contain 12-24 NaNs and finite
+  remnants of ~1e12 (residual-squared overflow), so `probe_rhos` and the pchip radius
+  selector are all NaN, all four float32 steps are rejected and the radius collapses;
+* the **float64** pass is healthy: its first replay steps accept with rho 0.891 / 0.963;
+* CPU and A30 have probe losses O(0.02-0.2) in the same float32 pass.
+
+So the defect is in the *lifted probe-step evaluation* in single precision on this
+SYCL backend — not in the optimiser's logic, the residual, SSBroyden, or the code.
+**Workaround: skip the float32 pre-pass on the Intel tile** (`--float32-steps 0`); the
+float64 pass is the one that carries the convergence.  The same flag exists for the
+paper trainer but does not rescue its smoke shapes, which fail for a different reason
+(§8b-ter).
+
 ## 8b-ter. Result on the Intel tile (`a30` preset, job 1549369)
 
 `08_ldc.sbatch` (MODE=a30, one pinned Max 1550), **completed in 24 m 36 s**:
