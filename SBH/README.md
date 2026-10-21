@@ -317,6 +317,28 @@ Submitted: `w8_qn_bia3`, `w8_qn_bia4` (the `w8_qn` setting, SSBroyden, + `--w_bi
 `--bianchi_points 4096`); at W = 1e-3 the term is ~5e-8 at initialisation and comparable to the
 Einstein term (~1e-6) once a window is trained.
 
+**Why the exact-residual DSGNAR still stalls in the first windows (2026-10-21).** `w8_gn_exact` (job 1181491)
+collapsed in windows 1-3 (2/16, 2/18, 0/15 accepted, rho = -inf even at radii ~1e-7) and then worked in
+window 4 (rho ~ 0.07 every step, 5.7e-3 -> 1.2e-3). `tools/test_causal_consistency.py`, at the start of a
+window with the production point counts (random network, core cloud), measures the loss change along the
+frozen-weight gradient against the prediction, for step lengths h = 1e-1 ... 1e-6:
+
+* causal weights on or off: no difference (they are not the cause);
+* with `--min_puncture_dist 0.02` (default): only **3 of 128000** points have the network's chi below the
+  1e-5 floor, but they carry ~90 % of the Einstein loss (0.19 of 0.20) and a 1000x larger gradient, and
+  the measured/predicted slope ratio jumps (0.13, 1.28, 0.66, 0.96 for h = 1e-3 ... 1e-6): the hard
+  floor max(chi, 1e-5) puts KINKS in the loss. With a smooth floor (new `--chi_floor_mode smooth`,
+  (chi + sqrt(chi^2 + 4 floor^2))/2) the ratio rises monotonically (kink confirmed) but those points
+  then dominate even more (loss 57);
+* with `--min_puncture_dist 0.05` (exact chi >= 8e-4 at every point): 0 points near the floor, loss 0.034
+  (Einstein 0.019), slope -1.2 instead of -1259, ratio 0.81 / 0.98 / 0.998 at h = 1e-4 / 1e-5 / 1e-6 --
+  smooth.
+
+A handful of collocation points next to the puncture make the early-window loss non-smooth and set its
+curvature; a trust-region Gauss-Newton method builds its model from them and fails, while SSBroyden's line
+search just takes short steps. Once the network's chi there has moved off the floor (later windows) the
+loss is smooth and DSGNAR works.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 

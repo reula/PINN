@@ -250,6 +250,11 @@ parser.add_argument("--log_term_grad_norms", action=argparse.BooleanOptionalActi
 # PDE parameters
 parser.add_argument("--c",        type=float, default=1.0, help="Wave speed for Sommerfeld BC")
 parser.add_argument("--metric_det_eps",  type=float, default=1e-14)
+parser.add_argument("--chi_floor_mode", type=str, default="max", choices=["max", "smooth"],
+                    help="max (default): chi_safe = max(chi, chi_floor), a KINK where the network's chi crosses "
+                         "the floor (near the puncture, where the core cloud samples). smooth: "
+                         "(chi + sqrt(chi^2 + 4 floor^2))/2, positive, >= floor/1 near 0, = chi to O(floor^2/chi) above "
+                         "it, and differentiable -- for Gauss-Newton trust regions, whose model a kink breaks.")
 parser.add_argument("--chi_floor", type=float, default=1e-5,
                     help="Floor for chi wherever the CCZ4 residual divides by it: chi_safe = "
                          "max(chi, chi_floor), the usual finite-difference choice. Caps every "
@@ -952,6 +957,8 @@ def _chi_safe(chi):
     and the unfloored chi terms still push chi back up. chi_floor=0 gives
     the old sign-blind smooth floor (_smooth_floor, |chi| for chi<0)."""
     if chi_floor > 0.0:
+        if args.chi_floor_mode == "smooth":
+            return 0.5 * (chi + jnp.sqrt(chi * chi + 4.0 * chi_floor * chi_floor))
         return jnp.maximum(chi, chi_floor)
     return _smooth_floor(chi, metric_det_eps)
 lam_bc       = args.lam_bc
