@@ -526,9 +526,13 @@ def _step_impl(
         # supplying S = sqrt(eig), g = V^T b and Vt = V^T makes everything downstream
         # (secular solve, predicted decrease, pchip radius) identical and exact in the
         # sketched parameter subspace.  Null directions are truncated as in SBH/06fac11.
-        ev, V_ex   = jnp.linalg.eigh(0.5 * (G_exact + G_exact.T))
-        S_raw      = jnp.sqrt(jnp.maximum(ev, 0.0))
-        Vt         = V_ex.T
+        # SVD of the symmetric PSD Gram matrix instead of eigh: on the Intel SYCL
+        # backend the float64 eigendecomposition of a 1665x1665 matrix hits the
+        # SPV_EXT_long_vector codegen crash, while the SVD of the same size (used by
+        # the count-sketch path) compiles.  G = U Sigma V^T with Sigma = sigma_B^2,
+        # so S = sqrt(Sigma), Vt = V^T, g = V^T b -- identical to the eigh route.
+        U_G, Sigma, Vt = jnp.linalg.svd(0.5 * (G_exact + G_exact.T), full_matrices=False)
+        S_raw      = jnp.sqrt(jnp.maximum(Sigma, 0.0))
         g          = Vt @ b_exact
         g          = jnp.where(S_raw > 1e-14 * jnp.max(S_raw), g, 0.0)
         # The exact Gram system has EXACT zeros for the null directions (the count-sketch
