@@ -592,4 +592,5 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/mass_function.py RUN --out X.npz -- <physics flags>`: Misner-Sharp mass, Theta, |Z^i| along the x-axis per window.
 * `tools/plot_report_figures.py DATA OUT`: the figures in `plots/2026-10-20/`.
 * `tools/plot_exec_summary.py DATA OUT`: the figures of the executive summary.
+* `tools/plot_clouds.py OUT.png`: the interior points around a single puncture, default vs `--symmetric_focus` (`plots/2026-10-21/sampling_clouds.png`; centroid of the points within r < 1: 2.8e-3 vs 1e-5).
 * `tools/bench_jacobian_sketch.py [--s 1024]`: rows (paper) vs columns (ours) for DSGNAR's sketched Jacobian, one block of points.
