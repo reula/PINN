@@ -46,6 +46,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--reference", default=None,
                     help="reference npz (default <repo>/ldc/reference_gen/ldc_reference.npz)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--batch", type=int, default=None,
+                    help="override batch_size.  The trainer builds a dense Jacobian per "
+                         "macro-batch, so this is the memory knob: 2^12 needs ~1.04 GiB plus "
+                         "temporaries and does not fit a partitioned 17.7 GiB A30 slice; "
+                         "2^10 does")
     ap.add_argument("--float32-steps", type=int, default=None,
                     help="override the preset's float32 pre-pass length.  0 makes the "
                          "trainer quit the pre-pass after its first step; note train64 "
@@ -224,7 +229,7 @@ cfg = pinn.RunConfig(
     n_bc=2 ** 10 if SMOKE else 2 ** 14,
     residual_sketch=256 if SMOKE else 4000,
     parameter_sketch=256 if SMOKE else 4000,
-    batch_size=2 ** 8 if SMOKE else 2 ** 12,
+    batch_size=2 ** 8 if SMOKE else (ARGS.batch or 2 ** 12),
     sub_batch_size=4,
     probe_batch_size=2 ** 7,
     cache_dir=str(CACHE_DIR),

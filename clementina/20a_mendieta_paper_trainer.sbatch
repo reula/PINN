@@ -44,7 +44,11 @@ import jax
 print("[mend] jax", jax.__version__, [str(d) for d in jax.devices()], jax.default_backend())
 assert jax.default_backend() == "gpu", jax.devices()
 PYEOF
-"$PY" -u clementina/ldc_paper_run.py --mode paper --skip-fields --outdir "$OUT" --label paper_trainer_a30
+# batch 2^10: the paper's 2^12 needs ~1.04 GiB of dense Jacobian plus temporaries and
+# does not plan on this partitioned 17.7 GiB A30 slice (cuFFT-plan failure in
+# jit__eval_model_jit); the batch only chunks the per-macro-batch Jacobian.
+"$PY" -u clementina/ldc_paper_run.py --mode paper --batch 1024 --skip-fields \
+      --outdir "$OUT" --label paper_trainer_a30
 E=$?
 echo "trainer exit $E | $(date -u '+%F %T UTC')"
 MSG=$(cd "$OUT" && "$PY" - <<'PYEOF'
