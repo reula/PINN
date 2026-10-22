@@ -344,6 +344,33 @@ DSGNAR, paper step rule, any decrease accepted, s = n/3, 4200 s per window), bot
 `--min_puncture_dist 0.05`, so the optimizers are compared on a smooth loss. Note it changes the sampling
 of the 10-19 Oct summary (no points within 0.05 of the puncture) for both.
 
+**Results of the penalty and DSGNAR runs (2026-10-22; 8 windows, final settings; `reference_1d/compare_pinn.py`,
+`tools/mass_function.py --both_ends`).** At t = 2 against the 1D reference ("core" = L2 over 0.05 <= r < 0.5):
+
+| run | alpha(0.03) (ref 0.281) | alpha core | Khat core | gt core | Theta max | off_form |
+|---|---|---|---|---|---|---|
+| `w8_qn` (no penalty) | 0.276 | 1.2e-2 | 4.5e-2 | 2.3e-2 | 0.45 | 6.6e-2 |
+| `w8_qn_con1` (`--w_constraint 1`) | 0.272 | 1.5e-3 | 7.9e-3 | 2.1e-3 | 1.0e-3 | 3.8e-2 |
+| `w8_qn_con10` (`--w_constraint 10`) | 0.289 | 7.1e-4 | 8.7e-3 | 1.8e-3 | 3.1e-4 | 4.2e-2 |
+| `w8_qn_bia3` (`--w_bianchi 1e-3`) | 0.284 | 1.1e-3 | 3.3e-3 | 2.5e-3 | 1.4e-2 | 2.1e-2 |
+| `w8_qn_md05` (`--min_puncture_dist 0.05`) | 0.141 | 1.2e-2 | 5.0e-2 | 2.3e-2 | 0.32 | 3.4e-2 |
+| `w8_gn_exact` (DSGNAR, exact residual) | 0.150 | 0.29 | 0.30 | 4.5e-2 | 2.9e-2 | 0.16 |
+| `w8_gn_exact_md05` | 0.737 | 0.30 | 0.28 | 1.2e-2 | 0.16 | 5.8e-2 |
+
+Both constraint penalties cut the core field errors ~10x against the same run without them; Theta itself
+drops 400-1500x with the direct penalty and 30x with the Bianchi term, which is the best on Khat and on
+spherical symmetry. Cost: 12 h 16 / 12 h 36 (con1 / con10) and 15 h 08 (bia3) for 8 windows against 9 h for
+`w8_qn`. `md05` has no points within 0.05 of the puncture, hence its low alpha at r = 0.03; otherwise it
+equals `w8_qn`. The mass error at t = 2 is <= ~1 % in every SSBroyden variant (it was already small in
+`w8_qn`; in `single_a` it grew mainly after t ~ 4), so 8 windows cannot tell whether the penalties stop the
+mass drift -- that needs longer runs.
+
+DSGNAR, exact residual: all-or-nothing by window. Working windows accept ~85 % of the steps over the whole
+70 min and lower the loss 100-1000x (5.0e-2 -> 2.7e-4; 1.4e-2 -> 8.6e-5); the others (windows 1-3 and 8 of
+`w8_gn_exact`, 1-3, 6, 7 of the md05 run) reject 15 steps in a row down to the minimum radius. Keeping the
+points 0.05 from the puncture did NOT remove the collapses, so the chi-floor kinks are not the whole
+explanation; open.
+
 **MareNostrum 5:** `jobs/mn5/` holds the collaborators' scripts (account `uib108`), now
 defaulting to the merged script. Submit from `SBH/`: `sbatch jobs/mn5/single_puncture.psubmit`.
 
