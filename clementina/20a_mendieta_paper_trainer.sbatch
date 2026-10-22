@@ -36,7 +36,7 @@ export JAX_COMPILATION_CACHE_DIR="$HOME/.cache/jax_ldc"
 mkdir -p "$MPLCONFIGDIR" "$JAX_COMPILATION_CACHE_DIR"
 OUT="$REPO/runs/paper_trainer_${SLURM_JOB_ID:-local}"
 mkdir -p "$OUT"
-echo "host $(hostname) | job ${SLURM_JOB_ID:-?} | $(date -u '+%F %T UTC') | HEAD $(git rev-parse --short HEAD)"
+echo "host $(hostname) | job ${SLURM_JOB_ID:-?} | $(date -u '+%F %T UTC') | HEAD $(git rev-parse --short HEAD 2>/dev/null || echo n/a)"
 echo "outdir $OUT"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
 "$PY" - <<'PYEOF' || { echo "FATAL: jax does not see a GPU" >&2; exit 2; }
