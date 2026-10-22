@@ -365,6 +365,13 @@ equals `w8_qn`. The mass error at t = 2 is <= ~1 % in every SSBroyden variant (i
 `w8_qn`; in `single_a` it grew mainly after t ~ 4), so 8 windows cannot tell whether the penalties stop the
 mass drift -- that needs longer runs.
 
+**Long runs to t = 10 (submitted 2026-10-22):** `long_con10` (`--w_constraint 10`, jobs 1181733 -> resume
+1181734) and `long_bia3` (`--w_bianchi 1e-3`, jobs 1181735 -> resume 1181736), each resumed from the
+8-window run's checkpoint into its own folder and continued to window 40; the second job of each pair
+(`--dependency=afterany`) resumes from the newest checkpoint if the first hits the 2-day limit. To be
+graded by the mass budget and the reference against the 10-19 Oct summary's final settings (+7-8 % mass
+error at t = 10).
+
 DSGNAR, exact residual: all-or-nothing by window. Working windows accept ~85 % of the steps over the whole
 70 min and lower the loss 100-1000x (5.0e-2 -> 2.7e-4; 1.4e-2 -> 8.6e-5); the others (windows 1-3 and 8 of
 `w8_gn_exact`, 1-3, 6, 7 of the md05 run) reject 15 steps in a row down to the minimum radius. Keeping the
