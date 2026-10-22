@@ -24,6 +24,10 @@ REPO="${LDC_REPO:-$HOME/ldc_paper_run}"
 NTFY="${NTFY_URL:-https://ntfy.sh/dipsiq_delamac}"
 cd "$REPO" || { echo "FATAL: no $REPO" >&2; exit 1; }
 mkdir -p logs runs
+# A git worktree has no untracked .venv, so find_python()'s "Stationary venv next
+# door" candidate is missing there: point PY at the known CUDA interpreter first
+# (find_python returns $PY when it imports jax/numpy/scipy/optax).
+export PY="${LDC_PY:-$HOME/Julia/PINN/Stationary/.venv/bin/python}"
 source Evolution_try/scripts/env.sh
 PY="$(find_python)" || { echo "FATAL: no interpreter with jax" >&2; exit 1; }
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
