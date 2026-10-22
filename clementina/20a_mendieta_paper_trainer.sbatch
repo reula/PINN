@@ -39,11 +39,29 @@ mkdir -p "$OUT"
 echo "host $(hostname) | job ${SLURM_JOB_ID:-?} | $(date -u '+%F %T UTC') | HEAD $(git rev-parse --short HEAD 2>/dev/null || echo n/a)"
 echo "outdir $OUT"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
-"$PY" - <<'PYEOF' || { echo "FATAL: jax does not see a GPU" >&2; exit 2; }
-import jax
-print("[mend] jax", jax.__version__, [str(d) for d in jax.devices()], jax.default_backend())
-assert jax.default_backend() == "gpu", jax.devices()
+preflight() {  # LDC_N_PARAMS / LDC_BATCH in the environment
+  "$PY" - <<'PYEOF'
+import os, jax, jax.numpy as jnp
+n = int(os.environ.get("LDC_N_PARAMS", "0") or 0)
+b = int(os.environ.get("LDC_BATCH", "0") or 0)
+print("[pre] jax", jax.__version__, "| backend", jax.default_backend(),
+      "| devices", [str(d) for d in jax.devices()], flush=True)
+assert jax.default_backend() == "gpu", "jax does not see a GPU"
+dev = jax.devices()[0]
+st = dev.memory_stats() or {}
+lim = int(st.get("bytes_limit") or st.get("bytes_reservable_limit") or 0)
+est = b * 3 * n * 8                      # dense Jacobian per macro-batch
+print(f"[pre] device limit {lim/2**30:.1f} GiB | dense Jacobian at batch {b}: "
+      f"{est/2**30:.2f} GiB | x4 headroom = {4*est/2**30:.2f} GiB", flush=True)
+x = jnp.ones((8, 2)); y = jax.jit(lambda z: z @ z.T)(x); y.block_until_ready()
+print("[pre] tiny jit OK", flush=True)
+assert lim == 0 or 4 * est < lim, (
+    f"config does not fit: dense Jacobian {est/2**30:.2f} GiB, device {lim/2**30:.1f} GiB; "
+    "reduce --batch")
 PYEOF
+}
+
+LDC_N_PARAMS=11347 LDC_BATCH=1024 preflight || { echo "FATAL: preflight failed" >&2; exit 2; }
 # batch 2^10: the paper's 2^12 needs ~1.04 GiB of dense Jacobian plus temporaries and
 # does not plan on this partitioned 17.7 GiB A30 slice (cuFFT-plan failure in
 # jit__eval_model_jit); the batch only chunks the per-macro-batch Jacobian.
