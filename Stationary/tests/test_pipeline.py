@@ -334,8 +334,19 @@ def test_sym_hybrid_manufactured_robin_is_exact():
              "inner": sample_sphere(key, 64, cfg.rho_in),
              "outer": sample_sphere(key, 64, cfg.rho_out)}
     for model_i, state in ((rm, {"net": rp}), (RefModel(), {"net": rp})):
+        # With the averaged outer metric pins (pin_h_robin, on by default since they were added)
+        # the exact solution is NOT a zero of the loss in this chart: ref_asymptotic = 1 puts it
+        # in the harmonic chart with c2 != 0, where g2 - 1 is not a pure rho^-2 tail, and the
+        # tangential pin <(rho d_rho + 2)(g2 - 1)> = 0 leaves 4.29e-12, i.e. 4.29e-10 at
+        # w_pin = 100 (measured 2026-10-23).  The quadrupole runs use the canonical chart, where
+        # g2 - 1 = -R0^2/rho^2 exactly.  So: zero without the pins, and exactly that floor with them.
         loss, parts = total_loss(state, batch, cfg, model_i, exact_fields=ref, lam_inf=1.0)
-        assert float(loss) < 1e-16, (float(loss), {k: float(v) for k, v in parts.items()})
+        assert float(loss) < 5e-10, (float(loss), {k: float(v) for k, v in parts.items()})
+        rest = sum(float(v) for k, v in parts.items() if not k.startswith("pin_"))
+        assert rest < 1e-16, {k: float(v) for k, v in parts.items()}
+        cfg_np = Config(**{**cfg.__dict__, "pin_h_robin": False})
+        loss0, parts0 = total_loss(state, batch, cfg_np, model_i, exact_fields=ref, lam_inf=1.0)
+        assert float(loss0) < 1e-16, (float(loss0), {k: float(v) for k, v in parts0.items()})
 
 
 # ------------------------------------------------------- new-problem tests

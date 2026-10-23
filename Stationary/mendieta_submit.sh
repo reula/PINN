@@ -340,6 +340,27 @@ for r in rot_ssbw rot_from_fit_w; do
               mendieta_check.sbatch runs/$r) (after $r)"
     fi
 done
+# round P (2026-10-23): THE PAPER'S RUNS, from scratch with the current code, one command per stage:
+# Adam 5000, then SSBroyden (merged Crunch, Armijo, resampling every 500) in stages of 10000.
+#   qp_com    the quadrupole with the centre-of-mass condition (2 SSBroyden stages)
+#   qp_nocom  the same without it -- the one comparison the paper keeps
+#   qp_rot    the data about (1,0,1)/sqrt 2 with the 3-D metric-only network (3 stages)
+# Each ends with mendieta_check.sbatch: fresh samples, and the grade against the (rotated) fine reference.
+PQ_SSB="--steps 0 --qn-method ssbroyden --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1"
+for v in "qp_com:$RHO4 $PP $COM:2" "qp_nocom:$RHO4 $PP:2" "qp_rot:$ROT $RHO4 $PP $COM:3"; do
+    tag=${v%%:*}; rest=${v#*:}; flags=${rest%:*}; nst=${rest##*:}
+    submit ${tag}_adam      - --steps 5000 --plateau-min-iters -1 --lbfgs-steps 0 $flags
+    prev=${tag}_adam
+    for i in $(seq 1 $nst); do
+        submit ${tag}_ssb$i  $prev $PQ_SSB --init-from runs/$prev/params.pkl $flags
+        prev=${tag}_ssb$i
+    done
+    if [ "$DRY" != "1" ] && [ -n "${JID[$prev]:-}" ] && ! squeue -h -u "$USER" -n check_$tag -o %i | grep -q .; then
+        echo "  submit   check_$tag -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+              sbatch --parsable -J check_$tag --dependency=afterany:${JID[$prev]} \
+              mendieta_check.sbatch runs/$prev) (after $prev)"
+    fi
+done
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
