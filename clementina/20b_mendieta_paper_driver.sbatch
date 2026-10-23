@@ -31,6 +31,9 @@ export PY="${LDC_PY:-$HOME/Julia/PINN/Stationary/.venv/bin/python}"
 source Evolution_try/scripts/env.sh
 PY="$(find_python)" || { echo "FATAL: no interpreter with jax" >&2; exit 1; }
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
+# nvidia-smi reports the whole card (24576 MiB); JAX's default MEM_FRACTION=0.75
+# caps bytes_limit at ~18 GiB, which is NOT the hardware.  Use ~90% of the card.
+export XLA_PYTHON_CLIENT_MEM_FRACTION="${XLA_PYTHON_CLIENT_MEM_FRACTION:-0.9}"
 export MPLCONFIGDIR="$HOME/.cache/mpl"
 export JAX_COMPILATION_CACHE_DIR="$HOME/.cache/jax_ldc"
 mkdir -p "$MPLCONFIGDIR" "$JAX_COMPILATION_CACHE_DIR"
@@ -42,6 +45,13 @@ nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
 preflight() {  # LDC_N_PARAMS / LDC_BATCH in the environment
   "$PY" - <<'PYEOF'
 import os, jax, jax.numpy as jnp
+import subprocess
+try:
+    gpu_total_mib = int(subprocess.run(
+        ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+        capture_output=True, text=True, timeout=15).stdout.split()[0])
+except Exception:
+    gpu_total_mib = -1
 n = int(os.environ.get("LDC_N_PARAMS", "0") or 0)
 b = int(os.environ.get("LDC_BATCH", "0") or 0)
 print("[pre] jax", jax.__version__, "| backend", jax.default_backend(),
@@ -50,8 +60,10 @@ assert jax.default_backend() == "gpu", "jax does not see a GPU"
 dev = jax.devices()[0]
 st = dev.memory_stats() or {}
 lim = int(st.get("bytes_limit") or st.get("bytes_reservable_limit") or 0)
+frac = os.environ.get("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.75")
 est = b * 3 * n * 8                      # dense Jacobian per macro-batch
-print(f"[pre] device limit {lim/2**30:.1f} GiB | dense Jacobian at batch {b}: "
+print(f"[pre] nvidia-smi total {gpu_total_mib} MiB | JAX mem fraction {frac} -> "
+      f"bytes_limit {lim/2**30:.1f} GiB | dense Jacobian at batch {b}: "
       f"{est/2**30:.2f} GiB | x4 headroom = {4*est/2**30:.2f} GiB", flush=True)
 x = jnp.ones((8, 2)); y = jax.jit(lambda z: z @ z.T)(x); y.block_until_ready()
 print("[pre] tiny jit OK", flush=True)
