@@ -324,6 +324,22 @@ if [ "$DRY" != "1" ] && [ -n "${JID[rot_coll256k_2g]:-}" ] && ! squeue -h -u "$U
           sbatch --parsable -J check_coll256k_2g --dependency=afterany:${JID[rot_coll256k_2g]} \
           mendieta_check.sbatch runs/rot_coll256k_2g) (after rot_coll256k_2g)"
 fi
+# round 28 (2026-10-23): the rotated runs with the merged Crunch's strong-WOLFE line search -- every merged
+# rotated run so far used Armijo.  Two arms mirroring the Armijo baselines exactly (16384 points, 10000):
+# rot_ssbw from rot_ssb (vs rot_ssbm), rot_from_fit_w from the regression fit (vs rot_from_fit).
+submit rot_ssbw             rot_ssb --steps 0 --init-from runs/rot_ssb/params.pkl --qn-method ssbroyden \
+                              --qn-linesearch wolfe --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 \
+                              $ROT $RHO4 $PP $COM
+submit rot_from_fit_w       - --steps 0 --init-from runs/rot_ssbm3/params_fit_scratch.pkl --qn-method ssbroyden \
+                              --qn-linesearch wolfe --lbfgs-steps 10000 --resample-every 500 --plateau-min-iters -1 \
+                              $ROT $RHO4 $PP $COM
+for r in rot_ssbw rot_from_fit_w; do
+    if [ "$DRY" != "1" ] && [ -n "${JID[$r]:-}" ] && ! squeue -h -u "$USER" -n check_$r -o %i | grep -q .; then
+        echo "  submit   check_$r -> job $(GRADE_REF=runs/ib16k_ssbroyden/specref_nonlinear_fine.npz \
+              sbatch --parsable -J check_$r --dependency=afterany:${JID[$r]} \
+              mendieta_check.sbatch runs/$r) (after $r)"
+    fi
+done
 # round 12 (2026-10-18): SSBroyden's per-block memory growth.  The run that was killed at 60.6 GB
 # (m9_ssbw_rho4), again, with --qn-reuse-objective (the same objective object across blocks and
 # Crunch's minimize_bfgs jitted once: 5x faster on a CPU test, numerically the same up to evaluation
