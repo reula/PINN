@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # The Weyl two-rod tests of the paper (Sec. IV C-D).  --weyl takes the inner data, the Robin source
+# No averaged outer pins (--no-pin-h-robin): the original Weyl runs had none, and the exact Weyl
+# solution violates the h_rr pin (base rho^-3, measured on the spherical solution) at 1.6e-9
+# (verify_weyl.py).
 # and the comparison asset from the exact solution and imposes the cylindrical gauge source.
 # The axisymmetric runs (weyl_prod, weyl_unequal, weyl_close4/35) are kept in runs/; their
 # settings are in each run's config.json.  The rotated test is rerun here with the metric-only 3-D
@@ -9,7 +12,7 @@
 ROT=(--outdir runs/weyl_rot45_hyb --weyl --weyl-half-length 0.028571428571 --weyl-half-length-b 0.002857142857
      --weyl-half-gap 0.014285714286 --weyl-rotate-deg 45 --rho-in 0.1 --rho-out 1.0 --arch hybrid
      --n-coll 8192 --n-bnd 512 --w-inner 10 --w-outer 10 --reweight-every 2000 --steps 0
-     --qn-method ssbroyden --lbfgs-steps 20000 --ckpt-every 500 --vtk-physical-inner 0.1)
+     --qn-method ssbroyden --lbfgs-steps 20000 --ckpt-every 500 --vtk-physical-inner 0.1 --no-pin-h-robin)
 if [ "${SUBMIT:-0}" = "1" ]; then
     echo "weyl_rot45_hyb -> $(sbatch --parsable -t 12:00:00 -J weyl_rot45_hyb mendieta_cmd.sbatch -m stationary.train "${ROT[@]}")"
 fi
