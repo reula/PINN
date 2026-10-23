@@ -1,0 +1,645 @@
+% Draft generated from the Stationary project notes (README.md, PERTURBATION.md, COM_GAUGE.md,
+% REPORT_PIN_COM.md, REPORT_OPTIMISERS.md, DSGNAR.md, MULTIPOLES_GH_THORNE.md).
+% Every number is taken from those notes; see NOTES.md for sources, conflicts and open items.
+% Target: Phys. Rev. D (REVTeX 4.2).  For Class. Quantum Grav. switch to the iopart class.
+\documentclass[aps,prd,twocolumn,superscriptaddress,nofootinbib,floatfix]{revtex4-2}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\Ric}{\mathrm{Ric}}
+
+\begin{document}
+
+\title{Solving the static Einstein equations with physics-informed neural networks}
+
+\author{\todo{authors}}
+\affiliation{\todo{affiliations}}
+
+\date{\today}
+
+\begin{abstract}
+A classical existence theory guarantees that the stationary vacuum Einstein equations, posed
+in the region outside a ball, have a unique solution for boundary data sufficiently close to
+flat space, depending continuously on the data. We show that this boundary-value problem can be
+solved numerically with physics-informed neural networks (PINNs). We work with the static
+equations in harmonic gauge, written for a Riemannian 3-metric $h$ and the squared norm
+$\lambda$ of the static Killing vector. Data are a function $\lambda$ and an induced metric on
+an inner sphere, together with asymptotic flatness imposed through Robin conditions on an outer
+sphere. Metric-only networks, in which the connection is the Christoffel symbol of the network
+metric, are three orders of magnitude more accurate than first-order networks with an
+independent connection. The solver reproduces Schwarzschild in harmonic coordinates to
+$10^{-4}$ and two-rod Weyl solutions to $10^{-7}$. For a rotated Weyl configuration with no symmetry
+left, the error is $10^{-3}$--$10^{-4}$. For quadrupolar data, which have no closed-form
+solution, we compare with an independent spectral Gauss--Newton solution. There we identify a
+residual harmonic gauge mode: a translation of the asymptotic chart that the boundary data do
+not fix. It dominates the error, at $0.062$ times the centre-of-mass offset. We fix it with a
+centre-of-mass condition built from a conserved flux, the static analogue of a dipole moment.
+This reduces the error by four to five orders of magnitude, to five to six orders below the size
+of the quadrupole perturbation itself. We discuss the optimisers that make this possible: a
+self-scaled Broyden quasi-Newton method and a doubly-sketched Gauss--Newton method. We also
+discuss the limits we found for the general three-dimensional ansatz.
+\end{abstract}
+
+\maketitle
+
+% =====================================================================================
+\section{Introduction}
+% =====================================================================================
+
+For many years there has been a mathematical theory of the stationary Einstein equations in an
+asymptotic region of spacetime, namely the region outside a ball~\cite{Reula1989}. It states
+that boundary data close enough to those of flat spacetime, together with the asymptotic
+conditions, produce a unique solution that depends continuously on the data. Very few attempts
+have been made to explore this theory numerically~\cite{TODO_numerics_stationary}. Here we show
+that this is possible, and that it opens a new window on these spacetimes.
+
+The method also gives a simple way to explore other systems of possible physical importance:
+systems in which one solves for a Riemannian metric together with other fields, through
+equations that contain its Ricci tensor. Examples are the construction of minimal-energy data
+sets~\cite{TODO_minimal_energy} and the equations that give higher-order Newtonian-limit
+expansions~\cite{TODO_newtonian_limit}. \todo{more examples}
+
+We restrict this work to the static Einstein equations. The stationary case is no harder from
+the point of view of the approximation method, and is left for a continuation of this work.
+
+Physics-informed neural networks~\cite{Raissi2019} represent the unknown fields by a neural
+network and minimise the squared residual of the equations and boundary conditions over sampled
+points. They need no mesh, handle a non-compact domain through a change of radial variable, and
+treat a configuration with no symmetry at all exactly as they treat a symmetric one. Their
+weakness is accuracy. The loss is a mean square, the optimisation is non-convex, and a small
+loss does not by itself mean a small error. A large part of this paper is about how far that
+weakness can be pushed back for a geometric problem, and about the one place where it turned
+out to hide a structural ambiguity of the problem rather than a numerical one: the
+centre-of-mass gauge.
+
+The paper is organised as follows. Section~\ref{sec:equations} states the equations, the gauge,
+the boundary and asymptotic conditions, and the residual gauge freedom. Section~\ref{sec:pinn}
+describes the networks, the loss and the optimisers. Section~\ref{sec:tests} validates the solver
+on exact solutions: Schwarzschild, and Weyl two-rod solutions on the axis and rotated.
+Section~\ref{sec:quadrupole} treats quadrupolar data, the translation ambiguity and its fix, and
+the far field. Section~\ref{sec:conclusions} concludes.
+
+% =====================================================================================
+\section{The static Einstein equations}\label{sec:equations}
+% =====================================================================================
+
+\subsection{Variables and field equations}
+
+We write a static vacuum spacetime as
+\begin{equation}
+  g = -\lambda\,\dd t^2 + \lambda^{-1} h ,
+  \label{eq:lineelement}
+\end{equation}
+where $h$ is a Riemannian metric on the spatial slice and $\lambda = -\xi\cdot\xi$ is the
+squared norm of the static Killing vector $\xi = \partial_t$. If $g = -N^2\dd t^2+\gamma$, then
+$\lambda = N^2$ and $h = N^2\gamma$. The vacuum equations become a system for $(h,\lambda)$:
+\begin{align}
+  R_{ab}(h) &= \frac{1}{2\lambda^{2}}\,\nabla_a\lambda\,\nabla_b\lambda, \label{eq:ricci}\\
+  h^{ab}\nabla_a\nabla_b\lambda &= \frac{1}{\lambda}\,h^{ab}\nabla_a\lambda\nabla_b\lambda . \label{eq:lam}
+\end{align}
+With $U = \tfrac12\ln\lambda$ these read $\Ric(h) = 2\,\dd U\otimes\dd U$ and $\Delta_h U = 0$.
+The divergence of~\eqref{eq:ricci} reproduces~\eqref{eq:lam} through the contracted Bianchi
+identity. Both equations are invariant under $\lambda\to c\lambda$ and $\lambda\to1/\lambda$.
+
+\subsection{Gauge}
+
+We impose harmonic (de Donder) coordinates on $h$:
+\begin{equation}
+  \Gamma^i \equiv h^{jk}\Gamma^i{}_{jk} = S^i ,
+  \label{eq:gauge}
+\end{equation}
+with $S^i = 0$ in the harmonic case. Equivalently $\Delta_h x^i = 0$: the Cartesian-like
+coordinates $x^i = \rho\, n^i$ are $h$-harmonic. A polar chart can never satisfy this condition.
+For the Weyl tests of Sec.~\ref{sec:tests} we use a source built from the candidate's own
+metric,
+\begin{equation}
+  S^i = (h_{\rho\rho} - 1)\, h^{ij}\partial_j \ln \rho_n , \qquad
+  \rho_n = \bigl|x - (x\cdot n)\,n\bigr| ,
+  \label{eq:cylsource}
+\end{equation}
+where $n$ is the symmetry axis. This source is satisfied exactly by Weyl's canonical form
+$h = e^{2k}(\dd\rho^2+\dd z^2)+\rho^2\dd\phi^2$. We also implemented the DeTurck
+(harmonic-Einstein) reduction $R_{ij} - \nabla_{(i}\xi_{j)}$ with $\xi^k = \Gamma^k - S^k$,
+whose principal part is the elliptic operator $-\tfrac12 h^{cd}\partial_c\partial_d h_{ij}$~\cite{HKW2010}.
+In our runs it gave no clear gain over imposing~\eqref{eq:gauge} as a separate residual (same
+loss trajectory, $1.21\times10^{-10}$ against $1.16\times10^{-10}$).
+
+\subsection{The exact spherical family}
+
+In the harmonic chart, the spherically symmetric solutions are
+\begin{equation}
+  h_{ij} = \Bigl(1-\frac{R_0^2}{\rho^2}\Bigr)\delta_{ij} + \frac{R_0^2}{\rho^2}\,n_in_j , \qquad
+  \lambda = k\,\frac{\rho-R_0}{\rho+R_0} ,
+  \label{eq:schw}
+\end{equation}
+so that $h = \dd\rho^2+(\rho^2-R_0^2)\,\dd\Omega^2$. In the reading~\eqref{eq:lineelement} with
+$k=1$ this is Schwarzschild in harmonic coordinates: the mass is $M = R_0$, the areal radius is
+$r = \rho+R_0$, and $\lambda = 1-2M/r$. The harmonic condition still allows the radial maps
+$\rho\to F(\rho) = c_1\rho + c_2 F_2(\rho)$ with $F_2 = 2R_0+\rho\ln\frac{\rho-R_0}{\rho+R_0}$.
+Both solve $(f^2F')' = 2F$ with $f^2=\rho^2-R_0^2$. The round inner metric and $h\to\delta$
+fix both constants.
+
+\subsection{Boundary and asymptotic conditions}\label{sec:bcs}
+
+The domain is the shell $\rho_{\rm in}\le\rho\le\rho_{\rm out}$.
+
+\paragraph{Inner sphere.}
+We prescribe $\lambda$ and the induced metric:
+\begin{equation}
+  \lambda = \lambda_0 + S_1\, n\cdot e + S_2\, P_2(n\cdot e), \qquad
+  P h P = \frac{r_{\rm in}^2}{\rho_{\rm in}^2}\, P ,
+  \label{eq:innerbc}
+\end{equation}
+where $P = I - n\otimes n$, $r_{\rm in}$ is the prescribed areal radius of the sphere in $h$, and
+$e$ is a fixed unit vector (the data axis). The components $h_{rr}$ and $h_{rA}$ are \emph{not}
+data. An earlier version also imposed $h_{rA}=0$, which over-determines the problem. In harmonic
+gauge the $l=2$ sector has five second-order radial equations, hence five decaying constants,
+and the datum~\eqref{eq:innerbc} with the gauge already fixes five. A sixth condition leaves no
+decaying solution, and the spectral solver of Sec.~\ref{sec:specref} indeed stalled at a residual
+of $1.8\times10^{-5}$ with a non-decaying $l=2$ metric part until it was removed. The constant
+$\lambda_0$ is chosen so that $\lambda\to1$ on the spherical branch,
+$\lambda_0 = (\rho_g - R_0)/(\rho_g+R_0)$ with $\rho_g = \sqrt{r_{\rm in}^2+R_0^2}$.
+
+\paragraph{Outer sphere: Robin conditions.}
+Asymptotic flatness is imposed at $\rho_{\rm out}$ through Robin conditions of order $n$,
+\begin{equation}
+  B_n[f] \equiv \prod_{i=0}^{n-1}\bigl(\rho\,\partial_\rho + p_f + i\bigr)\,(f-f_\infty) = 0 ,
+  \label{eq:robin}
+\end{equation}
+which annihilate the decaying powers $\rho^{-p_f},\dots,\rho^{-p_f-n+1}$ exactly. The exponents
+follow from the equations: $\delta h\sim\rho^{-2}$, $\Gamma\sim\rho^{-3}$ and
+$\lambda-1\sim\rho^{-1}$ (measured ratios on the exact solution: 2.01, 3.03 and 0.955). Writing
+the higher-order condition directly in $\partial_\rho$ instead of $\theta=\rho\partial_\rho$ is
+wrong; the factors of~\eqref{eq:robin} commute. For the scalar we impose the condition on the
+Geroch--Hansen potential~\cite{Geroch1970,Hansen1974},
+\begin{equation}
+  \mathcal P = \frac{1-\lambda^2}{4\lambda} = -\tfrac12\sinh 2U ,
+  \label{eq:Ppot}
+\end{equation}
+rather than on $\lambda$. The reason is that the monopole of $\mathcal P$,
+$M/\rho + M^3/(3\rho^3)+\dots$, has no $\rho^{-2}$ term, whereas
+$\lambda = 1-2M/\rho+2M^2/\rho^2-\dots$ has one, and the order-one condition on $\lambda$ is
+violated by the exact solution (Sec.~\ref{sec:quadrupole}). The same condition is imposed on a
+ladder of spheres inside $\rho_{\rm out}$ (at $0.7$, $0.8$ and $0.9\,\rho_{\rm out}$). The condition is homogeneous and
+the exact solution satisfies it at every radius. Sampled at a single radius it was ``gameable'':
+$B_3[h-I]$ was $1.30$, $0.52$ and $0.059$ at $\rho = 50$, $90$ and $99$ but $4.8\times10^{-5}$ at
+$\rho = 100$, while the bulk kept a constant $l=2$ metric part of about 6\%.
+
+\paragraph{Averaged pins.}
+Spherical means of order-one Robin combinations are added at $\rho_{\rm out}$:
+$\langle(\rho\partial_\rho+3)(h_{rr}-1)\rangle = 0$, $\langle(\rho\partial_\rho+2)(g_2-1)\rangle=0$ with
+$g_2 = \tfrac12(\operatorname{tr}h - h_{rr})$, and $\langle(\rho\partial_\rho+1)(\mathcal P-\mathcal P_\infty)\rangle=0$.
+Without the metric pins $h$ drifts towards a constant multiple of the identity. $\lambda_\infty=1$ is
+fixed; if it is left free, the trivial branch $h=\delta$, $\lambda=$ const is reached.
+
+\subsection{Uniqueness and the residual gauge freedom}\label{sec:gaugefreedom}
+
+The harmonic condition~\eqref{eq:gauge} fixes the chart only up to harmonic diffeomorphisms
+$x\to x+\xi$ with $\Delta_h\xi = 0$. One of these is not fixed by our data. It is the solution
+with $\xi = 0$ on the inner sphere and $\xi\to a$ at infinity: it keeps the chart harmonic,
+leaves the inner data unchanged, and translates the asymptotic chart by a constant vector $a$.
+Its effect on the scalar, $\xi\cdot\nabla\lambda$, vanishes at $\rho_{\rm in}$, peaks near
+$\rho\approx2$ and decays like $\rho^{-2}$. The outer conditions penalise it only weakly. For
+$|a|\approx0.04$ the dipole of $\mathcal P$ at $\rho_{\rm out}=100$ is $\approx2.5\times10^{-6}$,
+which costs $\approx10^{-9}$ in the loss. In the language of multipole moments, a mass dipole
+$M_1$ is pure gauge and a centre-of-mass condition sets it to zero~\cite{Geroch1970,Hansen1974,Thorne1980}.
+
+To fix it we use a conserved flux. Since $U = \tfrac12\ln\lambda$ and the coordinates $x^i$ are
+both $h$-harmonic, Green's identity makes
+\begin{equation}
+  D^i(S) = \oint_S\bigl(x^i\,\partial_n U - U\,\partial_n x^i\bigr)\,\dd A_h
+  \label{eq:comflux}
+\end{equation}
+independent of the closed surface $S$ enclosing the inner sphere. For a mass $M$ displaced by
+$a$ ($U\sim -M/|x-a|$), $D = 4\pi M a$. We therefore impose $d \equiv D/4\pi = 0$ on a set of
+spheres. This is a gauge choice: it selects the asymptotic chart centred on the centre of mass,
+and it is available for any data. It is related to the asymptotic centre-of-mass definitions of
+Regge--Teitelboim and Beig--\'O~Murchadha~\cite{ReggeTeitelboim1974,BeigOMurchadha1987} and to the
+recent quasi-local treatments~\cite{CederbaumSakovich2021}. Because it uses the static equation
+$\Delta_hU=0$ together with harmonic coordinates, it can be imposed at any radius.
+\todo{literature check: we found no quasi-local condition of exactly this form.}
+Section~\ref{sec:quadrupole} shows that this mode dominated the error of every run until it was
+fixed.
+
+% =====================================================================================
+\section{The PINN solver}\label{sec:pinn}
+% =====================================================================================
+
+\subsection{Networks}
+
+Inputs are the direction $n = x/\rho$ and the log-radial coordinate
+$t = \ln(\rho/\rho_{\rm in})/\ln(\rho_{\rm out}/\rho_{\rm in})\in[0,1]$, optionally with the
+feature $\rho_{\rm in}/\rho$. The body is a $\tanh$ multilayer perceptron, typically of width 20 and depth 6.
+The output layer is initialised small ($\mathcal N(0,10^{-2})$, zero bias), so that training starts
+near flat space. We compare two formulations.
+
+\emph{First order:} the network outputs $h$ (6 components), $\Gamma$ (18) and $\lambda = e^{u}$,
+and the compatibility equation $\partial_a h_{bc} = \Gamma^d{}_{ab}h_{dc}+\Gamma^d{}_{ac}h_{bd}$ is a residual
+like any other. Counting, compatibility (18) and Ricci (6) are 24 equations for 24 unknowns,
+with a three-parameter gauge degeneracy removed by~\eqref{eq:gauge}.
+
+\emph{Metric only:} the network outputs $h$ and $\lambda$, and $\Gamma$ is the Christoffel symbol of
+$h$, obtained by automatic differentiation. Compatibility then holds identically, at the cost of
+second derivatives of the network output. Its residual stays at $\sim3.5\times10^{-36}$ as a
+structural check.
+
+For axisymmetric problems we use the ansatz
+\begin{gather}
+  h_{ij} = (1+a)\,\delta_{ij} + b\, n_in_j + \tfrac{c}{2}\,(n_iz_j+z_in_j) + d\, z_iz_j ,
+  \nonumber\\
+  \lambda = e^{u} ,
+  \label{eq:axisym}
+\end{gather}
+with $a,b,c,d,u$ functions of $(t,\mu = n\cdot z)$. With width 20 and depth 6 this has 2265
+parameters, or 2285 with the decay feature. The general three-dimensional metric-only network has
+2347, and the first-order one 2725.
+
+\subsection{Loss}
+
+The residual groups are the Ricci equation~\eqref{eq:ricci}, the gauge~\eqref{eq:gauge}, the
+scalar equation~\eqref{eq:lam} and, for first-order networks, compatibility. Each residual
+$R_g$ is multiplied by $\rho^{p_g}$, and the loss is
+\begin{multline}
+  L = \sum_g w_g\,\overline{(\rho^{p_g}R_g)^2}
+     + w_{\rm in}\overline{r_{\rm in}^2} + w_{\rm out}\overline{r_{\rm out}^2} \\
+     + w_{\rm pin}\sum\langle r\rangle^2 + w_{\rm com}\sum_S|d|^2 ,
+  \label{eq:loss}
+\end{multline}
+with means over the sampled points of each group. The choice $p=(1,2,1,2)$ for (compat, Ricci, gauge,
+scalar) makes every residual dimensionless. With the features above, the loss is then invariant
+under a rescaling of the shell: the manufactured loss of a perturbed Weyl candidate is
+$1.720418\times10^{-2}$ on the shells $[7.5,75]$, $[0.1,1]$ and $[0.01,0.1]$ alike. For the
+quadrupole runs we use $p = (3,4,3,4)$, i.e.\ an extra weight $\rho^4$. With $\rho_{\rm in}=1$ and
+$\rho_{\rm out}=100$ the far rows then outweigh the inner ones by $10^8$, and this is what
+determines the far field (Sec.~\ref{sec:quadrupole}). Weights are $w_{\rm in}=w_{\rm out}=w_{\rm pin}=w_{\rm com}=100$.
+
+The centre-of-mass term uses a fixed quadrature on each sphere (Gauss--Legendre, 24 nodes in
+$\mu$, times 8 uniform nodes in $\phi$); a Monte Carlo estimate would be as noisy as the signal.
+Interior points are drawn log-uniformly in $\rho$ with uniform directions: 16384 points in
+production, and 1024 on each boundary sphere. They are redrawn every 500 iterations, and every
+final result is checked on five fresh samples. The ratio of the fresh to the training loss lies
+between 0.94 and 1.06 for all results reported here.
+
+\subsection{Optimisers}
+
+All computations are in double precision with JAX~\cite{jax2018}. A run consists of three stages.
+\begin{enumerate}
+\item Adam~\cite{KingmaBa2014}, 5000 steps.
+\item A doubly-sketched Gauss--Newton method with trust region (DSGNAR)~\cite{DSGNAR}. It sketches
+  the residual Jacobian on rows (CountSketch) and columns (an SRCT embedding) to $s\times s$,
+  with $s\approx0.9$ of the parameter count, and solves Levenberg--Marquardt problems at 25
+  trust radii from one SVD. We run it in restart cycles, each with a fresh sample and a fresh
+  trust region.
+\item The self-scaled Broyden quasi-Newton method SSBroyden~\cite{Urban2025SSBroyden}, with a
+  dense inverse Hessian (0.04~GB at 2285 parameters), in the JAX implementation
+  Crunch~\cite{TODO_crunch}.
+\end{enumerate}
+Table~\ref{tab:optim} and Fig.~\ref{fig:optim} compare the last two stages. A practical lesson concerns the
+first quasi-Newton step. With the inverse Hessian equal to the identity, the step $-\nabla L$
+can be enormously too long. At a DSGNAR result with loss $8.5\times10^{-5}$ the loss is NaN at
+the full step and $8.8\times10^6$ at $1/16$ of it, and Armijo backtracking needs 26 halvings to
+accept a step. An early version of the line search allowed 20, and its failure was the origin of
+several stalls that we first attributed to the problem. With a line search of up to 100
+trials, a scale-invariant curvature guard, and the inverse Hessian carried between blocks of
+iterations, SSBroyden takes such a start from $8.1\times10^{-5}$ to $1.1\times10^{-10}$ in 16~min
+on one GPU.
+
+\begin{table*}
+\caption{SSBroyden against DSGNAR on the quadrupole problem of Sec.~\ref{sec:quadrupole} (axisymmetric
+metric-only network, 2285 parameters). ``Stalls'' marks the first-step failure of the early line
+search discussed in the text.}
+\label{tab:optim}
+\begin{ruledtabular}
+\begin{tabular}{lccc}
+setting & start & SSBroyden & DSGNAR \\
+\hline
+$\rho^2$, $\lambda$ pin, from Adam & $6.3\times10^{-2}$ & $1.74\times10^{-8}$ (94 min) & $9.4\times10^{-8}$ (68 min) \\
+$\rho^4$, $\lambda$ pin & $1.2\times10^{4}$ & stalls & $1.4\times10^{-6}$ (88 min) \\
+$\rho^4$, $\mathcal P$ pin & $9.4\times10^{-9}$ & $2.1\times10^{-9}$ (36 min) & $3.4\times10^{-9}$ (43 min) \\
+$+$ centre of mass & $0.395$ & stalls & $1.16\times10^{-10}$ (94 min) \\
+$+$ centre of mass, polish & $1.2\times10^{-10}$ & $3.75\times10^{-11}$ (8 min) & $3.96\times10^{-11}$ (39 min) \\
+\end{tabular}
+\end{ruledtabular}
+\end{table*}
+
+\begin{figure*}
+\includegraphics[width=\textwidth]{figs/optimisers.png}
+\caption{Loss against wall time for SSBroyden (blue) and DSGNAR (orange) from the same start in
+each panel: $\rho^2$ weights from Adam; $\rho^4$ weights with the pin on $\mathcal P$; with the
+centre-of-mass condition. In the last panel SSBroyden made no step with the early line search;
+see the text. \todo{regenerate without internal titles}}
+\label{fig:optim}
+\end{figure*}
+
+Computations ran on NVIDIA A30 GPUs (24~GB) at the CCAD of the Universidad Nacional de
+C\'ordoba (cluster Mendieta, and a JupyterHub instance). One value-and-gradient evaluation with
+16384 points on the 2285-parameter network takes 0.048~s on an A30, 24 times faster than on 96 CPU
+cores. For point counts that do not fit one GPU the interior points are sharded over the two
+GPUs of a node; the loss and gradient agree with the unsharded ones to $10^{-12}$ and $10^{-10}$.
+
+\subsection{A spectral reference}\label{sec:specref}
+
+For data without a closed-form solution we built an independent reference. It is the spherical
+background~\eqref{eq:schw} plus an axisymmetric, reflection-even perturbation,
+\begin{multline}
+  \delta\lambda = \sum_l f^l_0 P_l ,\qquad
+  \delta h_{ij} = \sum_l\Bigl[f^l_1P_l\,\delta_{ij} + f^l_2 P_l\, n_in_j \\
+  + f^l_3P_l'\,(e_in_j+n_ie_j)
+  + f^l_4 P_l''\Bigl(e_ie_j-\tfrac{1-\mu^2}{2}(\delta_{ij}-n_in_j)\Bigr)\Bigr],
+\end{multline}
+with $e = \hat z-\mu n$ and each $f^l_k$ a Chebyshev series in $\ln\rho$. It is solved by
+Gauss--Newton on \emph{exactly} the residual vector of the network's loss~\eqref{eq:loss}. The fine
+reference ($l\le10$, 36 radial modes, 1008 unknowns) reaches a loss of $2.8\times10^{-11}$, and
+its far field falls off as $\rho^{-3.00}$ from $\rho = 20$ to 100. It is therefore a solution of the
+same discrete problem, obtained by an unrelated method.
+
+% =====================================================================================
+\section{Tests with exact solutions}\label{sec:tests}
+% =====================================================================================
+
+\subsection{The pipeline on exact solutions}
+
+The exact solution~\eqref{eq:schw}, packed exactly as a network packs its outputs and fed through
+the same loss, gives a total loss below $10^{-16}$. All four residual groups vanish to
+$10^{-16}$ or better. The rotated Weyl solution below gives compatibility $1.9\times10^{-16}$,
+Ricci $1.6\times10^{-15}$ and scalar equation $7.1\times10^{-17}$, and the Weyl solution on the axis gives a total
+loss of $1.3\times10^{-28}$ with the source~\eqref{eq:cylsource}. That test has teeth: with
+$S=0$ the loss does not vanish, because the Weyl chart is not harmonic (the harmonic residual is
+$3.9\times10^{-3}$ at $\rho = 7.5$).
+
+\subsection{Schwarzschild in harmonic coordinates}
+
+With Robin data at $\rho_{\rm out} = 100$ and no manufactured source, the metric-only spherical
+network ($R_0 = 1$, $\lambda_0 = 0.381966$ on the sphere of $h$-areal radius 2) recovers the
+exact family. A fit of the trained solution gives $R_0 = 0.999491$ and $k = 1.000022$, and the
+maximum errors against the exact solution are $8.5\times10^{-5}$ in $h$ and $1.9\times10^{-4}$ in
+$\Gamma$ and $\lambda$. Table~\ref{tab:firstorder} shows the comparison that decided the formulation. On the same problem, the
+first-order network finds the same geometry in a different harmonic chart: $\lambda$ as a
+function of the areal radius is right to $3.4\times10^{-3}$, but $h_{rr}$ is off by 33\%. The
+compatibility residual has a nearly flat direction along this gauge mode. Deriving $\Gamma$ from $h$
+removes it.
+
+\begin{table}
+\caption{First-order against metric-only network on the same Schwarzschild problem (manufactured
+Robin source, $\lambda\to1$, $\rho_{\rm out}=100$, 20000 Adam + 2000 quasi-Newton iterations).}
+\label{tab:firstorder}
+\begin{ruledtabular}
+\begin{tabular}{lcc}
+ & first order ($h,\Gamma,\lambda$) & metric only ($h,\lambda$) \\
+\hline
+compatibility rms & $9.3\times10^{-4}$ & $1.7\times10^{-9}$ \\
+final loss & $1.2\times10^{-5}$ & $5.8\times10^{-8}$ \\
+$\max|\delta h|$ & $3.3\times10^{-1}$ & $5.3\times10^{-5}$ \\
+$\max|\delta\Gamma|$ & $1.7\times10^{-1}$ & $2.3\times10^{-4}$ \\
+$\max|\delta\lambda|$ & $1.3\times10^{-2}$ & $2.9\times10^{-5}$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+\subsection{Weyl two-rod solutions}
+
+The Weyl class~\cite{Weyl1917} provides exact static axisymmetric solutions with nontrivial
+multipole structure. We use two rods, with potential $U_{\rm rod} = \tfrac12\ln[(R_a+R_b-L)/(R_a+R_b+L)]$
+and mass $L/2$ each, and the metric function $k$ obtained by quadrature. The data $\lambda$ and
+the induced metric on the inner sphere, and the Robin sources, are taken from the exact solution,
+and the gauge is~\eqref{eq:cylsource}.
+
+For two equal rods (masses 1, gap 1) on the shell $[7.5,75]$, the axisymmetric network trained
+with SSBroyden from a random initialisation reaches a loss of $2.06\times10^{-13}$ in 3000
+iterations. The maximum errors over the shell are $6.7\times10^{-7}$ in $h$ and $9.0\times10^{-8}$ in
+$\lambda$ (Fig.~\ref{fig:weyl}). The decay powers of the Legendre modes of $\lambda$ are $-0.926$, $-2.05$ and $-2.85$ for
+$l = 0,1,2$. With unequal masses (1 and 0.1) the solution has a dipole about the coordinate
+origin, and the network reproduces the multipole coefficients of $\lambda$ at $\rho=75$:
+$a_{00} = 3.44243418$ against the exact $3.44243419$, $a_{10} = -1.017625\times10^{-3}$ against
+$-1.017590\times10^{-3}$, and $a_{20} = -1.894\times10^{-5}$ against $-1.898\times10^{-5}$. The
+dipole extracted at $\rho_{\rm out}$ is $1.398415$ against the exact $1.398367$.
+
+Bringing the inner sphere closer to the rods (Table~\ref{tab:weylclose}) raises the curvature at
+$\rho_{\rm in}$ by four orders of magnitude, and the error grows with it, but the solver keeps
+working at one horizon length from the rods.
+
+\begin{table}
+\caption{Weyl rods (masses 1 and 0.1), inner sphere moved towards the rods. 3000 SSBroyden
+iterations; standard units.}
+\label{tab:weylclose}
+\begin{ruledtabular}
+\begin{tabular}{lcccc}
+shell & dist.\ to horizon & $R_{ab}R^{ab}(\rho_{\rm in})$ & $\max|\delta h|$ & loss \\
+\hline
+$[7.5,75]$ & 5.0 & $3.3\times10^{-6}$ & $3.5\times10^{-7}$ & $2.4\times10^{-14}$ \\
+$[4,40]$ & 1.5 & $5.8\times10^{-3}$ & $1.6\times10^{-5}$ & $7.1\times10^{-13}$ \\
+$[3.5,35]$ & 1.0 & $5.3\times10^{-2}$ & $7.7\times10^{-5}$ & $3.1\times10^{-12}$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+\begin{figure}
+\includegraphics[width=\columnwidth]{figs/weyl_plane.png}
+\caption{Equal-mass Weyl rods on the shell $[7.5,75]$ (meridional plane). Computed $\lambda$;
+$\lambda_{\rm net}-\lambda_{\rm exact}$; $\log_{10}\max_{ij}|h_{\rm net}-h_{\rm exact}|$; and
+$\log_{10}R_{ab}R^{ab}$ of the exact solution. \todo{regenerate without the internal title}}
+\label{fig:weyl}
+\end{figure}
+
+\subsection{A rotated Weyl configuration}
+
+Rotating the closest configuration by $45^\circ$ in the $z$--$x$ plane removes every symmetry. The
+equations are covariant, so $h\to R h R^T$ and $\Gamma\to R\,R\,R\,\Gamma$ (with $\lambda$
+unchanged), all evaluated at $R^Tx$, is again a solution. The gauge, however, is a statement about a chart, and the source~\eqref{eq:cylsource} must be taken about the
+rotated axis $n = R\hat z$. On the exact rotated solution the rotated source gives a gauge
+residual of $3.4\times10^{-16}$, while the harmonic residual is $3.0\times10^{-2}$.
+The general three-dimensional (first-order) network solves this problem, but the number of
+collocation points matters more than the number of iterations (Table~\ref{tab:rotweyl}). Running
+longer on 2048 points lowers the mean-square loss by a factor 13 while every error grows, because
+the optimiser concentrates the residual on a few points (the maximum of the scalar residual reaches
+3375). Quadrupling the points lowers the loss by a factor 2530 and the maximum $h$ error by 63. We
+draw two lessons: a mean-square loss needs enough points that the mean samples the spikes, and a
+plateau of the loss is no evidence of convergence until the errors are checked.
+
+\begin{table}
+\caption{Rotated Weyl rods (masses 1 and 0.1, shell $[3.5,35]$, $45^\circ$), general 3-D network.}
+\label{tab:rotweyl}
+\begin{ruledtabular}
+\begin{tabular}{lcccc}
+ & 1500 it. & 8000 it. & 12165 it. & axisym. \\
+ & 2048 pts & 2048 pts & 8192 pts & \\
+\hline
+loss & $1.75\times10^{-4}$ & $2.28\times10^{-5}$ & $6.93\times10^{-8}$ & $3.06\times10^{-12}$ \\
+$\max|\delta h|$ & $7.1\times10^{-2}$ & $3.6\times10^{-1}$ & $1.1\times10^{-3}$ & $7.7\times10^{-5}$ \\
+$\max|\delta\lambda|$ & $5.2\times10^{-3}$ & $6.4\times10^{-2}$ & $1.0\times10^{-4}$ & $1.8\times10^{-6}$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+% =====================================================================================
+\section{Quadrupolar data}\label{sec:quadrupole}
+% =====================================================================================
+
+\subsection{The problem}
+
+We take $R_0 = M = 1/\sqrt3$, the inner sphere $\rho_{\rm in}=1$ with $r_{\rm in}=1$ (so
+$\lambda_0 = 1/3$), $\rho_{\rm out}=100$, and the datum
+\begin{equation}
+  \lambda|_{\rho_{\rm in}} = \tfrac13 - \tfrac1{12}\,P_2(\cos\theta) ,
+\end{equation}
+a 25\% relative perturbation of the spherical value. No closed-form solution is known. Linear
+theory around the spherical background predicts a pure $l=2$ response that decays like $\rho^{-3}$
+in both $\lambda$ and $h$, no $l=1$ part, and an $l=0$ back-reaction of order
+$S_2^2/\rho^6$. Any $l=1$ content is therefore second order in $S_2$, numerical error, or a
+coordinate offset. We grade the networks against the fine spectral reference of
+Sec.~\ref{sec:specref}. Against the spherical solution, the perturbation itself has an rms size
+of $2.0\times10^{-2}$ in $\lambda$ and $2.2\times10^{-2}$ in $h$ near the inner sphere, falling to
+$2.6\times10^{-4}$ and $3.5\times10^{-6}$ for $30<\rho<100$.
+
+\subsection{Weighting and the outer pin}
+
+With dimensionless weights ($p = (1,2,1,2)$) the far field is under-determined: even the spectral
+reference has the correct $\rho^{-3}$ tail of the $P_2$ mode only out to $\rho\approx20$, and every network
+carries a flat $\sim2\times10^{-4}$ error in $\lambda$ beyond that. The $\rho^4$ weighting fixes the
+tail: the reference's $P_2$ slope becomes $-3.00$ from $\rho = 20$ to 70. It exposed, however, that
+the order-one pin on $\lambda$ is violated by the exact solution itself. It leaves the $2M^2/\rho^2$
+term, $-6.6\times10^{-5}$ at $\rho=100$, which costs $4.3\times10^{-7}$ in the loss: 98\% of the loss of
+every $\rho^4$ run, a floor no optimiser could go below. Moving the pin to the potential~\eqref{eq:Ppot}
+removes it (the same pin then costs $1.5\times10^{-11}$).
+
+\subsection{The translation mode and the centre-of-mass condition}
+
+With the weighting and the pin corrected, the networks' error near the inner sphere was still of
+order $10^{-3}$, and it was \emph{odd} under $z\to-z$ (modes $l = 1,3$), which the even data forbid.
+Every term of the loss is exactly reflection symmetric, so nothing forced this part; it is a weakly
+controlled direction. The flux~\eqref{eq:comflux} identified it. In every run without the
+centre-of-mass condition, $D_z$ is constant in $\rho$ (e.g.\ $-0.32$ on the spheres $\rho = 1,2,10,100$)
+but not zero, and the $\lambda$ error in $1<\rho<3$ divided by $|d_z|$ is the same number in all of them,
+whatever the weighting, pin or optimiser (Table~\ref{tab:ratio}). Far out, the network is the
+reference translated by $a = d/M = -0.0445$: translating the reference by $a$ reduces the $l=1$
+difference by a factor 8--23 between $\rho = 10$ and 100.
+
+\begin{table}
+\caption{Without the centre-of-mass condition, the near-field error is the translation mode.}
+\label{tab:ratio}
+\begin{ruledtabular}
+\begin{tabular}{lccc}
+run & $d_z$ & $\lambda$ error, $1<\rho<3$ & ratio \\
+\hline
+$\rho^2$, SSBroyden & $-6.6\times10^{-3}$ & $4.1\times10^{-4}$ & 0.062 \\
+$\rho^2$, DSGNAR & $+1.4\times10^{-2}$ & $8.6\times10^{-4}$ & 0.061 \\
+$\rho^4$, $\mathcal P$ pin & $-2.6\times10^{-2}$ & $1.6\times10^{-3}$ & 0.062 \\
+$\rho^4$, $\lambda$ pin & $-3.4\times10^{-2}$ & $2.1\times10^{-3}$ & 0.062 \\
+$\rho^4$, DSGNAR & $-3.5\times10^{-2}$ & $2.1\times10^{-3}$ & 0.060 \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+Imposing $d = 0$ on the spheres $\rho = 1, 1.5, 3, 10, 30, 100$ removes the mode ($d_z\sim10^{-8}$) and
+lowers the error against the reference by four to five orders of magnitude everywhere in the shell
+(Table~\ref{tab:com}, Fig.~\ref{fig:com}). It is now five to six orders below the size of the
+perturbation. The loss falls with it, to $1.16\times10^{-10}$ with DSGNAR and $3.75\times10^{-11}$ after
+an SSBroyden polish, the level of the reference itself.
+
+\begin{table*}
+\caption{Error against the fine reference (angular rms) by radial region, one modification at a
+time. Rows 0--2 have no centre-of-mass condition.}
+\label{tab:com}
+\begin{ruledtabular}
+\begin{tabular}{lccccccccc}
+ & loss & \multicolumn{4}{c}{$\lambda$ error} & \multicolumn{4}{c}{$h$ error} \\
+ & & 1--3 & 3--10 & 10--30 & 30--100 & 1--3 & 3--10 & 10--30 & 30--100 \\
+\hline
+perturbation size & & $2.0\times10^{-2}$ & $2.5\times10^{-3}$ & $7.6\times10^{-4}$ & $2.6\times10^{-4}$ & $2.2\times10^{-2}$ & $4.5\times10^{-4}$ & $3.1\times10^{-5}$ & $3.5\times10^{-6}$ \\
+0: $\rho^2$, $\lambda$ pin & $1.7\times10^{-8}$ & $4.1\times10^{-4}$ & $2.5\times10^{-4}$ & $2.1\times10^{-4}$ & $2.2\times10^{-4}$ & $5.1\times10^{-3}$ & $7.5\times10^{-4}$ & $9.2\times10^{-5}$ & $2.9\times10^{-5}$ \\
+1: $\rho^4$, $\lambda$ pin & $4.5\times10^{-7}$ & $2.1\times10^{-3}$ & $1.0\times10^{-3}$ & $1.6\times10^{-4}$ & $1.9\times10^{-5}$ & $2.6\times10^{-2}$ & $3.9\times10^{-3}$ & $3.7\times10^{-4}$ & $3.9\times10^{-5}$ \\
+2: $\rho^4$, $\mathcal P$ pin & $2.1\times10^{-9}$ & $1.6\times10^{-3}$ & $7.8\times10^{-4}$ & $1.2\times10^{-4}$ & $1.4\times10^{-5}$ & $2.0\times10^{-2}$ & $2.9\times10^{-3}$ & $2.8\times10^{-4}$ & $2.9\times10^{-5}$ \\
+3: $+$ centre of mass & $1.2\times10^{-10}$ & $6.7\times10^{-8}$ & $3.4\times10^{-8}$ & $1.2\times10^{-8}$ & $3.4\times10^{-9}$ & $4.8\times10^{-7}$ & $3.7\times10^{-8}$ & $5.0\times10^{-9}$ & $4.0\times10^{-9}$ \\
+3 $+$ SSBroyden polish & $3.8\times10^{-11}$ & $3.2\times10^{-8}$ & $3.9\times10^{-9}$ & $2.9\times10^{-9}$ & $2.6\times10^{-9}$ & $1.4\times10^{-7}$ & $1.7\times10^{-8}$ & $2.4\times10^{-9}$ & $1.6\times10^{-9}$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table*}
+
+\begin{figure*}
+\includegraphics[width=\textwidth]{figs/com_steps.png}
+\caption{Error against the fine reference for the steps 0--3 of Table~\ref{tab:com}: angular rms of
+$\lambda_{\rm net}-\lambda_{\rm ref}$, of $\max_{ij}|h_{\rm net}-h_{\rm ref}|$, and the $l=1$
+coefficient of $\lambda_{\rm net}-\lambda_{\rm ref}$. Dashed: size of the perturbation (reference minus
+spherical solution). \todo{regenerate without the internal title}}
+\label{fig:com}
+\end{figure*}
+
+The condition carries over to data without reflection symmetry. With $S_1 = 0.05$ added to the
+datum (a genuine dipole in the data), the network reaches a loss of $8\times10^{-10}$. Against a
+spectral reference that includes all $l\le10$, its rms error is $1.5\times10^{-7}$ in $\lambda$ and
+$1.9\times10^{-6}$ in $h$, five orders below the perturbation.
+
+\subsection{The far field and the multipoles}
+
+The weighted solutions have the expected asymptotics: the $l=2$ coefficient of $\mathcal P$ decays as
+$\rho^{-3.00}$, and its coefficient times $\rho^3$ is $0.176$ at $\rho = 10$ and $0.172$ at $\rho = 100$
+(reference). The monopole coefficient of $\mathcal P$ at $\rho_{\rm out}$ gives $0.584$, against
+$M = 0.5774$. These are harmonic tail coefficients in the harmonic chart, not yet the
+Geroch--Hansen moments~\cite{Geroch1970,Hansen1974}. Beyond linear order these differ by nonlinear
+terms (for the quadrupole,
+$M_2 = \tfrac13 (U^{(0)})^3 - U^{(2)}$ in the Fodor--Hoenselaers--Perj\'es expansion~\cite{FHP1989}), and
+their extraction requires an asymptotically Cartesian mass-centred chart, which the
+centre-of-mass condition provides~\cite{Thorne1980,Gursel1983}. \todo{compute $M_0$, $M_2$ of the
+quadrupole solution and compare with linear theory.}
+
+\subsection{Off-axis data and the general ansatz}
+
+Rotating the quadrupolar datum to the axis $(1,0,1)/\sqrt2$ makes the problem fully
+three-dimensional, while its exact solution is the rotated axisymmetric one, which the rotated
+spectral reference provides. With the general metric-only network (2347 parameters), the error
+against the rotated reference is $1.6\times10^{-5}$ in $\lambda$ and $1.2\times10^{-3}$ in $h$
+(rms). That is 600 and 10 times below the perturbation, and the same as for the same network on
+the unrotated data ($1.65\times10^{-5}$ and $1.0\times10^{-3}$ after the same budget), so the
+rotation itself costs nothing. The general ansatz, however, floors at a loss between $10^{-7}$ and $10^{-6}$, depending on the number
+of points: three to four orders above the axisymmetric network on the same objective
+($1.1\times10^{-10}$). Three diagnostics locate the limit. (i)~The reference, evaluated with the network's own
+loss on fresh samples, gives $2.8\times10^{-11}$, so the minimum of the objective is at the solution.
+(ii)~The same network, fitted by regression to the reference, represents it to $7.5\times10^{-6}$ in
+$h$, 150 times better than training reaches, but with a PINN loss of $3.4\times10^{-2}$. (iii)~More
+collocation points (up to 262144) lower the loss to $1.2\times10^{-7}$ but leave the $h$ error between
+$7\times10^{-4}$ and $10^{-3}$. Training started from the regression fit reaches a loss of $2\times10^{-7}$ with an
+$h$ error of $3.2\times10^{-4}$, the best we obtained. We conclude that there is a direction in $h$,
+concentrated near the inner sphere, along which the residual is small and the error is not, and that
+for the general ansatz the optimiser drifts along it. \todo{identify the mode (angular decomposition of
+the error).}
+
+% =====================================================================================
+\section{Conclusions}\label{sec:conclusions}
+% =====================================================================================
+
+Physics-informed neural networks solve the exterior boundary-value problem for the static vacuum
+Einstein equations with prescribed inner data and asymptotic flatness. They are accurate to
+$10^{-7}$--$10^{-9}$ against exact and reference solutions when four ingredients are in place:
+\begin{itemize}
+\item a metric-only network, in which the connection is derived from the metric;
+\item dimensionless or far-weighted residuals with Robin conditions of the correct orders;
+\item a quasi-Newton or sketched Gauss--Newton optimiser;
+\item a complete gauge fixing.
+\end{itemize}
+The last point was not anticipated. Harmonic coordinates together with the inner data leave the
+asymptotic chart free to translate. The mode is invisible to every residual except at the
+$10^{-9}$ level, and it was the largest error in every run until it was fixed by a centre-of-mass
+condition based on a conserved flux of the static equations. We expect the same issue, and the
+same remedy, in any elliptic formulation of the stationary problem in which the inner data do
+not fix the asymptotic frame.
+
+Open questions are the extraction of the Geroch--Hansen moments of the computed solutions, and
+the accuracy floor of the general three-dimensional ansatz, which we traced to a weakly
+penalised direction of the objective rather than to representation or sampling. The extension to
+the stationary equations is the natural next step.
+
+\begin{acknowledgments}
+We thank the Palma group \todo{names} for the Crunch implementation of SSBroyden, and the
+CCAD of the Universidad Nacional de C\'ordoba for computing time on Mendieta and its JupyterHub.
+\todo{funding}. The initial setting and the exact-solution tests were done with the help of
+DeepSeek; the quadrupole runs and the centre-of-mass fix were done with Claude (Anthropic).
+\end{acknowledgments}
+
+\bibliography{refs}
+
+\end{document}
