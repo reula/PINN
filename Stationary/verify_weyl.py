@@ -235,7 +235,12 @@ def main(argv=None):
     cfg = Config(rho_in=rho_in, rho_out=rho_out, outer_bc="robin", robin_order=a.robin_order,
                  robin_source=True, inner_bc="reference", gauge_source="cylindrical",
                  weyl=True, weyl_half_length=a.half_length, weyl_half_gap=a.half_gap,
-                 lam_inf=1.0, n_coll=512, n_bnd=96)
+                 lam_inf=1.0, n_coll=512, n_bnd=96,
+                 # the averaged outer pins (on by default since they were added for the quadrupole
+                 # problem) are NOT satisfied by the Weyl solution: the h_rr pin assumes a rho^-3
+                 # tail, measured on the spherical solution, and leaves 1.6e-9.  The Weyl runs had
+                 # no pins; the check is on the system and its boundary conditions.
+                 pin_h_robin=False)
     model = WeylFieldNet(rods, a.n_quad)
     key = jax.random.PRNGKey(a.seed + 1)
     params = model.init(jax.random.PRNGKey(0), jnp.zeros((1, 3)))
