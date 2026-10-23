@@ -973,6 +973,11 @@ had dh 7.5e-6 at a loss of 3.4e-2), and the optimiser drifts along it by ~1e-3. 
 10-30x below the perturbation in h and ~1000x in lambda.  Not yet identified: which mode it is (an
 angular decomposition of network - reference would say, e.g. l = 1 or gauge-like).
 
+Round 28 (2026-10-23): every merged-Crunch rotated run used Armijo; the same two starts with the
+strong-Wolfe search (`--qn-linesearch wolfe`), 16384 points, 10000 iterations: `rot_ssbw` (from
+`rot_ssb`, against `rot_ssbm`: 2.25e-6, dh 1.16e-3) and `rot_from_fit_w` (from the regression fit,
+against `rot_from_fit`: 2.0e-7, dh 3.2e-4).  Pending.
+
 **Round 24 result: PINN training from the regression fit** (`rot_from_fit`, merged SSBroyden,
 16384 points, 10000 iterations, 14 min): loss 3.4e-2 -> **2.0e-7** (fresh/training 1.05), and the
 error grows on the way, from the fit's 7.5e-6 to **rms dh 3.2e-4** (rho 1-3: 6.7e-4), rms dlambda
