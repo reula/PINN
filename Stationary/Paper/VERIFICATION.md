@@ -38,6 +38,7 @@ corrected to the recomputed value; ✗ means the number is removed from the pape
 | weyl_rot45_long | loss / max dh / max dlam | 2.28e-5 / 3.6e-1 / 6.4e-2 | 2.282e-5 / 3.57e-1 / 6.44e-2 | ✓ |
 | weyl_rot45_hub | loss / max dh / max dlam | 6.93e-8 / 1.1e-3 / 1.0e-4 | 6.928e-8 / 1.13e-3 / 1.04e-4 | ✓ |
 | chart-invariance loss | 1.720418e-2 on three shells | not recomputed | ✗ |
+| weyl_rot45 -> _long | loss reduction "factor 13" (README) | 1.753e-4 / 2.282e-5 = 7.7 | ✎ (factor 8) |
 
 ## Schwarzschild tests
 
