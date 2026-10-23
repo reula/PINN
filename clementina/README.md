@@ -532,6 +532,40 @@ eigendecomposition of the Gram matrix must be an SVD (`S = sqrt(sigma)`, `Vt = V
 Artifacts: `ldc/params/intel_a30_exact_48x48x48.{npy,json}` (parameters + architecture), and
 `clementina/results/ldc_a30_exact_{summary,history}.json` / `_results.npz` (full per-step trace).
 
+## 8b-septies. THE PAPER CONFIGURATION, solved on Mendieta's A30 (job 1181874)
+
+The paper configuration itself -- 60-60-60-60 (11 347 parameters), 2^15 PDE / 2^14 BC points,
+sketch 4000, probe 256, 200 DSGNAR steps -- converges on **one A30** with the exact-residual
+mode and a float64 start, in 37.7 min:
+
+| run (paper configuration) | loss | rel L2 mean | u | v | p | wall |
+|---|---|---|---|---|---|---|
+| **A30, exact residual (job 1181874)** | **7.80e-08** | **0.009863** | 0.00133 | 0.00265 | 0.02561 | 37.7 min |
+| A30, SSBroyden from x0 (1000 it) | 1.76e-06 | 0.016586 | | | | 3.3 min |
+| A30, SSBroyden polish (1000 it) | 6.46e-08 | 0.010139 | | | | 3.0 min |
+| Intel tile, same configuration (job 1549653) | 3.59e-04 at step 125 | 0.5366 | | | | 6 h, stalled |
+
+200/200 DSGNAR steps accepted, 1814 s (9.1 s/step), `best_by_accuracy = DSGNAR`.  Saved and
+re-verified: `ldc/params/mendieta_a30_paper_60x4_exact.{npy,json}` (loader:
+`{"u": 0.001328, "v": 0.002648, "p": 0.025612, "mean": 0.009863}`), with the summary, history
+and results in `clementina/results/mendieta_a30_paper_exact_*`.
+
+```bash
+# on Mendieta (one A30, Slurm account ifeg, partition multi):
+cd ~/ldc_paper_run && sbatch clementina/20b_mendieta_paper_driver.sbatch
+```
+
+**Memory: the card is 24 GiB, and the old "does not fit" claim measured JAX, not the card.**
+`ldc_run.py` printed `device limit` from `jax.devices()[0].memory_stats()['bytes_limit']`,
+which with `XLA_PYTHON_CLIENT_PREALLOCATE=false` and JAX's default `MEM_FRACTION=0.75` is
+0.75 of the card (~18 GiB), while `nvidia-smi` in the same job reports 24576 MiB.  The scripts
+now set `XLA_PYTHON_CLIENT_MEM_FRACTION=0.9` and the preflight prints nvidia-smi's total, the
+fraction, the resulting `bytes_limit` and the dense-Jacobian estimate so the two cannot be
+confused.  At the paper batch (2^12) the dense Jacobian is ~1.04 GiB; the exact-residual mode
+at `--batch 1024` needs only ~0.26 GiB, so the paper configuration fits comfortably on one
+A30 -- the hub's **shared 19.3 GiB HAMi slice** was the real constraint that motivated the
+reduced `a30` preset.
+
 ## 8b-quinquies. The fix to test: exact residual rows (from SBH/06fac11)
 
 The other agent's DSGNAR work (`Stationary`/`SBH`, commit 06fac11) found the mechanism behind

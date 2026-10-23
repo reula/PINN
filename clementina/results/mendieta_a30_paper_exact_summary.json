@@ -1,0 +1,80 @@
+{
+  "label": "paper_driver_a30",
+  "mode": "paper",
+  "preset": {
+    "hidden": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "n_pde": 32768,
+    "n_bc": 16384,
+    "sketch": 4000,
+    "batch": 1024,
+    "probe": 256,
+    "float32_steps": 0,
+    "dsgnar_steps": 200,
+    "qn_maxiter": 1000,
+    "min_radius": 1e-10
+  },
+  "overrides": {
+    "float32_steps": 0,
+    "batch": 1024
+  },
+  "exact_residual": true,
+  "backend": "gpu",
+  "devices": [
+    "cuda:0"
+  ],
+  "jax": "0.11.1",
+  "n_parameters": 11347,
+  "grid": {
+    "n_pde": 32768,
+    "n_bc": 16384,
+    "sketch": 4000,
+    "batch": 1024,
+    "probe": 256
+  },
+  "initial": {
+    "loss": 0.5105409394202516,
+    "rel_l2": {
+      "u": 3.5343,
+      "v": 8.4992,
+      "p": 2.7501,
+      "mean": 4.9279
+    }
+  },
+  "dsgnar": {
+    "loss": 7.800269207166315e-08,
+    "rel_l2": {
+      "u": 0.0013283686133340222,
+      "v": 0.0026480240765596533,
+      "p": 0.02561227245039201,
+      "mean": 0.009862888380095228
+    },
+    "steps": 200,
+    "seconds": 1814.2256199149415
+  },
+  "grades_rel_l2": {
+    "DSGNAR": 0.009862888380095228,
+    "SSBroyden from x0": 0.01658627358009767,
+    "SSBroyden polish": 0.010139323091511613
+  },
+  "losses": {
+    "DSGNAR": 7.800269207166315e-08,
+    "SSBroyden from x0": 1.7590072791664295e-06,
+    "SSBroyden polish": 6.461690782440406e-08
+  },
+  "best_by_accuracy": "DSGNAR",
+  "final": {
+    "rel_l2": {
+      "u": 0.0013283686133340222,
+      "v": 0.0026480240765596533,
+      "p": 0.02561227245039201,
+      "mean": 0.009862888380095228
+    },
+    "loss": 7.800269207166315e-08
+  },
+  "outdir": "/home/reula/ldc_paper_run/runs/paper_driver_1181874"
+}
