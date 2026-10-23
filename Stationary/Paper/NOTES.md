@@ -32,9 +32,18 @@ nothing was recomputed for the paper.
    - Cederbaum–Sakovich;
    - Urbán–Stefanou–Pons (SSBroyden);
    - DSGNAR. Its authors and title are as given in DSGNAR.md (Webb, Jerad and Cartis, arXiv:2607.02194).
-4. **COM attribution.** The centre of mass is credited to Cederbaum and collaborators (the
-   user's instruction, 2026-10-23). `refs.bib` has candidate entries (Cederbaum 2012 thesis,
-   Cederbaum–Nerz 2015, Cederbaum–Sakovich) marked VERIFY. Confirm which works to cite.
+4. **COM attribution (done 2026-10-23).** The flux is Cederbaum's pseudo-Newtonian centre of mass
+   (thesis arXiv:1201.5433, §4.3: 4πG m z^k = ∮(∂U/∂ν x^k − U ∂x^k/∂ν) dσ in γ-harmonic coordinates,
+   by Green's formula; quasi-local; with an addition theorem; equal to the ADM/CMC centres; with a
+   Newtonian limit). The paper cites the thesis and Cederbaum–Nerz 2015 (Ann. Henri Poincaré 16,
+   1609). It also cites the earlier works they build on, taken from their bibliographies:
+   - centre-of-mass definitions: Regge–Teitelboim, Beig–Ó Murchadha, Huisken–Yau, Metzger, Huang
+     (2009, 2010), Corvino–Wu, Eichmair–Metzger, and the Corvino–Pollack review;
+   - static asymptotics: Beig 1980, Beig–Simon 1980, Kennefick–Ó Murchadha 1995;
+   - multipoles: Beig 2000.
+
+   Entries still marked VERIFY: Huang's years (the two bibliographies disagree), the Corvino–Wu
+   article number, and the Eichmair–Metzger volume.
 5. **Multipole moments (done 2026-10-23).** Section V.D now has Geroch–Hansen moments extracted
    from the axis (stationary/gh_moments.py, scripts/gh_moments_runs.py, tests/test_gh_moments.py)
    and the tail-decay checks (scripts/tail_decay.py). See MULTIPOLES_GH_THORNE.md §6.2b. Still
