@@ -953,6 +953,26 @@ on-axis control uses the same one and keeps improving).  Two measurements:
   tests/test_shard_coll.py checks on two fake CPU devices that loss and gradient equal the
   unsharded ones (1e-12 / 1e-10) and that a sharded merged-SSBroyden phase trains.
 
+**Rounds 26-27 results (2026-10-21): more points lower the loss, not the error.**  All 10000 merged-
+SSBroyden iterations, fresh/training 1.00-1.05.  The 2-GPU run works (JAX sees both A30s; 262144
+points in 40 min, RSS 5.1 GB).
+
+| run | points | loss | rms dh | dh, rho 1-3 | rms dlambda |
+|---|---|---|---|---|---|
+| `rot_ssbm3` (from scratch) | 16384 | 1.3e-6 | 1.17e-3 | 2.4e-3 | 1.7e-5 |
+| `rot_coll64k` | 65536 | 2.6e-7 | 7.2e-4 | 1.5e-3 | 1.4e-5 |
+| `rot_coll128k` | 131072 | 1.16e-7 | 9.9e-4 | 2.1e-3 | 1.0e-5 |
+| `rot_coll256k_2g` (2 GPUs) | 262144 | 1.18e-7 | 7.5e-4 | 1.6e-3 | 1.4e-5 |
+| `rot_fit64k` (from the fit) | 65536 | 1.8e-7 | 6.6e-4 | 1.4e-3 | 1.3e-5 |
+| `rot_from_fit` (from the fit) | 16384 | 2.0e-7 | **3.2e-4** | 6.7e-4 | **6.5e-6** |
+
+Beyond 65536 points the loss halves but the h error wanders between 7e-4 and 1e-3 with no trend,
+and the fit start at 65536 is worse than at 16384.  So the loss does not control this error: there
+is a direction in h, concentrated in rho 1-3, that the objective barely penalises (the regression fit
+had dh 7.5e-6 at a loss of 3.4e-2), and the optimiser drifts along it by ~1e-3.  The error is still
+10-30x below the perturbation in h and ~1000x in lambda.  Not yet identified: which mode it is (an
+angular decomposition of network - reference would say, e.g. l = 1 or gauge-like).
+
 **Round 24 result: PINN training from the regression fit** (`rot_from_fit`, merged SSBroyden,
 16384 points, 10000 iterations, 14 min): loss 3.4e-2 -> **2.0e-7** (fresh/training 1.05), and the
 error grows on the way, from the fit's 7.5e-6 to **rms dh 3.2e-4** (rho 1-3: 6.7e-4), rms dlambda
