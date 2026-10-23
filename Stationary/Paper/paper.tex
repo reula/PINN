@@ -40,7 +40,12 @@ residual harmonic gauge mode: a translation of the asymptotic chart that the bou
 not fix. It dominates the error, at $0.062$ times the centre-of-mass offset. We fix it with a
 centre-of-mass condition built from a conserved flux, the static analogue of a dipole moment.
 This reduces the error by four to five orders of magnitude, to five to six orders below the size
-of the quadrupole perturbation itself. We discuss the optimisers that make this possible: a
+of the quadrupole perturbation itself. We extract the Geroch--Hansen mass moments of the computed
+solutions from the symmetry axis, without constructing Weyl coordinates. The networks reproduce
+the exact moments of the Weyl solutions, and the reference moments of the quadrupolar solution
+($M_0 = 0.583847$, $M_2 = 0.1747$, $M_4 = 0.022$) to $10^{-8}$--$10^{-4}$. Even runs without the
+centre-of-mass condition agree to $10^{-5}$: the translation mode moves the chart, not the
+geometry. We discuss the optimisers that make this possible: a
 self-scaled Broyden quasi-Newton method and a doubly-sketched Gauss--Newton method. We also
 discuss the limits we found for the general three-dimensional ansatz.
 \end{abstract}
@@ -216,13 +221,14 @@ both $h$-harmonic, Green's identity makes
   \label{eq:comflux}
 \end{equation}
 independent of the closed surface $S$ enclosing the inner sphere. For a mass $M$ displaced by
-$a$ ($U\sim -M/|x-a|$), $D = 4\pi M a$. We therefore impose $d \equiv D/4\pi = 0$ on a set of
-spheres. This is a gauge choice: it selects the asymptotic chart centred on the centre of mass,
-and it is available for any data. It is related to the asymptotic centre-of-mass definitions of
-Regge--Teitelboim and Beig--\'O~Murchadha~\cite{ReggeTeitelboim1974,BeigOMurchadha1987} and to the
-recent quasi-local treatments~\cite{CederbaumSakovich2021}. Because it uses the static equation
-$\Delta_hU=0$ together with harmonic coordinates, it can be imposed at any radius.
-\todo{literature check: we found no quasi-local condition of exactly this form.}
+$a$ ($U\sim -M/|x-a|$), $D = 4\pi M a$. This is the centre of mass of static (geometrostatic)
+systems in the form introduced and studied by Cederbaum and collaborators~\cite{Cederbaum2012,CederbaumNerz2015,CederbaumSakovich2021},
+written in our variables; see also the asymptotic definitions of Regge--Teitelboim and
+Beig--\'O~Murchadha~\cite{ReggeTeitelboim1974,BeigOMurchadha1987}. \todo{authors: confirm the
+Cederbaum et al.\ references to cite.} We impose $d \equiv D/4\pi = 0$ on a set of spheres. This is
+a gauge choice: it selects the asymptotic chart centred on the centre of mass, and it is available
+for any data. Because $U$ and the harmonic coordinates are both $h$-harmonic, it can be imposed at
+any radius.
 Section~\ref{sec:quadrupole} shows that this mode dominated the error of every run until it was
 fixed.
 
@@ -417,7 +423,11 @@ $l = 0,1,2$. With unequal masses (1 and 0.1) the solution has a dipole about the
 origin, and the network reproduces the multipole coefficients of $\lambda$ at $\rho=75$:
 $a_{00} = 3.44243418$ against the exact $3.44243419$, $a_{10} = -1.017625\times10^{-3}$ against
 $-1.017590\times10^{-3}$, and $a_{20} = -1.894\times10^{-5}$ against $-1.898\times10^{-5}$. The
-dipole extracted at $\rho_{\rm out}$ is $1.398415$ against the exact $1.398367$.
+dipole extracted at $\rho_{\rm out}$ is $1.398415$ against the exact $1.398367$. The Geroch--Hansen
+moments of the trained solutions, extracted as described in Sec.~\ref{sec:moments}, are
+$M_0 = 2.000001$ and $M_2 = 2.49950$ for the equal rods (exact $2$ and $2.5$), and $M_0 = 1.100000$,
+$M_2 = 0.29105$, $M_3 = -0.5016$ with the centre of mass at $z = 1.3091$ for the unequal rods (exact
+$1.1$, $0.290909$, $-0.49983$ and $1.309091$).
 
 Bringing the inner sphere closer to the rods (Table~\ref{tab:weylclose}) raises the curvature at
 $\rho_{\rm in}$ by four orders of magnitude, and the error grows with it, but the solver keeps
@@ -574,18 +584,75 @@ datum (a genuine dipole in the data), the network reaches a loss of $8\times10^{
 spectral reference that includes all $l\le10$, its rms error is $1.5\times10^{-7}$ in $\lambda$ and
 $1.9\times10^{-6}$ in $h$, five orders below the perturbation.
 
-\subsection{The far field and the multipoles}
+\subsection{Multipole moments}\label{sec:moments}
 
-The weighted solutions have the expected asymptotics: the $l=2$ coefficient of $\mathcal P$ decays as
-$\rho^{-3.00}$, and its coefficient times $\rho^3$ is $0.176$ at $\rho = 10$ and $0.172$ at $\rho = 100$
-(reference). The monopole coefficient of $\mathcal P$ at $\rho_{\rm out}$ gives $0.584$, against
-$M = 0.5774$. These are harmonic tail coefficients in the harmonic chart, not yet the
-Geroch--Hansen moments~\cite{Geroch1970,Hansen1974}. Beyond linear order these differ by nonlinear
-terms (for the quadrupole,
-$M_2 = \tfrac13 (U^{(0)})^3 - U^{(2)}$ in the Fodor--Hoenselaers--Perj\'es expansion~\cite{FHP1989}), and
-their extraction requires an asymptotically Cartesian mass-centred chart, which the
-centre-of-mass condition provides~\cite{Thorne1980,Gursel1983}. \todo{compute $M_0$, $M_2$ of the
-quadrupole solution and compare with linear theory.}
+\paragraph{Extraction from the axis.}
+For a static axisymmetric vacuum solution, the Geroch--Hansen moments~\cite{Geroch1970,Hansen1974}
+follow from the potential on the symmetry axis in canonical Weyl coordinates,
+$g = -e^{2U}\dd t^2+e^{-2U}[e^{2k}(\dd W^2+\dd Z^2)+W^2\dd\phi^2]$. Writing
+$U(0,Z)=\sum_r U^{(r)}/|Z|^{r+1}$, the moments are $M_0 = -U^{(0)}$, $M_1=-U^{(1)}$,
+$M_2 = \tfrac13(U^{(0)})^3-U^{(2)}$ and $M_3 = (U^{(0)})^2U^{(1)}-U^{(3)}$~\cite{FHP1989}. Equivalently,
+from the static Ernst potential $\xi = -\tanh U$ on the axis, $\xi(0,Z) = \sum_j m_j/|Z|^{j+1}$, the
+moments are $M_j = m_j$ for $j\le3$ and $M_4 = m_4 - \tfrac17 m_0(m_0m_2-m_1^2)$~\cite{SotiriouApostolatos2004}.
+We do not need to build Weyl coordinates, because only the axis is used. In our variables
+$U = \tfrac12\ln\lambda$ and $W = |\partial_\phi|_h$. On the part of the axis that reaches infinity
+$k=0$, so there $\dd Z$ is the proper $h$-length along the axis. The inner ball cuts the axis in
+two; the offset between the branches is the change of $Z$ along a meridian semicircle, with
+$\dd Z = \star\dd W$ in the meridian metric. We fit $\xi$ (and $U$) on both branches and fix the
+origin of $Z$ by mass centring, $M_1=0$. The error bar is the spread over fit windows starting at
+$1$--$1.5\,\rho_{\rm in}$ and fit orders 6 and 8. On exact solutions this returns:
+\begin{itemize}
+\item Schwarzschild in harmonic coordinates: $M_0=R_0$ to $10^{-12}$, and $M_l$ below $10^{-11}$
+  for $1\le l\le4$;
+\item the equal Weyl rods: $M_0 = 2$ and $M_2 = 2.500000$;
+\item the unequal rods: the closed-form moments to $10^{-5}$ relative;
+\item Curzon: $M_2 = -M^3/3$ and $M_4 = 19M^5/105$, although $U$ has no quadrupole.
+\end{itemize}
+
+\paragraph{The quadrupolar solution.}
+Table~\ref{tab:moments} lists the moments. The data raise the mass from the background value
+$R_0 = 0.57735$ to $M_0 = 0.583847$, a nonlinear back-reaction of $1.1\%$ in the monopole, and the
+quadrupole moment is $M_2 = 0.1747$. The networks agree with the reference to $10^{-8}$ in $M_0$ and to $10^{-6}$--$10^{-8}$ in $M_2$. The
+run without the centre-of-mass condition, whose pointwise error was $10^{-3}$, has moments within
+$10^{-5}$ of the reference. Moments are geometric, and the translation mode of
+Sec.~\ref{sec:gaugefreedom} moves the chart, not the geometry. The extraction shows this mode
+directly. The centre of mass of that run, measured from the centre of the coordinate sphere of
+radius $\rho$, is $10^{-5}$ at $\rho=1$, then $-0.020$, $-0.039$ and $-0.043$ at $\rho = 2$, 10 and
+70. It approaches the translation $a = -0.0445$ found from the flux and vanishes at the inner
+sphere, as the mode must. With the condition it is about $10^{-7}$ at every radius. The
+three-dimensional network gives moments within $10^{-3}$ relative of the reference, rotated or not.
+
+\begin{table}
+\caption{Geroch--Hansen moments of the quadrupolar solution: the spectral reference, and the
+differences network $-$ reference (same fit windows). The window spread of the reference is
+$1.2\times10^{-4}$ in $M_2$ and $7\times10^{-4}$ in $M_4$; it largely cancels in the differences.}
+\label{tab:moments}
+\begin{ruledtabular}
+\begin{tabular}{lccc}
+ & $M_0$ & $M_2$ & $M_4$ \\
+\hline
+reference & $0.583847$ & $0.17471$ & $0.0220$ \\
+axisym., centre of mass & $-2.8\times10^{-8}$ & $+1.1\times10^{-6}$ & $-1.0\times10^{-5}$ \\
+axisym., workflow from scratch & $-1.0\times10^{-8}$ & $+2.5\times10^{-8}$ & $+1.1\times10^{-6}$ \\
+axisym., no centre of mass & $+1.0\times10^{-7}$ & $+1.2\times10^{-5}$ & $-1.3\times10^{-4}$ \\
+3-D, data on the axis & $-2.3\times10^{-6}$ & $-3.3\times10^{-5}$ & $-1.9\times10^{-4}$ \\
+3-D, data rotated & $+2.2\times10^{-6}$ & $+1.3\times10^{-4}$ & $-1.9\times10^{-4}$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+\paragraph{Decay of the multipoles.}
+The runs check during training that the tails decay at the order the equations require. Expanding
+$\mathcal P$ in Legendre modes $c_l(\rho)$ about the solution's own axis, the local power
+$\dd\ln|c_l|/\dd\ln\rho$ is $-1.00$, $-3.00$ and $-5.0$ for $l=0,2,4$ in both the reference and the
+best network, the latter out to $\rho\approx30$ where $c_4$ reaches $10^{-10}$. The odd modes, which
+the data forbid, are at the $10^{-16}$ level in the reference and below $10^{-8}$ in the network. For the
+rotated three-dimensional network the $l=2$ power is $-3.00$ out to $\rho=30$ and drifts to $-2.83$ at
+$\rho = 100$, which is where its far-field error lies. In the mass-centred harmonic chart
+$c_l\rho^{l+1}$ tends to $0.58387$, $0.1747$ and $0.0220$, i.e.\ to $M_0$, $M_2$ and $M_4$. This
+is consistent with harmonic coordinates being asymptotically Cartesian and mass-centred
+coordinates~\cite{Thorne1980,Gursel1983}, and it gives a second, independent route to the
+same numbers.
 
 \subsection{Off-axis data and the general ansatz}
 
@@ -628,8 +695,10 @@ condition based on a conserved flux of the static equations. We expect the same 
 same remedy, in any elliptic formulation of the stationary problem in which the inner data do
 not fix the asymptotic frame.
 
-Open questions are the extraction of the Geroch--Hansen moments of the computed solutions, and
-the accuracy floor of the general three-dimensional ansatz, which we traced to a weakly
+The Geroch--Hansen moments of the computed solutions can be read off the symmetry axis without
+constructing Weyl coordinates; for the quadrupolar data they agree with the reference to
+$10^{-8}$--$10^{-4}$, and they are insensitive to the chart ambiguity that dominated the pointwise
+error. An open question is the accuracy floor of the general three-dimensional ansatz, which we traced to a weakly
 penalised direction of the objective rather than to representation or sampling. The extension to
 the stationary equations is the natural next step.
 

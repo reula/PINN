@@ -32,11 +32,15 @@ nothing was recomputed for the paper.
    - Cederbaum–Sakovich;
    - Urbán–Stefanou–Pons (SSBroyden);
    - DSGNAR. Its authors and title are as given in DSGNAR.md (Webb, Jerad and Cartis, arXiv:2607.02194).
-4. **Novelty of the COM condition.** COM_GAUGE.md says a literature search found no quasi-local
-   centre-of-mass condition of this form. That claim needs a proper check before it is stated.
-5. **Multipole moments.** No Geroch–Hansen or Thorne moment of a computed solution exists yet. The
-   paper reports only harmonic tail coefficients of P and of λ, and says so. Computing M0 and M2 of
-   the quadrupole solution is the main missing result for that section (MULTIPOLES_GH_THORNE.md §6.2).
+4. **COM attribution.** The centre of mass is credited to Cederbaum and collaborators (the
+   user's instruction, 2026-10-23). `refs.bib` has candidate entries (Cederbaum 2012 thesis,
+   Cederbaum–Nerz 2015, Cederbaum–Sakovich) marked VERIFY. Confirm which works to cite.
+5. **Multipole moments (done 2026-10-23).** Section V.D now has Geroch–Hansen moments extracted
+   from the axis (stationary/gh_moments.py, scripts/gh_moments_runs.py, tests/test_gh_moments.py)
+   and the tail-decay checks (scripts/tail_decay.py). See MULTIPOLES_GH_THORNE.md §6.2b. Still
+   open: the window spread of M4 (7e-4) is the limiting error bar, and the FHPS route through U
+   differs from the Ernst route by 1.7% in M2 for the quadrupolar solution (truncation of the ln
+   series, as on exact Schwarzschild). The paper quotes the Ernst route.
 6. **The 0.062 ratio.** It is measured (Table IV) but not derived. A short linearised calculation
    of the translation mode's effect on λ near the inner sphere would explain it.
 7. **The weakly constrained mode of the 3-D ansatz** is not identified (end of V.E). An angular

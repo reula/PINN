@@ -644,6 +644,63 @@ machine zeros (odd $l$) or 5e-9 ($l=4,6$) -- the network's far-field anisotropy 
    $U^{(r)}\to M_l$ map is non-linear from $l=2$ on (§4.2), a wrong axis coefficient can hide
    inside an apparently reasonable $M_l$; the intermediates are what make the number auditable.
 
+### 6.2b Implemented (2026-10-23): GH moments from the axis, and the tail checks
+
+**Route.** `stationary/gh_moments.py`: for a static axisymmetric solution in ANY chart, no Weyl chart
+needs to be built because only the axis is used.  With g = -lam dt^2 + lam^{-1} h, U = ln(lam)/2
+and the Weyl radius is W = |d_phi|_h; on the axis k = 0, so the Weyl Z is the proper h-length
+along the axis.  The offset between the north and south branches (the inner ball cuts the axis)
+is the change of Z along a meridian semicircle, dZ = *dW in the meridian metric
+(`meridian_gap`).  U and the Ernst potential xi = -tanh U are fitted in 1/|Z| on both branches;
+FHPS gives M0..M3 from U, and Sotiriou-Apostolatos gives M0..M5 from xi (two unrelated maps).
+Mass centring shifts Z until M1 = 0.  Fit windows rho in [1, 1.25, 1.5] x rho_in .. rho_out and
+orders 6 and 8; the spread over these is the error bar.
+
+**Calibration** (`tests/test_gh_moments.py`):
+- Curzon: M2 = -M^3/3 and M4 = 19M^5/105, to 1e-9 and 1e-6.
+- Schwarzschild in harmonic coordinates: the meridian gap is exactly 2 rho, Z = rho on the axis,
+  M0 = R0 to 1e-12, and M1..M4 below 1e-11.
+- Weyl rods: equal pair M0 = 2, M2 = 2.500000; unequal pair (1, 0.1) M0..M3 = 1.1, 0.290909,
+  -0.49983, with the centre 1.309091, against the closed form.
+
+The FHPS route through U is less accurate for these solutions, because the series of ln lam does
+not terminate even for Schwarzschild (its M2 there is 1e-7, not 0).  The Ernst route is primary.
+
+**Results** (`scripts/gh_moments_runs.py`, which writes `<run>/gh_moments.json`):
+
+| solution | M0 | M2 | M4 |
+|---|---|---|---|
+| quadrupole, fine reference | 0.583847 | 0.17471 (+-1.2e-4) | 0.0220 (+-7e-4) |
+| m8_ssb_com - reference | -2.8e-8 | +1.1e-6 | -1.0e-5 |
+| wf_ssbm - reference | -1.0e-8 | +2.5e-8 | +1.1e-6 |
+| m5_ssb_norsmp (no COM) - reference | +1.0e-7 | +1.2e-5 | -1.3e-4 |
+| ctl_hyb_ssbm2 (3-D, on axis) - reference | -2.3e-6 | -3.3e-5 | -1.9e-4 |
+| rot_from_fit (3-D, rotated) - reference | +2.2e-6 | +1.3e-4 | -1.9e-4 |
+| weyl_prod (exact 2, 2.5) | 2.000001 | 2.49950 | |
+| weyl_unequal (exact 1.1, 0.290909; M3 -0.49983) | 1.100000 | 0.291048 (M3 -0.5016) | |
+| weyl_rot45_hub, mlp, chart units (exact 0.0314286, 6.79e-6) | 0.031446 | 5.3e-6 | |
+
+The +- are the window spreads; they largely cancel in the differences, which use the same windows.
+
+- **Back-reaction of the data on the mass.** The quadrupolar data raise the mass from the
+  background's R0 = 0.57735 to M0 = 0.583847 (+1.1%), the non-linear l = 0 back-reaction.
+- **The moments do not see the chart.** The pre-COM run, whose pointwise error was ~1e-3, has
+  moments within ~1e-5 of the reference: the translation mode moves the chart, not the geometry.
+  Its mass-centring shift measured from the chart sphere of radius rho is +9e-6 at rho = 1,
+  -0.0195 at 2, -0.0346 at 5, -0.0393 at 10, -0.0424 at 30 and -0.0433 at 70.  It tends to
+  a = d/M = -0.0445 (COM_GAUGE.md 4b), and it vanishes at the inner sphere as the mode must.
+  m8_ssb_com gives about 1.4e-7 at every radius.
+
+**Tail decay** (`scripts/tail_decay.py`): the Legendre coefficients c_l of P about the solution's
+own axis, on spheres rho = 2 .. 100, with local powers.
+- Reference and m8_ssb_com: l = 0, 2, 4 decay at -1.00, -3.00 and -5.0 (l = 4 out to rho ~ 30,
+  where c_4 reaches ~1e-10).  Odd l are ~1e-16 in the reference and <~1e-8 in m8.
+- rot_from_fit: l = 2 decays at -3.00 out to rho = 30, then drifts to -2.83 at rho = 100 (its
+  far-field error).
+- In these mass-centred harmonic coordinates c_l rho^(l+1) tends to 0.58387, 0.1747 and 0.0220,
+  i.e. to M0, M2 and M4.  That is consistent with the harmonic chart being asymptotically
+  Cartesian (HP16), and it is a second, independent route to the same numbers.
+
 ### 6.3 Caveats specific to this codebase
 
 * **Finite outer boundary.**  GH moments live at $\Lambda$.  The repo imposes Robin conditions at
