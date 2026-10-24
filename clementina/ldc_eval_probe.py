@@ -17,6 +17,13 @@ import time
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 os.environ.setdefault("XLA_FLAGS", "--xla_gpu_autotune_level=0")
 
+import pathlib
+import sys
+
+# This script lives in <repo>/clementina; the vendored package is next to it.
+REPO = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "Evolution_try" / "vendor" / "dsgnar_pinn"))
+
 import numpy as np                      # noqa: E402
 import jax                              # noqa: E402
 import jax.numpy as jnp                 # noqa: E402
@@ -36,7 +43,8 @@ class P:
 
 model = pinn.SIREN(jax.random.PRNGKey(0), P, time_dependent=False,
                    hidden_dims=(60, 60, 60, 60), periodic_bc=False, n_inputs=2, n_outputs=3)
-coords = jnp.asarray(np.load("ldc/reference_gen/ldc_reference.npz")["coords"], dtype=jnp.float64)
+coords = jnp.asarray(np.load(REPO / "ldc" / "reference_gen" / "ldc_reference.npz")["coords"],
+                     dtype=jnp.float64)
 n_total = int(coords.shape[0])
 print(f"[probe] {n_total} reference points, {sum(x.size for x in jax.tree_util.tree_leaves(model))} "
       f"parameters", flush=True)
