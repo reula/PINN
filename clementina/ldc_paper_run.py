@@ -46,6 +46,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--reference", default=None,
                     help="reference npz (default <repo>/ldc/reference_gen/ldc_reference.npz)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--warm-start", default=None,
+                    help="flat .npy of trained parameters for this architecture: start there "
+                         "instead of the random initialisation (needs the same network)")
     ap.add_argument("--batch", type=int, default=None,
                     help="override batch_size.  The trainer builds a dense Jacobian per "
                          "macro-batch, so this is the memory knob: 2^12 needs ~1.04 GiB plus "
@@ -236,6 +239,7 @@ cfg = pinn.RunConfig(
     pde_weight=1e-2,
     min_radius=1e-2 if SMOKE else None,       # None -> 1e-8 in double precision
     float32_steps=(2 if SMOKE else 10) if ARGS.float32_steps is None else ARGS.float32_steps,
+    initial_params=(np.load(ARGS.warm_start) if ARGS.warm_start else None),
     return_network=True,        # so the trained parameters (not just predictions) are saved
 )
 print(f"[cfg ] smoke={SMOKE}  n_pde={cfg.n_pde} n_bc={cfg.n_bc} sketch={cfg.residual_sketch} "

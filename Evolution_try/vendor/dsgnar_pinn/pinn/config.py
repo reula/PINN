@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field, fields
-from typing import ClassVar
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -13,6 +13,10 @@ class RunConfig:
     network: callable
     seed: int = 0
     return_network: bool = False
+    # Warm start: a flat parameter vector (or a path to a .npy) for a network of exactly
+    # this architecture.  Used to resume from an already-trained set, e.g. the paper
+    # configuration's solution, instead of starting from the random initialisation.
+    initial_params: Any = None
 
     # ─────────────────────────────
     # Solver

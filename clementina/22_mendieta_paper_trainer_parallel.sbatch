@@ -70,9 +70,10 @@ n_eval = 16641
 # backend); a chunk scales that roughly linearly
 eval_peak = 27.0 * chunk / n_eval
 jac = int(os.environ.get("LDC_BATCH", "4096")) * 3 * 11347 * 8 / 2**30
-print(f"[pre] nvidia-smi total "
-      f"{subprocess.run(['nvidia-smi','--query-gpu=memory.total','--format=csv,noheader,nounits'],"
-      f"capture_output=True,text=True).stdout.split()[0]} MiB | fraction {frac} -> "
+gpu_total = subprocess.run(
+    ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+    capture_output=True, text=True).stdout.split()[0]
+print(f"[pre] nvidia-smi total {gpu_total} MiB | fraction {frac} -> "
       f"bytes_limit {lim/2**30:.1f} GiB", flush=True)
 print(f"[pre] dense Jacobian (batch 4096) {jac:.2f} GiB | eval chunk {chunk} of {n_eval} points "
       f"~{eval_peak:.2f} GiB/device | 4x headroom {(4*jac + 2*eval_peak):.1f} GiB", flush=True)
@@ -83,7 +84,11 @@ PYEOF
 
 # The paper's own batch is 2^12; LDC_BATCH lets the same script drop to 2048/1024 if the
 # DSGNAR step (not the evaluation) turns out not to fit a 21.2 GiB budget.
-"$PY" -u clementina/ldc_paper_run.py --mode paper --batch "${LDC_BATCH:-4096}" --skip-fields \
+WARM_ARGS=""
+[ -n "${LDC_WARM_START:-}" ] && WARM_ARGS="--warm-start ${LDC_WARM_START}"
+echo "warm start: ${LDC_WARM_START:-<none, random init>}"
+"$PY" -u clementina/ldc_paper_run.py --mode paper --batch "${LDC_BATCH:-4096}" \
+      ${WARM_ARGS} --float32-steps "${LDC_F32:-10}" --skip-fields \
       --outdir "$OUT" --label paper_trainer_parallel_a30
 E=$?
 echo "trainer exit $E | $(date -u '+%F %T UTC')"
