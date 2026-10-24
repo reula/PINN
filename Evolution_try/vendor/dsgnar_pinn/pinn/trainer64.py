@@ -202,8 +202,42 @@ def _default_weights(problem, config) -> dict[str, float]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 @jax.jit
-def _eval_model_jit(model, coords):
+def _eval_model_batch_jit(model, coords):
     return jax.vmap(lambda c: model(c))(coords)  # (n, out_dim)
+
+
+# LOCAL PATCH (2026-10-24): the single-shot evaluation of the reference grid is what made
+# the paper configuration impossible on a 24 GiB card.  On the GPU backend XLA materialises
+# per-lane weight products for the vmap'd SIREN, so the compiled jit__eval_model_jit needs
+# ~27 GiB for the 16641-point LDC reference grid -- the same graph needs 15 MiB on CPU, and
+# chunking the point set reduces the GPU requirement proportionally.  Evaluate in chunks and,
+# when more than one local device is visible, dispatch successive chunks to successive
+# devices (JAX dispatches asynchronously, so they overlap).  Mathematically identical: only
+# the batch of model evaluations changes.  The name is kept so every call site is unchanged.
+#   PINN_EVAL_CHUNK            points per compiled evaluation (default 1024)
+#   PINN_EVAL_DEVICE_PARALLEL  "1" (default) uses every visible device
+_EVAL_CHUNK = int(os.environ.get("PINN_EVAL_CHUNK", "1024"))
+_EVAL_PARALLEL = os.environ.get("PINN_EVAL_DEVICE_PARALLEL", "1") == "1"
+
+
+def _eval_model_jit(model, coords):
+    coords = jnp.asarray(coords)
+    n = int(coords.shape[0])
+    if n <= _EVAL_CHUNK:
+        return _eval_model_batch_jit(model, coords)
+    devs = jax.local_devices() if _EVAL_PARALLEL else jax.local_devices()[:1]
+    devs = devs or jax.local_devices()[:1]
+    outs = []
+    for i, start in enumerate(range(0, n, _EVAL_CHUNK)):
+        piece = coords[start:start + _EVAL_CHUNK]
+        d = devs[i % len(devs)]
+        if d != devs[0]:
+            piece = jax.device_put(piece, d)
+            m = jax.device_put(model, d)
+        else:
+            m = model
+        outs.append(_eval_model_batch_jit(m, piece))
+    return outs[0] if len(outs) == 1 else jnp.concatenate(outs, axis=0)
 
 
 def _eval_plot_grid(
