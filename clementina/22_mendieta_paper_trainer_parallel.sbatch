@@ -69,7 +69,7 @@ n_eval = 16641
 # the unpatched single-shot evaluation needs ~27 GiB at 16641 points (measured on this
 # backend); a chunk scales that roughly linearly
 eval_peak = 27.0 * chunk / n_eval
-jac = 4096 * 3 * 11347 * 8 / 2**30
+jac = int(os.environ.get("LDC_BATCH", "4096")) * 3 * 11347 * 8 / 2**30
 print(f"[pre] nvidia-smi total "
       f"{subprocess.run(['nvidia-smi','--query-gpu=memory.total','--format=csv,noheader,nounits'],"
       f"capture_output=True,text=True).stdout.split()[0]} MiB | fraction {frac} -> "
@@ -81,7 +81,9 @@ x = jnp.ones((8, 2)); y = jax.jit(lambda z: z @ z.T)(x); y.block_until_ready()
 print("[pre] tiny jit OK", flush=True)
 PYEOF
 
-"$PY" -u clementina/ldc_paper_run.py --mode paper --batch 4096 --skip-fields \
+# The paper's own batch is 2^12; LDC_BATCH lets the same script drop to 2048/1024 if the
+# DSGNAR step (not the evaluation) turns out not to fit a 21.2 GiB budget.
+"$PY" -u clementina/ldc_paper_run.py --mode paper --batch "${LDC_BATCH:-4096}" --skip-fields \
       --outdir "$OUT" --label paper_trainer_parallel_a30
 E=$?
 echo "trainer exit $E | $(date -u '+%F %T UTC')"
