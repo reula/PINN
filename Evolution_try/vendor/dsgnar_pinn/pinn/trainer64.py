@@ -400,20 +400,6 @@ def precompile(problem_class, config):
     model          = config.network(model_key)
     params, static = _partition(model)
 
-    # LOCAL PATCH (2026-10-24): warm start from an already-trained parameter set.  The
-    # network/static structure comes from config.network (so the architecture must match);
-    # only the trainable leaves are replaced.  Lets a job start at a converged solution
-    # instead of the random one, e.g. to continue the paper configuration on a 1 h window.
-    if getattr(config, "initial_params", None) is not None:
-        _ws = config.initial_params
-        if isinstance(_ws, (str, os.PathLike)):
-            _ws = np.load(_ws)
-        _ws = np.asarray(_ws)
-        _p0, _unflatten = jax.flatten_util.ravel_pytree(params)
-        if _ws.size != _p0.size:
-            raise ValueError(f"initial_params has {_ws.size} values, network needs {_p0.size}")
-        params = _unflatten(jnp.asarray(_ws, dtype=_p0.dtype))
-        print(f"[warm] starting from trained parameters ({_ws.size} values)")
     solver         = Optimiser(**config.solver_config)
 
     saved_x64 = jax.config.jax_enable_x64
@@ -506,6 +492,21 @@ def train(problem_class, config):
     key, model_key = jax.random.split(key)
     model          = config.network(model_key)
     params, static = _partition(model)
+
+    # LOCAL PATCH (2026-10-24): warm start from an already-trained parameter set.  The
+    # network/static structure comes from config.network (so the architecture must match);
+    # only the trainable leaves are replaced.  Lets a job start at a converged solution
+    # instead of the random one, e.g. to continue the paper configuration on a 1 h window.
+    if getattr(config, "initial_params", None) is not None:
+        _ws = config.initial_params
+        if isinstance(_ws, (str, os.PathLike)):
+            _ws = np.load(_ws)
+        _ws = np.asarray(_ws)
+        _p0, _unflatten = jax.flatten_util.ravel_pytree(params)
+        if _ws.size != _p0.size:
+            raise ValueError(f"initial_params has {_ws.size} values, network needs {_p0.size}")
+        params = _unflatten(jnp.asarray(_ws, dtype=_p0.dtype))
+        print(f"[warm] starting from trained parameters ({_ws.size} values)")
 
     # ── Optimiser ──────────────────────────────────────────────────────────
     solver = Optimiser(**config.solver_config)
