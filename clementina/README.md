@@ -532,6 +532,37 @@ eigendecomposition of the Gram matrix must be an SVD (`S = sqrt(sigma)`, `Vt = V
 Artifacts: `ldc/params/intel_a30_exact_48x48x48.{npy,json}` (parameters + architecture), and
 `clementina/results/ldc_a30_exact_{summary,history}.json` / `_results.npz` (full per-step trace).
 
+## 8b-nonies. THE PAPER TRAINER at the paper configuration, FROM SCRATCH (job 1184086)
+
+Same pipeline and configuration as 8b-octies but starting from the random initialisation (no
+warm start), float32 pre-pass of 10 steps as in the paper, `--batch 1024`, autotune off before
+python, on one Mendieta A30:
+
+```
+pass 1/2 | rel error = 1.548e+00
+pass 2/2 | rel error = 1.184e-02
+radius below threshold — moving to next slab
+solved up to t=0.00 | final rel error = 1.184e-02, compute time = 690.14 s
+```
+
+| paper configuration, one A30 | rel L2 u | v | p | mean | wall |
+|---|---|---|---|---|---|
+| **paper trainer, FROM SCRATCH (1184086)** | 0.001531 | 0.003008 | 0.030996 | **0.011845** | **14 m 11 s** |
+| paper trainer, warm-started (1184058) | 0.001345 | 0.002575 | 0.023750 | 0.009223 | 5 m 45 s |
+| exact-residual driver (1181874) | 0.001328 | 0.002648 | 0.025612 | 0.009863 | 37 m 42 s |
+| paper trainer, Intel tile (1548877, older code) | | | | 0.06372 | ~2 h |
+
+113 DSGNAR steps (10 float32 + 103 float64), stopped by the paper's own radius threshold
+(1e-8) rather than the step budget.  The loader re-score gives
+`{"u": 0.001531, "v": 0.003008, "p": 0.036671, "mean": 0.013737}`; its p metric lacks the
+trainer's mean-shift mask, which is why p (and the mean) read higher than the run's own number.
+Artifacts: `ldc/params/mendieta_a30_paper_trainer_60x4_fresh.{npy,json}` and
+`clementina/results/mendieta_a30_paper_trainer_fresh_{summary,results}`.
+
+This is the first from-scratch reproduction of the paper configuration on a 24 GiB A30, and it
+needs only ~14 min of one GPU once the autotune flag is exported before python and the batch is
+1024.
+
 ## 8b-octies. THE PAPER TRAINER at the paper configuration, on one A30 (job 1184058)
 
 The vendored paper trainer (`pinn.train64`, count sketch, the paper's own pipeline) at the

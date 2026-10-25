@@ -1,0 +1,49 @@
+{
+  "model": "SIREN",
+  "hidden_dims": [
+    60,
+    60,
+    60,
+    60
+  ],
+  "seed": 0,
+  "time_dependent": false,
+  "periodic_bc": false,
+  "n_inputs": 2,
+  "n_outputs": 3,
+  "omega_0": 1.0,
+  "omega_hidden": 1.0,
+  "n_fourier": 0,
+  "learnable_omega": true,
+  "skip_connection": false,
+  "driver": "pinn.train64 + RunConfig (ldc_pinn.ipynb, the paper's trainer)",
+  "config": {
+    "mode": "paper",
+    "n_pde": 32768,
+    "n_bc": 16384,
+    "residual_sketch": 4000,
+    "parameter_sketch": 4000,
+    "batch_size": 1024,
+    "sub_batch_size": 4,
+    "probe_batch_size": 128,
+    "n_probes": 24,
+    "window_scale": 3.0,
+    "target_rho": 0.075,
+    "pde_weight": 0.01,
+    "auto_adjust": true,
+    "alpha": 0.05,
+    "float32_steps": 10,
+    "min_radius": 1e-08,
+    "wall_seconds": 799.2847520479991
+  },
+  "jax_version": "0.11.1",
+  "jaxlib_version": null,
+  "backend": "gpu",
+  "devices": [
+    "cuda:0"
+  ],
+  "note": "the trainer's own best parameters for the last slab; rel_l2_per_channel_from_plot_grid is written after the figures",
+  "n_parameters": 11347,
+  "params_file": "params_flat.npy",
+  "saved_utc": "2026-10-25T21:08:42Z"
+}
