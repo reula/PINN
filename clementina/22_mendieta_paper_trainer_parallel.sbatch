@@ -39,6 +39,12 @@ source Evolution_try/scripts/env.sh
 PY="$(find_python)" || { echo "FATAL: no interpreter with jax" >&2; exit 1; }
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION="${XLA_PYTHON_CLIENT_MEM_FRACTION:-0.9}"
+# MUST be exported before python starts: ldc_paper_run.py sets this with os.environ.setdefault
+# at line ~82, i.e. AFTER jax is imported, so the XLA flags are already parsed and autotuning
+# stays on.  The autotuner then picks a kernel whose workspace is 27 GiB -- which fits the
+# Clementina 48 GiB cap (the trainer ran there) and OOMs a 24 GiB A30.  With autotuning off
+# the same evaluation graph needs ~0.015 GiB.
+export XLA_FLAGS="${XLA_FLAGS:-} --xla_gpu_autotune_level=0"
 export PINN_EVAL_CHUNK="${PINN_EVAL_CHUNK:-1024}"
 export PINN_EVAL_DEVICE_PARALLEL="${PINN_EVAL_DEVICE_PARALLEL:-1}"
 export MPLCONFIGDIR="$HOME/.cache/mpl"
