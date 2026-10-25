@@ -532,6 +532,51 @@ eigendecomposition of the Gram matrix must be an SVD (`S = sqrt(sigma)`, `Vt = V
 Artifacts: `ldc/params/intel_a30_exact_48x48x48.{npy,json}` (parameters + architecture), and
 `clementina/results/ldc_a30_exact_{summary,history}.json` / `_results.npz` (full per-step trace).
 
+## 8b-octies. THE PAPER TRAINER at the paper configuration, on one A30 (job 1184058)
+
+The vendored paper trainer (`pinn.train64`, count sketch, the paper's own pipeline) at the
+**paper configuration** -- 60-60-60-60, 2^15/2^14 points, s=4000, probe 256, float64 pass --
+completed on one Mendieta A30 in **5 m 45 s** (172 s of training, 27 DSGNAR steps, the
+radius threshold ending the pass because it started from an already-trained set):
+
+| | rel L2 u | v | p | mean |
+|---|---|---|---|---|
+| paper trainer, warm-started at the paper configuration (job 1184058) | 0.001345 | 0.002575 | 0.023750 | **0.009223** |
+| loader re-score of the saved network (its p metric has no mean-shift mask) | 0.001345 | 0.002575 | 0.025596 | 0.009839 |
+| exact-residual driver, same configuration (job 1181874) | 0.001328 | 0.002648 | 0.025612 | 0.009863 |
+
+Four things were needed, each diagnosed the hard way:
+
+1. **`XLA_FLAGS=--xla_gpu_autotune_level=0` must be exported in the shell, before python.**
+   `ldc_paper_run.py` sets it with `os.environ.setdefault` *after* importing jax, so XLA has
+   already parsed its flags and autotuning stays on; the autotuner then picks a kernel whose
+   workspace is **27 GiB** -- which fits Clementina's 48 GiB cap (the trainer ran there) and
+   OOMs a 24 GiB A30 at *any* evaluation batch size.  This was the real cause of every
+   "27.00GiB" failure, including the first one (job 1181994).
+2. **`--batch 1024`** (trainer now accepts it): the paper's own 2^12 training step needs more
+   than the 21.2 GiB budget once the Jacobian and its temporaries are materialised.
+3. **Warm start from the trained set**: `RunConfig.initial_params` + `trainer64.train()` +
+   `ldc_paper_run.py --warm-start`, so the job starts at the paper-configuration solution
+   instead of the random initialisation (the trainer has no mid-run checkpoint, so this is
+   what makes the 1 h `short` partition viable).  Logs `[warm] starting from trained
+   parameters (11347 values)`.
+4. Defensive: the reference-grid evaluation is chunked (`PINN_EVAL_CHUNK`, host-side concat)
+   and can be dispatched across devices (`PINN_EVAL_DEVICE_PARALLEL`); with the autotune flag
+   fixed the evaluation is only ~0.015 GiB, so neither is required, but both are validated
+   bit-identical on CPU.
+
+```bash
+cd ~/ldc_paper_run
+export LDC_WARM_START=ldc/params/mendieta_a30_paper_60x4_exact.npy LDC_F32=0 LDC_BATCH=1024
+export XLA_FLAGS=--xla_gpu_autotune_level=0
+sbatch -p short -A ifeg --gres=gpu:1 -c 8 --mem=32G -t 01:00:00 \
+       clementina/22_mendieta_paper_trainer_parallel.sbatch
+```
+
+Artifacts: `ldc/params/mendieta_a30_paper_trainer_60x4_warm.{npy,json}` (verified:
+`{"u": 0.001345, "v": 0.002575, "p": 0.025596, "mean": 0.009839}`) and
+`clementina/results/mendieta_a30_paper_trainer_warm_{summary,results}`.
+
 ## 8b-septies. THE PAPER CONFIGURATION, solved on Mendieta's A30 (job 1181874)
 
 The paper configuration itself -- 60-60-60-60 (11 347 parameters), 2^15 PDE / 2^14 BC points,

@@ -1,0 +1,71 @@
+{
+  "label": "paper_trainer_parallel_a30",
+  "mode": "paper",
+  "smoke": false,
+  "backend": "gpu",
+  "devices": [
+    "cuda:0"
+  ],
+  "jax": "0.11.1",
+  "config": {
+    "n_pde": 32768,
+    "n_bc": 16384,
+    "residual_sketch": 4000,
+    "parameter_sketch": 4000,
+    "batch_size": 1024,
+    "sub_batch_size": 4,
+    "probe_batch_size": 128,
+    "n_probes": 24,
+    "window_scale": 3.0,
+    "target_rho": 0.075,
+    "pde_weight": 0.01,
+    "auto_adjust": true,
+    "alpha": 0.05,
+    "float32_steps": 0,
+    "min_radius": 1e-08
+  },
+  "network": {
+    "hidden_dims": [
+      60,
+      60,
+      60,
+      60
+    ]
+  },
+  "wall_seconds": 288.6698362629977,
+  "slabs": [
+    {
+      "t0": 0.0,
+      "t1": 0.0,
+      "global_step": 28.0,
+      "wall_time": 172.39219001299352,
+      "rel_l2": {
+        "u": 0.0013449221804539943,
+        "v": 0.002575327549308325,
+        "p": 0.023749550868939595
+      },
+      "pure_l2": {
+        "u": 0.0002413871453234824,
+        "v": 0.0003283038490511392,
+        "p": 0.00110818145881026
+      },
+      "final_weights": [
+        0.05412494012205028,
+        1.9458750598779497
+      ],
+      "n_steps": 27.0
+    }
+  ],
+  "final_rel_l2_slab": {
+    "u": 0.0013449221804539943,
+    "v": 0.002575327549308325,
+    "p": 0.023749550868939595
+  },
+  "final_rel_l2_slab_mean": 0.009223266866233973,
+  "outdir": "/home/reula/ldc_paper_run/runs/paper_trainer_par_1184058",
+  "rel_l2_per_channel_from_plot_grid": {
+    "u": 0.0013449221804539943,
+    "v": 0.002575327549308325,
+    "p": 0.02577838151212338
+  }
+}
