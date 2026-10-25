@@ -220,9 +220,20 @@ _EVAL_CHUNK = int(os.environ.get("PINN_EVAL_CHUNK", "1024"))
 _EVAL_PARALLEL = os.environ.get("PINN_EVAL_DEVICE_PARALLEL", "1") == "1"
 
 
+@jax.jit
+def _eval_model_map_jit(model, coords):
+    # Sequential (scan) evaluation: no vmap, so no per-lane weight materialisation.
+    # Slower than the vmapped version but its memory is independent of the point count.
+    return jax.lax.map(lambda c: model(c), coords)
+
+
 def _eval_model_jit(model, coords):
     coords = jnp.asarray(coords)
     n = int(coords.shape[0])
+    if n == 0:
+        return jnp.zeros((0, 3), dtype=coords.dtype)
+    if os.environ.get("PINN_EVAL_MODE", "vmap") == "laxmap":
+        return _eval_model_map_jit(model, coords)
     if n <= _EVAL_CHUNK:
         return _eval_model_batch_jit(model, coords)
     devs = jax.local_devices() if _EVAL_PARALLEL else jax.local_devices()[:1]
@@ -236,8 +247,12 @@ def _eval_model_jit(model, coords):
             m = jax.device_put(model, d)
         else:
             m = model
-        outs.append(_eval_model_batch_jit(m, piece))
-    return outs[0] if len(outs) == 1 else jnp.concatenate(outs, axis=0)
+        # Host-side concatenation on purpose: jnp.concatenate over arrays living on
+        # different devices compiles to jit_concatenate, which on this backend requests a
+        # pathological 27 GiB buffer at the paper configuration (OOM).  The pieces are
+        # tiny, so copying them back and concatenating in numpy is cheap and safe.
+        outs.append(np.asarray(_eval_model_batch_jit(m, piece)))
+    return jnp.asarray(np.concatenate(outs, axis=0))
 
 
 def _eval_plot_grid(
