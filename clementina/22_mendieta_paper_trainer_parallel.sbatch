@@ -60,7 +60,9 @@ devs = jax.devices()
 print("[pre] jax", jax.__version__, "| backend", jax.default_backend(),
       "| devices", [str(d) for d in devs], flush=True)
 assert jax.default_backend() == "gpu", "no GPU visible"
-assert len(devs) >= 2, f"this run wants 2 devices, sees {devs}"
+if len(devs) < 2:
+    print(f"[pre] only one device ({devs}); the chunked evaluation will run on it "
+          f"sequentially (host-side concatenation, no cross-device concat)", flush=True)
 st = devs[0].memory_stats() or {}
 lim = int(st.get("bytes_limit") or st.get("bytes_reservable_limit") or 0)
 frac = os.environ.get("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.75")
