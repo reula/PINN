@@ -46,6 +46,8 @@ ds = np.asarray([(r[0], r[1], r[2]) for r in ds], dtype=float)
 ssb_raw = json.loads(pathlib.Path(ARGS.ssb_history).read_text())
 rows = ssb_raw.get("ssb_from_x0", ssb_raw)
 ssb = np.asarray([(r[0], r[1], r[2]) for r in rows], dtype=float)
+_pol = ssb_raw.get("ssb_polish") if isinstance(ssb_raw, dict) else None
+pol = np.asarray([(r[0], r[1], r[2]) for r in _pol], dtype=float) if _pol else None
 
 fig, axs = plt.subplots(1, 2, figsize=(13.0, 4.6))
 
@@ -61,6 +63,11 @@ axs[1].loglog(ds[:, 0], ds[:, 2], "-", lw=2.0, color="C0",
               label=f"DSGNAR: {ds[-1, 2]:.4f} at it {int(ds[-1, 0])}")
 axs[1].loglog(ssb[:, 0], ssb[:, 2], "-", lw=2.0, color="C3",
               label=f"SSBroyden-Wolfe: {ssb[-1, 2]:.4f} at it {int(ssb[-1, 0])}")
+if pol is not None:
+    axs[0].semilogy(pol[:, 0], pol[:, 1], "--", lw=1.8, color="C2",
+                    label=f"SSBroyden-Wolfe polish from DSGNAR ({int(pol[-1, 0])} it)")
+    axs[1].loglog(pol[:, 0], pol[:, 2], "--", lw=1.8, color="C2",
+                  label=f"SSB polish from DSGNAR: {pol[-1, 2]:.4f} at it {int(pol[-1, 0])}")
 axs[1].set(xlabel="iteration", ylabel=r"rel. $\ell_2$ error vs reference (mean)",
            title="accuracy")
 axs[1].grid(alpha=0.3, which="both")
