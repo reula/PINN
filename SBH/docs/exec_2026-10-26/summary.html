@@ -47,25 +47,31 @@ with or without the penalty. Both penalised runs also hold the puncture in place
 <div class="cap"><b>Overview, t ≤ 10 M.</b> (a) α at r = 0.03 against the reference. (b) Misner–Sharp m/M − 1 at r = 1, outside
 the horizon (r ≈ 0.25), at each window end; the band is the 10–19 Oct final settings at t = 10. (c) m/M − 1 against r at t = 10.
 Mass errors are averaged over spheres (48 directions) about the tracked puncture.
-Runs: <code>single_a</code> (code defaults, the 10–19 Oct “first baseline”, no penalty); <code>long_con10</code> and
-<code>long_bia3</code> (final settings, i.e. 48k core points and 24k QN steps per window, plus a penalty, section 4).</div>
+“No penalty, default settings”, “Θ/Zⁱ penalty” and “Bianchi penalty” are the runs <code>single_a</code>,
+<code>long_con10</code> and <code>long_bia3</code>; their settings are in the table of section 1.</div>
 
-<h2>1. Collocation points</h2>
-<p>Every window (0.25 M) draws a fresh set of points every 250 QN iterations: 96 times per window with the final settings
-(24k iterations), 48 with the defaults (12k). Per draw, with the final settings:</p>
+<h2>1. Runs, settings and collocation points</h2>
+<p>Two configurations are compared. The <b>defaults</b> are the code's default flags, the 10–19 Oct summary's “first
+baseline”, used by the run without a penalty (<code>single_a</code>). The <b>final settings</b> are that summary's best
+configuration, used by both penalised runs and by the control run now running. The changes are more points around the
+hole, twice the QN iterations and, for the penalised runs, the penalty:</p>
 <table>
-<tr><th>set</th><th class="n">points</th><th>distribution in space</th></tr>
-<tr><td>interior, core cloud</td><td class="n">48 000</td><td>Gaussian, σ = 0.5, about the tracked puncture (final settings only)</td></tr>
-<tr><td>interior, focus cloud</td><td class="n">48 000</td><td>Gaussian, σ = 2, about the tracked puncture (60 % of the 80 000 base points)</td></tr>
-<tr><td>interior, bulk</td><td class="n">32 000</td><td>uniform in the ball r ≤ 24 (the other 40 %)</td></tr>
-<tr><td>initial surface (t = t<sub>start</sub>) and end surface (t = t<sub>end</sub>)</td><td class="n">12 800 each</td><td>8000 as focus + bulk (60/40), plus 4800 from the core Gaussian</td></tr>
-<tr><td>outer boundary (Sommerfeld)</td><td class="n">16 000</td><td>on the sphere r = 24</td></tr>
+<tr><th>per window (0.25 M)</th><th class="n">defaults</th><th class="n">final settings</th><th>distribution</th></tr>
+<tr><td>interior, core cloud</td><td class="n">–</td><td class="n"><b>48 000</b></td><td>Gaussian, σ = 0.5, about the tracked puncture</td></tr>
+<tr><td>interior, focus cloud</td><td class="n">48 000</td><td class="n">48 000</td><td>Gaussian, σ = 2, about the tracked puncture</td></tr>
+<tr><td>interior, bulk</td><td class="n">32 000</td><td class="n">32 000</td><td>uniform in the ball r ≤ 24</td></tr>
+<tr><td>initial and end surfaces, each</td><td class="n">8000</td><td class="n"><b>12 800</b></td><td>focus + bulk (60/40), plus 4800 core points</td></tr>
+<tr><td>outer boundary (Sommerfeld)</td><td class="n">16 000</td><td class="n">16 000</td><td>on the sphere r = 24</td></tr>
+<tr><td>QN iterations</td><td class="n">12 000</td><td class="n"><b>24 000</b></td><td>SSBroyden; all points redrawn every 250</td></tr>
+<tr><td>redraws of the points</td><td class="n">48</td><td class="n"><b>96</b></td><td></td></tr>
+<tr><td>constraint penalty</td><td class="n">none</td><td class="n"><b>Θ/Zⁱ, W = 10</b><br><b>or Bianchi, W = 1e-3</b></td><td>from t = 0 (8 windows to t = 2, then continued to t = 10); none in the control run</td></tr>
 </table>
-<p>No point is drawn within 0.02 of the puncture. Interior times follow a truncated exponential from the window start,
-widened to uniform over the window by 70 % of the draws. The Θ/Zⁱ penalty uses all 128 000 interior points; the Bianchi term uses the
-4096 last ones (core cloud). By radius: 29 % of the interior points lie at r &lt; 1, 43 % at 1–5, <b>10 % at 5–15</b> (24 % of the
-volume, where the outgoing mass deficit of section 5 travels) and 19 % at 15–24. The defaults run has no core cloud: 80 000 interior
-points and 8000 per surface.</p>
+<p>Everything else is the same: one 6×40 tanh network per window, m = 0.5, shift-driven puncture tracking, no point within
+0.02 of the puncture, interior times from a truncated exponential at the window start widened to uniform by 70 % of the
+redraws. The defaults run used the QN code before its 19 Oct update (scale invariance, now on by default). The Θ/Zⁱ
+penalty uses all 128 000 interior points; the Bianchi term uses the 4096 last ones (core cloud). With the final settings,
+29 % of the interior points lie at r &lt; 1, 43 % at 1–5, <b>10 % at 5–15</b> (24 % of the volume, where the outgoing mass
+deficit of section 5 travels) and 19 % at 15–24.</p>
 
 <h2>2. The loss is not the accuracy; the reference is</h2>
 <p>With the final settings the code reproduces the 10–19 Oct numbers against the reference: α error at the puncture
