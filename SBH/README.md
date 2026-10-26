@@ -372,6 +372,31 @@ mass drift -- that needs longer runs.
 graded by the mass budget and the reference against the 10-19 Oct summary's final settings (+7-8 % mass
 error at t = 10).
 
+**Long-run results, t = 10 (2026-10-26; `long_con10` 45 h in one job, `long_bia3` 2 jobs).** Mass error
+m/M - 1 by radius at t = 10 (ray average, `tools/mass_function.py`):
+
+| r | `single_a` (no penalty, defaults) | `long_con10` (`--w_constraint 10`) | `long_bia3` (`--w_bianchi 1e-3`) |
+|---|---|---|---|
+| 0.3 | +25 % | **+0.34 %** | -5.8 % |
+| 1 | +28 % | **+0.31 %** | -6.2 % |
+| 2 | +24 % | **+0.15 %** | -6.0 % |
+| 4 | +6.5 % | -1.3 % | -4.1 % |
+| 8 | +3.5 % | +2.7 % | -16 % |
+| 10 | -3.4 % | -22 % | -14 % |
+| 15 | -12 % | -13 % | +7.7 % |
+
+Against the 1D reference at t = 10: alpha(0.03) 0.081 / **0.037** / 0.041 (ref 0.0340); alpha core L2 6.6e-2 /
+**6.0e-3** / 2.2e-2; alpha mid 1.0e-1 / **3.5e-3** / 2.7e-2; Khat core 6.3e-2 / **7.3e-3** / 1.8e-2; Theta
+max 0.42 / **3e-5** / 2.9e-2; puncture drift 0.13 / 0.010 / 0.007; off_form 1.44 / 0.72 / 0.52.
+
+The direct penalty keeps the HOLE's mass within 0.35 % to t = 10 (the 10-19 Oct summary's final settings
+without a penalty: +7-8 %; `single_a`: +25-28 %) and the lapse at the puncture within 0.003 of the
+reference (summary: 0.007). The Bianchi term holds the hole to ~-6 %, no better than the summary's run.
+What remains in both is a mass DEFICIT that travels outward -- its peak at r ~ 6-8 at t = 4-6, r ~ 10 at
+t = 8-10 (-22 % in `long_con10`), then towards r = 15 -- as the gauge pulse does, and as in the summary
+("up to 17 % at r ~ 4-12 where the gauge pulses pass"). Whether the penalties enlarge it cannot be told
+without a control run (final settings, no penalty, to t = 10); `single_a` uses the default settings.
+
 DSGNAR, exact residual: all-or-nothing by window. Working windows accept ~85 % of the steps over the whole
 70 min and lower the loss 100-1000x (5.0e-2 -> 2.7e-4; 1.4e-2 -> 8.6e-5); the others (windows 1-3 and 8 of
 `w8_gn_exact`, 1-3, 6, 7 of the md05 run) reject 15 steps in a row down to the minimum radius. Keeping the
