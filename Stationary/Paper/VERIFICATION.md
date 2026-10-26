@@ -52,13 +52,43 @@ The original runs (`m2R2_asym1` first order, `m2R3_symhybrid`, `m2R4_realrobin`)
 | metric only: loss, max dh / dGamma / dlam | 5.8e-8, 5.3e-5 / 2.3e-4 / 2.9e-5 | 5.75e-8, 5.30e-5 / 2.34e-4 / 2.92e-5 | ✓ |
 | real Robin data: max dh / dGamma / dlam | 8.5e-5 / 1.9e-4 / 1.9e-4 | 8.50e-5 / 1.88e-4 / 1.93e-4 | ✓ |
 
-These were float32 runs of older code. All three are rerun with the current code and without the
-averaged pins (`Paper/commands_schwarzschild.sh`, Mendieta jobs 1182114-1182116); the paper will
-quote the reruns. Pending.
+These were float32 runs of older code. All three were rerun with the current code and without the
+averaged pins (`Paper/commands_schwarzschild.sh`, jobs 1182114-1182116, 9-11 min each). The paper
+quotes the reruns:
+
+| rerun | loss | max dh | max dGamma | max dlam | M0 (exact 1) |
+|---|---|---|---|---|---|
+| schw_first_order | 1.50e-9 | 1.71e-2 | 8.61e-3 | 1.27e-3 | |
+| schw_metric_manuf | 2.40e-11 | 6.51e-6 | 7.86e-6 | 1.01e-6 | 0.999991 |
+| schw_metric_real | 2.42e-11 | 7.00e-6 | 5.97e-6 | 6.32e-7 | 0.999997 |
+
+M2 of the Schwarzschild runs is 1.5e-4 +- 2.7e-4 (consistent with 0; with the inner sphere at 2M
+the axis series converges slowly, so the window spread is large).
+
+## Rotated Weyl with the metric-only 3-D network (`Paper/commands_weyl.sh`, job 1182117)
+
+| | loss | max dh | max dlam | iterations / time | M0 / M2 / M3 / centre (exact 0.0314286 / 6.785e-6 / -3.33e-7 / 0.0374026) |
+|---|---|---|---|---|---|
+| weyl_rot45_hyb | 5.13e-9 | 1.64e-4 | 1.73e-5 | 7000 (plateau) / 16.6 min | 0.0314289 / 6.792e-6 / -3.26e-7 / 0.03740 |
+| (old first-order weyl_rot45_hub) | 6.93e-8 | 1.13e-3 | 1.04e-4 | 12165 / 141 min | 0.031446 / 5.3e-6 / -2.5e-7 |
+
+## The spectral reference (`Paper/commands_specref.sh`, job 1182235)
+
+The rerun of the reconstructed command gives loss 2.793e-11 after Newton step 3, identical to the
+original (job 1180550). ✓
 
 ## Quadrupole (Mendieta; `Paper/recheck_mendieta.sh`, report_metrics and grade_rotated rerun)
 
-Pending: jobs 1182087-1182094.
+Recomputed with jobs 1182087-1182094 (`plots/recheck_report_metrics.json` and the grade logs). The
+earlier tables reproduce. For example, m5_ssb_norsmp has lambda error 1.558e-3 at rho 1-3 (table
+1.6e-3) and d_z = -0.02567 on all four spheres; m7_dsg_com has 6.67e-8 (6.7e-8); m8_ssb_com has
+lambda 3.18e-8 and h 1.43e-7 (3.2e-8 and 1.4e-7). The rotated grades reproduce to the quoted digits:
+rot_ssbm 1.56e-5 / 1.16e-3, rot_from_fit 6.49e-6 / 3.23e-4, ctl_hyb_ssbm2 1.17e-5 / 5.52e-4,
+rot_coll256k_2g 1.43e-5 / 7.47e-4. These runs are no longer quoted in the paper, which uses the
+from-scratch round P instead.
+
+Wolfe line search on the rotated case (round 28): rot_ssbw (from rot_ssb) reaches loss 1.73e-6,
+rms dlam 5.6e-6 and dh 8.5e-4, against Armijo rot_ssbm's 2.25e-6, 1.56e-5 and 1.16e-3.
 
 ## The paper's from-scratch runs (round P of `mendieta_submit.sh`)
 

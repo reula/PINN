@@ -82,3 +82,11 @@ nothing was recomputed for the paper.
   decay feature). Both are stated.
 - **Regression-fit file.** `runs/rot_ssbm3/fit_reference.json` on disk may still hold the 512-point
   smoke fit. The paper quotes the full fit from the job logs (rms δh 7.5e-6, PINN loss 3.4e-2).
+
+## Add in Conclusions: 
+Other boundary conditions, like Barnik's proposal would be investigated in the future. 
+
+## Bib:
+
+Quote other people working on the topic, check who quotes my 1988 paper. In particular Michel Andersson did also some work without citing my paper.
+

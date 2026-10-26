@@ -275,24 +275,29 @@ solutions, at the $10^{-9}$ level; the tests run without them.)
 The spherical network with $R_0=1$, $\lambda_0 = 0.381966$ on the sphere of $h$-areal radius 2 and
 Robin conditions at $\rho_{\rm out}=100$ recovers the exact family. Table~\ref{tab:firstorder}
 compares the metric-only and first-order formulations on the problem with a manufactured Robin
-source: the first-order network finds the same geometry in a different harmonic chart, with
-$h_{rr}$ off by tens of per cent, because the compatibility residual is nearly flat along this
-gauge mode; deriving $\Gamma$ from $h$ removes it. With the homogeneous Robin conditions (no
-source), the metric-only network gives \pending{max errors of the rerun} against the exact solution.
+source: the metric-only network is more accurate by three orders of magnitude (a factor 2600 in
+$h$ and 1300 in $\lambda$). The first-order network's error is a gauge mode: along it the
+compatibility residual is nearly flat, and an earlier, less converged first-order run found the
+same geometry in a different harmonic chart, with $h_{rr}$ off by a third. Deriving $\Gamma$ from
+$h$ removes the mode. With the homogeneous Robin conditions (no
+source), the metric-only network reaches a loss of $2.4\times10^{-11}$ and maximum errors of
+$7.0\times10^{-6}$ in $h$, $6.0\times10^{-6}$ in $\Gamma$ and $6.3\times10^{-7}$ in $\lambda$ against
+the exact solution, and its mass $M_0 = 0.999997$ (Sec.~\ref{sec:moments}) against $R_0=1$; each run
+takes 9--11 minutes on one GPU.
 
 \begin{table}
 \caption{First-order against metric-only network on the same Schwarzschild problem (manufactured
-Robin source, $\rho_{\rm out}=100$, 20000 Adam + 2000 SSBroyden iterations). \pending{values of
-the reruns; the original runs gave the numbers shown}.}
+Robin source, $\rho_{\rm out}=100$, 20000 Adam + 2000 SSBroyden iterations;
+\texttt{Paper/commands\_schwarzschild.sh}).}
 \label{tab:firstorder}
 \begin{ruledtabular}
 \begin{tabular}{lcc}
  & first order ($h,\Gamma,\lambda$) & metric only ($h,\lambda$) \\
 \hline
-final loss & $6.3\times10^{-6}$ & $5.8\times10^{-8}$ \\
-$\max|\delta h|$ & $3.3\times10^{-1}$ & $5.3\times10^{-5}$ \\
-$\max|\delta\Gamma|$ & $1.7\times10^{-1}$ & $2.3\times10^{-4}$ \\
-$\max|\delta\lambda|$ & $1.3\times10^{-2}$ & $2.9\times10^{-5}$ \\
+final loss & $1.5\times10^{-9}$ & $2.4\times10^{-11}$ \\
+$\max|\delta h|$ & $1.7\times10^{-2}$ & $6.5\times10^{-6}$ \\
+$\max|\delta\Gamma|$ & $8.6\times10^{-3}$ & $7.9\times10^{-6}$ \\
+$\max|\delta\lambda|$ & $1.3\times10^{-3}$ & $1.0\times10^{-6}$ \\
 \end{tabular}
 \end{ruledtabular}
 \end{table}
@@ -339,8 +344,10 @@ Rotating the closest configuration by $45^\circ$ removes every symmetry. The equ
 covariant, so the rotated fields are again a solution, but the gauge is a statement about a chart
 and the source~\eqref{eq:cylsource} must be taken about the rotated axis $n = R\hat z$; in
 harmonic gauge the rotated solution has a residual of $2.6\times10^{-2}$. The general
-three-dimensional metric-only network, with 8192 collocation points, reaches \pending{loss, max
-errors of weyl\_rot45\_hyb}. In this problem the number of collocation points mattered more than
+three-dimensional metric-only network, with 8192 collocation points and SSBroyden from a random
+initialisation, reaches a loss of $5.1\times10^{-9}$ in 7000 iterations (17 minutes), with
+maximum errors $1.6\times10^{-4}$ in $h$ and $1.7\times10^{-5}$ in $\lambda$, against
+$7.3\times10^{-5}$ and $1.8\times10^{-6}$ for the axisymmetric network on the same shell. In this problem the number of collocation points mattered more than
 the number of iterations: an earlier first-order run on 2048 points lowered its mean-square loss
 by a factor 8 ($1.75\times10^{-4}\to2.28\times10^{-5}$) over 6500 further iterations while every error grew, the residual concentrating on
 a few points; with four times the points the errors fell with the loss.
@@ -438,7 +445,10 @@ quadrupole.
 \paragraph{The Weyl networks.} The trained solutions give $M_0 = 2.000001$ and $M_2 = 2.49950$ for
 the equal rods (exact 2 and 2.5), and $M_0 = 1.100000$, $M_2 = 0.29105$, $M_3 = -0.5016$ with the
 centre of mass at $z = 1.3091$ for the unequal rods (exact 1.1, 0.290909, $-0.49983$, 1.309091).
-\pending{rotated Weyl, metric-only network}.
+For the rotated rods, extracted about the rotated axis, the three-dimensional network gives (in the
+chart of the run) $M_0 = 0.0314289$, $M_2 = 6.792\times10^{-6}$, $M_3 = -3.26\times10^{-7}$ and the
+centre of mass at $0.03740$, against $0.0314286$, $6.785\times10^{-6}$, $-3.33\times10^{-7}$ and
+$0.03740$.
 
 \paragraph{The quadrupolar solution.} Table~\ref{tab:moments} lists the moments. The data raise the
 mass from the background value $R_0 = 0.57735$ to $M_0 = 0.583847$, a nonlinear back-reaction of
