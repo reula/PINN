@@ -34,6 +34,8 @@ ap = argparse.ArgumentParser(description=__doc__,
 ap.add_argument("--dsgnar-history", required=True)
 ap.add_argument("--ssb-history", required=True)
 ap.add_argument("--out", default="optimizers_loss_accuracy.png")
+ap.add_argument("--ssb-max-iter", type=int, default=None,
+                help="cut the SSBroyden-Wolfe curves at this iteration (DSGNAR unchanged)")
 ap.add_argument("--title", default="paper configuration on one A30 (60-60-60-60, "
                                     "2$^{15}$/2$^{14}$ points): DSGNAR vs SSBroyden-Wolfe")
 ARGS = ap.parse_args()
@@ -48,6 +50,10 @@ rows = ssb_raw.get("ssb_from_x0", ssb_raw)
 ssb = np.asarray([(r[0], r[1], r[2]) for r in rows], dtype=float)
 _pol = ssb_raw.get("ssb_polish") if isinstance(ssb_raw, dict) else None
 pol = np.asarray([(r[0], r[1], r[2]) for r in _pol], dtype=float) if _pol else None
+if ARGS.ssb_max_iter:
+    ssb = ssb[ssb[:, 0] <= ARGS.ssb_max_iter]
+    if pol is not None:
+        pol = pol[pol[:, 0] <= ARGS.ssb_max_iter]
 
 fig, axs = plt.subplots(1, 2, figsize=(13.0, 4.6))
 
