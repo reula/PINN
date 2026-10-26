@@ -474,6 +474,9 @@ def run_ssbroyden(x_start, n_iter, tag):
         x, H = r.x, r.hess_inv
         loss_now = float(r.fun)
         hist.append((k + 1, loss_now, rel_l2(x)["mean"]))
+        if ARGS.ssb_only and (k + 1) % 100 == 0:
+            # keep the curve on disk while the run is going (no checkpoint otherwise)
+            (OUTDIR / "history.json").write_text(json.dumps({"ssb_from_x0": hist}))
         if (k + 1) % 20 == 0 or k == 0:
             print(f"[ssb:{tag}] {k + 1:4d}  loss {loss_now:.4e}  relL2 {hist[-1][2]:.4f}",
                   flush=True)
