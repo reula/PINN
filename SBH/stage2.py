@@ -124,7 +124,7 @@ def correction_value(p2, eps, t, x, y, z):
     return make_correction(ns, T, R, eps, a.core_taper)[1](p2, t, x, y, z)
 
 
-def parts(derivs):
+def parts(derivs, with_adm=True):
     res = jax.vmap(ns["_ccz4_residual_one"])(*derivs)
     ein = ns["lam_einstein"] * jnp.mean(res[:, :18] ** 2)
     gau = ns["lam_gauge"] * jnp.mean(res[:, 18:22] ** 2)
@@ -134,6 +134,8 @@ def parts(derivs):
     gu = jax.vmap(lambda g, dg: ns["_christoffel3"](g, dg)[2])(gt, gt_d)
     zv = val[:, CHI][:, None] * (val[:, GH] - gu) / 2.0
     con = jnp.mean(val[:, TH] ** 2 + jnp.sum(zv ** 2, axis=1))
+    if not with_adm:          # the ADM term needs its own pass over the stack: skip it when unweighted
+        return ein, gau, con, jnp.zeros(())
     H, M = adm.constraints_from_derivs(ns, *derivs)
     hm = adm.adm_penalty_from(H, M, val[:, CHI], a.adm_chi_power)
     return ein, gau, con, hm
@@ -248,12 +250,13 @@ def summed(w, D1, pts):
 
 @jax.jit
 def loss_fn(w, D1, pts):
-    return total(*parts(summed(w, D1, pts)))
+    return total(*parts(summed(w, D1, pts), with_adm=a.w_adm > 0))
 
 
 vg_fn = jax.jit(jax.value_and_grad(loss_fn))
 parts_fn = jax.jit(lambda w, D1, pts: parts(summed(w, D1, pts)))
-parts_u1 = jax.jit(parts)
+parts_u1 = jax.jit(parts)                                       # held-out sample: all parts, for the log
+parts_u1_train = jax.jit(lambda D: parts(D, with_adm=a.w_adm > 0))
 bands_fn = jax.jit(lambda w, D1, pts, rr: band_losses(summed(w, D1, pts), rr))
 bands_u1 = [float(v) for v in jax.jit(band_losses)(D_held, held_r)]
 print("u1 held-out residual by radius: " + ", ".join(f"{n} {v:.2e} ({100 * v / sum(bands_u1):.0f} %)"
@@ -276,7 +279,7 @@ while it < a.iters:
     key, kd = jax.random.split(key)
     P = draw(kd, a.n_per_window)
     D1, pts = u1_derivs(P), flat_pts(P)
-    tr_u1 = float(total(*parts_u1(D1)))
+    tr_u1 = float(total(*parts_u1_train(D1)))
     r = mb.minimize(lambda v: loss_fn(v, D1, pts), lambda v: vg_fn(v, D1, pts), w, opts)
     w = r.x
     it += a.n_change
