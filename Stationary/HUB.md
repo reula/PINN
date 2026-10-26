@@ -399,6 +399,10 @@ Two limits worth knowing:
   this hub reports `0MiB / 750MiB` for an A30 -- i.e. a small vGPU slice, not the card.
   The `--check` smoke run alone needs ~750 MiB, so it dies with
   `cuBlas allocation failure` / `HAMI OOM` while the (much smaller) test suite passes.
+* `[HAMI-core ERROR ... context.c:132]: cuCtxSetCurrent111 failed res=4` printed a few times when a
+  process first initialises the GPU (seen 2026-10-26, Paper/hub_qp.sh: 8 lines from the header's
+  `jax.devices()` call) is harmless: JAX then lists `CudaDevice(id=0)` and the run proceeds on the
+  GPU (block 1 in ~3 min).  Only the OOM form above is a real failure.
   `run_hub.sh --check` now prints the GPU name and memory and warns when it is under
   4 GiB. There is no configuration of this project that fits in 750 MiB usefully: ask
   the admin for a larger GPU profile (GBs), or run on CPU with
