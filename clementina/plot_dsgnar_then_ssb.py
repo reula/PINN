@@ -46,8 +46,8 @@ axs[0].semilogy(ds[:, 0], ds[:, 1], "-", lw=2.4, color="C0", label=f"DSGNAR ({n_
 axs[0].semilogy(cont_x, pol[:, 1], "-", lw=2.4, color="C3",
                 label=f"SSBroyden-Wolfe, continued from DSGNAR ({len(pol)} it)")
 if not ARGS.no_reference:
-    axs[0].semilogy(x0[:, 0], x0[:, 1], ":", lw=1.2, color="0.55",
-                    label=f"SSBroyden-Wolfe from random init ({len(x0)} it, ref.)")
+    axs[0].semilogy(x0[:, 0], x0[:, 1], "-", lw=2.0, color="C1",
+                    label=f"SSBroyden-Wolfe from the initial guess ({len(x0)} it)")
 axs[0].axvline(n_ds, color="0.4", ls="--", lw=1)
 axs[0].text(n_ds, 2e-2, " DSGNAR | Broyden continuation", fontsize=7, color="0.35")
 axs[0].set(xlabel="iteration (DSGNAR, then Broyden continuation)", ylabel=r"loss  $\sum_i w_i\,\mathrm{mean}(r_i^2)$", title="loss")
@@ -55,7 +55,8 @@ axs[1].semilogy(ds[:, 0], ds[:, 2], "-", lw=2.4, color="C0", label=f"DSGNAR: {ds
 axs[1].semilogy(cont_x, pol[:, 2], "-", lw=2.4, color="C3",
                 label=f"continued: {pol[-1,2]:.4f} at it {int(cont_x[-1])}")
 if not ARGS.no_reference:
-    axs[1].semilogy(x0[:, 0], x0[:, 2], ":", lw=1.2, color="0.55", label="from random init (ref.)")
+    axs[1].semilogy(x0[:, 0], x0[:, 2], "-", lw=2.0, color="C1",
+                    label=f"from the initial guess: {x0[-1,2]:.4f} at {len(x0)} it")
 axs[1].axvline(n_ds, color="0.4", ls="--", lw=1)
 k = int(np.argmin(pol[:, 2]))
 axs[1].axhline(pol[k, 2], color="0.6", ls=":", lw=1,
