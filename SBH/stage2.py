@@ -8,7 +8,8 @@ the solution becomes
 so u keeps u1's initial data exactly (s = 0 at t = 0) and u1's values on the outer boundary r = R
 (s = 0 there). N is trained, with SSBroyden on fresh points every --n_change iterations, so that u
 satisfies the CCZ4 evolution equations (same residual and weights as the main script) plus, with
---w_constraint W, W * mean(Theta^2 + |Z^i|^2). N's last layer starts at zero, so training starts
+--w_constraint W, W * mean(Theta^2 + |Z^i|^2), and with --w_adm W', W' * mean(chi^p (H^2 + |M_i|^2)) of the
+ADM constraints (adm_constraints.py). N's last layer starts at zero, so training starts
 exactly from u1. eps (default: the rms of u1's residual on the first sample) only sets N's scale.
 
 The residual needs the derivatives of the sum, which add: u1's value / d_t / d_xyz / d_xyz d_xyz come
@@ -37,6 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 from load_defs import load
 from stage2_net import init_net as _init_net, make_correction
+import adm_constraints as adm
 
 ap = argparse.ArgumentParser()
 ap.add_argument("run")
@@ -48,6 +50,9 @@ ap.add_argument("--n_heldout_per_window", type=int, default=800)
 ap.add_argument("--iters", type=int, default=24000)
 ap.add_argument("--n_change", type=int, default=250)
 ap.add_argument("--w_constraint", type=float, default=10.0)
+ap.add_argument("--w_adm", type=float, default=0.0,
+                help="weight of mean(chi^p (H^2 + |M_i|^2)), the ADM constraints of the sum (adm_constraints.py)")
+ap.add_argument("--adm_chi_power", type=float, default=2.0)
 ap.add_argument("--eps", type=float, default=0.0, help="0: rms of u1's residual on the first sample")
 ap.add_argument("--windows", type=int, default=0, help="use only the first K windows (tests); 0 = all")
 ap.add_argument("--min_puncture_dist", type=float, default=0.02)
@@ -129,7 +134,9 @@ def parts(derivs):
     gu = jax.vmap(lambda g, dg: ns["_christoffel3"](g, dg)[2])(gt, gt_d)
     zv = val[:, CHI][:, None] * (val[:, GH] - gu) / 2.0
     con = jnp.mean(val[:, TH] ** 2 + jnp.sum(zv ** 2, axis=1))
-    return ein, gau, con
+    H, M = adm.constraints_from_derivs(ns, *derivs)
+    hm = adm.adm_penalty_from(H, M, val[:, CHI], a.adm_chi_power)
+    return ein, gau, con, hm
 
 
 BANDS = ((0.0, 1.0), (1.0, 5.0), (5.0, 15.0), (15.0, 1e9))
@@ -145,8 +152,8 @@ def band_losses(derivs, rr):
     return jnp.stack([jnp.sum(jnp.where((rr >= lo) & (rr < hi), per, 0.0)) / per.shape[0] for lo, hi in BANDS])
 
 
-def total(ein, gau, con):
-    return ein + gau + a.w_constraint * con
+def total(ein, gau, con, hm):
+    return ein + gau + a.w_constraint * con + a.w_adm * hm
 
 
 # ---- points ----------------------------------------------------------------------------------
@@ -225,7 +232,7 @@ if a.resume and os.path.exists(ckpt):
     print(f"resumed at iteration {it0}, eps {eps:.3e}")
 else:
     p2, it0 = init_net(k0), 0
-    e1, g1, c1 = parts(D_held)
+    e1, g1, c1, _ = parts(D_held)
     eps = a.eps or float(jnp.sqrt((e1 * 18 + g1 * 4) / 22))
     print(f"eps = {eps:.3e}  (u1 on the held-out sample: Einstein {float(e1):.3e}, gauge {float(g1):.3e}, "
           f"constraint {float(c1):.3e})")
@@ -254,7 +261,8 @@ print("u1 held-out residual by radius: " + ", ".join(f"{n} {v:.2e} ({100 * v / s
 
 hist = os.path.join(a.out, "stage2_history.csv")
 fields = ["iteration", "seconds", "train_u", "train_u1", "held_u", "held_u1",
-          "held_einstein", "held_gauge", "held_constraint", "held_u1_einstein", "held_u1_gauge", "held_u1_constraint"] \
+          "held_einstein", "held_gauge", "held_constraint", "held_adm", "held_u1_einstein", "held_u1_gauge",
+          "held_u1_constraint", "held_u1_adm"] \
     + [f"held_{n}" for n in BAND_NAMES] + [f"held_u1_{n}" for n in BAND_NAMES]
 if not (a.resume and os.path.exists(hist)):
     with open(hist, "w", newline="") as f:
@@ -275,20 +283,22 @@ while it < a.iters:
     hp = [float(v) for v in parts_fn(w, D_held, held_pts)]
     row = dict(iteration=it, seconds=round(time.time() - t_start, 1), train_u=float(loss_fn(w, D1, pts)),
                train_u1=tr_u1, held_u=total(*hp), held_u1=total(*hu1),
-               held_einstein=hp[0], held_gauge=hp[1], held_constraint=hp[2],
-               held_u1_einstein=hu1[0], held_u1_gauge=hu1[1], held_u1_constraint=hu1[2])
+               held_einstein=hp[0], held_gauge=hp[1], held_constraint=hp[2], held_adm=hp[3],
+               held_u1_einstein=hu1[0], held_u1_gauge=hu1[1], held_u1_constraint=hu1[2], held_u1_adm=hu1[3])
     hb = [float(v) for v in bands_fn(w, D_held, held_pts, held_r)]
     row.update({f"held_{n}": v for n, v in zip(BAND_NAMES, hb)})
     row.update({f"held_u1_{n}": v for n, v in zip(BAND_NAMES, bands_u1)})
     with open(hist, "a", newline="") as f:
         csv.DictWriter(f, fieldnames=fields).writerow(row)
     print(f"it {it:6d}  {row['seconds']:8.0f} s  train {row['train_u']:.3e} (u1 {tr_u1:.3e})  "
-          f"held-out {row['held_u']:.3e} (u1 {row['held_u1']:.3e}, ratio {row['held_u'] / row['held_u1']:.3f}); "
+          f"held-out {row['held_u']:.3e} (u1 {row['held_u1']:.3e}, ratio {row['held_u'] / row['held_u1']:.3f}; "
+          f"ADM {hp[3] / hu1[3]:.3f}); "
           "by radius u/u1: " + " ".join(f"{n} {v / u:.3f}" if u > 0 else f"{n} -" for n, v, u in zip(BAND_NAMES, hb, bands_u1)), flush=True)
     pickle.dump({"params": jax.tree_util.tree_map(np.asarray, unravel(w)), "eps": eps, "iteration": it,
                  "key": np.asarray(key), "T": T, "R": R, "hidden": a.hidden, "layers": a.layers,
                  "run": os.path.abspath(a.run), "windows": W, "w_constraint": a.w_constraint,
-                 "core_taper": a.core_taper, "sampling": a.sampling},
+                 "core_taper": a.core_taper, "sampling": a.sampling, "w_adm": a.w_adm,
+                 "adm_chi_power": a.adm_chi_power},
                 open(ckpt + ".tmp", "wb"))
     os.replace(ckpt + ".tmp", ckpt)
 print("done:", hist)

@@ -422,6 +422,25 @@ mass at t = 6 r = 8 -8.1 -> -7.7 %, r = 10 -6.0 -> -5.5 %, but alpha error at r 
 correction lowers the residual partly through the gauge). GPU test: `PRESET=stage2` in
 `jobs/mendieta/bh.sbatch`.
 
+**ADM constraint penalty (2026-10-26): `adm_constraints.py`, `--w_adm W`.** The true constraints
+H = R + K^2 - K_ij K^ij and M_i = D_j K^j_i - d_i K (K = trace of K_ij) of the network's 3+1 data,
+from the residual's derivative stack (Taylor or autodiff; also summed stacks, for `stage2.py`). The
+inherited names stay as they are: `hamiltonian_constraint` returns Theta and `gauge_source_vector` Z^i
+(the Z4 variables); our own penalty on them is now `zeta_penalty` (flag `--w_constraint`, unchanged).
+`tools/test_adm_constraints.py`: H = M = 0 to 1e-14 for exact Schwarzschild in isotropic (K = 0) AND
+Kerr-Schild (K_ij != 0) coordinates; on a trained window Taylor vs autodiff 2e-13 (H) / 3e-12 (M), and
+H vs the independent route of `tools/hamiltonian_shells.py` 2e-13. `--w_adm W` adds
+W * mean(chi^p (H^2 + |M_i|^2)) over the interior points (`--adm_chi_power p`, default 2: chi^2 ~ 0.008
+at r = 0.3, 0.17 at r = 1, 0.67 at r = 5, fading out the puncture); off by default, and then the QN loss
+and its gradient are bit-identical to before (checked); on, a value+gradient costs 1.6x (small test
+network). Log column `loss_adm`. QN only.
+
+In `stage2.py` (`--w_adm`, same weight) the laptop test (24 windows, 300 points per window span, 3x32,
+2000 iterations, `--eps 1e-2 --sampling uniform --core_taper 1`, W = 1) overfits the per-point losses
+(held-out 1.13x, ADM 1.33x) but halves the mass deficit: t = 4, r = 5: -3.5 -> -0.9 %; t = 6, r = 7:
+-7.1 -> -3.7 %, r = 8: -8.1 -> -5.0 % (the same correction without the ADM term: -3.5, -6.9, -7.7 %).
+Lapse error and Theta as with the correction alone (lapse 1.2-1.9x the run's at r = 2-8).
+
 **l-decomposition of the deficit (2026-10-26; the collaborators' `reference_1d/l_decomp.py`, received
 2026-10-26: per-ray Misner-Sharp error on 300 directions about the origin, real spherical harmonics to l = 4
 by least squares, energy share per l; outputs `plots/2026-10-26/l_decomp_*.txt`).** Their question: is the
@@ -828,6 +847,7 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/sketch_noise.py`, `tools/test_exact_residual.py`: DSGNAR's step vs the true gradient; the exact-residual mode.
 * `tools/sphere_errors.py RUN_DIR REF.npz --out RUN.npz -- <physics flags>`: Misner-Sharp error and alpha/chi/Khat/Theta - reference averaged over spheres (Fibonacci directions) at every window end; `tools/plot_sphere_errors.py OUT.png NAME=RUN.npz ...`: their radius-time maps. ~6 s per 40-window run on the laptop CPU.
 * `stage2.py RUN_DIR --out DIR [--selftest] -- <physics flags>` (+ `stage2_net.py`): the stage-2 correction network over a finished run (above).
+* `adm_constraints.py` + `tools/test_adm_constraints.py [RUN_DIR]`: the ADM constraints H, M_i from a derivative stack, and their checks (exact Schwarzschild isotropic and Kerr-Schild; Taylor vs autodiff).
 * `tools/hamiltonian_shells.py RUN_DIR 0s 15 39 -- <physics flags>`: the TRUE Hamiltonian constraint H = R + K^2 - K_ij K^ij on spheres (mean = l = 0 part, rms) at window starts/ends, and the mass change dm/dR = R^2 <H>/4 it implies (long_con10, t = 10: -15 % at r = 11; t = 0: < 1e-3).
 * `tools/l0_share.py RUN.npz ...`: l = 0 share (mean^2 / mean-square) of the sphere-sampled Misner-Sharp error at the peak of the outgoing deficit, from `sphere_errors.py` output (long_con10: 79/83/77/55 % at t = 4/6/8/10; single_a 88-91 %).
 * `tools/drift_dipole.py RUN_DIR -- <physics flags>`: sphere-averaged beta, Ghat and its metric / constraint parts (Gt, 2Z/chi) at the tracked puncture, every 4 windows: what drives the drift.

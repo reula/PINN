@@ -169,8 +169,8 @@ parser.add_argument("--eta", type=float, default=0.1,
                          "Default 0.1 (bbh_headon_bssn_pinn_shift_driven_puncture.py's own default "
                          "is 0.0 -- pass --eta 0.0 explicitly to match it).")
 parser.add_argument("--w_constraint", type=float, default=0.0,
-                    help="Weight of a constraint penalty mean(Theta^2 + |Z^i|^2) on the interior points "
-                         "(Z^i = chi (Ghat^i - Gt^i)/2). Both vanish for the true solution, and a constraint-"
+                    help="Weight of the Z4-variable penalty mean(Theta^2 + |Z^i|^2) on the interior points "
+                         "(Z^i = chi (Ghat^i - Gt^i)/2; not the ADM constraints, see --w_adm). Both vanish for the true solution, and a constraint-"
                          "violating solution still satisfies the CCZ4 evolution equations, so the residual "
                          "loss alone sees that mode only through the initial data (SBH/README.md, mass "
                          "budget). 0 = off (default). Not with --dsgnar_steps (not in its residual vector). "
@@ -182,6 +182,15 @@ parser.add_argument("--w_bianchi", type=float, default=0.0,
                          "field-equation residual, i.e. the part of the error that sources the constraint "
                          "modes; zero on the true solution. Needs third derivatives of the network, so it is "
                          "evaluated on --bianchi_points points only. 0 = off (default). QN only.")
+parser.add_argument("--w_adm", type=float, default=0.0,
+                    help="Weight of the ADM-constraint penalty mean(chi^p (H^2 + |M_i|^2)) on the interior points, "
+                         "H = R + K^2 - K_ij K^ij, M_i = D_j K^j_i - d_i K (adm_constraints.py; tools/"
+                         "test_adm_constraints.py). Theta = Z = 0 does not imply H = M = 0: the outgoing mass "
+                         "deficit of the Theta/Z-penalised run is an H violation (SBH/README.md). chi^p "
+                         "(--adm_chi_power) fades out the puncture. 0 = off (default). QN only; single "
+                         "puncture (the Bowen-York binary's H is not solved).")
+parser.add_argument("--adm_chi_power", type=float, default=2.0,
+                    help="p in the --w_adm weight chi^p (chi ~ 0.008 at r = 0.3, 0.4 at r = 1, 0.8 at r = 5 for m = 0.5).")
 parser.add_argument("--bianchi_points", type=int, default=4096,
                     help="Interior points (the LAST ones of each sample: the core cloud when --core_points > 0) "
                          "on which --w_bianchi is evaluated.")
@@ -813,6 +822,10 @@ qn_fixed_batch = bool(args.qn_fixed_batch)
 w_constraint = float(args.w_constraint)
 w_bianchi = float(args.w_bianchi)
 bianchi_points = int(args.bianchi_points)
+w_adm = float(args.w_adm)
+adm_chi_power = float(args.adm_chi_power)
+if w_adm > 0 and int(args.dsgnar_steps) > 0:
+    raise SystemExit("--w_adm is not part of DSGNAR's residual vector; use it with QN only.")
 if w_bianchi > 0 and int(args.dsgnar_steps) > 0:
     raise SystemExit("--w_bianchi is not part of DSGNAR's residual vector; use it with QN only.")
 if w_constraint > 0 and int(args.dsgnar_steps) > 0:
@@ -3089,15 +3102,19 @@ def apply_model(apply_fn, params,
         ein_l, gauge_l = loss_ccz4(p)
         bc_l           = loss_bc(p)
         pos_l          = loss_pos(p)
-        con_l          = (constraint_penalty(apply_fn, p, t, x, y, z, window_start, window_end)
+        con_l          = (zeta_penalty(apply_fn, p, t, x, y, z, window_start, window_end)
                           if w_constraint > 0 else jnp.zeros(()))
         bia_l          = (bianchi_penalty(apply_fn, p, t, x, y, z, window_start, window_end)
                           if w_bianchi > 0 else jnp.zeros(()))
+        adm_l          = (adm_penalty(apply_fn, p, t, x, y, z, window_start, window_end)
+                          if w_adm > 0 else jnp.zeros(()))
         tot = (ein_l + gauge_l + bc_l + lamg0*(g_ic_l + ic_log_l) + w_pos*pos_l + w_constraint*con_l
                + w_bianchi*bia_l)
-        return tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l, bia_l)
+        if w_adm > 0:
+            tot = tot + w_adm*adm_l
+        return tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l, bia_l, adm_l)
 
-    (tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l, bia_l)), grads = \
+    (tot, (ein_l, bc_l, gauge_l, g_ic_l, ic_log_l, pos_l, con_l, bia_l, adm_l)), grads = \
         jax.value_and_grad(total_loss, has_aux=True)(params)
 
     all_loss = {
@@ -3112,6 +3129,7 @@ def apply_model(apply_fn, params,
         "loss_pos":      pos_l,
         "loss_constraint": w_constraint * con_l,
         "loss_bianchi":  w_bianchi * bia_l,
+        "loss_adm":      w_adm * adm_l,
     }
     return all_loss, grads
 
@@ -3292,7 +3310,14 @@ def bianchi_penalty(apply_fn, params, t, x, y, z, window_start, window_end):
     return jnp.mean(B ** 2)
 
 
-def constraint_penalty(apply_fn, params, t, x, y, z, window_start, window_end):
+def adm_penalty(apply_fn, params, t, x, y, z, window_start, window_end):
+    """mean(chi^p (H^2 + |M_i|^2)) of the ADM constraints over the given points (--w_adm)."""
+    import adm_constraints as _adm
+    H, M, chi = _adm.adm_constraints(globals(), apply_fn, params, t, x, y, z, window_start, window_end, with_chi=True)
+    return _adm.adm_penalty_from(H, M, chi, adm_chi_power)
+
+
+def zeta_penalty(apply_fn, params, t, x, y, z, window_start, window_end):
     """mean(Theta^2 + |Z^i|^2) over the given points (--w_constraint)."""
     theta = full_output(apply_fn, params, t, x, y, z, window_start, window_end)[:, THETA_IDX]
     zv = gauge_source_vector(apply_fn, params, t, x, y, z, window_start, window_end)
@@ -3334,10 +3359,12 @@ def compute_bfgs_loss(apply_fn, net_params,
     pos_l = jnp.mean(positivity_penalty(apply_fn, params, t, x, y, z, window_start, window_end))
 
     ic_abs, ic_log = _ic_fit(ug, ic_ccz4, w_ic)
-    con_l = (w_constraint * constraint_penalty(apply_fn, params, t, x, y, z, window_start, window_end)
+    con_l = (w_constraint * zeta_penalty(apply_fn, params, t, x, y, z, window_start, window_end)
              if w_constraint > 0 else 0.0)
     bia_l = (w_bianchi * bianchi_penalty(apply_fn, params, t, x, y, z, window_start, window_end)
              if w_bianchi > 0 else 0.0)
+    if w_adm > 0:
+        bia_l = bia_l + w_adm * adm_penalty(apply_fn, params, t, x, y, z, window_start, window_end)
     return (ein_l + gauge_l + bc_l
             + lamg0  * (ic_abs + ic_log)
             + w_pos  * pos_l
@@ -6048,6 +6075,7 @@ def train_window(window_idx, window_start, window_end, key, prev_state=None):
             "loss_pos": float(all_loss_it["loss_pos"]),
             "loss_constraint": float(all_loss_it.get("loss_constraint", 0.0)),
             "loss_bianchi": float(all_loss_it.get("loss_bianchi", 0.0)),
+            "loss_adm": float(all_loss_it.get("loss_adm", 0.0)),
             "grad_norm": float(grad_norm) if grad_norm is not None else float("nan"),
             "gn_ein":   float(tgn["gn_ein"])   if "gn_ein"   in tgn else float("nan"),
             "gn_gauge": float(tgn["gn_gauge"]) if "gn_gauge" in tgn else float("nan"),

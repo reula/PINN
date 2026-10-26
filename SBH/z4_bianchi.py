@@ -23,6 +23,12 @@ def geometry(g_fn, q):
     g = g_fn(q)
     dg = jax.jacfwd(g_fn)(q)                         # (4,4,4)
     ddg = jax.jacfwd(jax.jacfwd(g_fn))(q)            # (4,4,4,4): ddg[a,b,c,d] = d_d d_c g_ab
+    return geometry_from_derivs(g, dg, ddg)
+
+
+def geometry_from_derivs(g, dg, ddg):
+    """geometry() from given metric derivatives (any dimension): dg[a,b,c] = d_c g_ab,
+    ddg[a,b,c,d] = d_d d_c g_ab. (2026-10-26: also used by adm_constraints.py.)"""
     ginv = jnp.linalg.inv(g)
     # T[s,m,n] = d_m g_sn + d_n g_sm - d_s g_mn  and its derivative dT[s,m,n,r]
     T = jnp.einsum("snm->smn", dg) + jnp.einsum("smn->smn", dg) - jnp.einsum("mns->smn", dg)
