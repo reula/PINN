@@ -72,6 +72,10 @@ def parse_args(argv=None) -> argparse.Namespace:
                          "it only chunks the Gram accumulation (mathematically identical), "
                          "so reduce it if the paper-size batched FFT plan fails: the DCT in "
                          "SRCT/lift needs a cuFFT scratch plan for (3*batch) x 2^14 blocks")
+    ap.add_argument("--ssb-only", action="store_true",
+                    help="skip DSGNAR entirely and run ONE SSBroyden-Wolfe phase from the "
+                         "random initialisation for --qn-maxiter iterations (for the "
+                         "optimiser comparison figure); no polish phase")
     ap.add_argument("--exact-residual", action="store_true",
                     help="skip the CountSketch on the residual rows and use the exact Gram "
                          "system (SBH/06fac11): the residual-sketch noise swamps the true "
@@ -259,6 +263,8 @@ for k, v in (("dsgnar_steps", ARGS.dsgnar_steps), ("qn_maxiter", ARGS.qn_maxiter
              ("float32_steps", ARGS.float32_steps), ("batch", ARGS.batch)):
     if v is not None:
         P[k] = v
+if ARGS.ssb_only:
+    P["dsgnar_steps"], P["float32_steps"] = 0, 0
 HIDDEN, N_PDE, N_BC = P["hidden"], P["n_pde"], P["n_bc"]
 SKETCH, BATCH, PROBE = P["sketch"], P["batch"], P["probe"]
 FLOAT32_STEPS, DSGNAR_STEPS = P["float32_steps"], P["dsgnar_steps"]
@@ -478,7 +484,11 @@ def run_ssbroyden(x_start, n_iter, tag):
 
 
 qn_flat, qn_hist = run_ssbroyden(flat0, QN_MAXITER, "from x0")
-qn_pol_flat, qn_pol_hist = run_ssbroyden(ds_flat, QN_MAXITER, "polish")
+if ARGS.ssb_only:
+    qn_pol_flat, qn_pol_hist = qn_flat, []          # one phase only, for the figure
+    print("[ssb] --ssb-only: skipping the polish phase", flush=True)
+else:
+    qn_pol_flat, qn_pol_hist = run_ssbroyden(ds_flat, QN_MAXITER, "polish")
 
 # Grade the candidates and keep the best by ACCURACY (the loss is not the metric).
 cands = {"DSGNAR": ds_flat, "SSBroyden from x0": qn_flat, "SSBroyden polish": qn_pol_flat}
