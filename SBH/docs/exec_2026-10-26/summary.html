@@ -148,8 +148,13 @@ The constraint penalties control the drift almost as well, <i>without</i> symmet
 <tr><td>Bianchi penalty</td><td class="n">3.9e-4</td><td class="n">6.1e-4</td><td class="n">1.2e-3</td><td class="n">1.7e-3</td><td class="n"><b>6.8e-3</b></td></tr>
 </table>
 <p>To t = 5 both stay near 1e-3, the level of the symmetric clouds at t = 4, and at t = 10 they are 13–19× below the defaults and
-2–3× below the final settings alone. A plausible reason: the Gamma-driver moves the puncture through Γ̂ⁱ, whose mismatch with the metric's Γ̃ⁱ is 2Zⁱ, and both
-penalties keep Zⁱ small. The control run gives the final-settings drift on the same scale. Symmetric clouds leave the mass error
+2–3× below the final settings alone. Why, measured on spheres of radius 0.3 about the tracked puncture (<code>tools/drift_dipole.py</code>): the tracker
+moves the puncture with −β(x<sub>p</sub>), and the Gamma-driver feeds β from the dipole (sphere average) of Γ̂ⁱ, which CCZ4 splits
+exactly as Γ̂ⁱ = Γ̃ⁱ[γ̃] + 2Zⁱ/χ. Without a penalty the conformal metric grows a large dipole, |⟨Γ̃⟩| ≈ 0.13 at t = 10, that Γ̂ⁱ
+mostly does not follow: 2Zⁱ/χ ≈ −Γ̃ⁱ, a constraint violation the evolution equations allow. The ~10 % that does reach Γ̂ⁱ
+(|⟨Γ̂⟩| ≈ 1.4e-2) drives β (3.9e-2) and the drift. With the penalties the metric's dipole is 20–40× smaller (3.5e-3 Θ/Zⁱ,
+6e-3 Bianchi), and Γ̂ⁱ and β 5–10× smaller. The asymmetry enters the metric through the constraint-violating mode, and the
+penalties close it. The control run gives the final-settings drift on the same scale. Symmetric clouds leave the mass error
 unchanged; drift and mass are separate problems. The penalised runs drift 10× less without symmetric clouds.</p>
 
 <h2>Next steps</h2>

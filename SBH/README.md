@@ -393,6 +393,23 @@ The direct penalty keeps the HOLE's mass within 0.35 % to t = 10 (the 10-19 Oct 
 without a penalty: +7-8 %; `single_a`: +25-28 %) and the lapse at the puncture within 0.003 of the
 reference (summary: 0.007). The Bianchi term holds the hole to ~-6 %, no better than the summary's run.
 
+**What pushes the puncture (2026-10-26; `tools/drift_dipole.py`).** dx_p/dt = -beta(x_p), and the Gamma-driver
+d_t beta^i = ... + (3/4) Ghat^i - eta beta^i feeds beta(x_p) from the l = 1 part of Ghat^i at the puncture; CCZ4 splits
+Ghat^i = Gt^i[gt] + 2 Z^i/chi exactly. Sphere averages (48 directions, rho = 0.3 about the tracked puncture), t = 10:
+
+| run | |<beta>| | |<Ghat>| | |<Gt>| (metric) | |<2Z/chi>| (constraint) | drift |
+|---|---|---|---|---|---|
+| `single_a` | 3.9e-2 | 1.4e-2 | 0.13 | 0.14 | 0.13 |
+| `long_con10` | 4.0e-3 | 2.9e-3 | 3.5e-3 | 8.3e-4 | 0.010 |
+| `long_bia3` | 2.9e-3 | 2.1e-3 | 6.2e-3 | 4.9e-3 | 0.007 |
+
+Without a penalty the conformal metric grows a large dipole that the evolved Ghat^i mostly does not follow
+(2Z/chi ~ -Gt, cos ~ -1, from t ~ 3 on); the ~10 % that reaches Ghat drives beta and the drift. The penalties
+make the metric's dipole 20-40x smaller and Ghat, beta 5-10x smaller: the asymmetry enters the metric through
+the constraint-violating mode, and the penalties close it. (The first guess, "Z adds a dipole to Ghat", is
+not what happens: Z cancels most of the metric's.) `single_a` also differs in settings; the control run
+`long_ctl` separates the two.
+
 **Sphere averages (2026-10-26; `tools/sphere_errors.py`, `tools/plot_sphere_errors.py`,
 `plots/2026-10-26/sphere_errors_rt.png`).** The table above and `mass_function.py` use only the +-x rays. Averaging
 over spheres (48 Fibonacci directions, 100 radii, every window end) changes the outer picture. The most negative
@@ -768,6 +785,7 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/plot_exec_summary.py DATA OUT`: the figures of the executive summary.
 * `tools/sketch_noise.py`, `tools/test_exact_residual.py`: DSGNAR's step vs the true gradient; the exact-residual mode.
 * `tools/sphere_errors.py RUN_DIR REF.npz --out RUN.npz -- <physics flags>`: Misner-Sharp error and alpha/chi/Khat/Theta - reference averaged over spheres (Fibonacci directions) at every window end; `tools/plot_sphere_errors.py OUT.png NAME=RUN.npz ...`: their radius-time maps. ~6 s per 40-window run on the laptop CPU.
+* `tools/drift_dipole.py RUN_DIR -- <physics flags>`: sphere-averaged beta, Ghat and its metric / constraint parts (Gt, 2Z/chi) at the tracked puncture, every 4 windows: what drives the drift.
 * `tools/plot_mass_budget.py RUN.npz OUT.png`: the mass-error budget (initial / in-window / hand-off) by radius.
 * `tools/plot_clouds.py OUT.png`: the interior points around a single puncture, default vs `--symmetric_focus` (`plots/2026-10-21/sampling_clouds.png`; centroid of the points within r < 1: 2.8e-3 vs 1e-5).
 * `tools/bench_jacobian_sketch.py [--s 1024]`: rows (paper) vs columns (ours) for DSGNAR's sketched Jacobian, one block of points.
