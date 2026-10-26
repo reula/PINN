@@ -815,6 +815,8 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/sketch_noise.py`, `tools/test_exact_residual.py`: DSGNAR's step vs the true gradient; the exact-residual mode.
 * `tools/sphere_errors.py RUN_DIR REF.npz --out RUN.npz -- <physics flags>`: Misner-Sharp error and alpha/chi/Khat/Theta - reference averaged over spheres (Fibonacci directions) at every window end; `tools/plot_sphere_errors.py OUT.png NAME=RUN.npz ...`: their radius-time maps. ~6 s per 40-window run on the laptop CPU.
 * `stage2.py RUN_DIR --out DIR [--selftest] -- <physics flags>` (+ `stage2_net.py`): the stage-2 correction network over a finished run (above).
+* `tools/hamiltonian_shells.py RUN_DIR 0s 15 39 -- <physics flags>`: the TRUE Hamiltonian constraint H = R + K^2 - K_ij K^ij on spheres (mean = l = 0 part, rms) at window starts/ends, and the mass change dm/dR = R^2 <H>/4 it implies (long_con10, t = 10: -15 % at r = 11; t = 0: < 1e-3).
+* `tools/l0_share.py RUN.npz ...`: l = 0 share (mean^2 / mean-square) of the sphere-sampled Misner-Sharp error at the peak of the outgoing deficit, from `sphere_errors.py` output (long_con10: 79/83/77/55 % at t = 4/6/8/10; single_a 88-91 %).
 * `tools/drift_dipole.py RUN_DIR -- <physics flags>`: sphere-averaged beta, Ghat and its metric / constraint parts (Gt, 2Z/chi) at the tracked puncture, every 4 windows: what drives the drift.
 * `tools/plot_mass_budget.py RUN.npz OUT.png`: the mass-error budget (initial / in-window / hand-off) by radius.
 * `tools/plot_clouds.py OUT.png`: the interior points around a single puncture, default vs `--symmetric_focus` (`plots/2026-10-21/sampling_clouds.png`; centroid of the points within r < 1: 2.8e-3 vs 1e-5).
