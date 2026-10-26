@@ -700,7 +700,7 @@ one Adam -> BFGS line.
 
 **Executive summary** for the PINN team, in the format of J. Masso's 10-19 Oct summary
 (`originals/BH_PINN_executive_summary.pdf`): `docs/exec_2026-10-20/SBH_optimisers_drift_mass_2026-10-20.pdf`
-(source `summary.html`, figures from `tools/plot_exec_summary.py`). Second summary, physics only (constraint penalties to t = 10, mass, drift): `docs/exec_2026-10-26/` (figures from `tools/plot_exec_2026_10_26.py` and `tools/plot_sphere_errors.py`). Note from that summary: our runs
+(source `summary.html`, figures from `tools/plot_exec_summary.py`). Second summary, physics only (collocation points, constraint penalties to t = 10, mass, drift; 3 pages): `docs/exec_2026-10-26/` (figures from `tools/plot_exec_2026_10_26.py` and `tools/plot_sphere_errors.py`). Note from that summary: our runs
 used the code's defaults, i.e. its "first baseline" (no core points, 12k QN steps per window); its
 final settings (48k core points, 24k QN steps) gave +7-8 % mass error and 0.023 drift at t = 10
 where `single_a` has 35 % and 0.127.
