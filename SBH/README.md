@@ -422,6 +422,19 @@ mass at t = 6 r = 8 -8.1 -> -7.7 %, r = 10 -6.0 -> -5.5 %, but alpha error at r 
 correction lowers the residual partly through the gauge). GPU test: `PRESET=stage2` in
 `jobs/mendieta/bh.sbatch`.
 
+**l-decomposition of the deficit (2026-10-26; the collaborators' `reference_1d/l_decomp.py`, received
+2026-10-26: per-ray Misner-Sharp error on 300 directions about the origin, real spherical harmonics to l = 4
+by least squares, energy share per l; outputs `plots/2026-10-26/l_decomp_*.txt`).** Their question: is the
+band in the PENALISED run still l = 0 (a constraint violation -> H/M^i penalty), or l >= 2 (spurious waves ->
+sampling, hand-offs)? l = 0 share at the band: `long_con10` 0.52-0.66 at t = 4 (r = 4-6), 0.62-0.67 at t = 7
+(r = 8-10; l = 2 0.13-0.23), 0.31-0.39 at t = 10 (r = 10-12; l = 2 0.33-0.34); `single_a` 0.78-0.93,
+0.79-0.83, 0.55-0.79; `long_bia3` 0.63, 0.76, 0.63. Their sphere means agree with ours (long_con10 t = 10
+r = 12: -18.3 % vs -18.1 % at r = 11.7); their l = 0 shares are lower than our mean^2/mean-square (55 %
+there) -- the error is spiky over the sphere (min -0.69 where the mean is -0.18), which an l <= 4 fit
+spreads. Reading: l = 0 dominated through t ~ 7 in every run; in the penalised run l = 2 grows to equal
+l = 0 by t = 10. With `tools/hamiltonian_shells.py` (the sphere-mean H integrates to -15 % of the -18 % at
+r = 11, t = 10) most of the band is still a constraint violation, so the H/M^i penalty comes first.
+
 **What pushes the puncture (2026-10-26; `tools/drift_dipole.py`).** dx_p/dt = -beta(x_p), and the Gamma-driver
 d_t beta^i = ... + (3/4) Ghat^i - eta beta^i feeds beta(x_p) from the l = 1 part of Ghat^i at the puncture; CCZ4 splits
 Ghat^i = Gt^i[gt] + 2 Z^i/chi exactly. Sphere averages (48 directions, rho = 0.3 about the tracked puncture), t = 10:

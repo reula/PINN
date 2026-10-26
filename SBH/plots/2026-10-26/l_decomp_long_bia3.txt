@@ -1,0 +1,24 @@
+t = 4.00 (window 15): per sphere: mean m/M-1, rms over the sphere, energy share l = 0..4 (+rest) | lapse error: mean, rms, shares
+  r =   2.0: m/M-1 mean +0.002 rms 0.004 min -0.007 | l-shares 0.12 0.11 0.51 0.18 0.05 | dalpha mean -2.8e-04 rms 3.8e-04 | l-shares 0.41 0.16 0.30 0.08 0.03
+  r =   4.0: m/M-1 mean -0.024 rms 0.028 min -0.061 | l-shares 0.63 0.03 0.23 0.06 0.03 | dalpha mean +1.4e-03 rms 1.5e-03 | l-shares 0.82 0.05 0.04 0.06 0.02
+  r =   6.0: m/M-1 mean -0.018 rms 0.026 min -0.056 | l-shares 0.32 0.23 0.13 0.07 0.18 | dalpha mean +1.6e-03 rms 1.8e-03 | l-shares 0.69 0.04 0.18 0.02 0.04
+  r =   8.0: m/M-1 mean -0.020 rms 0.028 min -0.062 | l-shares 0.40 0.13 0.05 0.04 0.31 | dalpha mean +1.9e-03 rms 2.3e-03 | l-shares 0.53 0.04 0.31 0.01 0.08
+  r =  10.0: m/M-1 mean -0.012 rms 0.020 min -0.045 | l-shares 0.29 0.07 0.12 0.03 0.32 | dalpha mean +1.8e-03 rms 2.3e-03 | l-shares 0.45 0.03 0.35 0.01 0.13
+  r =  12.0: m/M-1 mean -0.006 rms 0.017 min -0.053 | l-shares 0.09 0.01 0.28 0.13 0.20 | dalpha mean +1.4e-03 rms 2.1e-03 | l-shares 0.34 0.05 0.39 0.02 0.17
+  r =  16.0: m/M-1 mean -0.001 rms 0.020 min -0.064 | l-shares 0.00 0.02 0.19 0.30 0.14 | dalpha mean +4.7e-04 rms 1.2e-03 | l-shares 0.09 0.13 0.47 0.03 0.21
+t = 7.00 (window 27): per sphere: mean m/M-1, rms over the sphere, energy share l = 0..4 (+rest) | lapse error: mean, rms, shares
+  r =   2.0: m/M-1 mean -0.016 rms 0.018 min -0.033 | l-shares 0.73 0.07 0.15 0.04 0.01 | dalpha mean +6.6e-03 rms 6.7e-03 | l-shares 0.98 0.01 0.00 0.00 0.00
+  r =   4.0: m/M-1 mean -0.018 rms 0.034 min -0.102 | l-shares 0.19 0.15 0.21 0.23 0.19 | dalpha mean +3.5e-03 rms 3.6e-03 | l-shares 0.95 0.01 0.03 0.01 0.00
+  r =   6.0: m/M-1 mean -0.165 rms 0.178 min -0.408 | l-shares 0.76 0.06 0.09 0.02 0.05 | dalpha mean +3.2e-03 rms 3.4e-03 | l-shares 0.80 0.00 0.11 0.03 0.06
+  r =   8.0: m/M-1 mean -0.033 rms 0.060 min -0.158 | l-shares 0.22 0.16 0.22 0.19 0.13 | dalpha mean +4.4e-03 rms 4.5e-03 | l-shares 0.86 0.02 0.07 0.03 0.02
+  r =  10.0: m/M-1 mean +0.008 rms 0.056 min -0.161 | l-shares 0.01 0.25 0.23 0.18 0.24 | dalpha mean +3.2e-03 rms 3.5e-03 | l-shares 0.74 0.07 0.12 0.04 0.02
+  r =  12.0: m/M-1 mean -0.025 rms 0.051 min -0.160 | l-shares 0.15 0.11 0.22 0.16 0.26 | dalpha mean +2.5e-03 rms 2.9e-03 | l-shares 0.63 0.09 0.17 0.04 0.06
+  r =  16.0: m/M-1 mean -0.013 rms 0.035 min -0.111 | l-shares 0.09 0.15 0.16 0.26 0.15 | dalpha mean +1.2e-03 rms 1.7e-03 | l-shares 0.35 0.10 0.36 0.04 0.10
+t = 10.00 (window 39): per sphere: mean m/M-1, rms over the sphere, energy share l = 0..4 (+rest) | lapse error: mean, rms, shares
+  r =   2.0: m/M-1 mean -0.063 rms 0.063 min -0.079 | l-shares 0.97 0.01 0.02 0.01 0.00 | dalpha mean +2.4e-02 rms 2.4e-02 | l-shares 1.00 0.00 0.00 0.00 0.00
+  r =   4.0: m/M-1 mean -0.050 rms 0.063 min -0.174 | l-shares 0.50 0.10 0.16 0.13 0.09 | dalpha mean +1.2e-02 rms 1.2e-02 | l-shares 0.98 0.00 0.02 0.00 0.00
+  r =   6.0: m/M-1 mean -0.013 rms 0.115 min -0.424 | l-shares 0.01 0.13 0.36 0.22 0.25 | dalpha mean +8.0e-03 rms 8.3e-03 | l-shares 0.86 0.01 0.12 0.01 0.00
+  r =   8.0: m/M-1 mean -0.101 rms 0.189 min -0.659 | l-shares 0.18 0.27 0.26 0.04 0.21 | dalpha mean +7.2e-03 rms 7.7e-03 | l-shares 0.78 0.02 0.16 0.02 0.01
+  r =  10.0: m/M-1 mean -0.185 rms 0.218 min -0.466 | l-shares 0.63 0.08 0.12 0.09 0.04 | dalpha mean +4.4e-03 rms 5.1e-03 | l-shares 0.63 0.04 0.25 0.03 0.05
+  r =  12.0: m/M-1 mean +0.058 rms 0.135 min -0.229 | l-shares 0.11 0.07 0.50 0.07 0.19 | dalpha mean +3.0e-03 rms 3.7e-03 | l-shares 0.51 0.15 0.26 0.02 0.06
+  r =  16.0: m/M-1 mean +0.026 rms 0.085 min -0.143 | l-shares 0.06 0.03 0.45 0.14 0.23 | dalpha mean +2.0e-03 rms 2.6e-03 | l-shares 0.47 0.16 0.29 0.02 0.05
