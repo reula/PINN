@@ -393,6 +393,35 @@ The direct penalty keeps the HOLE's mass within 0.35 % to t = 10 (the 10-19 Oct 
 without a penalty: +7-8 %; `single_a`: +25-28 %) and the lapse at the puncture within 0.003 of the
 reference (summary: 0.007). The Bianchi term holds the hole to ~-6 %, no better than the summary's run.
 
+**What the outgoing deficit is, and a stage-2 correction network (2026-10-26).** The true Hamiltonian
+constraint H = R + K^2 - K_ij K^ij (3-metric from the network, Ricci via `z4_bianchi.geometry`; note the
+script's `hamiltonian_constraint` returns Theta, not H) averaged on spheres of `long_con10` is ~ -1e-3 at
+r ~ 7-11 at t = 10 (positive beyond); dm/dR = R^2 H / 4 integrates it to -12 % at r = 10, -15 % at r = 11,
+as the sphere-averaged Misner-Sharp mass gives (-18 %). So the deficit is a real constraint violation,
+built INSIDE windows (mass budget at r = 10: in-window -21.5 %, hand-offs -0.8 %). Theta is ~1e-5 there:
+the Theta/Z penalty pushes the H violation into the residual of Theta's own equation (d_t Theta = alpha H/2
++ ...), ~5e-4, which the loss barely weights: on `long_con10` 90 % of the residual is at r < 1, 8 % at
+1-5, 1 % at 5-15.
+
+`stage2.py` keeps a finished windowed run (u1, frozen) and trains ONE correction network over the whole
+span: u = u1 + s N, s = eps (t/T)(1 - r^2/R^2)(1 - exp(-r^2/rc^2)) (`stage2_net.py`): u keeps u1's initial
+data, outer-boundary values and, with `--core_taper rc`, the hole. Loss: the main script's residual (same
+weights) + `--w_constraint` x mean(Theta^2 + |Z|^2) of the SUM, whose derivatives add: u1's per window in
+closed-form Taylor mode (all windows in one vmapped call, points drawn in equal numbers per window span), N's
+by the product rule. `--selftest` checks the summed residual against the main script's autodiff residual
+of the summed function: 7.5e-13 (9.6e-14 with the taper) where N changes it by 3e-3. `residual_one` was
+moved to module level (`_ccz4_residual_one`) for this; bit-identical in both derivative modes. Points:
+`--sampling uniform` (default, evenly in the ball: the correction is for what propagates out),
+`shell` (radius uniform from 0.5), `final` (the main script's clouds). The history logs the held-out loss
+of u and u1 by radius band. `tools/sphere_errors.py --stage2 PKL` grades u1 + correction.
+
+Laptop tests (first 24 windows, 300 points per window span, 3x32 network, 2000 iterations): with the
+main script's clouds no gain on fresh points (the loss is the hole's); `eps` = residual rms (2e-4) too
+small (no change); uniform points with `--eps 1e-2 --core_taper 1`: held-out loss 0.90x (r 5-15: 0.93x),
+mass at t = 6 r = 8 -8.1 -> -7.7 %, r = 10 -6.0 -> -5.5 %, but alpha error at r = 2-8 up 1.3-1.9x (the
+correction lowers the residual partly through the gauge). GPU test: `PRESET=stage2` in
+`jobs/mendieta/bh.sbatch`.
+
 **What pushes the puncture (2026-10-26; `tools/drift_dipole.py`).** dx_p/dt = -beta(x_p), and the Gamma-driver
 d_t beta^i = ... + (3/4) Ghat^i - eta beta^i feeds beta(x_p) from the l = 1 part of Ghat^i at the puncture; CCZ4 splits
 Ghat^i = Gt^i[gt] + 2 Z^i/chi exactly. Sphere averages (48 directions, rho = 0.3 about the tracked puncture), t = 10:
@@ -785,6 +814,7 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/plot_exec_summary.py DATA OUT`: the figures of the executive summary.
 * `tools/sketch_noise.py`, `tools/test_exact_residual.py`: DSGNAR's step vs the true gradient; the exact-residual mode.
 * `tools/sphere_errors.py RUN_DIR REF.npz --out RUN.npz -- <physics flags>`: Misner-Sharp error and alpha/chi/Khat/Theta - reference averaged over spheres (Fibonacci directions) at every window end; `tools/plot_sphere_errors.py OUT.png NAME=RUN.npz ...`: their radius-time maps. ~6 s per 40-window run on the laptop CPU.
+* `stage2.py RUN_DIR --out DIR [--selftest] -- <physics flags>` (+ `stage2_net.py`): the stage-2 correction network over a finished run (above).
 * `tools/drift_dipole.py RUN_DIR -- <physics flags>`: sphere-averaged beta, Ghat and its metric / constraint parts (Gt, 2Z/chi) at the tracked puncture, every 4 windows: what drives the drift.
 * `tools/plot_mass_budget.py RUN.npz OUT.png`: the mass-error budget (initial / in-window / hand-off) by radius.
 * `tools/plot_clouds.py OUT.png`: the interior points around a single puncture, default vs `--symmetric_focus` (`plots/2026-10-21/sampling_clouds.png`; centroid of the points within r < 1: 2.8e-3 vs 1e-5).

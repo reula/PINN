@@ -15,6 +15,8 @@
 #         smoke  : a few minutes, tiny network
 #         bench  : tools/bench_loss.py + tools/check_taylor.py, no training
 #         eval   : tools/eval_heldout.py on EVAL_RUNS (held-out grading, no training)
+#         stage2 : stage2.py, one correction network over a finished single-puncture run
+#                  (STAGE2_RUN, default runs/long_con10) -> runs/$OUTDIR; STAGE2_ARGS its options
 # PROD_ARGS default: the MN5 production flags (--fast_hessian --loss_plot_every 10
 # --blowup_factor 100) plus --deriv_mode taylor (1.7x faster residual on the A30, job
 # 1180555; agrees with autodiff to 1e-15). PROD_ARGS="..." without it = autodiff, bitwise
@@ -45,6 +47,13 @@ echo "$(hostname) | $(nvidia-smi -L | tr '\n' ' ')"
 # Refuse a silent CPU fallback (it would take days).
 $PYTHON -c "import sys, jax, flax, optax, tqdm, matplotlib; d = jax.devices(); print('python', sys.version.split()[0], '| jax', jax.__version__, '| flax', flax.__version__, '| optax', optax.__version__, '|', d); sys.exit(0 if d[0].platform == 'gpu' and len(d) >= $NGPU else 1)" \
   || { echo "ERROR: JAX does not see $NGPU GPU(s)" >&2; exit 1; }
+
+if [ "$PRESET" = stage2 ]; then
+  OUTDIR=${OUTDIR:-stage2}
+  $PYTHON -u stage2.py ${STAGE2_RUN:-runs/long_con10} --out runs/$OUTDIR $STAGE2_ARGS \
+      -- --n_stars 1 --BL_masses 0.5 --BL_momenta 0 --BL_momenta_y 0 --tfinal 10 --N_window 40
+  exit 0
+fi
 
 if [ "$PRESET" = eval ]; then
   # tools/eval_heldout.py on finished runs: EVAL_RUNS="runs/a runs/b ...", EVAL_WINDOWS="a-b"

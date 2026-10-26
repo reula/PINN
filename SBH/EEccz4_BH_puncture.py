@@ -2567,6 +2567,201 @@ def _taylor_derivs(apply_fn, params, t, x, y, z, window_start, window_end):
             d.at[:, CHI_IDX, :].add(bg1[:, 1:]), dd.at[:, _DD_CHI_IDX].add(bH))
 
 
+# The CCZ4 residual at one point from its derivative stack (value (22,), d_t (22,), d_xyz (22,3),
+# d_xyz d_xyz of the _DD_OUTPUT_IDXS fields (11,3,3)); module level so that callers holding their own
+# derivative stacks (stage2.py: a frozen run plus a correction network) can use it. (2026-10-26)
+def _ccz4_residual_one(full_val, full_dt, full_d, full_dd):
+    gt    = unpack_sym3(full_val[GT_SLICE])
+    At    = unpack_sym3(full_val[AT_SLICE])
+    chi   = full_val[CHI_IDX]
+    Khat  = full_val[KHAT_IDX]
+    Theta = full_val[THETA_IDX]
+    Ghat  = full_val[GHAT_SLICE]
+    alpha = full_val[ALPHA_IDX]
+    beta  = full_val[BETA_SLICE]
+    gt_dt     = unpack_sym3(full_dt[GT_SLICE])
+    At_dt     = unpack_sym3(full_dt[AT_SLICE])
+    chi_dt    = full_dt[CHI_IDX]
+    Khat_dt   = full_dt[KHAT_IDX]
+    Theta_dt  = full_dt[THETA_IDX]
+    Ghat_dt   = full_dt[GHAT_SLICE]
+    alpha_dt  = full_dt[ALPHA_IDX]
+    beta_dt   = full_dt[BETA_SLICE]
+    gt_d    = _unpack_sym3_leading(full_d[GT_SLICE])    # [i,j,k]=d_k gt_ij
+    At_d    = _unpack_sym3_leading(full_d[AT_SLICE])
+    chi_d   = full_d[CHI_IDX]
+    Khat_d  = full_d[KHAT_IDX]
+    Theta_d = full_d[THETA_IDX]
+    Ghat_d  = full_d[GHAT_SLICE]        # [i,j]=d_j Ghat^i
+    alpha_d = full_d[ALPHA_IDX]
+    beta_d  = full_d[BETA_SLICE]        # [i,j]=d_j beta^i
+    gt_dd    = _unpack_sym3_leading(full_dd[_DD_GT_SLICE])
+    chi_dd   = full_dd[_DD_CHI_IDX]
+    alpha_dd = full_dd[_DD_ALPHA_IDX]
+    beta_dd  = full_dd[_DD_BETA_SLICE]  # [i,j,k]=d_k d_j beta^i
+
+
+    Gamma1, Gamma2, Gt_upper, gt_inv = _christoffel3(gt, gt_d)
+    # chi appears as a divisor throughout this residual (
+    # Rchi, gt7b, gt8b, DaDa_full below) -- an undertrained/transient
+    # network can drive chi through zero or negative at a point, which
+    # would otherwise produce an Inf/NaN residual at that single point
+    # and poison the whole batch's loss/gradient via the mean/sum
+    # reduction. _chi_safe floors it at --chi_floor (default 1e-5, the
+    # finite-difference convention), so every 1/chi factor is bounded by
+    # 1/chi_floor. (A floor at 1e-14, as jnp.maximum(chi, metric_det_eps)
+    # once was, is no protection: it was the cause of a real
+    # loss_einstein spike to ~1e36 then NaN.) Only VALUES divided by chi
+    # are floored -- chi_d/chi_dd are left untouched.
+    chi_safe   = _chi_safe(chi)
+    gamma_inv  = chi_safe * gt_inv
+    Z          = chi * (Ghat - Gt_upper) / 2.0
+
+    # No separate D_iZ^i / D_(iZ_j) terms are needed: building the Ricci
+    # tensor with the EVOLVED Ghat^k (in Rhat3 and Rchi's last bracket)
+    # plus Rchi's explicit Z term (rs4) gives exactly
+    #     Rphys_ij = R_ij + D_iZ_j + D_jZ_i,   R3 = R + 2 D_iZ^i
+    # (Bezares, Palenzuela & Bona 2017, arXiv:1705.01071, below their
+    # Eq. (syseq2)). Until 2026-10-10 this function ALSO added DiZj_sym
+    # to the At bracket and 2*DiZi to the Theta equation, so the Z terms
+    # were counted twice (3 D_(iZ_j) in At, R + 4 D_iZ^i in Theta).
+    # Verified: all 22 rows now match an independent Alic et al. (2012)
+    # implementation (physical Ricci/D_iZ_j by autodiff of gt/chi) to
+    # ~1e-16 on random fields with Z != 0.
+
+    # --- matter: none (vacuum) -- stress-energy source terms are zero.
+    tau  = 0.0
+    Si_4 = jnp.zeros(3, dtype=gt.dtype)
+    Sij  = jnp.zeros((3, 3), dtype=gt.dtype)
+
+    kappa_2_l = kappa_2
+
+    # ================= assemble RHS (see equations.tex) =================
+    d_k_beta_k = jnp.trace(beta_d)
+
+    rhs_chi = _lie_scalar(chi_d, beta) + (2.0/3.0)*chi*(alpha*(Khat+2.0*Theta) - d_k_beta_k)
+
+    lap_alpha = chi*jnp.einsum("ij,ij->", gt_inv, alpha_dd) - chi*jnp.einsum("k,k->", Gt_upper, alpha_d) \
+                - 0.5*jnp.einsum("ij,i,j->", gt_inv, alpha_d, chi_d)
+    # AtAt = At_ij At^ij, At^ij raised with the CONFORMAL metric (no chi
+    # factor) -- this is what makes (1/3)*(Khat+2*Theta)**2 + AtAt equal
+    # the standard K_ij*K^ij identity (verified standalone: K_ij*K^ij ==
+    # (1/3)*K**2 + AtAt to float64 precision only with this raise; the
+    # chi**2-scaled physical raise used here previously was off by chi**2).
+    At_upper_conf = jnp.einsum("ik,jl,kl->ij", gt_inv, gt_inv, At)
+    AtAt = jnp.einsum("ij,ij->", At, At_upper_conf)
+    S_trace = jnp.einsum("ij,ij->", gamma_inv, Sij)
+    rhs_Khat = _lie_scalar(Khat_d, beta) - lap_alpha \
+        + alpha*((1.0/3.0)*(Khat+2.0*Theta)**2 + AtAt + 4.0*jnp.pi*(tau+S_trace)
+                 + kappa_z*(1.0-kappa_2_l)*Theta) \
+        + 2.0*jnp.einsum("i,i->", Z, alpha_d)
+
+    At_trace = jnp.einsum("ij,ij->", gt_inv, At)
+    lndet_gt = jnp.log(jnp.maximum(jnp.linalg.det(gt), 1e-14))
+    rhs_gt = _lie_lower2(gt, gt_d, beta, beta_d) - (2.0/3.0)*gt*d_k_beta_k \
+        - 2.0*alpha*(At - (1.0/3.0)*gt*At_trace) - (alpha/3.0)*kappa_c*gt*lndet_gt
+
+    # Rhat3_ij (conformal-metric Ricci, standard BSSN form)
+    rterm1 = -0.5*jnp.einsum("mn,ijmn->ij", gt_inv, gt_dd)
+    rt2a = jnp.einsum("ki,kj->ij", gt, Ghat_d); rt2b = jnp.einsum("kj,ki->ij", gt, Ghat_d)
+    rterm2 = 0.5*(rt2a+rt2b)
+    rterm3_raw = jnp.einsum("k,ijk->ij", Ghat, Gamma1)
+    rterm3 = 0.5*(rterm3_raw + rterm3_raw.T)     # explicit (ij) symmetrization
+    rterm4 = jnp.einsum("mn,kmi,jkn->ij", gt_inv, Gamma2, Gamma1) \
+           + jnp.einsum("mn,kmj,ikn->ij", gt_inv, Gamma2, Gamma1) \
+           + jnp.einsum("mn,kmi,knj->ij", gt_inv, Gamma2, Gamma1)
+    Rhat3 = rterm1 + rterm2 + rterm3 + rterm4
+
+    rs1 = 0.5*chi_dd
+    rs2 = -0.5*jnp.einsum("kij,k->ij", Gamma2, chi_d)
+    rs3 = -(1.0/(4.0*chi_safe))*jnp.einsum("i,j->ij", chi_d, chi_d)
+    rs4a = jnp.einsum("k,ki,j->ij", Z, gt, chi_d); rs4b = jnp.einsum("k,kj,i->ij", Z, gt, chi_d)
+    rs4 = (1.0/chi_safe)*(rs4a+rs4b)
+    rbracket = jnp.einsum("km,km->", gt_inv, chi_dd) - (3.0/(2.0*chi_safe))*jnp.einsum("km,k,m->", gt_inv, chi_d, chi_d) \
+               - jnp.einsum("k,k->", Ghat, chi_d)
+    rs5 = 0.5*gt*rbracket
+    chiRchi = rs1+rs2+rs3+rs4+rs5
+    Rchi = chiRchi/chi_safe
+    Rphys_ij = Rhat3 + Rchi          # = R_ij + D_iZ_j + D_jZ_i (see above)
+    R3 = jnp.einsum("ij,ij->", gamma_inv, Rphys_ij)   # = R + 2 D_iZ^i
+
+    rhs_Theta = _lie_scalar(Theta_d, beta) \
+        + 0.5*alpha*(R3 + (2.0/3.0)*Khat**2 + (2.0/3.0)*Theta*(Khat-2.0*Theta) - AtAt) \
+        - jnp.einsum("i,i->", Z, alpha_d) \
+        - alpha*(8.0*jnp.pi*tau + kappa_z*(2.0+kappa_2_l)*Theta)
+
+    gt1 = jnp.einsum("j,ij->i", beta, Ghat_d)
+    gt2 = -jnp.einsum("j,ij->i", Ghat, beta_d)
+    gt3 = (2.0/3.0)*Ghat*d_k_beta_k
+    gt4 = jnp.einsum("jk,ijk->i", gt_inv, beta_dd)
+    gt5 = (1.0/3.0)*jnp.einsum("ij,kjk->i", gt_inv, beta_dd)
+    At_up_full = jnp.einsum("ik,jl,kl->ij", gt_inv, gt_inv, At)
+    gt6 = -2.0*jnp.einsum("ij,j->i", At_up_full, alpha_d)
+    gt7a = jnp.einsum("ijk,jk->i", Gamma2, At_up_full)
+    gt7b = -1.5/chi_safe*jnp.einsum("ij,j->i", At_up_full, chi_d)
+    gt7c = -(2.0/3.0)*jnp.einsum("ij,j->i", gt_inv, Khat_d)
+    gt7d = -8.0*jnp.pi*jnp.einsum("ij,j->i", gt_inv, Si_4)
+    gt7 = 2.0*alpha*(gt7a+gt7b+gt7c+gt7d)
+    # alpha (the lapse) is EXPECTED to collapse toward zero right at the
+    # puncture under 1+log slicing -- the correct physical moving-puncture
+    # gauge behavior -- and can even dip slightly negative in an
+    # under-trained network (seen: alpha_min ~ -0.02 on a real run). The
+    # equation has 2*alpha*(-gt^ij (Theta/alpha) d_j alpha), i.e. alpha
+    # times a 1/alpha, which is exactly -2*Theta*gt^ij d_j alpha: cancel it
+    # ANALYTICALLY (gt8c) rather than dividing. This needs no floor at all
+    # and is correct for either sign of alpha -- the previous
+    # Theta/_smooth_floor(alpha) divisor was |alpha|-like, so for alpha<0
+    # the term came out with the WRONG SIGN.
+    gt8a = -jnp.einsum("ij,j->i", gt_inv, (1.0/3.0)*Theta_d)
+    gt8b = -(1.0/chi_safe)*Z*(kappa_z+(2.0/3.0)*(Khat+2.0*Theta))
+    gt8c = -jnp.einsum("ij,j->i", gt_inv, Theta*alpha_d)
+    gt8 = 2.0*(alpha*(gt8a+gt8b) + gt8c)
+    rhs_Ghat = gt1+gt2+gt3+gt4+gt5+gt6+gt7+gt8
+
+    # D_iD_j alpha: standard conformal Hessian identity (verified against
+    # a ground-truth physical-Christoffel Hessian to float64 precision,
+    # AND its trace matches lap_alpha above exactly).
+    DaDa_full = alpha_dd - jnp.einsum("kij,k->ij", Gamma2, alpha_d) \
+        + (1.0/(2.0*chi_safe))*(jnp.einsum("i,j->ij", chi_d, alpha_d) + jnp.einsum("j,i->ij", chi_d, alpha_d)
+                            - gt*jnp.einsum("kl,k,l->", gt_inv, chi_d, alpha_d))
+    bracket_At = alpha*(Rphys_ij - 8.0*jnp.pi*Sij) - DaDa_full   # Rphys includes 2 D_(iZ_j)
+    bracket_At_TF = _tf3(bracket_At, gt, gt_inv)
+    # At_mixed[i,j] = At^i_j = gt^ik At_kj (j still lower). AtAt_mixed must
+    # contract At's own lower k against At_mixed's UPPER k (one up, one
+    # down) to form At_ik At^k_j = At_ik gt^kl At_lj -- operand order
+    # matters here: einsum("ik,kj->ij", At, At_mixed) puts At's lower k
+    # (its own second slot) against At_mixed's upper k (its own first
+    # slot). The previous order (At_mixed, At) instead summed two LOWER
+    # k's directly with no metric between them -- verified wrong against
+    # an exact Kerr (Kerr-Schild) vacuum solution (rhs_At ~5e-3, should
+    # be exactly 0 since d_t of every field is 0 in these coordinates);
+    # this order matches that check to float64 precision.
+    At_mixed = jnp.einsum("ik,kj->ij", gt_inv, At)          # At^i_j (mixed, one index raised)
+    AtAt_mixed = jnp.einsum("ik,kj->ij", At, At_mixed)      # At_ik At^k_j
+    rhs_At = _lie_lower2(At, At_d, beta, beta_d) - (2.0/3.0)*At*d_k_beta_k \
+        - (alpha/3.0)*kappa_c*gt*At_trace + chi*bracket_At_TF \
+        + alpha*(Khat*At - 2.0*AtAt_mixed)
+
+    rhs_alpha = jnp.einsum("i,i->", beta, alpha_d) - 2.0*alpha*f_alpha*Khat
+    rhs_beta  = jnp.einsum("j,ij->i", beta, beta_d) + 0.75*f_beta*Ghat - eta_shift*beta
+
+    res_gt    = gt_dt    - rhs_gt
+    res_At    = At_dt    - rhs_At
+    res_chi   = chi_dt   - rhs_chi
+    res_Khat  = Khat_dt  - rhs_Khat
+    res_Theta = Theta_dt - rhs_Theta
+    res_Ghat  = Ghat_dt  - rhs_Ghat
+    res_alpha = alpha_dt - rhs_alpha
+    res_beta  = beta_dt  - rhs_beta
+
+    return jnp.concatenate([
+        pack_sym3(res_gt.reshape(1,3,3))[0],
+        pack_sym3(res_At.reshape(1,3,3))[0],
+        res_chi.reshape(1), res_Khat.reshape(1), res_Theta.reshape(1),
+        res_Ghat, res_alpha.reshape(1), res_beta,
+    ])
+
+
 @partial(jax.jit, static_argnums=(0,))
 def r_ccz4_evolution(apply_fn, params, t, x, y, z, window_start, window_end):
     """
@@ -2654,202 +2849,11 @@ def r_ccz4_evolution(apply_fn, params, t, x, y, z, window_start, window_end):
         full_dd  = jax.jacfwd(jax.jacfwd(lambda p: _dd_of_q(q_of_xyz(p))))(xyz)  # (11,3,3)
         return full_val, full_dt, full_d, full_dd
 
-    def residual_one(full_val, full_dt, full_d, full_dd):
-        gt    = unpack_sym3(full_val[GT_SLICE])
-        At    = unpack_sym3(full_val[AT_SLICE])
-        chi   = full_val[CHI_IDX]
-        Khat  = full_val[KHAT_IDX]
-        Theta = full_val[THETA_IDX]
-        Ghat  = full_val[GHAT_SLICE]
-        alpha = full_val[ALPHA_IDX]
-        beta  = full_val[BETA_SLICE]
-        gt_dt     = unpack_sym3(full_dt[GT_SLICE])
-        At_dt     = unpack_sym3(full_dt[AT_SLICE])
-        chi_dt    = full_dt[CHI_IDX]
-        Khat_dt   = full_dt[KHAT_IDX]
-        Theta_dt  = full_dt[THETA_IDX]
-        Ghat_dt   = full_dt[GHAT_SLICE]
-        alpha_dt  = full_dt[ALPHA_IDX]
-        beta_dt   = full_dt[BETA_SLICE]
-        gt_d    = _unpack_sym3_leading(full_d[GT_SLICE])    # [i,j,k]=d_k gt_ij
-        At_d    = _unpack_sym3_leading(full_d[AT_SLICE])
-        chi_d   = full_d[CHI_IDX]
-        Khat_d  = full_d[KHAT_IDX]
-        Theta_d = full_d[THETA_IDX]
-        Ghat_d  = full_d[GHAT_SLICE]        # [i,j]=d_j Ghat^i
-        alpha_d = full_d[ALPHA_IDX]
-        beta_d  = full_d[BETA_SLICE]        # [i,j]=d_j beta^i
-        gt_dd    = _unpack_sym3_leading(full_dd[_DD_GT_SLICE])
-        chi_dd   = full_dd[_DD_CHI_IDX]
-        alpha_dd = full_dd[_DD_ALPHA_IDX]
-        beta_dd  = full_dd[_DD_BETA_SLICE]  # [i,j,k]=d_k d_j beta^i
-
-
-        Gamma1, Gamma2, Gt_upper, gt_inv = _christoffel3(gt, gt_d)
-        # chi appears as a divisor throughout this residual (
-        # Rchi, gt7b, gt8b, DaDa_full below) -- an undertrained/transient
-        # network can drive chi through zero or negative at a point, which
-        # would otherwise produce an Inf/NaN residual at that single point
-        # and poison the whole batch's loss/gradient via the mean/sum
-        # reduction. _chi_safe floors it at --chi_floor (default 1e-5, the
-        # finite-difference convention), so every 1/chi factor is bounded by
-        # 1/chi_floor. (A floor at 1e-14, as jnp.maximum(chi, metric_det_eps)
-        # once was, is no protection: it was the cause of a real
-        # loss_einstein spike to ~1e36 then NaN.) Only VALUES divided by chi
-        # are floored -- chi_d/chi_dd are left untouched.
-        chi_safe   = _chi_safe(chi)
-        gamma_inv  = chi_safe * gt_inv
-        Z          = chi * (Ghat - Gt_upper) / 2.0
-
-        # No separate D_iZ^i / D_(iZ_j) terms are needed: building the Ricci
-        # tensor with the EVOLVED Ghat^k (in Rhat3 and Rchi's last bracket)
-        # plus Rchi's explicit Z term (rs4) gives exactly
-        #     Rphys_ij = R_ij + D_iZ_j + D_jZ_i,   R3 = R + 2 D_iZ^i
-        # (Bezares, Palenzuela & Bona 2017, arXiv:1705.01071, below their
-        # Eq. (syseq2)). Until 2026-10-10 this function ALSO added DiZj_sym
-        # to the At bracket and 2*DiZi to the Theta equation, so the Z terms
-        # were counted twice (3 D_(iZ_j) in At, R + 4 D_iZ^i in Theta).
-        # Verified: all 22 rows now match an independent Alic et al. (2012)
-        # implementation (physical Ricci/D_iZ_j by autodiff of gt/chi) to
-        # ~1e-16 on random fields with Z != 0.
-
-        # --- matter: none (vacuum) -- stress-energy source terms are zero.
-        tau  = 0.0
-        Si_4 = jnp.zeros(3, dtype=gt.dtype)
-        Sij  = jnp.zeros((3, 3), dtype=gt.dtype)
-
-        kappa_2_l = kappa_2
-
-        # ================= assemble RHS (see equations.tex) =================
-        d_k_beta_k = jnp.trace(beta_d)
-
-        rhs_chi = _lie_scalar(chi_d, beta) + (2.0/3.0)*chi*(alpha*(Khat+2.0*Theta) - d_k_beta_k)
-
-        lap_alpha = chi*jnp.einsum("ij,ij->", gt_inv, alpha_dd) - chi*jnp.einsum("k,k->", Gt_upper, alpha_d) \
-                    - 0.5*jnp.einsum("ij,i,j->", gt_inv, alpha_d, chi_d)
-        # AtAt = At_ij At^ij, At^ij raised with the CONFORMAL metric (no chi
-        # factor) -- this is what makes (1/3)*(Khat+2*Theta)**2 + AtAt equal
-        # the standard K_ij*K^ij identity (verified standalone: K_ij*K^ij ==
-        # (1/3)*K**2 + AtAt to float64 precision only with this raise; the
-        # chi**2-scaled physical raise used here previously was off by chi**2).
-        At_upper_conf = jnp.einsum("ik,jl,kl->ij", gt_inv, gt_inv, At)
-        AtAt = jnp.einsum("ij,ij->", At, At_upper_conf)
-        S_trace = jnp.einsum("ij,ij->", gamma_inv, Sij)
-        rhs_Khat = _lie_scalar(Khat_d, beta) - lap_alpha \
-            + alpha*((1.0/3.0)*(Khat+2.0*Theta)**2 + AtAt + 4.0*jnp.pi*(tau+S_trace)
-                     + kappa_z*(1.0-kappa_2_l)*Theta) \
-            + 2.0*jnp.einsum("i,i->", Z, alpha_d)
-
-        At_trace = jnp.einsum("ij,ij->", gt_inv, At)
-        lndet_gt = jnp.log(jnp.maximum(jnp.linalg.det(gt), 1e-14))
-        rhs_gt = _lie_lower2(gt, gt_d, beta, beta_d) - (2.0/3.0)*gt*d_k_beta_k \
-            - 2.0*alpha*(At - (1.0/3.0)*gt*At_trace) - (alpha/3.0)*kappa_c*gt*lndet_gt
-
-        # Rhat3_ij (conformal-metric Ricci, standard BSSN form)
-        rterm1 = -0.5*jnp.einsum("mn,ijmn->ij", gt_inv, gt_dd)
-        rt2a = jnp.einsum("ki,kj->ij", gt, Ghat_d); rt2b = jnp.einsum("kj,ki->ij", gt, Ghat_d)
-        rterm2 = 0.5*(rt2a+rt2b)
-        rterm3_raw = jnp.einsum("k,ijk->ij", Ghat, Gamma1)
-        rterm3 = 0.5*(rterm3_raw + rterm3_raw.T)     # explicit (ij) symmetrization
-        rterm4 = jnp.einsum("mn,kmi,jkn->ij", gt_inv, Gamma2, Gamma1) \
-               + jnp.einsum("mn,kmj,ikn->ij", gt_inv, Gamma2, Gamma1) \
-               + jnp.einsum("mn,kmi,knj->ij", gt_inv, Gamma2, Gamma1)
-        Rhat3 = rterm1 + rterm2 + rterm3 + rterm4
-
-        rs1 = 0.5*chi_dd
-        rs2 = -0.5*jnp.einsum("kij,k->ij", Gamma2, chi_d)
-        rs3 = -(1.0/(4.0*chi_safe))*jnp.einsum("i,j->ij", chi_d, chi_d)
-        rs4a = jnp.einsum("k,ki,j->ij", Z, gt, chi_d); rs4b = jnp.einsum("k,kj,i->ij", Z, gt, chi_d)
-        rs4 = (1.0/chi_safe)*(rs4a+rs4b)
-        rbracket = jnp.einsum("km,km->", gt_inv, chi_dd) - (3.0/(2.0*chi_safe))*jnp.einsum("km,k,m->", gt_inv, chi_d, chi_d) \
-                   - jnp.einsum("k,k->", Ghat, chi_d)
-        rs5 = 0.5*gt*rbracket
-        chiRchi = rs1+rs2+rs3+rs4+rs5
-        Rchi = chiRchi/chi_safe
-        Rphys_ij = Rhat3 + Rchi          # = R_ij + D_iZ_j + D_jZ_i (see above)
-        R3 = jnp.einsum("ij,ij->", gamma_inv, Rphys_ij)   # = R + 2 D_iZ^i
-
-        rhs_Theta = _lie_scalar(Theta_d, beta) \
-            + 0.5*alpha*(R3 + (2.0/3.0)*Khat**2 + (2.0/3.0)*Theta*(Khat-2.0*Theta) - AtAt) \
-            - jnp.einsum("i,i->", Z, alpha_d) \
-            - alpha*(8.0*jnp.pi*tau + kappa_z*(2.0+kappa_2_l)*Theta)
-
-        gt1 = jnp.einsum("j,ij->i", beta, Ghat_d)
-        gt2 = -jnp.einsum("j,ij->i", Ghat, beta_d)
-        gt3 = (2.0/3.0)*Ghat*d_k_beta_k
-        gt4 = jnp.einsum("jk,ijk->i", gt_inv, beta_dd)
-        gt5 = (1.0/3.0)*jnp.einsum("ij,kjk->i", gt_inv, beta_dd)
-        At_up_full = jnp.einsum("ik,jl,kl->ij", gt_inv, gt_inv, At)
-        gt6 = -2.0*jnp.einsum("ij,j->i", At_up_full, alpha_d)
-        gt7a = jnp.einsum("ijk,jk->i", Gamma2, At_up_full)
-        gt7b = -1.5/chi_safe*jnp.einsum("ij,j->i", At_up_full, chi_d)
-        gt7c = -(2.0/3.0)*jnp.einsum("ij,j->i", gt_inv, Khat_d)
-        gt7d = -8.0*jnp.pi*jnp.einsum("ij,j->i", gt_inv, Si_4)
-        gt7 = 2.0*alpha*(gt7a+gt7b+gt7c+gt7d)
-        # alpha (the lapse) is EXPECTED to collapse toward zero right at the
-        # puncture under 1+log slicing -- the correct physical moving-puncture
-        # gauge behavior -- and can even dip slightly negative in an
-        # under-trained network (seen: alpha_min ~ -0.02 on a real run). The
-        # equation has 2*alpha*(-gt^ij (Theta/alpha) d_j alpha), i.e. alpha
-        # times a 1/alpha, which is exactly -2*Theta*gt^ij d_j alpha: cancel it
-        # ANALYTICALLY (gt8c) rather than dividing. This needs no floor at all
-        # and is correct for either sign of alpha -- the previous
-        # Theta/_smooth_floor(alpha) divisor was |alpha|-like, so for alpha<0
-        # the term came out with the WRONG SIGN.
-        gt8a = -jnp.einsum("ij,j->i", gt_inv, (1.0/3.0)*Theta_d)
-        gt8b = -(1.0/chi_safe)*Z*(kappa_z+(2.0/3.0)*(Khat+2.0*Theta))
-        gt8c = -jnp.einsum("ij,j->i", gt_inv, Theta*alpha_d)
-        gt8 = 2.0*(alpha*(gt8a+gt8b) + gt8c)
-        rhs_Ghat = gt1+gt2+gt3+gt4+gt5+gt6+gt7+gt8
-
-        # D_iD_j alpha: standard conformal Hessian identity (verified against
-        # a ground-truth physical-Christoffel Hessian to float64 precision,
-        # AND its trace matches lap_alpha above exactly).
-        DaDa_full = alpha_dd - jnp.einsum("kij,k->ij", Gamma2, alpha_d) \
-            + (1.0/(2.0*chi_safe))*(jnp.einsum("i,j->ij", chi_d, alpha_d) + jnp.einsum("j,i->ij", chi_d, alpha_d)
-                                - gt*jnp.einsum("kl,k,l->", gt_inv, chi_d, alpha_d))
-        bracket_At = alpha*(Rphys_ij - 8.0*jnp.pi*Sij) - DaDa_full   # Rphys includes 2 D_(iZ_j)
-        bracket_At_TF = _tf3(bracket_At, gt, gt_inv)
-        # At_mixed[i,j] = At^i_j = gt^ik At_kj (j still lower). AtAt_mixed must
-        # contract At's own lower k against At_mixed's UPPER k (one up, one
-        # down) to form At_ik At^k_j = At_ik gt^kl At_lj -- operand order
-        # matters here: einsum("ik,kj->ij", At, At_mixed) puts At's lower k
-        # (its own second slot) against At_mixed's upper k (its own first
-        # slot). The previous order (At_mixed, At) instead summed two LOWER
-        # k's directly with no metric between them -- verified wrong against
-        # an exact Kerr (Kerr-Schild) vacuum solution (rhs_At ~5e-3, should
-        # be exactly 0 since d_t of every field is 0 in these coordinates);
-        # this order matches that check to float64 precision.
-        At_mixed = jnp.einsum("ik,kj->ij", gt_inv, At)          # At^i_j (mixed, one index raised)
-        AtAt_mixed = jnp.einsum("ik,kj->ij", At, At_mixed)      # At_ik At^k_j
-        rhs_At = _lie_lower2(At, At_d, beta, beta_d) - (2.0/3.0)*At*d_k_beta_k \
-            - (alpha/3.0)*kappa_c*gt*At_trace + chi*bracket_At_TF \
-            + alpha*(Khat*At - 2.0*AtAt_mixed)
-
-        rhs_alpha = jnp.einsum("i,i->", beta, alpha_d) - 2.0*alpha*f_alpha*Khat
-        rhs_beta  = jnp.einsum("j,ij->i", beta, beta_d) + 0.75*f_beta*Ghat - eta_shift*beta
-
-        res_gt    = gt_dt    - rhs_gt
-        res_At    = At_dt    - rhs_At
-        res_chi   = chi_dt   - rhs_chi
-        res_Khat  = Khat_dt  - rhs_Khat
-        res_Theta = Theta_dt - rhs_Theta
-        res_Ghat  = Ghat_dt  - rhs_Ghat
-        res_alpha = alpha_dt - rhs_alpha
-        res_beta  = beta_dt  - rhs_beta
-
-        return jnp.concatenate([
-            pack_sym3(res_gt.reshape(1,3,3))[0],
-            pack_sym3(res_At.reshape(1,3,3))[0],
-            res_chi.reshape(1), res_Khat.reshape(1), res_Theta.reshape(1),
-            res_Ghat, res_alpha.reshape(1), res_beta,
-        ])
-
     if deriv_mode == "taylor" and _taylor_capable(apply_fn):
         derivs = _taylor_derivs(apply_fn, params, t, x, y, z, window_start, window_end)
     else:
         derivs = jax.vmap(derivs_one)(q_batch)
-    return jax.vmap(residual_one)(*derivs)
+    return jax.vmap(_ccz4_residual_one)(*derivs)
 
 
 # --------------------------------------------------------------------------------

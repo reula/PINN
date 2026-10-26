@@ -8,6 +8,7 @@ At t = 0 and every window end, evaluates the window's network on spheres of `--n
     x -> the radial direction n and y -> a tangential direction e):
         m = (R/2) [1 - (d_s R)^2 / gamma_nn + R^2 (K_ee / gamma_ee)^2],   R = s sqrt(gamma_ee);
   * PINN - 1D reference for alpha, chi, Khat and Theta, about the origin (where the reference is).
+With --stage2 PKL the run's output plus its stage-2 correction (stage2.py) is evaluated instead.
 Saved: t (n_t,), r (n_r,), and for q in mass, alpha, chi, Khat, Theta: q_mean (signed sphere average)
 and q_rms (root mean square over the sphere), each (n_t, n_r). Plot with tools/plot_sphere_errors.py.
 """
@@ -28,6 +29,7 @@ ap.add_argument("--nr", type=int, default=100)
 ap.add_argument("--ndir", type=int, default=48)
 ap.add_argument("--rmin", type=float, default=0.1)
 ap.add_argument("--rmax", type=float, default=20.0)
+ap.add_argument("--stage2", default=None, help="stage2_params.pkl: evaluate the run PLUS its stage-2 correction")
 argv = sys.argv[1:]
 rest = argv[argv.index("--") + 1:] if "--" in argv else []
 a = ap.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
@@ -42,6 +44,12 @@ CHI, KH, TH = ns["CHI_IDX"], ns["KHAT_IDX"], ns["THETA_IDX"]
 unpack = ns["unpack_sym3"]
 M = float(np.ravel(ns["BL_masses"])[0])
 ALPHA = 18                                   # lapse column of full_output (as reference_1d/compare_pinn.py)
+corr = None
+if a.stage2:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from stage2_net import load_correction
+    corr, CFG = load_correction(ns, a.stage2)
+    print(f"adding the stage-2 correction {a.stage2} (iteration {CFG['iteration']}, {CFG['windows']} windows)")
 REF = {"chi": (CHI, 4), "Khat": (KH, 5), "Theta": (TH, 6), "alpha": (ALPHA, 8)}   # (output column, reference row)
 
 ref = np.load(a.ref)
@@ -59,6 +67,8 @@ S = np.tile(r, a.ndir)[:, None]
 
 man = pickle.load(open(os.path.join(a.run, "pinn_checkpoint.pkl"), "rb"))
 states = [pickle.load(open(os.path.join(a.run, f), "rb")) for f in man["window_files"]]
+if corr is not None:
+    states = states[:CFG["windows"]]
 for st in states:
     st["params"] = jax.tree_util.tree_map(jnp.asarray, st["params"])
 
@@ -75,7 +85,8 @@ def evaluate(st, t):
     def out(s, centre):                      # s: (P,1) distance along N from centre
         X = jnp.asarray(centre)[None, :] + s * jnp.asarray(N)
         T = jnp.full_like(s, t)
-        return ns["full_output"](fn, p, T, X[:, :1], X[:, 1:2], X[:, 2:3], ws, we)
+        o = ns["full_output"](fn, p, T, X[:, :1], X[:, 1:2], X[:, 2:3], ws, we)
+        return o if corr is None else o + corr(T, X[:, :1], X[:, 1:2], X[:, 2:3])
 
     def metric(o):
         return unpack(o[:, GT]) / o[:, CHI][:, None, None]
