@@ -392,10 +392,27 @@ max 0.42 / **3e-5** / 2.9e-2; puncture drift 0.13 / 0.010 / 0.007; off_form 1.44
 The direct penalty keeps the HOLE's mass within 0.35 % to t = 10 (the 10-19 Oct summary's final settings
 without a penalty: +7-8 %; `single_a`: +25-28 %) and the lapse at the puncture within 0.003 of the
 reference (summary: 0.007). The Bianchi term holds the hole to ~-6 %, no better than the summary's run.
-What remains in both is a mass DEFICIT that travels outward -- its peak at r ~ 6-8 at t = 4-6, r ~ 10 at
-t = 8-10 (-22 % in `long_con10`), then towards r = 15 -- as the gauge pulse does, and as in the summary
-("up to 17 % at r ~ 4-12 where the gauge pulses pass"). Whether the penalties enlarge it cannot be told
-without a control run (final settings, no penalty, to t = 10); `single_a` uses the default settings.
+
+**Sphere averages (2026-10-26; `tools/sphere_errors.py`, `tools/plot_sphere_errors.py`,
+`plots/2026-10-26/sphere_errors_rt.png`).** The table above and `mass_function.py` use only the +-x rays. Averaging
+over spheres (48 Fibonacci directions, 100 radii, every window end) changes the outer picture. The most negative
+<m/M - 1> over 2 < r < 20:
+
+| t | `single_a` | `long_con10` | `long_bia3` |
+|---|---|---|---|
+| 4 | -2.6 % (r 4.7) | -3.8 % (r 5.5) | -2.5 % (r 3.8) |
+| 6 | -6.8 % (r 7.2) | -8.1 % (r 7.6) | -11 % (r 5.2) |
+| 8 | -13 % (r 9.5) | -14 % (r 10.0) | -21 % (r 7.2) |
+| 10 | -19 % (r 12.4) | -18 % (r 11.7) | -21 % (r 9.5) |
+
+On the +-x rays `long_con10` reaches -36 % at r 11.6 at t = 10: the deficit is far from spherical, and two
+rays can double it. On spheres the outgoing deficit is THE SAME with and without the penalties: a band that
+leaves the hole at t ~ 2 and follows the gauge pulse outward, in every run (the 10-19 Oct summary's "up to
+17 % at r ~ 4-12"). The penalties change only what is inside that front: the hole's mass, <m/M - 1>(r = 1) at
+t = 10 = +27 % / +0.19 % / -6.2 %. The alpha error and Theta also run along the outgoing paths. Where the
+pulse travels every run has only the uniform sample (the core and focus clouds sit at the hole), the first
+candidate cause. The control run `long_ctl` (final settings, no penalty, resumed from `w8_qn` to t = 10; jobs
+1184283 -> 1184284, submitted 2026-10-26) compares the hole and the deficit without a penalty.
 
 DSGNAR, exact residual: all-or-nothing by window. Working windows accept ~85 % of the steps over the whole
 70 min and lower the loss 100-1000x (5.0e-2 -> 2.7e-4; 1.4e-2 -> 8.6e-5); the others (windows 1-3 and 8 of
@@ -683,7 +700,7 @@ one Adam -> BFGS line.
 
 **Executive summary** for the PINN team, in the format of J. Masso's 10-19 Oct summary
 (`originals/BH_PINN_executive_summary.pdf`): `docs/exec_2026-10-20/SBH_optimisers_drift_mass_2026-10-20.pdf`
-(source `summary.html`, figures from `tools/plot_exec_summary.py`). Note from that summary: our runs
+(source `summary.html`, figures from `tools/plot_exec_summary.py`). Second summary, physics only (constraint penalties to t = 10, mass, drift): `docs/exec_2026-10-26/` (figures from `tools/plot_exec_2026_10_26.py` and `tools/plot_sphere_errors.py`). Note from that summary: our runs
 used the code's defaults, i.e. its "first baseline" (no core points, 12k QN steps per window); its
 final settings (48k core points, 24k QN steps) gave +7-8 % mass error and 0.023 drift at t = 10
 where `single_a` has 35 % and 0.127.
@@ -750,6 +767,7 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/plot_report_figures.py DATA OUT`: the figures in `plots/2026-10-20/`.
 * `tools/plot_exec_summary.py DATA OUT`: the figures of the executive summary.
 * `tools/sketch_noise.py`, `tools/test_exact_residual.py`: DSGNAR's step vs the true gradient; the exact-residual mode.
+* `tools/sphere_errors.py RUN_DIR REF.npz --out RUN.npz -- <physics flags>`: Misner-Sharp error and alpha/chi/Khat/Theta - reference averaged over spheres (Fibonacci directions) at every window end; `tools/plot_sphere_errors.py OUT.png NAME=RUN.npz ...`: their radius-time maps. ~6 s per 40-window run on the laptop CPU.
 * `tools/plot_mass_budget.py RUN.npz OUT.png`: the mass-error budget (initial / in-window / hand-off) by radius.
 * `tools/plot_clouds.py OUT.png`: the interior points around a single puncture, default vs `--symmetric_focus` (`plots/2026-10-21/sampling_clouds.png`; centroid of the points within r < 1: 2.8e-3 vs 1e-5).
 * `tools/bench_jacobian_sketch.py [--s 1024]`: rows (paper) vs columns (ours) for DSGNAR's sketched Jacobian, one block of points.
