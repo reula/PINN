@@ -32,6 +32,36 @@ the mode costs almost nothing in the loss, and how far a run drifts along it dep
 The statement to make is that the error is uncontrolled without the condition and that it is
 removed with it, not a fixed size.
 
+## Ablations: are the Robin ladder and the averaged pins needed? (hub_qp.sh, 2026-10-27)
+
+qp_com's settings (rho^4 weights, centre-of-mass condition) from scratch, Adam 5000 + two Wolfe
+stages, graded against the rotated fine reference. Both were introduced while the inner condition
+still imposed h_rA = 0 (NOTES.md timeline); with h_rA free and the centre of mass fixed they are not needed.
+
+| run | loss | fresh/train | rms dlam | rms dh | dlam rho 1-3 / 30-100 | dh rho 1-3 / 30-100 |
+|---|---|---|---|---|---|---|
+| qp_com_w2 (ladder + pins) | 9.2e-11 | 1.01 | 3.1e-8 | 4.2e-7 | 6.4e-8 / 9.1e-10 | 8.6e-7 / 3.0e-9 |
+| ab_noladder_w2 (Robin at rho_out only) | 3.7e-11 | 1.00 | 6.9e-9 | 1.8e-7 | 1.4e-8 / 5.9e-10 | 3.7e-7 / 3.9e-9 |
+| ab_nopins_w2 (no averaged pins) | 1.9e-11 | 1.04 | 1.0e-8 | 1.9e-7 | 2.0e-8 / 5.4e-9 | 3.9e-7 / 3.6e-9 |
+| ab_none_w2 (neither) | 1.25e-11 | 0.99 | 9.1e-9 | 1.45e-7 | 1.25e-8 / 7.0e-9 | 3.0e-7 / 4.2e-9 |
+
+ab_nopins_w2 had one block rejected by the non-finite guard (block 21) and recovered.
+ab_none: d_z on rho = 1, 2, 10, 100 is -7e-10, -5e-8, +1e-9, +1e-9.
+Conclusion: the formulation without ladder and pins is as accurate or better (3x in lambda, 3x in h
+over qp_com); the far-field lambda error rises from 9e-10 to 7e-9, still 4e4 below the perturbation.
+
+## Off-axis quadrupole (3-D hybrid, data about (1,0,1)/sqrt 2)
+
+| run | settings | loss | rms dlam | rms dh | dh rho 1-3 | d_z rho = 2 |
+|---|---|---|---|---|---|---|
+| qp_rot_w3 | ladder + pins, COM 24 x 8 (aliased) | 5.4e-7 | 1.82e-5 | 7.7e-4 | — | — |
+| qp_rot2_w3 | ladder + pins, COM 48 x 32 | 1.35e-6 | 8.9e-6 | 1.84e-3 | 3.8e-3 | 4.8e-6 |
+| qp_rot3_w4 | no ladder, no pins, COM 48 x 32 (hub_qp3.sh) | running | | | | |
+
+qp_rot2 still decreasing slowly (~20% per 10000 Wolfe iterations, Ricci and gauge residuals
+dominant); fresh/train 1.03. The rotated exact Weyl run (weyl_rot45_hyb, no ladder, no pins)
+reached 5.1e-9 with the same 3-D network, hence qp_rot3 in the final formulation.
+
 ## The inner condition (for the sentence on h_rr, h_rA in II.D)
 
 | claim | value | source |
