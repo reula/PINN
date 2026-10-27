@@ -441,6 +441,25 @@ In `stage2.py` (`--w_adm`, same weight) the laptop test (24 windows, 300 points 
 -7.1 -> -3.7 %, r = 8: -8.1 -> -5.0 % (the same correction without the ADM term: -3.5, -6.9, -7.7 %).
 Lapse error and Theta as with the correction alone (lapse 1.2-1.9x the run's at r = 2-8).
 
+**Stage 2 on the GPU (2026-10-27; jobs 1184417 / 1184387, one A30, 1 h 39 / 2 h 10): correction on top of the
+frozen `long_con10`, 40 windows, 128k points per draw evenly in the ball, 4x64, 24k iterations, `--eps 1e-2
+--core_taper 1`; without / with `--w_adm 1`.** Held-out loss of the sum vs u1: 0.55x / 0.49x (r 5-15: 0.57x /
+0.68x; r 1-5: 1.11x / 1.52x; ADM term 0.77x / 0.38x). Graded (`tools/sphere_errors.py --stage2`), peak of
+the outgoing deficit (most negative sphere mean over r > 2), run / + correction / + correction with H, M:
+
+| t | `long_con10` | + correction | + correction with `--w_adm 1` |
+|---|---|---|---|
+| 4 | -3.8 % (r 5.5) | -3.0 % | **-0.1 %** |
+| 6 | -8.1 % (r 7.6) | -4.8 % | **-0.8 %** |
+| 8 | -14.1 % (r 10.0) | -8.8 % | **-2.9 %** |
+| 10 | -18.1 % (r 11.7) | -12.3 % (r 13.8) | **-4.9 %** (r 13.8) |
+
+The hole stays at +0.3 % in all three. The price is the gauge: the lapse error against the reference at
+t = 10 is 1-2x the run's with the correction and ~2x with the H, M term (r = 3-6: 5.3-5.5e-3 -> 1.1e-2),
+and Theta rises from ~3e-6 to ~2e-5 at t = 10 (still small). The mass is gauge-invariant, the lapse is not:
+the correction trades agreement with the reference's gauge (its gauge rows at r 1-5 get worse) for
+satisfying the constraints.
+
 **l-decomposition of the deficit (2026-10-26; the collaborators' `reference_1d/l_decomp.py`, received
 2026-10-26: per-ray Misner-Sharp error on 300 directions about the origin, real spherical harmonics to l = 4
 by least squares, energy share per l; outputs `plots/2026-10-26/l_decomp_*.txt`).** Their question: is the
