@@ -81,7 +81,9 @@ venv read-only and installs `tqdm` (missing there) into `SBH/.pydeps`. Paste in 
     cd ~/serafin/Julia/PINN && git pull && cd SBH
     OUTDIR=stage2_con10_adm_g10 STAGE2_ARGS="--sampling uniform --core_taper 1.0 --eps 1e-2 --w_adm 1 --w_gauge 10 --n_per_window 3200 --hidden 64 --layers 4 --iters 24000" bash jobs/hub/stage2.sh
 
-Relaunching the same line after a container restart resumes from `runs/$OUTDIR/stage2_params.pkl`.
+It first waits until no Stationary hub batch (`Paper/hub_*.sh`, another session's) is running, so the
+GPU is not shared (`WAIT_FOR=` starts at once). Relaunching the same line after a container restart
+resumes from `runs/$OUTDIR/stage2_params.pkl`.
 
 **Mendieta** (2 x A30 per node; jobs are submitted from `SBH/`, outputs in `runs/<OUTDIR>`):
 

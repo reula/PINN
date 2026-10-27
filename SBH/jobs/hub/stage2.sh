@@ -6,7 +6,8 @@
 #
 #   OUTDIR=stage2_con10_adm_g10 STAGE2_ARGS="..." bash jobs/hub/stage2.sh
 #
-# launches itself detached and returns.  Resumable: relaunching the same command continues from
+# launches itself detached and returns; it first waits for the Stationary hub batches to end
+# (WAIT_FOR, below).  Resumable: relaunching the same command continues from
 # runs/$OUTDIR/stage2_params.pkl (--resume).  Log: logs/hub_$OUTDIR.log.
 # Python: the Stationary venv (read-only use; tqdm, missing there, goes to SBH/.pydeps).
 # ---------------------------------------------------------------------------
@@ -19,6 +20,13 @@ if [ "${1:-}" != "--run" ]; then
     setsid nohup bash "$HERE/jobs/hub/stage2.sh" --run >> "logs/hub_$OUTDIR.log" 2>&1 < /dev/null &
     echo "launched (pid $!); follow with:  tail -f $HERE/logs/hub_$OUTDIR.log"
     exit 0
+fi
+# Share nothing: wait until no process matches WAIT_FOR (default: the Stationary hub batches,
+# Paper/hub_*.sh, which belong to another session).  WAIT_FOR= (empty) starts at once.
+WAIT_FOR=${WAIT_FOR-Paper/hub_}
+if [ -n "$WAIT_FOR" ] && pgrep -f "$WAIT_FOR" > /dev/null; then
+    echo "--- waiting for '$WAIT_FOR' to finish  $(date -u '+%F %T UTC')"
+    while pgrep -f "$WAIT_FOR" > /dev/null; do sleep 60; done
 fi
 echo "=== hub stage2 $OUTDIR $(date -u '+%F %T UTC')  HEAD $(git rev-parse --short HEAD)"
 echo "STAGE2_RUN=${STAGE2_RUN:-runs/long_con10}  STAGE2_ARGS=${STAGE2_ARGS:-}"
