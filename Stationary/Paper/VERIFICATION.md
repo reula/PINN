@@ -32,6 +32,14 @@ the mode costs almost nothing in the loss, and how far a run drifts along it dep
 The statement to make is that the error is uncontrolled without the condition and that it is
 removed with it, not a fixed size.
 
+## The inner condition (for the sentence on h_rr, h_rA in II.D)
+
+| claim | value | source |
+|---|---|---|
+| spectral reference with h_rA = 0 imposed | loss 1.8e-5, a floor: Newton stalled after 2 steps, non-decaying l = 2 metric part | PERTURBATION.md:287 (spectral solves before 0773b6a) |
+| the same without it (l <= 6, 24 radial, rho^2 weights) | loss 3.0e-9, Newton converged in 3 steps | PERTURBATION.md:304 |
+| h_rr pinned | over-determines the radial gauge (inner_h_rr stays free) | README.md §4 / problem.py |
+
 ## Exact solutions and analytic checks (Mac; `Paper/recheck_local.py`, `verify_weyl.py`, tests)
 
 | claim | paper (draft) | recomputed | |
