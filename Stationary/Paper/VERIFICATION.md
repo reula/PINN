@@ -5,6 +5,33 @@ by recomputing from the exact solutions. Each entry gives the paper's value, the
 and how it was obtained. ✓ means the two agree to the quoted digits; ✎ means the paper is
 corrected to the recomputed value; ✗ means the number is removed from the paper.
 
+## Values for the paper's blue [pending] markers (filled as the runs finish)
+
+From the hub chains (Paper/hub_qp.sh: Adam 5000 on Mendieta, then SSBroyden with the strong-Wolfe
+line search in stages of 10000; 16384 points):
+
+| marker (section) | value | source |
+|---|---|---|
+| Training: "no other optimiser is needed" | confirmed: Adam + one Wolfe SSBroyden stage reach 1.13e-10 (20 min), two stages 9.2e-11 | qp_com_w1/w2 |
+| fresh/training ratio | 1.00 to 1.01 for the paper's runs | qp_com_w2 1.01, qp_nocom_w2 1.00 |
+| V.B: the error without the condition, near the inner sphere | rms dlam 4.6e-6, dh 5.9e-5 (rho 1-3) | qp_nocom_w2 |
+| V.B: d_z without the condition | +7.63e-5, the same on rho = 1, 2, 10, 100 | com_flux |
+| V.B: ratio lambda error (rho 1-3) / d_z | 0.061 (the 0.062 law, now on a mode 300x smaller) | |
+| V.B: the factor gained | 80x in lambda, 70x in h (overall rms 2.5e-6 -> 3.1e-8, 2.9e-5 -> 4.2e-7) | |
+| V.B: below the perturbation, with the condition | rms dlam 3.1e-8 vs 9.6e-3 (3e5x), dh 4.2e-7 vs 1.1e-2 (3e4x) | qp_com_w2 |
+| V.B: the loss | LOWER without the condition: 5.3e-11 against 9.2e-11 | the loss does not see the mode |
+| Table (error by region), without | lam 4.63e-6 / 2.31e-6 / 3.53e-7 / 4.20e-8; h 5.86e-5 / 8.59e-6 / 8.28e-7 / 8.69e-8 | grade_rotated |
+| Table (error by region), with | lam 6.44e-8 / 6.55e-9 / 1.55e-9 / 9.10e-10; h 8.63e-7 / 4.18e-8 / 4.71e-9 / 3.03e-9 | grade_rotated |
+| Table (moments), with: net - ref | M0 +1.4e-8, M2 +9.1e-7, M4 -7.1e-6 | gh_moments_runs |
+| Table (moments), without: net - ref | M0 -3.5e-8, M2 +5.8e-7, M4 -2.5e-6 | gh_moments_runs |
+| Appendix wall times | Adam 6 min; SSBroyden 10000 iterations ~20 min (A30) | reports |
+
+Note for the text of V.B: with this optimiser the translation came out ~300x smaller than in the
+older runs (d_z 7.6e-5 against 2.6e-2), so the error without the condition is 4.6e-6, not 1e-3:
+the mode costs almost nothing in the loss, and how far a run drifts along it depends on the path.
+The statement to make is that the error is uncontrolled without the condition and that it is
+removed with it, not a fixed size.
+
 ## Exact solutions and analytic checks (Mac; `Paper/recheck_local.py`, `verify_weyl.py`, tests)
 
 | claim | paper (draft) | recomputed | |
