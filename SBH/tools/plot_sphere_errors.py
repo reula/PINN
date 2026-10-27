@@ -1,6 +1,6 @@
 """Radius-time maps of the sphere-averaged errors (2026-10-26).
 
-    python tools/plot_sphere_errors.py OUT.png NAME=RUN.npz [NAME=RUN.npz ...]
+    python tools/plot_sphere_errors.py OUT.png NAME=RUN.npz [NAME=RUN.npz ...] [--linear_r]
 
 RUN.npz from tools/sphere_errors.py. One column per run; rows: the sphere-averaged Misner-Sharp
 error <m/M - 1> (signed), and the rms over each sphere of alpha - alpha_ref and of Theta.
@@ -13,7 +13,9 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, SymLogNorm
 import numpy as np
 
-out, runs = sys.argv[1], [s.rsplit("=", 1) for s in sys.argv[2:]]
+linear_r = "--linear_r" in sys.argv          # radius axis linear instead of logarithmic
+argv = [v for v in sys.argv[1:] if v != "--linear_r"]
+out, runs = argv[0], [s.rsplit("=", 1) for s in argv[1:]]
 MUTED = "#6b6a65"
 plt.rcParams.update({"font.size": 9, "axes.edgecolor": MUTED, "xtick.color": MUTED, "ytick.color": MUTED,
                      "axes.titleweight": "bold", "axes.titlesize": 9.5, "axes.titlelocation": "left"})
@@ -31,7 +33,8 @@ for j, (name, path) in enumerate(runs):
         if key != "mass_mean":
             v = np.clip(v, norm.vmin, None)
         pc = ax.pcolormesh(t, r, v, cmap=cmap, norm=norm, shading="nearest", rasterized=True)
-        ax.set_yscale("log")
+        if not linear_r:
+            ax.set_yscale("log")
         if i == 0:
             ax.set_title(name)
         if j == 0:

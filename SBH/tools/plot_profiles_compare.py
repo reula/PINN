@@ -1,6 +1,6 @@
 """Sphere-averaged mass error and lapse error against radius at a few times, for several runs (2026-10-27).
 
-    python tools/plot_profiles_compare.py OUT.png NAME=RUN.npz [NAME=RUN.npz ...] [--times 6 8 10]
+    python tools/plot_profiles_compare.py OUT.png NAME=RUN.npz [NAME=RUN.npz ...] [--times 6 8 10] [--linear_r]
 
 RUN.npz from tools/sphere_errors.py (with or without --stage2). Top row: <m/M - 1> on spheres; bottom row:
 rms over the sphere of alpha - alpha_ref. One column per time.
@@ -16,6 +16,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("out")
 ap.add_argument("runs", nargs="+")
 ap.add_argument("--times", type=float, nargs="+", default=[6, 8, 10])
+ap.add_argument("--linear_r", action="store_true", help="radius axis linear instead of logarithmic")
 a = ap.parse_args()
 runs = [s.rsplit("=", 1) for s in a.runs]
 COLORS = ["#6b6a65", "#2a78d6", "#eb6834", "#1baf7a"]
@@ -40,8 +41,11 @@ for j, tt in enumerate(a.times):
     axs[1, j].set_yscale("log")
     axs[1, j].set_xlabel("r / M")
     for i in range(2):
-        axs[i, j].set_xscale("log")
-        axs[i, j].set_xlim(0.2, 20)
+        if a.linear_r:
+            axs[i, j].set_xlim(0, 20)
+        else:
+            axs[i, j].set_xscale("log")
+            axs[i, j].set_xlim(0.2, 20)
 axs[0, 0].set_ylabel("⟨m/M − 1⟩ on spheres (%)")
 axs[1, 0].set_ylabel("rms of α − α_ref on spheres")
 axs[0, 0].legend(fontsize=8)
