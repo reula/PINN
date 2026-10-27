@@ -67,6 +67,21 @@ limits the 3-D case; the Ricci and gauge residuals dominate, and the error sits 
 inner sphere (rho 1-3: 2.5e-3 against a perturbation of 2.3e-2). Likely capacity: 2347 parameters
 for a strong-field (lambda ~ 1/3 at rho_in) tilted datum, against the weak-field rotated Weyl test.
 
+Moments and tails (gh_moments_runs.py, tail_decay.py, on the Mac from the copied params):
+
+| run | M0 net-ref | M2 net-ref | M4 net-ref | spurious M3 | max odd c_l (rho 2-100) |
+|---|---|---|---|---|---|
+| ab_none_w2 | -6.3e-8 | +7.3e-7 | -3.2e-6 | -2.4e-7 | 3.9e-9 |
+| qp_rot3_w4 (about the data axis) | -5.9e-6 | +2.5e-5 | -1.2e-3 | +8.6e-5 | 1.3e-6 |
+
+qp_rot3 tails c_l rho^(l+1): l=0 -> 0.58386; l=2 holds 0.1748 to rho ~30 then drifts (0.1437 at 100);
+l=4 holds to rho ~5 only. Relative moment errors 1e-5 (M0), 1.4e-4 (M2), 5% (M4).
+Stage times: ab_none Adam 161 s, w1 649 s (7.7e-11), w2 654 s (1.25e-11); qp_com w1/w2 ~1290 s each.
+
+Paper updated 2026-10-27 to the final formulation (no extra outer spheres, no averaged pins):
+II.D, loss (no w_pin), Sec. V.C new (tab:ablation), V.D off-axis filled from qp_rot3, tab:moments
+two new rows, decay paragraph, appendix, conclusions. Pending: qp_rot4 (hub_qp4.sh, width 40, 32768 points).
+
 ## The inner condition (for the sentence on h_rr, h_rA in II.D)
 
 | claim | value | source |

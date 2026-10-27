@@ -196,17 +196,13 @@ the scalar we impose the condition on the Geroch--Hansen potential~\cite{Geroch1
   \label{eq:Ppot}
 \end{equation}
 whose monopole $M/\rho + M^3/\rho^3+\dots$ has no $\rho^{-2}$ term, unlike
-$\lambda = 1-2M/\rho+2M^2/\rho^2-\dots$. \pending{The ladder and the averaged pins below: kept or removed after the ablations ab\_noladder,
-ab\_nopins, ab\_none.} The same conditions are imposed on a few spheres inside
-$\rho_{\rm out}$ (at $0.7$, $0.8$, $0.9\,\rho_{\rm out}$): they hold at every radius for the exact
-solution, and a single sphere can be satisfied by a thin boundary layer. For the quadrupolar
-problem we add spherical means of order-one Robin combinations at $\rho_{\rm out}$,
-$\langle(\rho\partial_\rho+3)(h_{rr}-1)\rangle$, $\langle(\rho\partial_\rho+2)(g_2-1)\rangle$ with
-$g_2 = \tfrac12(\operatorname{tr}h - h_{rr})$, and $\langle(\rho\partial_\rho+1)\mathcal P\rangle$;
-without them $h$ drifts towards a multiple of the identity. On $\lambda$ itself such a pin would
-be violated by the exact solution, by $-6.59\times10^{-5}$ at $\rho_{\rm out}=100$ (a loss floor
-of $4.3\times10^{-7}$); on $\mathcal P$ the floor is $1.5\times10^{-11}$. $\lambda_\infty=1$ is
-fixed.
+$\lambda = 1-2M/\rho+2M^2/\rho^2-\dots$. $\lambda_\infty=1$ is fixed. These pointwise conditions
+on the outer sphere are all that is imposed there. We also tried strengthening them: the same
+conditions on further spheres inside $\rho_{\rm out}$ (at $0.7$, $0.8$, $0.9\,\rho_{\rm out}$), and
+spherical means of order-one Robin combinations of $h_{rr}$, $\operatorname{tr}h$ and $\mathcal P$
+at $\rho_{\rm out}$. They were introduced while the inner condition still prescribed $h_{rA}$, to
+stop a drift of the far field; with the inner condition~\eqref{eq:innerbc} and the centre of mass
+fixed they do not improve the solution (Sec.~\ref{sec:ablation}), and we do not use them.
 
 \subsection{The residual gauge freedom and the centre of mass}\label{sec:gaugefreedom}
 
@@ -266,12 +262,12 @@ Spherically symmetric tests use $h = \alpha(\rho)\delta+\beta(\rho)nn$.
 \begin{multline}
   L = \sum_g w_g\,\overline{(\rho^{p_g}R_g)^2}
      + w_{\rm in}\overline{r_{\rm in}^2} + w_{\rm out}\overline{r_{\rm out}^2} \\
-     + w_{\rm pin}\sum\langle r\rangle^2 + w_{\rm com}\sum_S|d|^2 ,
+     + w_{\rm com}\sum_S|d|^2 ,
   \label{eq:loss}
 \end{multline}
 with means over the sampled points. $p=(2,1,2)$ makes every residual dimensionless; for the
 quadrupolar problem we use $p=(4,3,4)$, an extra weight $\rho^4$ that determines the far field.
-$w_{\rm in}=w_{\rm out}=w_{\rm pin}=w_{\rm com}=100$ (10 for the Weyl tests). The centre-of-mass
+$w_{\rm in}=w_{\rm out}=w_{\rm com}=100$ (10 for the Weyl tests). The centre-of-mass
 term uses a fixed product quadrature on each sphere, Gauss--Legendre in $\mu=\cos\theta$ and
 uniform in $\phi$: $24\times8$ nodes for the axisymmetric network and $48\times32$ for the
 three-dimensional one (with data about an axis other than $z$, the coarser rule aliases the
@@ -281,14 +277,15 @@ angular structure on the inner sphere; $48\times32$ agrees with $96\times64$ the
 Interior points are drawn log-uniformly in $\rho$ with uniform directions, boundary points
 uniformly on the inner and outer spheres; all are redrawn every 500 iterations. Every result is
 checked on five fresh samples, on which the loss agrees with the training loss to within a few per
-cent (the ratio is 1.00--1.01 for the quadrupolar runs).
+cent (the ratio is 0.99--1.05 for the quadrupolar runs).
 
 \paragraph{Training.} Adam~\cite{KingmaBa2014} for 5000 steps, then the self-scaled Broyden
 quasi-Newton method SSBroyden~\cite{Urban2025SSBroyden,Carretero2026} with a dense inverse Hessian
 carried between blocks of 250 iterations, a strong-Wolfe line search (Armijo backtracking in the
 tests of Sec.~\ref{sec:tests}) and scale-invariant curvature guards, in stages of 10000 iterations;
-a block whose result is not finite is rejected. For the quadrupolar problem one such stage after
-Adam reaches a loss of $1.1\times10^{-10}$ in 20 minutes. Everything runs in double precision with JAX~\cite{jax2018} on
+a block whose result is not finite is rejected. For the quadrupolar problem with the axisymmetric
+network, Adam (3 minutes) and two such stages (11 minutes each) reach a loss of
+$1.3\times10^{-11}$. Everything runs in double precision with JAX~\cite{jax2018} on
 NVIDIA A30 GPUs; one value and gradient at 16384 points costs 0.048~s.
 
 \paragraph{A spectral reference.}\label{sec:specref} For the quadrupolar problem we built an
@@ -313,9 +310,9 @@ and weights), and every term must vanish to rounding. For~\eqref{eq:schw} the to
 $10^{-16}$. For the two-rod Weyl solution it is $1.3\times10^{-28}$ with the gauge
 source~\eqref{eq:cylsource}; with the harmonic condition ($S=0$) it is not small, since the Weyl
 chart is not harmonic, which shows that the check is sensitive to the gauge term. The rotated Weyl solution
-solves the system to $3\times10^{-14}$ or better at every residual. (The averaged pins of
-Sec.~\ref{sec:bcs} are designed for the quadrupolar problem and are not satisfied by these
-solutions, at the $10^{-9}$ level; the tests run without them.)
+solves the system to $3\times10^{-14}$ or better at every residual. (The averaged outer
+conditions of Sec.~\ref{sec:bcs} that we tried and dropped are not satisfied by these solutions, at
+the $10^{-9}$ level, which is one more reason not to impose them.)
 
 \subsection{Schwarzschild in harmonic coordinates}\label{sec:schw}
 
@@ -439,7 +436,8 @@ of the perturbation. The loss does not see the difference; it is even slightly l
 condition ($5.3\times10^{-11}$ against $9.2\times10^{-11}$), because the translation costs almost
 nothing in it. For the same reason its size without the condition is not fixed: it depends on how
 far the optimisation happens to drift along the mode (in earlier runs with other optimisers it was
-300 times larger). The condition removes it.
+300 times larger). The condition removes it. (These two runs still carried the additional outer
+conditions of Sec.~\ref{sec:bcs}; the next subsection shows that they can be dropped.)
 
 \begin{table*}
 \caption{Error against the spectral reference (angular rms) by radial region, for the same run
@@ -468,15 +466,49 @@ spherical solution).}
 \label{fig:com}
 \end{figure*}
 
+\subsection{Outer conditions that are not needed}\label{sec:ablation}
+
+With the centre of mass fixed we repeated the run with the centre-of-mass condition from scratch
+(Adam and two SSBroyden stages) without the extra outer spheres, without the averaged outer
+conditions, and without both (Table~\ref{tab:ablation}). Each version is as accurate as the full
+one or better; without both, the formulation of Sec.~\ref{sec:bcs}, the loss is seven times lower
+and the error three times lower in $\lambda$ and in $h$. The only quantity that gets worse is the
+far-field $\lambda$ error, from $9\times10^{-10}$ to $7\times10^{-9}$, still $4\times10^{4}$ times
+below the perturbation there. The extra conditions were compensating for the over-determined inner
+condition; once that is removed they only add terms that compete with the equations.
+
+\begin{table}
+\caption{The run with the centre-of-mass condition, with and without the additional outer
+conditions: final loss, ratio of the loss on fresh samples to the training loss, and rms error
+against the spectral reference over the shell and for $1\le\rho\le3$.}
+\label{tab:ablation}
+\small
+\begin{ruledtabular}
+\begin{tabular}{lcccccc}
+outer conditions & loss & fresh & $\lambda$ & $h$ & $\lambda$, 1--3 & $h$, 1--3 \\
+\hline
+all & $9.2\times10^{-11}$ & 1.01 & $3.1\times10^{-8}$ & $4.2\times10^{-7}$ & $6.4\times10^{-8}$ & $8.6\times10^{-7}$ \\
+no extra spheres & $3.7\times10^{-11}$ & 1.00 & $6.9\times10^{-9}$ & $1.8\times10^{-7}$ & $1.4\times10^{-8}$ & $3.7\times10^{-7}$ \\
+no averaged ones & $1.9\times10^{-11}$ & 1.04 & $1.0\times10^{-8}$ & $1.9\times10^{-7}$ & $2.0\times10^{-8}$ & $3.9\times10^{-7}$ \\
+pointwise only & $1.3\times10^{-11}$ & 0.99 & $9.1\times10^{-9}$ & $1.5\times10^{-7}$ & $1.3\times10^{-8}$ & $3.0\times10^{-7}$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
 \subsection{Off-axis data}
 
 The same datum about the axis $(1,0,1)/\sqrt2$ is a fully three-dimensional problem whose solution
-is the rotated axisymmetric one. With the general metric-only network the error against the
-rotated reference is \pending{qp\_rot: rms $\lambda$, $h$}, i.e.\ \pending{N and M} times below the
-perturbation. The same network on the unrotated datum gives the same errors after the same
-budget, so the rotation itself costs nothing; the general ansatz reaches a loss
-\pending{three to four} orders above the axisymmetric one, the error concentrating in $h$ near the
-inner sphere.
+is the rotated axisymmetric one. With the general metric-only network (width 20, 2347 parameters),
+in the formulation of Sec.~\ref{sec:bcs} and after Adam and four SSBroyden stages, the error
+against the rotated reference is $9.1\times10^{-6}$ in $\lambda$ and $1.2\times10^{-3}$ in $h$ (rms
+over the shell), i.e.\ 1000 and 9 times below the perturbation. The error concentrates in $h$ near
+the inner sphere ($2.5\times10^{-3}$ for $1\le\rho\le3$, against a perturbation of
+$2.3\times10^{-2}$) and falls to $2\times10^{-7}$ beyond $\rho=30$. The loss levels off at
+$1.2\times10^{-6}$, five orders above the axisymmetric one, decreasing by only 10--25\% per stage;
+the same run with the additional outer conditions stops at the same level ($1.35\times10^{-6}$),
+so it is the network, not the formulation, that limits it. The rotated Weyl test of
+Sec.~\ref{sec:tests}, with the same network, reached $5\times10^{-9}$, but in a much weaker field.
+\pending{width 40, 32768 points (qp\_rot4): loss and errors}
 
 % =====================================================================================
 \section{Multipole moments}\label{sec:moments}
@@ -526,7 +558,8 @@ radius.
 \caption{Geroch--Hansen moments of the quadrupolar solution: the spectral reference, and the
 differences network $-$ reference with the same fit windows (the reference's window spread,
 $1.2\times10^{-4}$ in $M_2$ and $7\times10^{-4}$ in $M_4$, largely cancels in the differences).
-\pending{row for qp\_rot}.}
+The first two rows carry the additional outer conditions; for the rotated data the moments are
+taken about the data axis.}
 \label{tab:moments}
 \begin{ruledtabular}
 \begin{tabular}{lccc}
@@ -535,7 +568,8 @@ $1.2\times10^{-4}$ in $M_2$ and $7\times10^{-4}$ in $M_4$, largely cancels in th
 reference & $0.583847$ & $0.17471$ & $0.0220$ \\
 with centre of mass & $+1.4\times10^{-8}$ & $+9.1\times10^{-7}$ & $-7.1\times10^{-6}$ \\
 without centre of mass & $-3.5\times10^{-8}$ & $+5.8\times10^{-7}$ & $-2.5\times10^{-6}$ \\
-3-D network, rotated data & \pending{} & & \\
+pointwise outer conditions only & $-6.3\times10^{-8}$ & $+7.3\times10^{-7}$ & $-3.2\times10^{-6}$ \\
+3-D network, rotated data & $-5.9\times10^{-6}$ & $+2.5\times10^{-5}$ & $-1.2\times10^{-3}$ \\
 \end{tabular}
 \end{ruledtabular}
 \end{table}
@@ -544,7 +578,11 @@ without centre of mass & $-3.5\times10^{-8}$ & $+5.8\times10^{-7}$ & $-2.5\times
 solution's own axis, the local power $\dd\ln|c_l|/\dd\ln\rho$ of the reference is $-1.00$, $-3.00$
 and $-5.0$ for $l=0,2,4$ (the last out to $\rho\approx30$, where $c_4\sim10^{-10}$), and its odd
 modes are at $10^{-16}$. The network with the centre-of-mass condition gives the same powers, with
-its odd modes below $10^{-8}$ \pending{and qp\_rot}. In the mass-centred harmonic
+its odd modes below $10^{-8}$ (with or without the additional outer conditions). The
+three-dimensional network on the rotated data, expanded about the data axis, has odd modes of
+$1.3\times10^{-6}$; its $l=2$ tail holds out to $\rho\approx30$ and its $l=4$ tail only to
+$\rho\approx5$, consistently with its $M_4$ being good to 5\% while $M_0$ and $M_2$ are good to
+$10^{-5}$ and $1.4\times10^{-4}$ relative. In the mass-centred harmonic
 chart $c_l\rho^{l+1}$ tends to $0.58387$, $0.1747$ and $0.0220$, i.e.\ to $M_0$, $M_2$ and $M_4$,
 consistently with harmonic coordinates being asymptotically Cartesian and mass
 centred~\cite{Thorne1980,Gursel1983}: a second, independent route to the same numbers.
@@ -558,7 +596,10 @@ prescribed inner data and asymptotic flatness, and reproduces exact solutions wi
 symmetry. Two ingredients are essential: a network whose connection is derived from its metric,
 and a complete gauge fixing. Harmonic coordinates and the inner data leave the asymptotic chart
 free to translate; the mode is invisible to every residual except at a very low level, and it is
-the largest error until the pseudo-Newtonian centre of mass is fixed. We expect the same issue, and
+the largest error until the pseudo-Newtonian centre of mass is fixed. With that, the boundary
+conditions are minimal: $\lambda$ and the induced metric on the inner sphere, pointwise Robin
+conditions on the outer one, nothing on $h_{rr}$ or $h_{rA}$; conditions added beyond these only
+make the solution worse. We expect the same issue, and
 the same remedy, in any elliptic formulation of the stationary problem whose inner data do not fix
 the asymptotic frame. The Geroch--Hansen moments of the computed solutions can be read off the
 symmetry axis without constructing Weyl coordinates, and they are insensitive to that translation.
@@ -579,10 +620,14 @@ NVIDIA A30 (24~GB). Each result is produced by the commands below, all in the re
 \item Schwarzschild tests (Table~\ref{tab:firstorder}): \texttt{Paper/commands\_schwarzschild.sh}.
 \item Weyl tests: the configurations stored with each run (\texttt{runs/weyl\_*/config.json});
   the rotated test, \texttt{Paper/commands\_weyl.sh}.
-\item Quadrupolar data: \texttt{recipe\_pq16k.sh} (the problem) and the stages
-  \texttt{qp\_com\_*}, \texttt{qp\_nocom\_*}, \texttt{qp\_rot\_*}: the Adam stage of
+\item Quadrupolar data: \texttt{recipe\_pq16k.sh} (the problem). With and without the centre of
+  mass (Table~\ref{tab:com}), \texttt{qp\_com\_*}, \texttt{qp\_nocom\_*}: the Adam stage of
   \texttt{mendieta\_submit.sh} (round P; 6 minutes) and the SSBroyden stages of
-  \texttt{Paper/hub\_qp.sh} (about 20 minutes per 10000 iterations on one A30).
+  \texttt{Paper/hub\_qp.sh} (about 20 minutes per 10000 iterations on one A30, with the extra
+  outer spheres). The outer conditions (Table~\ref{tab:ablation}), \texttt{ab\_*}, also in
+  \texttt{Paper/hub\_qp.sh} (Adam 3 minutes, 11 minutes per SSBroyden stage). Off-axis data,
+  \texttt{Paper/hub\_qp3.sh} (\texttt{qp\_rot3\_*}, 10 minutes per stage) and, with the wider
+  network, \texttt{Paper/hub\_qp4.sh}.
 \item The spectral reference: \texttt{Paper/commands\_specref.sh} (reproduces the loss
   $2.793\times10^{-11}$; 36 minutes on one A30).
 \item Grading and moments: \texttt{scripts/grade\_rotated.py}, \texttt{scripts/fresh\_sample\_loss.py},
