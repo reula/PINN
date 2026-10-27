@@ -30,3 +30,13 @@ ldc/*.npy
 clementina/*.out
 clementina/*.err
 clementina/__pycache__/
+
+# Hub (serafin) and git worktrees: notebook checkpoints, git's own FETCH_HEAD, a stray
+# scratch notebook, and the vendored reference copy that `pinn.reference` loads at run time
+# (byte-identical to ldc/reference_gen/ldc_reference.npz, so it must not be tracked twice;
+# it is regenerated on the hub with
+#   cp ldc/reference_gen/ldc_reference.npz Evolution_try/vendor/dsgnar_pinn/pinn/references/ldc.npz ).
+**/.ipynb_checkpoints/
+FETCH_HEAD
+Stationary/Untitled.ipynb
+Evolution_try/vendor/dsgnar_pinn/pinn/references/

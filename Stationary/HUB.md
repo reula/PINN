@@ -1407,3 +1407,114 @@ already calls it whenever `cfg.weyl` is set (see `curv_fn`, lines 89, 100-101, 2
 
 Carrying `weyl`, `weyl_rotate_deg` and the remaining `weyl_*` keys through `load_run` is the
 whole fix; the rotated runs' slices correct themselves as soon as it is made.
+
+---
+
+# 7. The LDC / paper-optimiser work on this hub, and how to get commits off it
+
+This section is about the **lid-driven cavity (LDC)** work that uses the paper's own DSGNAR
+implementation, not `stationary`.  The results, the memory diagnosis and the full chronology are
+in **`clementina/REPORT-ldc-a30-mendieta.md`**; what follows is only what is particular to this
+hub.
+
+## 7.1 What lives where
+
+| path | what it is |
+|---|---|
+| `ldc/ldc.ipynb` | the paper's optimiser driven step by step on the LDC (`MODE = smoke | a30 | paper`); the `a30` preset is the reduced configuration sized for *this* hub's shared A30 slice |
+| `ldc/ldc-paper.ipynb`, `ldc/ldc_pinn.ipynb` | the paper's own trainer (`pinn.train64`) on the LDC; the `paper` mode is the paper configuration |
+| `Evolution_try/vendor/dsgnar_pinn/` | the vendored paper package itself (`pinn.optimiser`, `pinn.trainer64`, ...) — untouched by `stationary` |
+| `clementina/` | the batch drivers for Clementina/Mendieta; the same `ldc_run.py` logic is what the notebooks call by hand |
+| `ldc/params/*.npy,*.json` | trained parameters + architecture, reloadable with `python clementina/ldc_params.py --params ... --network ...` |
+
+Environment for this work: the hub's CUDA interpreter is `Stationary/.venv/bin/python` (§1), and
+the LDC code additionally needs **`equinox` and `jaxtyping`**, which the `stationary` work does
+not use.  Install them into whichever venv has the CUDA jax, *without* touching jax itself:
+
+```bash
+uv pip install --python ~/serafin/Julia/PINN/Stationary/.venv/bin/python equinox jaxtyping
+```
+
+A git **worktree** of this repo has no untracked `.venv`, so `find_python()` in
+`Evolution_try/scripts/env.sh` fails there; pin the interpreter explicitly
+(`export PY=~/serafin/Julia/PINN/Stationary/.venv/bin/python`) before calling it.
+
+## 7.2 The two flags that decide whether the paper configuration fits a GPU here
+
+Both were misdiagnosed for a long time; see the report for the full story.
+
+* **`XLA_PYTHON_CLIENT_MEM_FRACTION`** — JAX's default is `0.75`, so on a 24 GiB card
+  `jax.devices()[0].memory_stats()['bytes_limit']` reports ~18 GiB and a script that prints it as
+  "device limit" is reporting the allocator's budget, **not the hardware**.  Do not conclude the
+  card is small from that number.  The hub's shared slice is smaller still, and
+  `nvidia-smi` is the authority.
+* **`XLA_FLAGS=--xla_gpu_autotune_level=0` must be exported in the shell, before python.**
+  `ldc_paper_run.py` sets it with `os.environ.setdefault` *after* importing jax, so XLA has
+  already parsed its flags and autotuning stays on; the autotuner then picks a kernel whose
+  workspace is **27 GiB**.  That fits a 48 GiB card (which is why the trainer once ran on
+  Clementina) and OOMs a 24 GiB one at *any* evaluation batch size.  With the flag exported
+  early the same evaluation needs ~0.015 GiB.
+* The paper configuration's **training step** also needs `--batch 1024` (the paper's 2^12 needs
+  > 21 GiB once the dense Jacobian and its XLA temporaries are materialised).  The batch only
+  chunks the accumulation; it is mathematically irrelevant in the exact-residual mode.
+
+## 7.3 Runtime data that is deliberately not tracked
+
+`Evolution_try/vendor/dsgnar_pinn/pinn/references/ldc.npz` is loaded through
+`pinn.reference` (`files("pinn").joinpath("references", "<name>.npz")`).  It is byte-identical to
+`ldc/reference_gen/ldc_reference.npz`, so it is **gitignored** and regenerated on the hub with
+
+```bash
+cp ldc/reference_gen/ldc_reference.npz Evolution_try/vendor/dsgnar_pinn/pinn/references/ldc.npz
+```
+
+`.ipynb_checkpoints/`, git's `FETCH_HEAD` and `Stationary/Untitled.ipynb` are gitignored too, so
+`git status` on the hub comes out clean once the checkout is up to date.
+
+## 7.4 This hub can fetch but **cannot push** — the outbox procedure
+
+`git fetch` here works (the repo is public over https), but `git push` fails with
+
+```
+fatal: could not read Username for 'https://github.com': No such device or address
+```
+
+because there are no credentials and no interactive terminal.  Do not leave work sitting in this
+checkout.  To publish it, commit on a branch here and carry the commit to a machine that *can*
+push (the Mac), then push from there:
+
+```bash
+# on the hub: commit the work locally (a branch keeps main clean)
+cd ~/serafin/Julia/PINN
+git switch -c hub/<topic>-<date>
+git add -A -- <paths>
+git commit -m "<message>"
+git format-patch -1 --binary --stdout > /tmp/<topic>.patch   # --binary: notebooks/pngs
+
+# on the Mac (which has push credentials)
+scp serafin.ccad.unc.edu.ar:/tmp/<topic>.patch /tmp/
+cd <mac checkout> && git am /tmp/<topic>.patch && git push origin main
+
+# back on the hub, clean up
+git switch main && git pull --ff-only && git branch -D hub/<topic>-<date>
+```
+
+Two traps found the hard way: (1) if the hub is *behind* origin, a `git pull --ff-only` refuses
+while there are local modifications and untracked files — check whether those files are
+byte-identical to origin (`git diff --quiet origin/main -- <path>`) and discard them only if they
+are; (2) `git am` on the Mac fails with "already exists" if the same paths are untracked there,
+so move them aside first.  This is exactly how the hub's uncommitted LDC material was rescued on
+2026-10-27 (commit `15336e7`: the dated LDC notebooks, the pre-exact-residual vendored optimiser
+snapshot, `ldc/setup_gpu_kernel.sh`, `ldc/update_notebook.py`, `ldc/diag.txt`, and two old
+`Stationary/` figures).
+
+## 7.5 Housekeeping checklist for this hub
+
+1. `git status --short` and `git log --oneline -1 origin/main` before starting work: the hub is
+   often behind, and a stale checkout is how "the import is missing" failures happen.
+2. Do not leave uncommitted notebooks here: commit on a `hub/...` branch and use the outbox
+   (§7.4) the same day.
+3. `nvidia-smi` before trusting a memory number, then `jax.devices()` and the two flags of §7.2.
+4. Long runs: `setsid nohup` survives a disconnected browser but **not** a container recreation
+   (§0) — prefer resumable/checkpointed drivers.
+5. `ls **/.ipynb_checkpoints` occasionally; they are ignored now but still accumulate on disk.
