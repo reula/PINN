@@ -1,0 +1,7 @@
+python 3.13.11
+cwd    /serafin/reula/Julia/PINN/ldc
+repo   /serafin/reula/Julia/PINN
+cache  /tmp/jaxcache-reula
+found  {'jax': True, 'equinox': True, 'jaxtyping': True, 'matplotlib': True, 'IPython': True, 'ipywidgets': True}
+jax    0.11.1  backend=gpu  devices=['cuda:0']
+pinn   /serafin/reula/Julia/PINN/Evolution_try/vendor/dsgnar_pinn/pinn/__init__.py
