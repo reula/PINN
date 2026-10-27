@@ -56,11 +56,16 @@ over qp_com); the far-field lambda error rises from 9e-10 to 7e-9, still 4e4 bel
 |---|---|---|---|---|---|---|
 | qp_rot_w3 | ladder + pins, COM 24 x 8 (aliased) | 5.4e-7 | 1.82e-5 | 7.7e-4 | — | — |
 | qp_rot2_w3 | ladder + pins, COM 48 x 32 | 1.35e-6 | 8.9e-6 | 1.84e-3 | 3.8e-3 | 4.8e-6 |
-| qp_rot3_w4 | no ladder, no pins, COM 48 x 32 (hub_qp3.sh) | running | | | | |
+| qp_rot3_w4 | no ladder, no pins, COM 48 x 32 (hub_qp3.sh) | 1.17e-6 | 9.05e-6 | 1.19e-3 | 2.5e-3 | 1.0e-5 |
 
 qp_rot2 still decreasing slowly (~20% per 10000 Wolfe iterations, Ricci and gauge residuals
 dominant); fresh/train 1.03. The rotated exact Weyl run (weyl_rot45_hyb, no ladder, no pins)
 reached 5.1e-9 with the same 3-D network, hence qp_rot3 in the final formulation.
+qp_rot3: stages 2.1e-6, 1.6e-6, 1.3e-6, 1.17e-6 (10 min each, about twice as fast as qp_rot2: no
+ladder spheres); fresh/train 1.05. Same plateau as qp_rot2, so the ladder and pins are not what
+limits the 3-D case; the Ricci and gauge residuals dominate, and the error sits in h near the
+inner sphere (rho 1-3: 2.5e-3 against a perturbation of 2.3e-2). Likely capacity: 2347 parameters
+for a strong-field (lambda ~ 1/3 at rho_in) tilted datum, against the weak-field rotated Weyl test.
 
 ## The inner condition (for the sentence on h_rr, h_rA in II.D)
 
