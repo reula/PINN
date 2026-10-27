@@ -486,6 +486,9 @@ class Config:
     # loss sum accordingly; parameters and the inverse Hessian stay replicated.  For a point count
     # that does not fit one GPU (262144 on a 24 GB A30): `--gres=gpu:2` and --shard-coll.
     shard_coll: bool = False
+    # (n_mu, n_phi) of the centre-of-mass quadrature; None = losses.com_quadrature's choice
+    # (24 x 8 for axisymmetric networks, 48 x 32 for 3-D ones)
+    com_quad: tuple | None = None
     plateau_tol: float = 1e-4
     plateau_patience: int = 3
     plateau_min_iters: int = 100   # negative DISABLES the plateau stop (train.py);

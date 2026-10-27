@@ -545,12 +545,37 @@ def outer_pin_raw(point_fields, xs, cfg, exact_fields=None):
     return averaged, value
 
 
-def com_flux(point_fields, cfg, n_mu: int = 24, n_phi: int = 8):
+COM_QUAD_AXISYM = (24, 8)      # Gauss-Legendre nodes in mu x uniform nodes in phi
+COM_QUAD_3D = (48, 32)
+
+
+def com_quadrature(cfg):
+    """(n_mu, n_phi) of the centre-of-mass quadrature for this configuration.
+
+    The phi nodes are uniform about the coordinate z axis.  For an axisymmetric network that is
+    the symmetry axis and 24 x 8 is converged (qp_nocom_w2: d_z identical to 96 x 64 in all
+    printed digits).  For a 3-D network with data about another axis it is not: on the inner
+    sphere of rot_from_fit, 24 x 8 gave |d| ~ 1e-7 where the converged value is d_x = 6.7e-6 (the
+    field's phi structure about z aliased), so the condition was met only on the coarse nodes.
+    48 x 32 agrees with 96 x 64 there.  Config.com_quad overrides both.
+    """
+    q = getattr(cfg, "com_quad", None)
+    if q:
+        return int(q[0]), int(q[1])
+    return COM_QUAD_AXISYM if cfg.arch in ("axisym_hybrid", "sym", "sym_hybrid") else COM_QUAD_3D
+
+
+def com_flux(point_fields, cfg, n_mu: int | None = None, n_phi: int | None = None):
     """d^i = D^i/(4 pi) on each sphere of cfg.com_radii, flattened (3 per sphere); see Config.
 
-    D^i = oint sqrt(h) h^jk (x^i d_k U - U delta^i_k) n_j rho^2 dOmega with U = ln(lambda)/2.
+    D^i = oint sqrt(h) h^jk (x^i d_k U - U delta^i_k) n_j rho^2 dOmega with U = ln(lambda)/2,
+    on the quadrature of `com_quadrature(cfg)` unless n_mu / n_phi are given.
     """
     import numpy as _np
+    if n_mu is None or n_phi is None:
+        qm, qp = com_quadrature(cfg)
+        n_mu = qm if n_mu is None else n_mu
+        n_phi = qp if n_phi is None else n_phi
     mu, w = _np.polynomial.legendre.leggauss(n_mu)
     phi = 2 * _np.pi * _np.arange(n_phi) / n_phi
     MU, PHI = _np.meshgrid(mu, phi, indexing="ij")
