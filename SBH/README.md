@@ -443,11 +443,13 @@ Lapse error and Theta as with the correction alone (lapse 1.2-1.9x the run's at 
 
 **Stage 2 on the GPU (2026-10-27; jobs 1184417 / 1184387, one A30, 1 h 39 / 2 h 10): correction on top of the
 frozen `long_con10`, 40 windows, 128k points per draw evenly in the ball, 4x64, 24k iterations, `--eps 1e-2
---core_taper 1`; without / with `--w_adm 1`.** Held-out loss of the sum vs u1: 0.55x / 0.49x (r 5-15: 0.57x /
+--core_taper 1`; without / with `--w_adm 1`.** Names used from here on: the **stage-2 correction** (no ADM term) and the **stage-2 H/M
+correction** (`--w_adm`), always graded as run + correction; the **windowed H/M run** is the 40-window run
+trained with `--w_adm` (`long_con10_adm`, below). Held-out loss of the sum vs u1: 0.55x / 0.49x (r 5-15: 0.57x /
 0.68x; r 1-5: 1.11x / 1.52x; ADM term 0.77x / 0.38x). Graded (`tools/sphere_errors.py --stage2`), peak of
 the outgoing deficit (most negative sphere mean over r > 2), run / + correction / + correction with H, M:
 
-| t | `long_con10` | + correction | + correction with `--w_adm 1` |
+| t | `long_con10` | + stage-2 correction | + stage-2 H/M correction |
 |---|---|---|---|
 | 4 | -3.8 % (r 5.5) | -3.0 % | **-0.1 %** |
 | 6 | -8.1 % (r 7.6) | -4.8 % | **-0.8 %** |
