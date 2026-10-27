@@ -27,6 +27,7 @@ from dataclasses import asdict
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 
 from . import diagnostics, exact
@@ -1201,6 +1202,19 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             res = types.SimpleNamespace(x=r.x, fun=r.fun, nit=r.nit,
                                         status=0 if int(r.nit) < block else 1,
                                         hess_inv=r.hess_inv, stats=r.stats)
+            if not (np.isfinite(float(r.fun)) and bool(jnp.all(jnp.isfinite(r.x)))):
+                # A NON-FINITE BLOCK IS REJECTED, not kept.  The strong-Wolfe search may expand a
+                # step up to alphamax (1e3) and, where the network overflows, a NaN loss passes
+                # every comparison as False and is accepted: qp_nocom_w1 (2026-10-26) went from
+                # 1.07e-10 to NaN in block 31 and the phase then carried the NaN state to the end
+                # (and the next stage started from it).  Keep the block's starting point, give the
+                # next block the identity (initial_scale re-engages through the stall counter), and
+                # let the stall rule stop a phase that cannot get past it.
+                if verbose:
+                    print(f"[qn] block {b + 1}: non-finite result (loss {float(r.fun)}) -- rejected, "
+                          f"the block's starting point is kept", flush=True)
+                res = types.SimpleNamespace(x=x, fun=f_before, nit=0, status=1,
+                                            hess_inv=jnp.eye(n, dtype=flat0.dtype), stats=r.stats)
         elif getattr(cfg, "qn_reuse_objective", False):
             # one objective object per (sample, weights): Crunch's static-argument jit cache hits
             # on every later block instead of compiling (and keeping) a new line search

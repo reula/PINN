@@ -102,3 +102,35 @@ def test_the_real_merged_crunch_runs_and_never_retraces(tmp_path, capsys):
     assert "[resample" in out, "the run did not resample, so the test proves nothing"
     m = re.search(r"SSBroyden: loss (\S+) -> (\S+) in", out)
     assert m and float(m.group(2)) < float(m.group(1)), "the merged phase did not lower the loss"
+
+
+def test_a_non_finite_block_is_rejected(tmp_path, monkeypatch):
+    """qp_nocom_w1 (2026-10-26): one block came back NaN (a strong-Wolfe step into overflow) and
+    the phase carried the NaN state to the end.  A non-finite block must leave the parameters
+    where they were, restart from the scaled identity, and not end the run NaN."""
+    calls = []
+
+    def fake_minimize(fun_val, fun_val_grad, x0, options):
+        calls.append({"x": np.asarray(x0), "H": np.asarray(options["initial_H"]),
+                      "scale": options["initial_scale"]})
+        n = int(np.asarray(x0).size)
+        if len(calls) == 2:                                   # the second block blows up
+            return types.SimpleNamespace(x=x0 * jnp.nan, fun=jnp.nan,
+                                         nit=jnp.array(options["maxiter"]),
+                                         hess_inv=jnp.eye(n), stats={"n_update": 0, "n_skip": 0, "n_first": 0})
+        v = float(fun_val(x0))
+        return types.SimpleNamespace(x=x0 * 0.999, fun=0.5 * v, nit=jnp.array(options["maxiter"]),
+                                     hess_inv=MARK * jnp.eye(n),
+                                     stats={"n_update": 1, "n_skip": 0, "n_first": 0})
+
+    monkeypatch.setattr(T, "_crunch_minimize", lambda *a, **k: (fake_minimize, "test-fake"))
+    cfg = parse_args(TINY + ["--outdir", str(tmp_path / "run"), "--steps", "0",
+                            "--lbfgs-steps", "40", "--qn-block", "10", "--plateau-min-iters", "-1",
+                            "--resample-every", "0"])
+    T.train(cfg, verbose=False)
+    assert len(calls) == 4
+    assert np.allclose(calls[2]["x"], calls[1]["x"]), "the NaN block's result was kept"
+    assert np.allclose(calls[2]["H"], np.eye(len(calls[2]["H"]))) and calls[2]["scale"] is True
+    import json
+    hist = json.load(open(tmp_path / "run" / "history.json"))
+    assert all(np.isfinite(r["loss"]) for r in hist), "a NaN loss reached the history"
