@@ -1410,14 +1410,14 @@ whole fix; the rotated runs' slices correct themselves as soon as it is made.
 
 ---
 
-# 7. The LDC / paper-optimiser work on this hub, and how to get commits off it
+## 18. The LDC / paper-optimiser work on this hub, and how to get commits off it
 
 This section is about the **lid-driven cavity (LDC)** work that uses the paper's own DSGNAR
 implementation, not `stationary`.  The results, the memory diagnosis and the full chronology are
 in **`clementina/REPORT-ldc-a30-mendieta.md`**; what follows is only what is particular to this
 hub.
 
-## 7.1 What lives where
+### 18.1 What lives where
 
 | path | what it is |
 |---|---|
@@ -1439,7 +1439,7 @@ A git **worktree** of this repo has no untracked `.venv`, so `find_python()` in
 `Evolution_try/scripts/env.sh` fails there; pin the interpreter explicitly
 (`export PY=~/serafin/Julia/PINN/Stationary/.venv/bin/python`) before calling it.
 
-## 7.2 The two flags that decide whether the paper configuration fits a GPU here
+### 18.2 The two flags that decide whether the paper configuration fits a GPU here
 
 Both were misdiagnosed for a long time; see the report for the full story.
 
@@ -1458,7 +1458,7 @@ Both were misdiagnosed for a long time; see the report for the full story.
   > 21 GiB once the dense Jacobian and its XLA temporaries are materialised).  The batch only
   chunks the accumulation; it is mathematically irrelevant in the exact-residual mode.
 
-## 7.3 Runtime data that is deliberately not tracked
+### 18.3 Runtime data that is deliberately not tracked
 
 `Evolution_try/vendor/dsgnar_pinn/pinn/references/ldc.npz` is loaded through
 `pinn.reference` (`files("pinn").joinpath("references", "<name>.npz")`).  It is byte-identical to
@@ -1471,7 +1471,7 @@ cp ldc/reference_gen/ldc_reference.npz Evolution_try/vendor/dsgnar_pinn/pinn/ref
 `.ipynb_checkpoints/`, git's `FETCH_HEAD` and `Stationary/Untitled.ipynb` are gitignored too, so
 `git status` on the hub comes out clean once the checkout is up to date.
 
-## 7.4 This hub can fetch but **cannot push** — the outbox procedure
+### 18.4 This hub can fetch but **cannot push** — the outbox procedure
 
 `git fetch` here works (the repo is public over https), but `git push` fails with
 
@@ -1508,7 +1508,7 @@ so move them aside first.  This is exactly how the hub's uncommitted LDC materia
 snapshot, `ldc/setup_gpu_kernel.sh`, `ldc/update_notebook.py`, `ldc/diag.txt`, and two old
 `Stationary/` figures).
 
-## 7.5 Housekeeping checklist for this hub
+### 18.5 Housekeeping checklist for this hub
 
 1. `git status --short` and `git log --oneline -1 origin/main` before starting work: the hub is
    often behind, and a stale checkout is how "the import is missing" failures happen.
