@@ -10,7 +10,8 @@ with Carlos). It is Python/JAX, not Julia. What it does and every flag:
 EEccz4_BH_puncture.py     the one script (merged 2026-10-17, see section 1)
 Crunch/                   optimiser library (SSBroyden/BFGS/SCORE, Wolfe search; merged version of 2026-10-17, section 5); must sit next to the script
 docs/                     summary_ccz4.txt, equations_ccz4.{txt,pdf}, README_bundle.md (the MN5 bundle's notes)
-jobs/mendieta/bh.sbatch   Mendieta job (presets single | bbh | smoke | bench)
+jobs/mendieta/bh.sbatch   Mendieta job (presets single | bbh | smoke | bench | stage2 | eval)
+jobs/hub/stage2.sh        stage2.py on the CCAD JupyterHub GPU (detached, resumable; 2026-10-27)
 jobs/mn5/*.psubmit        the collaborators' MareNostrum 5 jobs, pointed at the merged script
 dsgnar.py                 DSGNAR optimiser (vendored from Stationary/, section 4)
 tools/                    load_defs.py, bench_loss.py, check_taylor.py, taylor_proto.py, smoke_local.sh, test_dsgnar_bh.py
@@ -71,6 +72,16 @@ The script writes every output into `--outdir` (default: the current directory).
 **Laptop smoke test** (about 5 min on the M2, 2 windows, tiny network):
 
     cd ~/Julia/PINN/SBH && bash tools/smoke_local.sh runs/smoke [extra flags]
+
+**JupyterHub** (CCAD, A30; 2026-10-27, used when the Mendieta queue is slow). The hub mounts the
+serafin home (`~/serafin/Julia/PINN` on the hub = `~/Julia/PINN` on serafin); `runs/` is not in git,
+so the frozen run is copied to serafin first (`rsync` via the laptop). The script uses the Stationary
+venv read-only and installs `tqdm` (missing there) into `SBH/.pydeps`. Paste in a hub terminal:
+
+    cd ~/serafin/Julia/PINN && git pull && cd SBH
+    OUTDIR=stage2_con10_adm_g10 STAGE2_ARGS="--sampling uniform --core_taper 1.0 --eps 1e-2 --w_adm 1 --w_gauge 10 --n_per_window 3200 --hidden 64 --layers 4 --iters 24000" bash jobs/hub/stage2.sh
+
+Relaunching the same line after a container restart resumes from `runs/$OUTDIR/stage2_params.pkl`.
 
 **Mendieta** (2 x A30 per node; jobs are submitted from `SBH/`, outputs in `runs/<OUTDIR>`):
 
