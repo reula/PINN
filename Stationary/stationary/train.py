@@ -1964,6 +1964,9 @@ def parse_args(argv=None):
                         "trust region, from the previous cycle's parameters")
     p.add_argument("--dsgnar-cycle-steps", type=int, default=None, dest="dsgnar_cycle_steps",
                    help="iterations per cycle (default: --dsgnar-steps)")
+    p.add_argument("--no-pin-lam", action="store_true", dest="no_pin_lam",
+                   help="no averaged outer pin on lambda or P (overrides --pin-lam-robin / "
+                        "--pin-lam-potential; for ablations)")
     p.add_argument("--pin-lam-robin", action="store_true", dest="pin_lam_robin",
                    help="pin the same monopole through the ORDER-1 ROBIN COMBINATION "
                         "instead of its value: rho d_rho <lam> + (<lam> - lam_inf) = 0, the "
@@ -2249,6 +2252,9 @@ def parse_args(argv=None):
         cfg.pin_lam_robin = True
     if a.pin_lam_potential:
         cfg.pin_lam_potential = True
+    if getattr(a, "no_pin_lam", False):
+        cfg.pin_lam_robin = False
+        cfg.pin_lam_potential = False
     if a.dsgnar_cycles is not None:
         cfg.dsgnar_cycles = a.dsgnar_cycles
     if a.dsgnar_cycle_steps is not None:

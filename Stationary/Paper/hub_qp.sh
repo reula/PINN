@@ -6,6 +6,7 @@
 #   qp_com_w1, qp_com_w2          with the centre-of-mass condition
 #   qp_nocom_w1, qp_nocom_w2      the same without it
 #   qp_rot_w1 .. qp_rot_w3        the datum about (1,0,1)/sqrt 2, 3-D metric-only network
+#   ab_{noladder,nopins,none}_*   qp_com from scratch without the Robin ladder / the pins / both
 # After each chain: the loss on 5 fresh samples and the grade against the (rotated) fine reference.
 #
 #   bash Paper/hub_qp.sh           launches itself detached (setsid nohup) and returns
@@ -44,6 +45,13 @@ stage() {   # stage <name> <init run> <flags...>
     "$PY" -u -m stationary.train --outdir "runs/$name" "${S_RECIPE[@]}" "${SSB[@]}" \
         --init-from "runs/$init/params.pkl" "${res[@]}" "$@"
 }
+adam() {    # adam <name> <flags...>: the 5000-step Adam warm-up from scratch
+    local name=$1; shift
+    if [ -f "runs/$name/report.json" ]; then echo "--- $name: done, skipped"; return; fi
+    echo "--- $name (Adam)  $(date -u '+%T UTC')"
+    "$PY" -u -m stationary.train --outdir "runs/$name" "${S_RECIPE[@]}" --steps 5000 --plateau-min-iters -1 \
+        --lbfgs-steps 0 "$@"
+}
 check() {   # check <run>
     [ -f "runs/$1/fresh_samples.json" ] || "$PY" -u scripts/fresh_sample_loss.py "runs/$1" --n 5
     "$PY" -u scripts/grade_rotated.py "runs/$1" --ref "$REF"
@@ -59,6 +67,18 @@ stage qp_rot_w1   qp_rot_adam   "${ROT[@]}" "${RHO4[@]}" "${PP[@]}" "${COM[@]}"
 stage qp_rot_w2   qp_rot_w1     "${ROT[@]}" "${RHO4[@]}" "${PP[@]}" "${COM[@]}"
 stage qp_rot_w3   qp_rot_w2     "${ROT[@]}" "${RHO4[@]}" "${PP[@]}" "${COM[@]}"
 check qp_rot_w3
+# Ablations (2026-10-27): with the centre of mass fixed, are the Robin ladder and the averaged pins
+# still needed?  qp_com from scratch without the ladder (Robin at rho_out only), without the pins,
+# and without both; graded against the same reference.
+BASE=("${RHO4[@]}" "${PP[@]}" "${COM[@]}")
+for v in "ab_noladder:--outer-shell-fracs 1.0" "ab_nopins:--no-pin-h-robin --no-pin-lam" \
+         "ab_none:--outer-shell-fracs 1.0 --no-pin-h-robin --no-pin-lam"; do
+    tag=${v%%:*}; read -r -a X <<< "${v#*:}"
+    adam  ${tag}_adam               "${BASE[@]}" "${X[@]}"
+    stage ${tag}_w1 ${tag}_adam     "${BASE[@]}" "${X[@]}"
+    stage ${tag}_w2 ${tag}_w1       "${BASE[@]}" "${X[@]}"
+    check ${tag}_w2
+done
 echo "=== hub_qp finished $(date -u '+%F %T UTC')"
 curl -s -H "Title: hub_qp finished" -d "Stationary paper runs (Wolfe) done on the hub: qp_com, qp_nocom, qp_rot" \
      https://ntfy.sh/pinn-reula-f0798d1ec301 > /dev/null || true
