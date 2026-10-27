@@ -53,6 +53,8 @@ ap.add_argument("--w_constraint", type=float, default=10.0)
 ap.add_argument("--w_adm", type=float, default=0.0,
                 help="weight of mean(chi^p (H^2 + |M_i|^2)), the ADM constraints of the sum (adm_constraints.py)")
 ap.add_argument("--adm_chi_power", type=float, default=2.0)
+ap.add_argument("--w_gauge", type=float, default=1.0,
+                help="extra factor on the gauge rows (alpha, beta) of the residual: holds the sum to the run's gauge")
 ap.add_argument("--eps", type=float, default=0.0, help="0: rms of u1's residual on the first sample")
 ap.add_argument("--windows", type=int, default=0, help="use only the first K windows (tests); 0 = all")
 ap.add_argument("--min_puncture_dist", type=float, default=0.02)
@@ -155,7 +157,7 @@ def band_losses(derivs, rr):
 
 
 def total(ein, gau, con, hm):
-    return ein + gau + a.w_constraint * con + a.w_adm * hm
+    return ein + a.w_gauge * gau + a.w_constraint * con + a.w_adm * hm
 
 
 # ---- points ----------------------------------------------------------------------------------
@@ -301,7 +303,7 @@ while it < a.iters:
                  "key": np.asarray(key), "T": T, "R": R, "hidden": a.hidden, "layers": a.layers,
                  "run": os.path.abspath(a.run), "windows": W, "w_constraint": a.w_constraint,
                  "core_taper": a.core_taper, "sampling": a.sampling, "w_adm": a.w_adm,
-                 "adm_chi_power": a.adm_chi_power},
+                 "adm_chi_power": a.adm_chi_power, "w_gauge": a.w_gauge},
                 open(ckpt + ".tmp", "wb"))
     os.replace(ckpt + ".tmp", ckpt)
 print("done:", hist)
