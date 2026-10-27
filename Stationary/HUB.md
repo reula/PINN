@@ -1471,17 +1471,32 @@ cp ldc/reference_gen/ldc_reference.npz Evolution_try/vendor/dsgnar_pinn/pinn/ref
 `.ipynb_checkpoints/`, git's `FETCH_HEAD` and `Stationary/Untitled.ipynb` are gitignored too, so
 `git status` on the hub comes out clean once the checkout is up to date.
 
-### 18.4 This hub can fetch but **cannot push** — the outbox procedure
+### 18.4 Getting commits off this hub: direct push (since 2026-10-27), or the outbox fallback
 
-`git fetch` here works (the repo is public over https), but `git push` fails with
+**Direct push works now.**  The hub's `~/.ssh/id_rsa.pub` (RSA 3072, fingerprint
+`SHA256:+kZlN3cgm4e5qORWWWGAU1da4fEogc3omsULHu/SRHA`) is registered on GitHub as a **deploy key
+with write access on `reula/PINN`**, and the remote is SSH
+(`git@github.com:reula/PINN.git`).  Verified 2026-10-27: `ssh -T git@github.com` answers
+`Hi reula/PINN! You've successfully authenticated`, and a throwaway branch push succeeded.  So the
+normal flow is the usual one:
+
+```bash
+cd ~/serafin/Julia/PINN          # hub node; ~/Julia/PINN on the serafin login node
+git add -A -- <paths> && git commit -m "..."
+git push origin main
+```
+
+Two limits worth remembering: the deploy key is scoped to **this one repository** (it cannot
+push other repos, and it is not an account key), and before 2026-10-27 the hub had *no*
+credentials at all -- an attempt failed with
 
 ```
 fatal: could not read Username for 'https://github.com': No such device or address
 ```
 
-because there are no credentials and no interactive terminal.  Do not leave work sitting in this
-checkout.  To publish it, commit on a branch here and carry the commit to a machine that *can*
-push (the Mac), then push from there:
+so older notes about "the hub cannot push" describe the pre-deploy-key state.  If the key is ever
+removed or another account/repo is needed, use the **outbox fallback**: commit here and carry the
+commit to a machine that can push (the Mac, which has the account key), then push from there:
 
 ```bash
 # on the hub: commit the work locally (a branch keeps main clean)
@@ -1499,7 +1514,7 @@ cd <mac checkout> && git am /tmp/<topic>.patch && git push origin main
 git switch main && git pull --ff-only && git branch -D hub/<topic>-<date>
 ```
 
-Two traps found the hard way: (1) if the hub is *behind* origin, a `git pull --ff-only` refuses
+Two traps found the hard way when using the fallback: (1) if the hub is *behind* origin, a `git pull --ff-only` refuses
 while there are local modifications and untracked files — check whether those files are
 byte-identical to origin (`git diff --quiet origin/main -- <path>`) and discard them only if they
 are; (2) `git am` on the Mac fails with "already exists" if the same paths are untracked there,
@@ -1512,8 +1527,8 @@ snapshot, `ldc/setup_gpu_kernel.sh`, `ldc/update_notebook.py`, `ldc/diag.txt`, a
 
 1. `git status --short` and `git log --oneline -1 origin/main` before starting work: the hub is
    often behind, and a stale checkout is how "the import is missing" failures happen.
-2. Do not leave uncommitted notebooks here: commit on a `hub/...` branch and use the outbox
-   (§7.4) the same day.
+2. Do not leave uncommitted notebooks here: commit them and `git push` the same day (direct
+   push works, §18.4); the outbox is only the fallback.
 3. `nvidia-smi` before trusting a memory number, then `jax.devices()` and the two flags of §7.2.
 4. Long runs: `setsid nohup` survives a disconnected browser but **not** a container recreation
    (§0) — prefer resumable/checkpointed drivers.
