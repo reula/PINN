@@ -88,5 +88,17 @@ Other boundary conditions, like Barnik's proposal would be investigated in the f
 
 ## Bib:
 
-Quote other people working on the topic, check who quotes my 1988 paper. In particular Michel Andersson did also some work without citing my paper.
+Quote other people working on the topic, check who quotes my 1988 paper. In particular Michel Andersson did also some work without citing my paper. There is in arxiv a recent paper on this, I am one of the authors which have citations on other papers, notably on the use of the SSBroyden crunch. 
+
+## Are the Robin ladder and the averaged pins still needed? (2026-10-27)
+
+All three were introduced while the inner boundary still imposed h_rA = 0 (removed in 0773b6a,
+10-15), when no decaying solution existed: pin_lam_robin 09-29, pin_h_robin 09-30, and
+outer_shell_fracs (the ladder) 10-14.  Their motivating symptoms fit that over-determination.
+The ladder was added against a constant l = 2 metric part of ~6% in the bulk, the same
+non-decaying l = 2 mode the spectral solver stalled on under h_rA = 0.  The metric pins were added
+against h drifting to a multiple of the identity.  The P pin (10-17) and the centre-of-mass
+condition (10-18) came after the fix.  The ablations at the end of Paper/hub_qp.sh (ab_noladder,
+ab_nopins, ab_none: qp_com from scratch without the ladder, without the pins, without both) test
+whether the method can drop them.
 

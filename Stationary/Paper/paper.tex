@@ -98,6 +98,9 @@ $\lambda = N^2$ and $h = N^2\gamma$. The vacuum equations become
 \end{align}
 With $U = \tfrac12\ln\lambda$ these read $\Ric(h) = 2\,\dd U\otimes\dd U$ and $\Delta_h U = 0$.
 
+In some cases we shall solve for the first system of equations, in some cases for the second equivalent system, depending on the problem. The difference being that $U$ is closer to the Newtonian potential, and $\lambda$ is the squared norm of the Killing vector. Thus, for instance the first multipole moments of $U$ are closer to the Newtonian ones. There are differences, ofcourse, and in fact one finds the $\frac{1}{\rho^2}$ term in $\lambda$ but not in $U$.
+
+
 \subsection{Gauge}
 
 We impose harmonic coordinates on $h$,
@@ -116,7 +119,11 @@ metric,
 with $n$ the symmetry axis, which Weyl's canonical form
 $h = e^{2k}(\dd\rho^2+\dd z^2)+\rho^2\dd\phi^2$ satisfies exactly.
 
-\subsection{The exact spherical family}
+\subsection{Test solutions}
+
+There are known solutions for this system, we shall use some of them to test our solver.
+
+\subsubsection{The exact spherical family}
 
 In the harmonic chart the spherically symmetric solutions are
 \begin{equation}
@@ -129,6 +136,10 @@ coordinates: $M = R_0$, areal radius $r = \rho+R_0$, $\lambda = 1-2M/r$. The har
 still allows the radial maps $\rho\to c_1\rho + c_2 F_2(\rho)$,
 $F_2 = 2R_0+\rho\ln\frac{\rho-R_0}{\rho+R_0}$, fixed by the round inner metric and $h\to\delta$.
 
+\subsubsection{Weyl two-rod solutions}
+
+Mention the rotation we shall impose and how this is incorporated to the scheme (via the rotation of the boundary conditons on a inner surface and the appropriate rotation of the gauge source)
+
 \subsection{Boundary and asymptotic conditions}\label{sec:bcs}
 
 The domain is the shell $\rho_{\rm in}\le\rho\le\rho_{\rm out}$.
@@ -140,10 +151,8 @@ The domain is the shell $\rho_{\rm in}\le\rho\le\rho_{\rm out}$.
   \label{eq:innerbc}
 \end{equation}
 with $P = I - n\otimes n$, $r_{\rm in}$ the areal radius of the sphere in $h$ and $e$ the data
-axis. The components $h_{rr}$ and $h_{rA}$ are not data: in harmonic gauge the $l\ge1$ sectors
-have exactly as many decaying solutions as~\eqref{eq:innerbc} imposes conditions, and one more
-condition (e.g.\ $h_{rA}=0$) leaves no decaying solution. $\lambda_0$ is chosen so that
-$\lambda\to1$ on the spherical branch.
+axis. No condition is imposed on $h_{rr}$ or $h_{rA}$. In harmonic gauge these are determined by the solution itself, and prescribing them would leave no solution of the boundary-value problem except when the prescribed values happen to coincide with the solution's own, which are not known in advance. Numerically this shows up as a loss that stalls instead of decreasing: the spectral solution, with $h_{rA}=0$ imposed, stopped at a residual of $1.8\times10^{-5}$ with a non-decaying $l=2$ part, and reached $3\times10^{-9}$ once the condition was removed. $\lambda_0$ is chosen so that
+$\lambda\to1$ on the spherical branch. In the traditional approach to the problem one would look for boundary conditions that would imply the enforcement of the harmonic gauge condition once the equations are solved. In our approach, the harmonic gauge is enforced by the network architecture, and the boundary conditions are chosen to select a unique solution from the family of solutions that satisfy the equations and the harmonic gauge condition. This fact considerably simplifies the choice of boundary conditions since we not need to impose those conditions that would enforce the harmonic gauge condition.
 
 \paragraph{Outer sphere.} Asymptotic flatness is imposed by Robin conditions of order $n$,
 \begin{equation}
@@ -159,7 +168,7 @@ the scalar we impose the condition on the Geroch--Hansen potential~\cite{Geroch1
   \label{eq:Ppot}
 \end{equation}
 whose monopole $M/\rho + M^3/(3\rho^3)+\dots$ has no $\rho^{-2}$ term, unlike
-$\lambda = 1-2M/\rho+2M^2/\rho^2-\dots$. The same conditions are imposed on a few spheres inside
+$\lambda = 1-2M/\rho+2M^2/\rho^2-\dots$. \bf{NOTE: This part probably we shall take out.} The same conditions are imposed on a few spheres inside
 $\rho_{\rm out}$ (at $0.7$, $0.8$, $0.9\,\rho_{\rm out}$): they hold at every radius for the exact
 solution, and a single sphere can be satisfied by a thin boundary layer. For the quadrupolar
 problem we add spherical means of order-one Robin combinations at $\rho_{\rm out}$,
@@ -213,7 +222,7 @@ connection is the Christoffel symbol of $h$, computed by automatic differentiati
 compatibility equation holds identically. (A first-order variant outputs $\Gamma$ as well and adds
 compatibility as a residual; on the same Schwarzschild problem it is three orders of magnitude
 less accurate, Sec.~\ref{sec:schw}, and it must never be trained with a vanishing compatibility
-weight, which the code refuses.) For axisymmetric problems
+weight, which the code refuses.) For axisymmetric problems there is a simpler system, namely we look for $h$ and $\lambda$ of the form,
 \begin{gather}
   h_{ij} = (1+a)\,\delta_{ij} + b\, n_in_j + \tfrac{c}{2}\,(n_iz_j+z_in_j) + d\, z_iz_j ,
   \nonumber\\
@@ -234,20 +243,24 @@ Spherically symmetric tests use $h = \alpha(\rho)\delta+\beta(\rho)nn$.
 with means over the sampled points. $p=(2,1,2)$ makes every residual dimensionless; for the
 quadrupolar problem we use $p=(4,3,4)$, an extra weight $\rho^4$ that determines the far field.
 $w_{\rm in}=w_{\rm out}=w_{\rm pin}=w_{\rm com}=100$ (10 for the Weyl tests). The centre-of-mass
-term uses a fixed quadrature on each sphere (24 Gauss--Legendre nodes in $\mu$ times 8 in $\phi$).
-Interior points are drawn log-uniformly in $\rho$ with uniform directions and redrawn every 500
-iterations; every result is checked on fresh samples, where the loss agrees with the training
+term uses a fixed quadrature on each sphere (24 Gauss--Legendre nodes in $\mu$ times 8 in $\phi$). \bf{Note: This is only in the case of axissymmetry, what it is for the general problem? }
+
+\paragraph{Sampling points}
+Point are redrawn at uniform iteration intervals, tipically evary 500 iterations. Depending on the problem they are drawn with different distributions. Some set of them are drawn log-uniformly in $\rho$ with uniform directions while another set is drawn 3D uniform. 
+Every result is checked on fresh samples, where the loss agrees with the training
 loss to within \pending{a few per cent}.
 
 \paragraph{Training.} Adam~\cite{KingmaBa2014} for 5000 steps, then the self-scaled Broyden
-quasi-Newton method SSBroyden~\cite{Urban2025SSBroyden,TODO_crunch} with a dense inverse Hessian
+quasi-Newton method SSBroyden~\cite{Urban2025SSBroyden,Carretero2026} with a dense inverse Hessian
 carried between blocks of 250 iterations, an Armijo line search (up to 100 trials) and
 scale-invariant curvature guards, in stages of 10000 iterations. \pending{If round P confirms it:
 no other optimiser is needed.} Everything runs in double precision with JAX~\cite{jax2018} on
 NVIDIA A30 GPUs; one value and gradient at 16384 points costs 0.048~s.
 
+\bf{Note: we are using Wolfe, not Armijo, line search.}
+
 \paragraph{A spectral reference.}\label{sec:specref} For the quadrupolar problem we built an
-independent solution: the spherical background~\eqref{eq:schw} plus an axisymmetric,
+independent approximation: the spherical background~\eqref{eq:schw} plus an axisymmetric,
 reflection-even perturbation, with Legendre modes $l\le10$ in the angle and 36 Chebyshev modes in
 $\ln\rho$ for each of the five metric functions and $\lambda$ (1008 unknowns), solved by
 Gauss--Newton on exactly the residual vector of the loss~\eqref{eq:loss}. Its loss is
@@ -263,9 +276,10 @@ the off-axis runs.
 \subsection{The pipeline on exact solutions}
 
 The exact solution~\eqref{eq:schw}, packed exactly as a network packs its outputs, gives a total
-loss below $10^{-16}$. The two-rod Weyl solution gives $1.3\times10^{-28}$ with the source
-\eqref{eq:cylsource}; with $S=0$ it does not, because the Weyl chart is not harmonic
-($|\Gamma^i|$ up to $9.2\times10^{-3}$ on the sphere $\rho=7.5$). The rotated Weyl solution
+loss below $10^{-16}$ \bf{Note: explain what do you mean}. The two-rod Weyl solution gives $1.3\times10^{-28}$ with the source
+\eqref{eq:cylsource}; with $S=0$ it obviously does not, because the Weyl chart is not harmonic
+($|\Gamma^i|$ up to $9.2\times10^{-3}$ on the sphere $\rho=7.5$). \bf{Note: why are you writing this here? Why this value of $\rho$?} 
+ The rotated Weyl solution
 solves the system to $3\times10^{-14}$ or better at every residual. (The averaged pins of
 Sec.~\ref{sec:bcs} are designed for the quadrupolar problem and are not satisfied by these
 solutions, at the $10^{-9}$ level; the tests run without them.)
@@ -273,9 +287,8 @@ solutions, at the $10^{-9}$ level; the tests run without them.)
 \subsection{Schwarzschild in harmonic coordinates}\label{sec:schw}
 
 The spherical network with $R_0=1$, $\lambda_0 = 0.381966$ on the sphere of $h$-areal radius 2 and
-Robin conditions at $\rho_{\rm out}=100$ recovers the exact family. Table~\ref{tab:firstorder}
-compares the metric-only and first-order formulations on the problem with a manufactured Robin
-source: the metric-only network is more accurate by three orders of magnitude (a factor 2600 in
+Robin conditions at $\rho_{\rm out}=100$ recovers the exact family. The Robin condition is not set to zero, but rather to the value the exact solutions would produce, so it has a source term. Table~\ref{tab:firstorder}
+compares the metric-only and first-order formulations on the problem. The metric-only network is more accurate by three orders of magnitude (a factor 2600 in
 $h$ and 1300 in $\lambda$). The first-order network's error is a gauge mode: along it the
 compatibility residual is nearly flat, and an earlier, less converged first-order run found the
 same geometry in a different harmonic chart, with $h_{rr}$ off by a third. Deriving $\Gamma$ from
@@ -283,7 +296,7 @@ $h$ removes the mode. With the homogeneous Robin conditions (no
 source), the metric-only network reaches a loss of $2.4\times10^{-11}$ and maximum errors of
 $7.0\times10^{-6}$ in $h$, $6.0\times10^{-6}$ in $\Gamma$ and $6.3\times10^{-7}$ in $\lambda$ against
 the exact solution, and its mass $M_0 = 0.999997$ (Sec.~\ref{sec:moments}) against $R_0=1$; each run
-takes 9--11 minutes on one GPU.
+takes 9--11 minutes on one GPU. \bf{Note: we should check now, with the COM condition whether the error is still so big.}
 
 \begin{table}
 \caption{First-order against metric-only network on the same Schwarzschild problem (manufactured
@@ -306,7 +319,7 @@ $\max|\delta\lambda|$ & $1.3\times10^{-3}$ & $1.0\times10^{-6}$ \\
 
 The Weyl class~\cite{Weyl1917} gives exact static axisymmetric solutions with nontrivial
 multipoles. We use two rods, $U_{\rm rod} = \tfrac12\ln[(R_a+R_b-L)/(R_a+R_b+L)]$ (mass $L/2$
-each) with $k$ by quadrature; the inner data and the Robin sources are taken from the exact
+each) with $k$ by quadrature \bf{Note: what is k? We haven't introduced the Weyl metric ; We take as inner boundary a Weyl coordinate sphere of big enought radious as to not touch the rods.  The inner data and the Robin sources are taken from the exact
 solution and the gauge is~\eqref{eq:cylsource}. For two equal rods (masses 1, gap 1) on the shell
 $[7.5,75]$ the axisymmetric network trained with SSBroyden from a random initialisation reaches a
 loss of $2.06\times10^{-13}$ in 3000 iterations, with maximum errors $6.7\times10^{-7}$ in $h$ and
@@ -343,7 +356,7 @@ $\log_{10}R_{ab}R^{ab}$ of the exact solution. \todo{regenerate without the inte
 Rotating the closest configuration by $45^\circ$ removes every symmetry. The equations are
 covariant, so the rotated fields are again a solution, but the gauge is a statement about a chart
 and the source~\eqref{eq:cylsource} must be taken about the rotated axis $n = R\hat z$; in
-harmonic gauge the rotated solution has a residual of $2.6\times10^{-2}$. The general
+harmonic gauge the rotated solution has a residual of $2.6\times10^{-2}$ \bf{Note: do you mean a source?}. The general
 three-dimensional metric-only network, with 8192 collocation points and SSBroyden from a random
 initialisation, reaches a loss of $5.1\times10^{-9}$ in 7000 iterations (17 minutes), with
 maximum errors $1.6\times10^{-4}$ in $h$ and $1.7\times10^{-5}$ in $\lambda$, against
@@ -351,11 +364,11 @@ $7.3\times10^{-5}$ and $1.8\times10^{-6}$ for the axisymmetric network on the sa
 the number of iterations: an earlier first-order run on 2048 points lowered its mean-square loss
 by a factor 8 ($1.75\times10^{-4}\to2.28\times10^{-5}$) over 6500 further iterations while every error grew, the residual concentrating on
 a few points; with four times the points the errors fell with the loss.
-
+\bf{Note: this last paragraph is confusing. Too many aspects together, explain in more detail}
 % =====================================================================================
 \section{Quadrupolar data}\label{sec:quadrupole}
 % =====================================================================================
-
+Once we have tested the solver with the above cases we can now apply it to a nobel case a quadrupole term over the dipole one. 
 \subsection{The problem}
 
 We take $R_0 = 1/\sqrt3$, the inner sphere $\rho_{\rm in}=1$ with $r_{\rm in}=1$ (so
@@ -372,7 +385,7 @@ reference.
 
 \subsection{Without and with the centre-of-mass condition}
 
-Two runs with identical commands, except for the centre-of-mass term
+Two runs with identical settings, except for the centre-of-mass term
 (Appendix~\ref{app:repro}), show what the condition does (Table~\ref{tab:com},
 Fig.~\ref{fig:com}). Without it, the error near the inner sphere is of order \pending{$10^{-3}$},
 and it is odd under $z\to-z$ (modes $l=1,3$), which the even data forbid; every term of the loss
