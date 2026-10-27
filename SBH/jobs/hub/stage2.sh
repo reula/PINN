@@ -33,6 +33,9 @@ echo "STAGE2_RUN=${STAGE2_RUN:-runs/long_con10}  STAGE2_ARGS=${STAGE2_ARGS:-}"
 
 PY="$HERE/../Stationary/.venv/bin/python"
 export JAX_ENABLE_X64=1 MPLBACKEND=Agg XLA_PYTHON_CLIENT_PREALLOCATE=false
+# JAX caps itself at 75 % of the GPU (17.7 of the A30's 24 GB): --w_adm 1 ran out at 17.7 GiB in the
+# second block (2026-10-27).  The GPU is ours once WAIT_FOR is clear, so allow 95 %.
+export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-0.95}
 export PYTHONPATH="$HERE/.pydeps${PYTHONPATH:+:$PYTHONPATH}"
 "$PY" -c "import tqdm" 2>/dev/null || "$PY" -m pip install -q --target "$HERE/.pydeps" tqdm
 "$PY" -c "import jax; d = jax.devices(); print('jax', jax.__version__, d); raise SystemExit(d[0].platform != 'gpu')" \
