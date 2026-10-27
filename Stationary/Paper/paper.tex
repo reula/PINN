@@ -174,8 +174,10 @@ The domain is the shell $\rho_{\rm in}\le\rho\le\rho_{\rm out}$.
 \end{equation}
 with $P = I - n\otimes n$, $r_{\rm in}$ the areal radius of the sphere in $h$ and $e$ the data
 axis. No condition is imposed on $h_{rr}$ or $h_{rA}$. In harmonic gauge these are determined by the solution itself, and prescribing them would leave no solution of the boundary-value problem except when the prescribed values happen to coincide with the solution's own, which are not known in advance. Numerically this shows up as a loss that stalls instead of decreasing: the spectral solution, with $h_{rA}=0$ imposed, stopped at a residual of $1.8\times10^{-5}$ with a non-decaying $l=2$ part, and reached $3\times10^{-9}$ once the condition was removed. $\lambda_0$ is chosen so that
-$\lambda\to1$ on the spherical branch. In the traditional approach to the problem one would look for boundary conditions that would imply the enforcement of the harmonic gauge condition once the equations are solved. In our approach the harmonic gauge condition is imposed directly, as one of the residuals of the
-loss in the interior (Sec.~\ref{sec:code}), together with the field equations; the boundary
+$\lambda\to1$ on the spherical branch. In the traditional approach to the problem one would look for boundary conditions that would imply the enforcement of the harmonic gauge condition once the equations are solved. In our approach the harmonic gauge condition is imposed directly in the interior: since the
+connection is the Christoffel symbol of the network metric, $\Gamma^i=S^i$ is a condition on the
+first derivatives of $h$, and it enters the loss as one more residual, together with the field
+equations (Sec.~\ref{sec:code}); the boundary
 conditions then only have to select a unique solution among those of the equations and the gauge
 condition. This considerably simplifies their choice, since no conditions are needed whose role is
 to propagate the gauge.
