@@ -19,6 +19,7 @@ corrected to the recomputed value; ✗ means the number is removed from the pape
 | order-1 lambda pin residual on the exact solution at rho = 100 | -6.6e-5 | -6.590e-5 | ✓ |
 | its cost at w_pin = 100 | 4.3e-7 | 4.34e-7 | ✓ |
 | the same pin on P | 1.5e-11 | 1.48e-11 | ✓ |
+| monopole of P for Schwarzschild in harmonic coordinates | M/rho + M^3/(3 rho^3) + ... | P = x/(1-x^2) = M/rho + M^3/rho^3 + M^5/rho^5 + ... (sympy; the M^3/3 is U's: U = -artanh(M/rho)) | ✎ (paper l.164, PERTURBATION.md) |
 | parameter counts (axisym / + decay / 3-D hybrid / mlp) | 2265 / 2285 / 2347 / 2725 | identical | ✓ |
 | R_ab R^ab of the exact rods (1, 0.1) at rho_in = 7.5 / 4 / 3.5 | 3.3e-6 / 5.8e-3 / 5.3e-2 | 3.28e-6 / 5.79e-3 / 5.28e-2 (`weyl.curvature_invariant`, max over the sphere) | ✓ |
 | GH moments of exact assets (Schwarzschild, rods, Curzon) | — | `tests/test_gh_moments.py` | new |

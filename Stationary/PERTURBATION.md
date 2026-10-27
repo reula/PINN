@@ -30,7 +30,7 @@ That is the sharpest statement here, and it is testable (section 3).
     quantity        l = 0                                l = 2                     l = 1
     phi = ln lambda lambda_B, i.e. 1 - 2M/rho + ...      A(rho) P2, A -> a2 rho^-3  0
     lambda          1 - 2M/rho + 2M^2/rho^2 - ...        lambda_B A, -> a2 rho^-3   0
-    P (Geroch)      M/rho + M^3/(3 rho^3) + ...          -> a2' rho^-3              0
+    P (Geroch)      M/rho + M^3/rho^3 + ... (= x/(1-x^2), x = M/rho)   -> a2' rho^-3   0
     h_rr - 1        O(rho^-3)                            -> b2 rho^-3               0
     g2 - 1          -M^2/rho^2 - M^4/rho^4 - ...         -> c2 rho^-3               0
 
