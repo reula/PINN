@@ -102,7 +102,15 @@ reproduces qp_nocom's 1.2e-7 / 5.8e-5 / 1.17e-4 / 1.29e-4): fn_nocom -7.7e-7 / -
 -1.629e-3 / -1.794e-3 at rho 1 / 2 / 10 / 70, a = d_z/M0 = -1.82e-3; ab_none <= 6e-8.
 Paper: V.B, tab:com, fig:com (fig_com.py now fn_nocom_w2 vs ab_none_w2), tab:moments, the moments
 paragraph and the appendix now use this pair; tab:ablation keeps qp_com as the "all" row.
-fn_tan: 1.8x lower lam error at rho 1-3, 1.3-1.5x overall; not yet in the paper (rot_tan running).
+fn_tan: 1.8x lower lam error at rho 1-3, 1.3-1.5x overall; not yet in the paper.
+rot_tan (qp_rot4_n32768 + --inner-tangential, 3-D width 40, finished 2026-10-28 11:49): Adam 522 s
+(0.55), stages 9.93e-8, 6.20e-8, 5.13e-8, 2.95e-8 (~1775 s each, still falling, unlike qp_rot4 which
+was flat at 4.3e-9 from stage 2); fresh/train 0.99; |d| <= 1.2e-6. rms dlam 6.12e-6, dh 4.05e-4;
+by region lam 1.25e-5 / 1.87e-6 / 7.9e-8 / 1.9e-8, h 8.39e-4 / 3.51e-5 / 1.02e-6 / 5.7e-8. That is
+1.6-1.8x WORSE than qp_rot4 after the same budget. The tangential term itself is not what is left
+(bc_in 2.65e-11 of 2.95e-8): the PDE residuals are 7x higher (Ricci rms 8.4e-5 vs 3.3e-5), i.e. this
+run converged more slowly. Verdict: modest gain in axisymmetry, none in 3-D at this budget; not
+part of the paper's formulation.
 
 ## The inner condition (for the sentence on h_rr, h_rA in II.D)
 
