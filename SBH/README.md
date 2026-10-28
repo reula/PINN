@@ -12,6 +12,7 @@ Crunch/                   optimiser library (SSBroyden/BFGS/SCORE, Wolfe search;
 docs/                     summary_ccz4.txt, equations_ccz4.{txt,pdf}, README_bundle.md (the MN5 bundle's notes)
 jobs/mendieta/bh.sbatch   Mendieta job (presets single | bbh | smoke | bench | stage2 | eval)
 jobs/hub/stage2.sh        stage2.py on the CCAD JupyterHub GPU (detached, resumable; 2026-10-27)
+sing_pinn.py, sing_template.py   template + correction ansatz (section 7; 2026-10-28); jobs/hub/sing.sh runs it on the hub
 jobs/mn5/*.psubmit        the collaborators' MareNostrum 5 jobs, pointed at the merged script
 dsgnar.py                 DSGNAR optimiser (vendored from Stationary/, section 4)
 tools/                    plot_losses_stages.py (both stages' losses), load_defs.py, bench_loss.py, check_taylor.py, taylor_proto.py, smoke_local.sh, test_dsgnar_bh.py
@@ -965,3 +966,55 @@ the current runs (1e-6 to 1e-7 per window) neither effect has been measured in a
 * `tools/plot_mass_budget.py RUN.npz OUT.png`: the mass-error budget (initial / in-window / hand-off) by radius.
 * `tools/plot_clouds.py OUT.png`: the interior points around a single puncture, default vs `--symmetric_focus` (`plots/2026-10-21/sampling_clouds.png`; centroid of the points within r < 1: 2.8e-3 vs 1e-5).
 * `tools/bench_jacobian_sketch.py [--s 1024]`: rows (paper) vs columns (ours) for DSGNAR's sketched Jacobian, one block of points.
+
+## 7. Template + correction ansatz: `sing_pinn.py` (2026-10-28)
+
+A new script, separate from `EEccz4_BH_puncture.py`: the puncture's singular structure is no longer
+learned by the network but built in, and the network learns only the departure from it. Per window and
+puncture A, with xi_A = x - a_A(t), r_A = |xi_A| (full description in the script's docstring):
+
+    W_A = exp(-(r_A/r_c)^4),   rho = prod_A r_A^2/(r_A^2 + r_c^2)               (r_c = 0.2 by default)
+    chi, alpha:  u = exp(sum_A W_A ln T_A) * exp(rho N)        (multiplicative: vanishing order and sign kept)
+    beta:        u = sum_A W_A (T_A^beta - da_A/dt) + rho N     (beta(a_A) = -da_A/dt: no tracker)
+    the rest:    u = flat + sum_A W_A (T_A - flat) + rho N
+
+* **Template T** (`sing_template.py`): the 1D spherical solution of `reference_1d/sph_reference.py` as a
+  tensor-product cubic spline in (r, t), mirrored through r = 0 with each radial function's parity, lifted to
+  the 22 Cartesian fields. `--template bl`: the time-dependent evolution from Brill-Lindquist data
+  (`reference_1d/sing_bl_m0.5_dense.npz`: dr = 0.005, snapshots every 0.02, r <= 1, t <= 10); at t = 0 it is
+  the BL puncture (chi to 2e-9, alpha to 2e-6). `--template trumpet`: the snapshot at t_s = 10 (20 M) of
+  `reference_1d/ref_single_m0.5_dr0.005_t20.npz` (the reference run extended to t = 20, r <= 30), frozen; the
+  run then starts from that whole slice (initial data = the 1D solution at t_s, graded against it at t_s + t).
+* **Why the cutoff:** inside r_c ~ 0.2 (inside the horizon) the template carries the r^4 / r^2 zero of chi,
+  the kink of alpha and the direction-dependent limits of the tensors at the puncture; outside it the network
+  learns everything, so the 1D reference stays an honest yardstick there (it is used for the template only
+  for r <~ 0.4, where W > e^-16).
+* **Centre a(t)** = a0 + v0 (t - t0) + s_a (p1 tau^2 + p2 tau^3), a0, v0 from the previous window (continuous
+  position and velocity), p1, p2 trained with N (`--fixed_center` to freeze). The interior clouds are drawn
+  about a(t) in antithetic pairs (xi, -xi).
+* **Loss:** the main script's terms and weights (Einstein + gauge rows, lam_tapa x the same at t1, Sommerfeld
+  BC, lamg0 x soft IC), + `--w_constraint` (default 10, the setting that held the mass in `long_con10`).
+  No causal weights. SSBroyden, fresh points every `--n_change`.
+
+**Checks (`--selftest`, CPU, 2026-10-28):**
+
+| check | result |
+|---|---|
+| derivative stacks (Taylor N + autodiff template, product/chain rule) vs autodiff of the whole u, random N, moving off-centre puncture | max residual difference 7e-15 (residual ~17) |
+| shift at the puncture vs -da/dt | equal to 1e-4 (the probe sits 1e-4 from the centre) |
+| CCZ4 residual of the lifted template itself (no cutoff), dense table, rms Einstein rows | t = 0.1: 5e-5 / 2e-5 / 6e-6 for r in [0.05,0.1) / [0.1,0.3) / [0.3,0.6); t = 1: 6e-4 / 7e-5 / 1e-5; t = 5: 2e-4 / 1e-5 / 7e-6 |
+
+With the 0.25-spaced table (the original reference) the template residual at t = 0.1 was 4e-2: the early
+lapse collapse needs the dense time table. A 2-window CPU smoke run (tiny network, 100 iterations) completes
+and writes the outputs.
+
+Outputs in `runs/OUTDIR`: `window_KKK.pkl`, `sing_history.csv` (per draw: held-out loss and parts, a(t1)),
+`sing_report.csv` (per window end: rms error of each field group vs the 1D reference in r in [0.05,0.5),
+[0.5,5), [5,20) on 8 rays, and alpha at r = 0.03), `config.json`.
+
+**Run on the hub** (`jobs/hub/sing.sh`; it generates the two template tables on the CPU first if they are
+missing, ~20 + 40 min, since `*.npz` is not in git):
+
+    cd ~/serafin/Julia/PINN && git pull && cd SBH
+    OUTDIR=sing_bl SING_ARGS="--template bl" bash jobs/hub/sing.sh
+    OUTDIR=sing_tr SING_ARGS="--template trumpet" bash jobs/hub/sing.sh
