@@ -488,6 +488,22 @@ weighting problem; the correction moves the slicing where the deficit is removed
 stays the reference version. (The same job on the JupyterHub ran out of GPU memory twice, at the 6.84 GiB
 QN-norm allocation, even with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.95`; Mendieta's copy finished first.)
 
+**Windowed H/M run, interim (2026-10-28, 25 of 40 windows, t <= 6.25; job 1184413 -> 14 -> 15, then its stage
+2, 1184416).** `long_con10_adm` = `long_con10`'s settings and Theta/Z penalty plus `--w_adm 1` in every window.
+Sphere-averaged deficit peak at t = 2 / 3 / 4 / 5 / 6 / 6.25:
+
+| | 2 | 3 | 4 | 5 | 6 | 6.25 |
+|---|---|---|---|---|---|---|
+| `long_ctl` (no penalty) | -0.5 % | -1.2 % | -3.6 % | -7.5 % | -12 % | -13 % |
+| `long_con10` | -0.8 % | -1.6 % | -3.8 % | -6.1 % | -8.1 % | -8.7 % |
+| `long_con10` + stage-2 H/M correction | -0.2 % | -0.1 % | -0.1 % | -0.6 % | -0.8 % | -1.1 % |
+| `long_con10_adm` (windowed H/M) | -0.8 % | -1.5 % | -2.3 % | -3.5 % | -4.3 % | -4.4 % |
+
+At t = 6.25: hole +0.01 % (`long_con10` +0.30 %); alpha error r < 0.5 1.8e-3 (2.6e-3), r 3-6 6.7e-3 (3.2e-3;
+stage-2 H/M 8.4e-3); Theta 1.3e-5 (2.5e-5); drift 3.4e-3 (3.8e-3). Window 24's final loss 1.9e-6 (ADM part 3.4e-7)
+vs 1.3e-6. So in the windows the H/M term halves the deficit and slows its growth, with the same lapse
+price as stage 2 (about 2x at r 3-6); stage 2 on the finished run still does better (-1.1 %). Its own stage 2 is queued.
+
 **Losses of both stages (2026-10-28; `tools/plot_losses_stages.py`, `plots/2026-10-28/losses_stages.png`).**
 (a) Stage 1, `long_con10`: each window's loss history from its checkpoint, drawn across its own 0.25 M. Each window
 starts at 1e-3-1e-2 (the hand-off term: the new network must first match the previous window's end) and ends at
