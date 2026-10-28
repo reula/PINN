@@ -11,6 +11,9 @@
 
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
 \newcommand{\pending}[1]{\textcolor{blue}{[#1]}}
+% Notes from the author to Claude: \claude{...}; \notesfalse hides them all (for submission)
+\newif\ifnotes \notestrue
+\newcommand{\claude}[1]{\ifnotes\textcolor{magenta}{[C: #1]}\fi}
 \newcommand{\dd}{\mathrm{d}}
 \newcommand{\Ric}{\mathrm{Ric}}
 
