@@ -66,7 +66,7 @@ ap.add_argument("--hidden", type=int, default=40)
 ap.add_argument("--layers", type=int, default=6)
 ap.add_argument("--n_int", type=int, default=32000, help="interior points per draw")
 ap.add_argument("--core_frac", type=float, default=0.375)
-ap.add_argument("--focus_frac", type=float, default=0.375)
+ap.add_argument("--focus_frac", type=float, default=0.25)
 ap.add_argument("--core_sigma", type=float, default=0.5)
 ap.add_argument("--focus_sigma", type=float, default=2.0)
 ap.add_argument("--n_end", type=int, default=4000, help="points at t = t1 (the lam_tapa term)")
@@ -77,7 +77,10 @@ ap.add_argument("--iters", type=int, default=12000, help="SSBroyden iterations p
 ap.add_argument("--n_change", type=int, default=250)
 ap.add_argument("--w_constraint", type=float, default=10.0)
 ap.add_argument("--w_gauge", type=float, default=1.0)
-ap.add_argument("--min_puncture_dist", type=float, default=0.02)
+ap.add_argument("--inner_frac", type=float, default=0.125,
+                help="share of the interior points in the inner cloud: a narrow Gaussian (--inner_sigma) about each "
+                     "puncture, so every batch has points right at it (no exclusion zone anywhere)")
+ap.add_argument("--inner_sigma", type=float, default=0.05)
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true", help="continue after the last saved window in OUT_DIR")
 ap.add_argument("--selftest", action="store_true", help="check the template and the derivative stacks, then exit")
@@ -134,6 +137,15 @@ def tpl_fields(t_tpl, xi):
     return radial(t_tpl, jnp.minimum(r, R_TPL)), r
 
 
+def _pos(v):
+    """Smooth positive floor for the log blend: the table's chi dips to -6e-7 at its innermost grid point
+    (r = 0.0025: the chi floor and the dissipation of the 1D run); = v to O(LOG_EPS^2/v) wherever v >> LOG_EPS."""
+    return 0.5 * (v + jnp.sqrt(v * v + 4.0 * LOG_EPS ** 2))
+
+
+LOG_EPS = 1e-10
+
+
 def bg_point(q, acc, win):
     t, X = q[0], q[1:4]
     pos, vel = center(acc, win, t)
@@ -147,7 +159,7 @@ def bg_point(q, acc, win):
         f = stpl.lift(jnp, pack, FLAT_RAD + w * (rad - FLAT_RAD), xi) - FLAT
         add = add + f
         add = add.at[ns["BETA_SLICE"]].add(-w * vel[A])
-        logs = logs + w * jnp.log(jnp.stack([rad[stpl.I_CHI], rad[stpl.I_ALPHA]]))
+        logs = logs + w * jnp.log(_pos(jnp.stack([rad[stpl.I_CHI], rad[stpl.I_ALPHA]])))
         r2 = jnp.sum(xi ** 2)
         rho = rho * r2 / (r2 + a.r_c ** 2)
     B = FLAT + add
@@ -279,6 +291,22 @@ def total(p):
     return sum(p.values())
 
 
+DIST_BANDS = ((0.0, 0.01), (0.01, 0.05), (0.05, 0.5), (0.5, 1e9))
+DIST_NAMES = ("d<0.01", "d0.01-0.05", "d0.05-0.5", "d>0.5")
+
+
+def dist_bands(P, win, Q):
+    """Einstein + gauge loss of the interior points split by distance to the nearest puncture: each band's
+    contribution to the mean over all points (they add up to einstein + gauge), and its point count."""
+    res = residual(u_derivs(P, win, Q))
+    per = (ns["lam_einstein"] * jnp.sum(res[:, :18] ** 2, axis=1) / 18
+           + ns["lam_gauge"] * a.w_gauge * jnp.sum(res[:, 18:22] ** 2, axis=1) / 4)
+    pos = jax.vmap(lambda t: center(P["acc"], win, t)[0])(Q[:, 0])               # (n, NP, 3)
+    d = jnp.min(jnp.linalg.norm(Q[:, None, 1:4] - pos, axis=2), axis=1)
+    m = jnp.stack([(d >= lo) & (d < hi) for lo, hi in DIST_BANDS])
+    return jnp.sum(jnp.where(m, per, 0.0), axis=1) / per.shape[0], jnp.sum(m, axis=1)
+
+
 # ---- points -------------------------------------------------------------------------------------
 def ball(key, n, rad):
     k1, k2 = jax.random.split(key)
@@ -287,24 +315,22 @@ def ball(key, n, rad):
 
 
 def clouds(key, t, pos_of_t):
-    """Points at times t (n,): core/focused Gaussian clouds about the punctures (antithetic pairs xi, -xi,
-    so every cloud is symmetric about its centre) and a uniform bulk in the ball r <= R."""
+    """Points at times t (n,): inner, core and focused Gaussian clouds about each puncture (antithetic pairs
+    xi, -xi, so every cloud is symmetric about its centre) and a uniform bulk in the ball r <= R. No exclusion
+    zone: the inner cloud (sigma 0.05) puts points right at the puncture."""
     n = t.shape[0]
-    n_c, n_f = 2 * int(a.core_frac * n / 2 / NP), 2 * int(a.focus_frac * n / 2 / NP)
+    sizes = [2 * int(f * n / 2 / NP) for f in (a.inner_frac, a.core_frac, a.focus_frac)]
     pos = pos_of_t(t)                                                      # (n, NP, 3)
-    keys = jax.random.split(key, 2 * NP + 1)
+    keys = jax.random.split(key, 3 * NP + 1)
     X, used = [], 0
     for A in range(NP):
-        for j, (m, s) in enumerate(((n_c, a.core_sigma), (n_f, a.focus_sigma))):
-            g = s * jax.random.normal(keys[2 * A + j], (m // 2, 3))
+        for j, m in enumerate(sizes):
+            kA = keys[3 * A + j]
+            g = (a.inner_sigma, a.core_sigma, a.focus_sigma)[j] * jax.random.normal(kA, (m // 2, 3))
             X.append(pos[used:used + m, A] + jnp.concatenate([g, -g]))
             used += m
     X.append(ball(keys[-1], n - used, R))
     X = jnp.concatenate(X)
-    for A in range(NP):
-        rel = X - pos[:, A]
-        dist = jnp.linalg.norm(rel, axis=1, keepdims=True)
-        X = jnp.where(dist < a.min_puncture_dist, pos[:, A] + rel / jnp.maximum(dist, 1e-12) * a.min_puncture_dist, X)
     rr = jnp.linalg.norm(X, axis=1, keepdims=True)
     return jnp.where(rr > R, X / rr * R, X)
 
@@ -330,8 +356,8 @@ REF_R, REF_T, REF_U = REF_D["r"], REF_D["t"], REF_D["U"]
 RAYS = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
                  [1, 1, 1], [-1, -1, -1]], float)
 RAYS /= np.linalg.norm(RAYS, axis=1, keepdims=True)
-REP_R = np.geomspace(0.03, 20.0, 120)
-REP_BANDS = (("core", 0.05, 0.5), ("mid", 0.5, 5.0), ("far", 5.0, 20.0))
+REP_R = np.geomspace(0.003, 20.0, 160)
+REP_BANDS = (("inner", 0.0, 0.05), ("core", 0.05, 0.5), ("mid", 0.5, 5.0), ("far", 5.0, 20.0))
 REP_GROUPS = (("alpha", [18]), ("chi", [12]), ("Khat", [13]), ("Theta", [14]), ("gt", list(range(6))),
               ("At", list(range(6, 12))), ("Ghat", [15, 16, 17]), ("beta", [19, 20, 21]))
 
@@ -402,7 +428,13 @@ if a.selftest:
     def apply_u(params, t, x, y, z, ws, we):
         return u_value(params, win, jnp.concatenate([t, x, y, z], axis=1))
 
-    Qi = draw(jax.random.PRNGKey(5), P, win, 32, 4, 4, 4, lambda X: jnp.zeros((X.shape[0], 22)))[0]
+    Qi = draw(jax.random.PRNGKey(5), P, win, 64, 4, 4, 4, lambda X: jnp.zeros((X.shape[0], 22)))[0]
+    tn = jnp.full((6,), 0.4)
+    dn = jnp.array([[1e-4, 0, 0], [0, -1e-4, 0], [7e-4, 7e-4, 0], [0, 0, -1e-3], [6e-3, -8e-3, 0], [0, 1e-2, 0]])
+    Qi = jnp.concatenate([Qi, jnp.concatenate([tn[:, None], center(P["acc"], win, 0.4)[0][0] + dn], axis=1)])
+    pos_s = jax.vmap(lambda tt: center(P["acc"], win, tt)[0][0])(Qi[:, 0])
+    print("selftest points: min distance to the puncture "
+          f"{float(jnp.min(jnp.linalg.norm(Qi[:, 1:4] - pos_s, axis=1))):.1e}")
     t, x, y, z = Qi[:, 0:1], Qi[:, 1:2], Qi[:, 2:3], Qi[:, 3:4]
     ref = ns["r_ccz4_evolution"](apply_u, P, t, x, y, z, t0, t1)
     D = u_derivs(P, win, Qi)
@@ -438,6 +470,7 @@ if a.resume:
         print(f"resumed after window {S['window']}")
 
 parts_jit = jax.jit(parts)
+bands_jit = jax.jit(dist_bands)
 loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), static_argnums=1)
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 hist = os.path.join(a.out, "sing_history.csv")
@@ -458,6 +491,9 @@ for k in range(k0, a.N_window):
     print(f"window {k}: t in [{t0:g}, {t1:g}], {w.size} parameters, centre {np.asarray(a0).round(5).tolist()}, "
           f"velocity {np.asarray(v0).round(5).tolist()}", flush=True)
     t_start, it = time.time(), 0
+    _, cnt = bands_jit(unr(w), win, draw(kh, P, win, a.n_int, 1, 1, 1, Uic_fn)[0])
+    print("  interior points per batch by distance to the puncture: "
+          + ", ".join(f"{n} {int(v)}" for n, v in zip(DIST_NAMES, np.asarray(cnt))), flush=True)
     while it < a.iters:
         key, kd = jax.random.split(key)
         batch = draw(kd, unr(w), win, a.n_int, a.n_end, a.n_ic, a.n_bc, Uic_fn)
@@ -466,9 +502,12 @@ for k in range(k0, a.N_window):
         it += a.n_change
         hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
         pos, vel = center(unr(w)["acc"], win, jnp.asarray(t1))
+        hb, hn = (np.asarray(v) for v in bands_jit(unr(w), win, held[0]))
         row = dict(window=k, iteration=it, seconds=round(time.time() - t_start, 1),
                    train=float(loss_fn(w, unr, win, batch)), held=sum(hp.values()),
                    **{f"held_{n}": hp[n] for n in PART_NAMES},
+                   **{f"held_{n}": float(v) for n, v in zip(DIST_NAMES, hb)},
+                   **{f"n_{n}": int(v) for n, v in zip(DIST_NAMES, hn)},
                    **{f"a{A}_{c}": float(pos[A, i]) for A in range(NP) for i, c in enumerate("xyz")})
         new = not os.path.exists(hist)
         with open(hist, "a", newline="") as f:
@@ -477,7 +516,8 @@ for k in range(k0, a.N_window):
                 wr.writeheader()
             wr.writerow(row)
         print(f"  it {it:6d} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
-              + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + f")  a(t1) {np.asarray(pos[0]).round(5).tolist()}",
+              + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ") by distance "
+              + " ".join(f"{n} {v:.1e}" for n, v in zip(DIST_NAMES, hb)) + f"  a(t1) {np.asarray(pos[0]).round(5).tolist()}",
               flush=True)
     P = unr(w)
     pos, vel = center(P["acc"], win, jnp.asarray(t1))

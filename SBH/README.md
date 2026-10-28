@@ -990,8 +990,20 @@ puncture A, with xi_A = x - a_A(t), r_A = |xi_A| (full description in the script
   learns everything, so the 1D reference stays an honest yardstick there (it is used for the template only
   for r <~ 0.4, where W > e^-16).
 * **Centre a(t)** = a0 + v0 (t - t0) + s_a (p1 tau^2 + p2 tau^3), a0, v0 from the previous window (continuous
-  position and velocity), p1, p2 trained with N (`--fixed_center` to freeze). The interior clouds are drawn
-  about a(t) in antithetic pairs (xi, -xi).
+  position and velocity), p1, p2 trained with N (`--fixed_center` to freeze).
+* **Sampling: no exclusion zone** (there is no `--min_puncture_dist`). The interior clouds are drawn about a(t)
+  in antithetic pairs (xi, -xi): an inner Gaussian (`--inner_sigma 0.05`, `--inner_frac 0.125`), the core
+  (sigma 0.5, 0.375) and focused (sigma 2, 0.25) Gaussians, and a uniform bulk. Per 32k-point batch that is ~3-9
+  points within 0.01 of the puncture, ~70 within 0.02 and ~750 within 0.05 (the sigma 0.5 core alone: 5 within
+  0.05). The script prints the counts at each window start, and `sing_history.csv` splits the held-out
+  Einstein + gauge loss by distance to the puncture (d < 0.01, 0.01-0.05, 0.05-0.5, > 0.5).
+* **Near r = 0:** the lifted template stays finite down to r = 1e-5. Its own Einstein residual there is
+  2e-4-7e-4 at t = 0.1, 2e-3-2e-2 at t = 1, and 0.06-0.4 for r <= 0.01 at t = 5 (trumpet slice: 0.02-0.3). That
+  is the 1D reference's error at its innermost points (1st-2nd order for r < 0.1, Kreiss-Oliger dissipation, the
+  chi floor). Since rho ~ r^2/r_c^2 there, N can hardly change it: those points mainly fix a(t), and they set a
+  floor to the loss in the d < 0.01 band. A finer 1D run near the centre would lower it (not done). The table's
+  chi dips to -6e-7 at its innermost point (r = 0.0025), so the log blend uses the smooth floor
+  (v + sqrt(v^2 + 4 eps^2))/2, eps = 1e-10.
 * **Loss:** the main script's terms and weights (Einstein + gauge rows, lam_tapa x the same at t1, Sommerfeld
   BC, lamg0 x soft IC), + `--w_constraint` (default 10, the setting that held the mass in `long_con10`).
   No causal weights. SSBroyden, fresh points every `--n_change`.
@@ -1000,7 +1012,7 @@ puncture A, with xi_A = x - a_A(t), r_A = |xi_A| (full description in the script
 
 | check | result |
 |---|---|
-| derivative stacks (Taylor N + autodiff template, product/chain rule) vs autodiff of the whole u, random N, moving off-centre puncture | max residual difference 7e-15 (residual ~17) |
+| derivative stacks (Taylor N + autodiff template, product/chain rule) vs autodiff of the whole u, random N, moving off-centre puncture, points down to 1e-4 from it | max residual difference 6e-12 (bl) / 5e-11 (trumpet), residual up to ~150 |
 | shift at the puncture vs -da/dt | equal to 1e-4 (the probe sits 1e-4 from the centre) |
 | CCZ4 residual of the lifted template itself (no cutoff), dense table, rms Einstein rows | t = 0.1: 5e-5 / 2e-5 / 6e-6 for r in [0.05,0.1) / [0.1,0.3) / [0.3,0.6); t = 1: 6e-4 / 7e-5 / 1e-5; t = 5: 2e-4 / 1e-5 / 7e-6 |
 
