@@ -422,22 +422,23 @@ reference.
 
 \subsection{Without and with the centre-of-mass condition}
 
-Two runs with identical settings, except for the centre-of-mass term
-(Appendix~\ref{app:repro}), show what the condition does (Table~\ref{tab:com},
-Fig.~\ref{fig:com}). Without it, the error is dominated by a part that is odd under $z\to-z$ (an
-$l=1$ coefficient of $\lambda$ peaking at $10^{-5}$ near $\rho\approx2$), which the even data
-forbid; every term of the loss is exactly reflection symmetric, so nothing forces this part: it is
-the translation mode of Sec.~\ref{sec:gaugefreedom}. The flux~\eqref{eq:comflux} confirms it: it is
-the same on the spheres $\rho = 1, 2, 10$ and 100 but not zero, $d_z = 7.63\times10^{-5}$, and the
-$\lambda$ error near the inner sphere is $0.061\,|d_z|$. With $d = 0$ imposed on the spheres
-$\rho = 1, 1.5, 3, 10, 30, 100$, the error falls by a factor 80 in $\lambda$ and 70 in $h$, to
-$3.1\times10^{-8}$ and $4.2\times10^{-7}$ (rms over the shell), four to five orders below the size
-of the perturbation. The loss does not see the difference; it is even slightly lower without the
-condition ($5.3\times10^{-11}$ against $9.2\times10^{-11}$), because the translation costs almost
-nothing in it. For the same reason its size without the condition is not fixed: it depends on how
-far the optimisation happens to drift along the mode (in earlier runs with other optimisers it was
-300 times larger). The condition removes it. (These two runs still carried the additional outer
-conditions of Sec.~\ref{sec:bcs}; the next subsection shows that they can be dropped.)
+Two runs with identical settings, the formulation of Sec.~\ref{sec:bcs}, except for the
+centre-of-mass term (Appendix~\ref{app:repro}), show what the condition does
+(Table~\ref{tab:com}, Fig.~\ref{fig:com}). Without it, the error is dominated by a part that is odd
+under $z\to-z$ (an $l=1$ coefficient of $\lambda$ peaking at $1.4\times10^{-4}$ near $\rho\approx2$),
+which the even data forbid; every term of the loss is exactly reflection symmetric, so nothing
+forces this part: it is the translation mode of Sec.~\ref{sec:gaugefreedom}. The
+flux~\eqref{eq:comflux} confirms it: it is the same on the spheres $\rho = 1, 2, 10$ and 100 but
+not zero, $d_z = -1.063\times10^{-3}$, and the $\lambda$ error near the inner sphere is
+$0.061\,|d_z|$. With $d = 0$ imposed on the spheres $\rho = 1, 1.5, 3, 10, 30, 100$, the error
+falls by a factor 3900 in $\lambda$ and 2700 in $h$, to $9.1\times10^{-9}$ and
+$1.5\times10^{-7}$ (rms over the shell), six and five orders below the size of the perturbation.
+The loss does not see the difference: it is $1.6\times10^{-11}$ without the condition and
+$1.3\times10^{-11}$ with it, because the translation costs almost nothing in it. For the same
+reason its size without the condition is not fixed: it depends on how far the optimisation happens
+to drift along the mode (a run with the additional outer conditions of Sec.~\ref{sec:ablation}
+and otherwise the same settings drifted to $d_z = 7.6\times10^{-5}$, 14 times less). The condition
+removes it.
 
 \begin{table*}
 \caption{Error against the spectral reference (angular rms) by radial region, for the same run
@@ -451,8 +452,8 @@ iterations; the loss is the final training loss).}
  & & 1--3 & 3--10 & 10--30 & 30--100 & 1--3 & 3--10 & 10--30 & 30--100 \\
 \hline
 perturbation size & & $2.0\times10^{-2}$ & $2.5\times10^{-3}$ & $7.6\times10^{-4}$ & $2.6\times10^{-4}$ & $2.2\times10^{-2}$ & $4.5\times10^{-4}$ & $3.1\times10^{-5}$ & $3.5\times10^{-6}$ \\
-without centre of mass & $5.3\times10^{-11}$ & $4.6\times10^{-6}$ & $2.3\times10^{-6}$ & $3.5\times10^{-7}$ & $4.2\times10^{-8}$ & $5.9\times10^{-5}$ & $8.6\times10^{-6}$ & $8.3\times10^{-7}$ & $8.7\times10^{-8}$ \\
-with centre of mass & $9.2\times10^{-11}$ & $6.4\times10^{-8}$ & $6.6\times10^{-9}$ & $1.6\times10^{-9}$ & $9.1\times10^{-10}$ & $8.6\times10^{-7}$ & $4.2\times10^{-8}$ & $4.7\times10^{-9}$ & $3.0\times10^{-9}$ \\
+without centre of mass & $1.6\times10^{-11}$ & $6.5\times10^{-5}$ & $3.2\times10^{-5}$ & $4.9\times10^{-6}$ & $5.9\times10^{-7}$ & $8.2\times10^{-4}$ & $1.2\times10^{-4}$ & $1.2\times10^{-5}$ & $1.2\times10^{-6}$ \\
+with centre of mass & $1.3\times10^{-11}$ & $1.2\times10^{-8}$ & $8.9\times10^{-9}$ & $7.5\times10^{-9}$ & $7.0\times10^{-9}$ & $3.0\times10^{-7}$ & $3.4\times10^{-8}$ & $4.9\times10^{-9}$ & $4.2\times10^{-9}$ \\
 \end{tabular}
 \end{ruledtabular}
 \end{table*}
@@ -468,12 +469,12 @@ spherical solution).}
 
 \subsection{Outer conditions that are not needed}\label{sec:ablation}
 
-With the centre of mass fixed we repeated the run with the centre-of-mass condition from scratch
-(Adam and two SSBroyden stages) without the extra outer spheres, without the averaged outer
-conditions, and without both (Table~\ref{tab:ablation}). Each version is as accurate as the full
-one or better; without both, the formulation of Sec.~\ref{sec:bcs}, the loss is seven times lower
-and the error three times lower in $\lambda$ and in $h$. The only quantity that gets worse is the
-far-field $\lambda$ error, from $9\times10^{-10}$ to $7\times10^{-9}$, still $4\times10^{4}$ times
+The run with the centre-of-mass condition above uses only the pointwise outer conditions of
+Sec.~\ref{sec:bcs} (the last row of Table~\ref{tab:ablation}). The same run from scratch (Adam and
+two SSBroyden stages) with the extra outer spheres, with the averaged outer conditions, or with
+both is no better (Table~\ref{tab:ablation}): with both, the loss is seven times higher and the
+error three times higher in $\lambda$ and in $h$. The only quantity they improve is the far-field
+$\lambda$ error, from $7\times10^{-9}$ to $9\times10^{-10}$, which is already $4\times10^{4}$ times
 below the perturbation there. The extra conditions were compensating for the over-determined inner
 condition; once that is removed they only add terms that compete with the equations.
 
@@ -547,30 +548,28 @@ $0.03740$.
 \paragraph{The quadrupolar solution.} Table~\ref{tab:moments} lists the moments. The data raise the
 mass from the background value $R_0 = 0.57735$ to $M_0 = 0.583847$, a nonlinear back-reaction of
 1.1\% in the monopole, and the quadrupole moment is $M_2 = 0.1747$. The run without the
-centre-of-mass condition, whose pointwise error is 80 times larger, has moments as close to the
-reference as the run with it (within $10^{-6}$ in $M_2$): moments are geometric, and the
-translation mode moves the chart, not the geometry. The extraction shows the mode directly: the
-centre of mass of that run, measured from the centre of the coordinate sphere of radius $\rho$, is
-$1\times10^{-7}$ at $\rho=1$, $5.8\times10^{-5}$ at $\rho=2$, $1.17\times10^{-4}$ at 10 and
-$1.29\times10^{-4}$ at 70: it vanishes at the inner sphere, as the mode must, and tends to the
-translation $a = d_z/M_0 = 1.31\times10^{-4}$. With the condition it is $\sim10^{-7}$ at every
-radius.
+centre-of-mass condition, whose pointwise error is 3900 times larger, has moments as close to the
+reference as the run with it (within $2\times10^{-7}$ in $M_2$ and $4\times10^{-7}$ in $M_4$):
+moments are geometric, and the translation mode moves the chart, not the geometry. The extraction
+shows the mode directly: the centre of mass of that run, measured from the centre of the coordinate
+sphere of radius $\rho$, is $-8\times10^{-7}$ at $\rho=1$, $-8.1\times10^{-4}$ at $\rho=2$,
+$-1.63\times10^{-3}$ at 10 and $-1.79\times10^{-3}$ at 70: it vanishes at the inner sphere, as the
+mode must, and tends to the translation $a = d_z/M_0 = -1.82\times10^{-3}$. With the condition it
+is below $6\times10^{-8}$ at every radius.
 
 \begin{table}
 \caption{Geroch--Hansen moments of the quadrupolar solution: the spectral reference, and the
 differences network $-$ reference with the same fit windows (the reference's window spread,
 $1.2\times10^{-4}$ in $M_2$ and $7\times10^{-4}$ in $M_4$, largely cancels in the differences).
-The first two rows carry the additional outer conditions; for the rotated data the moments are
-taken about the data axis.}
+For the rotated data the moments are taken about the data axis.}
 \label{tab:moments}
 \begin{ruledtabular}
 \begin{tabular}{lccc}
  & $M_0$ & $M_2$ & $M_4$ \\
 \hline
 reference & $0.583847$ & $0.17471$ & $0.0220$ \\
-with centre of mass & $+1.4\times10^{-8}$ & $+9.1\times10^{-7}$ & $-7.1\times10^{-6}$ \\
-without centre of mass & $-3.5\times10^{-8}$ & $+5.8\times10^{-7}$ & $-2.5\times10^{-6}$ \\
-pointwise outer conditions only & $-6.3\times10^{-8}$ & $+7.3\times10^{-7}$ & $-3.2\times10^{-6}$ \\
+with centre of mass & $-6.3\times10^{-8}$ & $+7.3\times10^{-7}$ & $-3.2\times10^{-6}$ \\
+without centre of mass & $-2.5\times10^{-8}$ & $+1.8\times10^{-7}$ & $-4.1\times10^{-7}$ \\
 3-D network (width 20), rotated data & $-5.9\times10^{-6}$ & $+2.5\times10^{-5}$ & $-1.2\times10^{-3}$ \\
 3-D network (width 40), rotated data & $-5\times10^{-7}$ & $+4.0\times10^{-6}$ & $-3.9\times10^{-5}$ \\
 \end{tabular}
@@ -581,7 +580,7 @@ pointwise outer conditions only & $-6.3\times10^{-8}$ & $+7.3\times10^{-7}$ & $-
 solution's own axis, the local power $\dd\ln|c_l|/\dd\ln\rho$ of the reference is $-1.00$, $-3.00$
 and $-5.0$ for $l=0,2,4$ (the last out to $\rho\approx30$, where $c_4\sim10^{-10}$), and its odd
 modes are at $10^{-16}$. The network with the centre-of-mass condition gives the same powers, with
-its odd modes below $10^{-8}$ (with or without the additional outer conditions). The
+its odd modes below $10^{-8}$. The
 three-dimensional network on the rotated data, expanded about the data axis, has odd modes of
 $1.3\times10^{-6}$ at width 20, with its $l=2$ tail holding out to $\rho\approx30$ and its $l=4$
 tail only to $\rho\approx5$ ($M_4$ good to 5\%); at width 40 the odd modes are below
@@ -625,11 +624,12 @@ NVIDIA A30 (24~GB). Each result is produced by the commands below, all in the re
 \item Weyl tests: the configurations stored with each run (\texttt{runs/weyl\_*/config.json});
   the rotated test, \texttt{Paper/commands\_weyl.sh}.
 \item Quadrupolar data: \texttt{recipe\_pq16k.sh} (the problem). With and without the centre of
-  mass (Table~\ref{tab:com}), \texttt{qp\_com\_*}, \texttt{qp\_nocom\_*}: the Adam stage of
-  \texttt{mendieta\_submit.sh} (round P; 6 minutes) and the SSBroyden stages of
-  \texttt{Paper/hub\_qp.sh} (about 20 minutes per 10000 iterations on one A30, with the extra
-  outer spheres). The outer conditions (Table~\ref{tab:ablation}), \texttt{ab\_*}, also in
-  \texttt{Paper/hub\_qp.sh} (Adam 3 minutes, 11 minutes per SSBroyden stage). Off-axis data,
+  mass (Table~\ref{tab:com}, Fig.~\ref{fig:com}), \texttt{ab\_none\_*} in \texttt{Paper/hub\_qp.sh}
+  and \texttt{fn\_nocom\_*} in \texttt{Paper/hub\_qp5.sh} (Adam 3 minutes, 10--11 minutes per
+  SSBroyden stage on one A30). The outer conditions (Table~\ref{tab:ablation}), \texttt{ab\_*} in
+  \texttt{Paper/hub\_qp.sh}, and \texttt{qp\_com\_*}: its Adam stage in
+  \texttt{mendieta\_submit.sh} (round P), its SSBroyden stages in \texttt{Paper/hub\_qp.sh}
+  (20 minutes each with the extra outer spheres). Off-axis data,
   \texttt{Paper/hub\_qp3.sh} (\texttt{qp\_rot3\_*}, width 20, 10 minutes per stage) and
   \texttt{Paper/hub\_qp4.sh} (\texttt{qp\_rot4\_n32768\_*}, width 40, 30 minutes per stage).
 \item The spectral reference: \texttt{Paper/commands\_specref.sh} (reproduces the loss

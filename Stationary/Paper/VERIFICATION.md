@@ -86,6 +86,24 @@ two new rows, decay paragraph, appendix, conclusions. qp_rot4 (2026-10-28): Adam
 after w2); fresh/train 1.00; region errors lam 6.9e-6 / 1.1e-6 / 5.0e-8 / 1.6e-8, h 5.3e-4 / 2.3e-5 /
 6.8e-7 / 3.0e-8; tails: l=2 constant to rho 100, l=4 to ~20. Filled into V.D, tab:moments, decay.
 
+## Final-formulation pair for Table I, and the tangential inner term (hub_qp5.sh, 2026-10-28)
+
+| run | loss | fresh | d_z (all spheres) | rms dlam | rms dh | dlam by region | dh by region |
+|---|---|---|---|---|---|---|---|
+| ab_none_w2 (with COM) | 1.25e-11 | 0.99 | <= 5e-8 | 9.12e-9 | 1.45e-7 | 1.25e-8 / 8.90e-9 / 7.47e-9 / 6.98e-9 | 2.98e-7 / 3.37e-8 / 4.94e-9 / 4.22e-9 |
+| fn_nocom_w2 (without) | 1.64e-11 | 1.02 | -1.0633e-3 (constant) | 3.53e-5 | 3.99e-4 | 6.45e-5 / 3.22e-5 / 4.92e-6 / 5.85e-7 | 8.17e-4 / 1.20e-4 / 1.15e-5 / 1.21e-6 |
+| fn_tan_w2 (with COM, --inner-tangential) | 9.38e-12 | 1.05 | <= 2.3e-8 | 5.86e-9 | 1.15e-7 | 6.94e-9 / 5.41e-9 / 5.54e-9 / 5.54e-9 | 2.36e-7 / 1.95e-8 / 5.23e-9 / 5.07e-9 |
+
+Factors without/with: 3870 (lam), 2750 (h). lam error rho 1-3 / |d_z| = 0.0607. l=1 peak of dlam:
+1.35e-4 at rho 1.9 (without), 3.9e-9 (with). Moments net - ref (gh_moments_runs.py): fn_nocom
+M0 -2.5e-8, M2 +1.8e-7, M4 -4.1e-7; fn_tan -4.1e-8, +5.1e-7, -4.3e-6. Centre of mass from the
+sphere of radius rho (scratch com_profile.py: axis_profile(gap_rho=rho), shift at order 8;
+reproduces qp_nocom's 1.2e-7 / 5.8e-5 / 1.17e-4 / 1.29e-4): fn_nocom -7.7e-7 / -8.08e-4 /
+-1.629e-3 / -1.794e-3 at rho 1 / 2 / 10 / 70, a = d_z/M0 = -1.82e-3; ab_none <= 6e-8.
+Paper: V.B, tab:com, fig:com (fig_com.py now fn_nocom_w2 vs ab_none_w2), tab:moments, the moments
+paragraph and the appendix now use this pair; tab:ablation keeps qp_com as the "all" row.
+fn_tan: 1.8x lower lam error at rho 1-3, 1.3-1.5x overall; not yet in the paper (rot_tan running).
+
 ## The inner condition (for the sentence on h_rr, h_rA in II.D)
 
 | claim | value | source |

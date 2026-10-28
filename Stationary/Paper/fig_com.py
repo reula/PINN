@@ -2,7 +2,8 @@
 """The paper's centre-of-mass figure: the same run without and with the centre-of-mass condition,
 graded against the spectral reference.
     cd Stationary && .venv/bin/python Paper/fig_com.py [Paper/paper_metrics.json] [Paper/figs/com_steps.png]  (also writes the .pdf)
-Input: scripts/report_metrics.py's JSON for qp_nocom_w2 and qp_com_w2.  Three panels: the angular
+Input: scripts/report_metrics.py's JSON for fn_nocom_w2 and ab_none_w2 (the final formulation;
+qp_nocom_w2 / qp_com_w2, with the extra outer conditions, until 2026-10-28).  Three panels: the angular
 rms of lambda_net - lambda_ref, of max_ij |h_net - h_ref|, and the |l = 1| coefficient of
 lambda_net - lambda_ref, against rho; dashed, the perturbation (reference minus spherical).
 """
@@ -18,8 +19,8 @@ import numpy as np
 src = sys.argv[1] if len(sys.argv) > 1 else "Paper/paper_metrics.json"
 out = sys.argv[2] if len(sys.argv) > 2 else "Paper/figs/com_steps.png"
 M = json.load(open(src))
-RUNS = [("qp_nocom_w2", "without centre of mass", "#eb6834"),
-        ("qp_com_w2", "with centre of mass", "#2a78d6")]
+RUNS = [("fn_nocom_w2", "without centre of mass", "#eb6834"),
+        ("ab_none_w2", "with centre of mass", "#2a78d6")]
 INK, MUTED, GRID = "#1f1f1e", "#898781", "#e1e0d9"
 plt.rcParams.update({"font.size": 8, "axes.labelsize": 8, "legend.fontsize": 7,
                      "xtick.labelsize": 7, "ytick.labelsize": 7})
