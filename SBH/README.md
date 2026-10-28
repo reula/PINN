@@ -83,7 +83,9 @@ venv read-only and installs `tqdm` (missing there) into `SBH/.pydeps`. Paste in 
 
 It first waits until no Stationary hub batch (`Paper/hub_*.sh`, another session's) is running, so the
 GPU is not shared (`WAIT_FOR=` starts at once), and lets JAX use 95 % of the GPU instead of its default
-75 % (17.7 GiB): the `--w_adm 1` correction ran out of memory at 17.7 GiB on 2026-10-27. Relaunching the same line after a container restart
+75 % (17.7 GiB): the `--w_adm 1` correction ran out of memory at 17.7 GiB on 2026-10-27. It ran out again with
+95 % (2026-10-28, after iteration 500): the stage-2 H/M correction does NOT fit on the hub as it stands; it
+needs fewer points per draw or a chunked loss. Relaunching the same line after a container restart
 resumes from `runs/$OUTDIR/stage2_params.pkl`.
 
 **Mendieta** (2 x A30 per node; jobs are submitted from `SBH/`, outputs in `runs/<OUTDIR>`):
@@ -475,6 +477,16 @@ t = 10 is 1-2x the run's with the correction and ~2x with the H, M term (r = 3-6
 and Theta rises from ~3e-6 to ~2e-5 at t = 10 (still small). The mass is gauge-invariant, the lapse is not:
 the correction trades agreement with the reference's gauge (its gauge rows at r 1-5 get worse) for
 satisfying the constraints.
+
+**Gauge weight 10 (2026-10-28; job 1184525, A30, 1 h 58; the stage-2 H/M correction with `--w_gauge 10`,
+`runs/stage2_con10_adm_g10`).** Does weighting the gauge rows (lapse, shift equations) 10x win back the lapse?
+No. Held-out loss of the sum vs u1 0.47x (ADM term 0.44x; r 1-5 1.44x, r < 1 1.76x). Graded the same way:
+deficit peak -0.4 / -0.5 / -2.9 / -6.7 % at t = 4 / 6 / 8 / 10 (weight 1: -0.1 / -0.8 / -2.9 / -4.9 %);
+hole +0.18 %; lapse error at t = 10, r = 3-6 1.0e-2 (weight 1: 1.1e-2; the run alone 5.2e-3), r = 10-20
+3.9e-3 (4.7e-3); Theta 1.1e-5 (2.3e-5). The lapse error at r 3-6 stays at ~2x the run's: it is not a
+weighting problem; the correction moves the slicing where the deficit is removed. The weight-1 correction
+stays the reference version. (The same job on the JupyterHub ran out of GPU memory twice, at the 6.84 GiB
+QN-norm allocation, even with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.95`; Mendieta's copy finished first.)
 
 **l-decomposition of the deficit (2026-10-26; the collaborators' `reference_1d/l_decomp.py`, received
 2026-10-26: per-ray Misner-Sharp error on 300 directions about the origin, real spherical harmonics to l = 4
