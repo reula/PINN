@@ -504,6 +504,15 @@ stage-2 H/M 8.4e-3); Theta 1.3e-5 (2.5e-5); drift 3.4e-3 (3.8e-3). Window 24's f
 vs 1.3e-6. So in the windows the H/M term halves the deficit and slows its growth, with the same lapse
 price as stage 2 (about 2x at r 3-6); stage 2 on the finished run still does better (-1.1 %). Its own stage 2 is queued.
 
+**Planned (2026-10-28): "Ricci = 0 in the same gauge".** Einstein's equations directly, with 1+log and the
+Gamma-driver. Note: BSSN evolution + H = M = 0 IS Ricci = 0, so `long_con10_adm` (CCZ4 residual + Theta/Z W = 10
++ H/M W = 1) is already this system in first-order form, up to weights and K being independent. Order agreed:
+(1) wait for `long_con10_adm` to finish; (2) the intermediate: the CCZ4 network without Theta and Z (Theta := 0,
+Ghat^i := Gt^i[gt], i.e. BSSN) + the H/M term, so no Theta/Z weight; (3) only if worth it, the full 4-metric
+version: outputs chi, gt_ij, alpha, beta^i (11), K_ij = -(d_t gamma - L_beta gamma)/(2 alpha), residual R_munu (6
+K-evolution + H + M, chi-weighted) + gauge; needs d_t^2 and d_t d_i (extend the Taylor pass or autodiff). Tests:
+static Kerr-Schild (residual 0) and the 1D reference's gauge; first 8 windows to t = 2 against the t = 2 runs.
+
 **Losses of both stages (2026-10-28; `tools/plot_losses_stages.py`, `plots/2026-10-28/losses_stages.png`).**
 (a) Stage 1, `long_con10`: each window's loss history from its checkpoint, drawn across its own 0.25 M. Each window
 starts at 1e-3-1e-2 (the hand-off term: the new network must first match the previous window's end) and ends at
