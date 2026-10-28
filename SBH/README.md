@@ -505,6 +505,16 @@ stage-2 H/M 8.4e-3); Theta 1.3e-5 (2.5e-5); drift 3.4e-3 (3.8e-3). Window 24's f
 vs 1.3e-6. So in the windows the H/M term halves the deficit and slows its growth, with the same lapse
 price as stage 2 (about 2x at r 3-6); stage 2 on the finished run still does better (-1.1 %). Its own stage 2 is queued.
 
+**Core-cloud test (2026-10-28, job 1184804, `runs/w16_con10_nocore`).** The collaborators find, with the Theta/Z
+penalty W = 10 and the code DEFAULTS (no core cloud, 12k QN), a deficit below 1 % at t = 4 (-0.8, -1.0 %) where
+`long_con10` (final settings) has -3.8 %; without a penalty `single_a` vs `long_ctl` point the same way (-2.6 / -3.6 %
+at t = 4, -19 / -36 % at t = 10). Their explanation: the interior residual is a plain mean, so the 48k core points
+cut the uniform bulk's share from 40 % to 25 % (and the focus cloud's likewise) where the band travels. Our pairs
+also differ in QN iterations, resamples and QN code version, so this run changes ONE thing: `long_con10`'s flags
+without `--core_points 48000 --core_ic_points 4800` (EXTRA_ARGS="--stop_after_window 16 --EPOCHS_QN 24000
+--w_constraint 10"; PROD_ARGS and PRESET=single as before), 16 windows to t = 4, from scratch. Grade: sphere
+deficit at t = 2-4 vs `long_con10`, and the hole / core lapse, which the core cloud was added for.
+
 **On hold (2026-10-28; the user: only finish and grade `long_con10_adm`, then SBH pauses): "Ricci = 0 in the same gauge".** Einstein's equations directly, with 1+log and the
 Gamma-driver. Note: BSSN evolution + H = M = 0 IS Ricci = 0, so `long_con10_adm` (CCZ4 residual + Theta/Z W = 10
 + H/M W = 1) is already this system in first-order form, up to weights and K being independent. Order agreed:
