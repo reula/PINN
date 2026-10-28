@@ -188,6 +188,7 @@ plus mean(χ²(H² + |M|²)) (“stage-2 H/M correction”). Both are graded as 
 <tr><td>+ stage-2 correction</td><td class="n">−3.0 %</td><td class="n">−4.8 %</td><td class="n">−8.8 %</td><td class="n">−12 %</td><td class="n">6.6e-3</td></tr>
 <tr><td><b>+ stage-2 H/M correction</b></td><td class="n"><b>−0.1 %</b></td><td class="n"><b>−0.8 %</b></td><td class="n"><b>−2.9 %</b></td><td class="n"><b>−4.9 %</b></td><td class="n">1.1e-2</td></tr>
 <tr><td>+ stage-2 H/M correction, gauge rows ×10</td><td class="n">−0.4 %</td><td class="n">−0.5 %</td><td class="n">−2.9 %</td><td class="n">−6.7 %</td><td class="n">1.0e-2</td></tr>
+<tr><td><i>windowed H/M run, preliminary (t ≤ 6.25)</i></td><td class="n"><i>−2.3 %</i></td><td class="n"><i>−4.3 %</i></td><td class="n">–</td><td class="n">–</td><td class="n"><i>6.7e-3 at t = 6.25</i></td></tr>
 </table>
 <img src="stage2_profiles.png" style="width:88%; margin:4px auto 1px" alt="Sphere-averaged mass error and lapse error against radius at t = 4, 7, 10 for the run and its two corrections">
 <div class="cap"><b>Stage 2, by radius.</b> Top: sphere-averaged m/M − 1. Bottom: rms over the sphere of α − α<sub>ref</sub>.
@@ -201,11 +202,19 @@ outgoing deficit is gone beyond r ≈ 10 until late times. It leaves a weaker ba
 is the lapse: about 2× the run's error at r = 3–6. Weighting the gauge equations 10× does not recover it, so this is not a
 weighting problem. The mass is gauge-invariant, but the lapse is not, and the correction reaches the constraints partly
 through a different slicing from the reference's. Θ stays small (1–2e-5).</p>
+<p><b>Preliminary: the H/M term inside the windows.</b> The run of section 4 is being repeated with the same
+mean(χ²(H² + |M|²)) term in every window, as a third penalty next to Θ/Zⁱ. It is 25 of 40 windows in, to
+t = 6.25. So far it halves the deficit: −4.4 % at t = 6.25, against −8.7 % for the Θ/Zⁱ run and −13 % for the control.
+It also grows more slowly, −3.5 % → −4.4 % from t = 5 to 6.25 against −6.1 % → −8.7 %. The hole is the best of any run
+(+0.01 %), Θ is halved, and the drift is the same (3.4e-3). The lapse error at r = 3–6 is again about 2× the Θ/Zⁱ run's
+(6.7e-3 against 3.2e-3, where the stage-2 H/M correction has 8.4e-3), so the lapse cost belongs to imposing H and M,
+not to stage 2. At t = 6.25 the stage-2 H/M correction is still better (−1.1 %). The rest of the run (t = 6.25–10, where
+the deficit grew fastest) and a stage 2 on top of it are queued.</p>
 
 <h2>Next steps</h2>
 <ul>
-<li><b>Windowed H/M run</b> (running, about half done): the 40-window run with the H/M term in every window, to see
-whether the deficit can be prevented rather than corrected, and with what effect on the lapse.</li>
+<li><b>Windowed H/M run</b> (25 of 40 windows; preliminary numbers in section 7): finish it to t = 10, then train its
+own stage-2 H/M correction (queued), to see whether prevention and correction together leave the deficit below 1 %.</li>
 <li><b>More interior points where the pulse travels</b> (r ≈ 5–15), e.g. a shell cloud following the pulse, to test whether
 the outgoing deficit is under-sampling.</li>
 <li><b>Combine</b> the direct penalty with point-symmetric clouds and take it to the binary, where both the drift and the
