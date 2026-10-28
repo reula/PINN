@@ -109,8 +109,12 @@ was flat at 4.3e-9 from stage 2); fresh/train 0.99; |d| <= 1.2e-6. rms dlam 6.12
 by region lam 1.25e-5 / 1.87e-6 / 7.9e-8 / 1.9e-8, h 8.39e-4 / 3.51e-5 / 1.02e-6 / 5.7e-8. That is
 1.6-1.8x WORSE than qp_rot4 after the same budget. The tangential term itself is not what is left
 (bc_in 2.65e-11 of 2.95e-8): the PDE residuals are 7x higher (Ricci rms 8.4e-5 vs 3.3e-5), i.e. this
-run converged more slowly. Verdict: modest gain in axisymmetry, none in 3-D at this budget; not
-part of the paper's formulation.
+run converged more slowly. Continued two stages (hub_qp6.sh, finished 2026-10-28 13:14): w5 2.09e-8,
+w6 1.95e-8 (levelling off, 4.5x qp_rot4's 4.3e-9); fresh/train 0.97; |d| <= 8.4e-7. rms dlam 4.66e-6,
+dh 3.81e-4 (1.4x / 1.5x qp_rot4's 3.39e-6 / 2.58e-4); by region lam 9.53e-6 / 1.41e-6 / 6.5e-8 /
+7.3e-9, h 7.88e-4 / 3.27e-5 / 9.6e-7 / 5.1e-8 (rho 1-3 h 1.5x qp_rot4's 5.3e-4); Ricci rms 6.7e-5
+(2x). Verdict: modest gain in axisymmetry, none in 3-D even with 1.5x the budget; not part of the
+paper's formulation (paper: end of the H^1 paragraph).
 
 ## The inner condition (for the sentence on h_rr, h_rA in II.D)
 

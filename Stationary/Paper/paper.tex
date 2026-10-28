@@ -529,8 +529,11 @@ $1.2\times10^{-7}$ in $h$ (by a factor 1.8 in $\lambda$ for $1\le\rho\le3$). On 
 problem at width 40 it slows the training down: after the same four stages the field-equation
 residuals are seven times larger and the error is 1.6--1.8 times larger
 ($6.1\times10^{-6}$ in $\lambda$, $4.0\times10^{-4}$ in $h$), with the loss still decreasing
-($2.9\times10^{-8}$) where the run without the term had levelled off.
-\pending{rot\_tan after six stages}
+($2.9\times10^{-8}$) where the run without the term had levelled off. Two further stages bring
+it to $1.9\times10^{-8}$, now levelling off at 4.5 times the loss of the run without the term, with
+the error still 1.4--1.5 times larger ($4.7\times10^{-6}$ in $\lambda$, $3.8\times10^{-4}$ in $h$).
+In three dimensions the term therefore costs more than it gains, and we do not include it in the
+formulation.
 
 % =====================================================================================
 \section{Multipole moments}\label{sec:moments}
