@@ -42,7 +42,9 @@ lapse error near the hole drops 10×. What the penalty does not change is a mass
 t ≈ 2 and travels outward with the gauge pulse, growing to about −20 % (sphere average) at r ≈ 10–12 by t = 10, as with the default settings. The penalty does
 not remove it, but it matters: with the final settings and no penalty the deficit doubles, to −36 %. Both penalised runs
 also hold the puncture in place: drift 0.010 and 0.007 by t = 10, against 0.13 without a penalty (defaults) and 0.014 for
-the final settings alone (0.023 in the 10–19 Oct summary). Point-symmetric sampling clouds stop it too (25× less).</div>
+the final settings alone (0.023 in the 10–19 Oct summary). A second network trained over the whole run on the true
+Hamiltonian and momentum constraints removes most of the deficit (<b>−18 % → −5 %</b> at t = 10), at the price of a lapse
+error about 2× larger (section 7). Point-symmetric sampling clouds stop it too (25× less).</div>
 
 <img src="overview.png" alt="Lapse at the puncture, the hole's mass, and the mass function at t = 10">
 <div class="cap"><b>Overview, t ≤ 10 M.</b> (a) α at r = 0.03 against the reference. (b) Misner–Sharp m/M − 1 at r = 1, outside
@@ -168,8 +170,42 @@ mostly does not follow: 2Zⁱ/χ ≈ −Γ̃ⁱ, a constraint violation the evol
 penalties close it. The final settings alone also drift little (0.014), but their hole and outgoing deficit are worse. Symmetric clouds leave the mass error
 unchanged; drift and mass are separate problems. The penalised runs drift 10× less without symmetric clouds.</p>
 
+<h2>7. Stage 2: one correction network over the whole run</h2>
+<p>The deficit is a violation of the true ADM constraints, H = R + K² − K<sub>ij</sub>K<sup>ij</sup> and
+M<sub>i</sub> = D<sub>j</sub>K<sup>j</sup><sub>i</sub> − ∂<sub>i</sub>K. Θ and Zⁱ can vanish while these do not. On spheres,
+dm/dR = R²⟨H⟩/4; in the Θ/Zⁱ run ⟨H⟩ integrates to −15 % of the −18 % at r = 11, t = 10, and it is below 1e-3 at
+t = 0. So it is built during the evolution, inside the windows (−21.5 % at r = 10) rather than at the hand-offs (−0.8 %).
+To correct the propagation across windows, we froze the finished Θ/Zⁱ run u₁ and trained a single correction
+network N over all of 0 ≤ t ≤ 10, so that u = u₁ + s·N with
+s = ε (t/T)(1 − r²/R²)(1 − e<sup>−r²/r<sub>c</sub>²</sup>). The factor keeps the initial data, the outer boundary and the
+puncture exactly as in u₁. It is trained on the residual of the sum: N is 4 × 64, with 3 200 points per window span
+spread evenly in the ball (128 000 per draw, redrawn every 250 steps), 24 000 SSBroyden steps, and ε = 0.01. The run
+took 1.7–2 h on one A30. Two versions were trained: the same loss as u₁ (“stage-2 correction”), and the same loss
+plus mean(χ²(H² + |M|²)) (“stage-2 H/M correction”). Both are graded as u₁ + correction against the reference.</p>
+<table>
+<tr><th>worst outer deficit (sphere average)</th><th class="n">t = 4</th><th class="n">t = 6</th><th class="n">t = 8</th><th class="n">t = 10</th><th class="n">α error, r = 3–6, t = 10</th></tr>
+<tr><td>Θ/Zⁱ penalty run (u₁)</td><td class="n">−3.8 %</td><td class="n">−8.1 %</td><td class="n">−14 %</td><td class="n">−18 %</td><td class="n">5.2e-3</td></tr>
+<tr><td>+ stage-2 correction</td><td class="n">−3.0 %</td><td class="n">−4.8 %</td><td class="n">−8.8 %</td><td class="n">−12 %</td><td class="n">6.6e-3</td></tr>
+<tr><td><b>+ stage-2 H/M correction</b></td><td class="n"><b>−0.1 %</b></td><td class="n"><b>−0.8 %</b></td><td class="n"><b>−2.9 %</b></td><td class="n"><b>−4.9 %</b></td><td class="n">1.1e-2</td></tr>
+<tr><td>+ stage-2 H/M correction, gauge rows ×10</td><td class="n">−0.4 %</td><td class="n">−0.5 %</td><td class="n">−2.9 %</td><td class="n">−6.7 %</td><td class="n">1.0e-2</td></tr>
+</table>
+<img src="stage2_profiles.png" style="width:88%; margin:4px auto 1px" alt="Sphere-averaged mass error and lapse error against radius at t = 4, 7, 10 for the run and its two corrections">
+<div class="cap"><b>Stage 2, by radius.</b> Top: sphere-averaged m/M − 1. Bottom: rms over the sphere of α − α<sub>ref</sub>.
+The run u₁ (grey) and the two corrections on top of it.</div>
+<img src="stage2_sphere_errors_rt.png" style="width:88%; margin:6px auto 1px" alt="Radius-time maps of the sphere-averaged mass error, lapse error and Theta for the run and its stage-2 corrections">
+<div class="cap"><b>Stage 2, radius against time</b> (linear radius). Rows as in section 4's maps: sphere-averaged mass error,
+rms lapse error, rms Θ. Columns: the run u₁ and the three corrections of the table. In the H/M columns the deep blue band of the
+outgoing deficit is gone beyond r ≈ 10 until late times. It leaves a weaker band behind it that is too heavy (up to
++3 % at r ≈ 7–9, t = 10), and the lapse error grows over r ≈ 2–8 from t ≈ 4 on.</div>
+<p>The H/M term removes most of the outgoing deficit, and the hole stays at +0.2–0.3 % in every version. What it costs
+is the lapse: about 2× the run's error at r = 3–6. Weighting the gauge equations 10× does not recover it, so this is not a
+weighting problem. The mass is gauge-invariant, but the lapse is not, and the correction reaches the constraints partly
+through a different slicing from the reference's. Θ stays small (1–2e-5).</p>
+
 <h2>Next steps</h2>
 <ul>
+<li><b>Windowed H/M run</b> (running, about half done): the 40-window run with the H/M term in every window, to see
+whether the deficit can be prevented rather than corrected, and with what effect on the lapse.</li>
 <li><b>More interior points where the pulse travels</b> (r ≈ 5–15), e.g. a shell cloud following the pulse, to test whether
 the outgoing deficit is under-sampling.</li>
 <li><b>Combine</b> the direct penalty with point-symmetric clouds and take it to the binary, where both the drift and the
