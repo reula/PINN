@@ -527,6 +527,24 @@ pulse travels every run has only the uniform sample (the core and focus clouds s
 candidate cause. The control run `long_ctl` (final settings, no penalty, resumed from `w8_qn` to t = 10; jobs
 1184283 -> 1184284, submitted 2026-10-26) compares the hole and the deficit without a penalty.
 
+**The control run (graded 2026-10-28; `plots/2026-10-28/control_sphere_errors_rt.png`).** `long_ctl` finished
+in job 1184283 (35.5 h; 1184284 cancelled, not needed). Same sphere averages:
+
+| t | `long_ctl` (final, no penalty) | `long_con10` (final + Theta/Z penalty) | `single_a` (defaults) |
+|---|---|---|---|
+| 4 | -3.6 % (r 5.2) | -3.8 % (r 5.5) | -2.6 % (r 4.7) |
+| 6 | -12 % (r 6.9) | -8.1 % (r 7.6) | -6.8 % (r 7.2) |
+| 8 | -22 % (r 8.5) | -14 % (r 10.0) | -13 % (r 9.5) |
+| 10 | -36 % (r 10.0) | -18 % (r 11.7) | -19 % (r 12.4) |
+
+At t = 10: hole <m/M - 1>(r = 1) +9.7 % (`long_con10` +0.2 %, `single_a` +27 %); rms Theta over 1 < r < 15
+1.1e-2 (5.4e-6, 3.0e-2); alpha error at r 3-6 4.9e-3 (5.2e-3, 2.4e-2); drift 0.014 (0.010, 0.127). The lapse
+at the tracked puncture dips below zero at t = 9.75 (-3.7e-3; ~0.035 in the penalised runs). So the final
+settings alone fix the drift and most of the lapse error, but NOT the mass: without a penalty the outgoing
+deficit grows twice as fast after t ~ 5 and doubles by t = 10, and Theta grows 20x from t = 4 to 10. With
+the penalty the deficit returns to the defaults' level. The settings and the penalty act on different
+errors; neither removes the outgoing H violation (stage 2 with `--w_adm` is the one that does, section above).
+
 DSGNAR, exact residual: all-or-nothing by window. Working windows accept ~85 % of the steps over the whole
 70 min and lower the loss 100-1000x (5.0e-2 -> 2.7e-4; 1.4e-2 -> 8.6e-5); the others (windows 1-3 and 8 of
 `w8_gn_exact`, 1-3, 6, 7 of the md05 run) reject 15 steps in a row down to the minimum radius. Keeping the
