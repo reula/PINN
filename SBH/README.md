@@ -1020,6 +1020,23 @@ With the 0.25-spaced table (the original reference) the template residual at t =
 lapse collapse needs the dense time table. A 2-window CPU smoke run (tiny network, 100 iterations) completes
 and writes the outputs.
 
+**The two templates near the centre** (`tools/plot_sing_templates.py` -> `plots/2026-10-28/`: `bl_rt.png`,
+`trumpet_rt.png`, `trumpet_drift.png` r-t maps, `profiles.png` radial profiles; r from the first grid point
+0.0025 to 1, log axis, dashed lines at r_c and 2 r_c):
+
+* chi goes from ~ r^4 (BL, 1e-8 at r = 0.0025) to ~ r^2 (trumpet, 2e-5 there) during t ~ 2-4; alpha stays ~ r
+  but drops ~5x at fixed small r over the same span, after the transient rise to ~0.25 near r ~ 0.01 at
+  t ~ 2 (the physical rise noted in reference_1d/README.md). Khat at the centre: 0 -> 1.1 (t = 5) -> 0.54
+  (t = 10) -> 0.60 (t = 20); At's n_in_j coefficient d -> -2.7 at the centre.
+* The transition is fastest inside r ~ 0.05, i.e. well inside r_c: the bl template carries it; the trumpet
+  template starts after it.
+* The trumpet is not exactly stationary at t = 10: over t = 10-20 Khat drifts by up to +0.09 (largest at r ~
+  0.005-0.02), d by -0.05, alpha by +-0.007, chi, b, beta, g by <~0.01, mostly at r >~ 0.1
+  (`trumpet_drift.png`). That is what N must supply inside the cutoff in the trumpet run, where rho is small.
+* The 1D data are unreliable at the innermost 3-4 grid points (r < 0.02): Theta oscillates there (+-1e-3, up
+  to 0.027 at t = 2), and chi at r = 0.0025 is <= 0 for t <~ 2.3 (the white strip in `bl_rt.png`'s chi panel;
+  the chi floor and the dissipation). That is the template residual floor at d < 0.01 noted above.
+
 Outputs in `runs/OUTDIR`: `window_KKK.pkl`, `sing_history.csv` (per draw: held-out loss and parts, a(t1)),
 `sing_report.csv` (per window end: rms error of each field group vs the 1D reference in r in [0.05,0.5),
 [0.5,5), [5,20) on 8 rays, and alpha at r = 0.03), `config.json`.
