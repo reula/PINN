@@ -498,6 +498,14 @@ held-out loss of the sum / u1's on the same evenly spread points. Final ratios 0
 / H/M with gauge x10), H/M part 0.77 / 0.38 / 0.44. Most of the gain comes in the first 3 000 iterations; the H/M
 correction has one transient spike near 18 000 (recovered in ~500 iterations). Halving the residual removes
 three-quarters of the deficit: the loss measures accuracy badly here too.
+To redo it (from `SBH/`, runs as on Mendieta):
+
+    python tools/plot_losses_stages.py plots/2026-10-28/losses_stages.png runs/long_con10 \
+        "stage-2 correction=runs/stage2_con10/stage2_history.csv" \
+        "stage-2 H/M correction=runs/stage2_con10_adm/stage2_history.csv" \
+        "H/M correction, gauge x10=runs/stage2_con10_adm_g10/stage2_history.csv"
+
+Any windowed run and any stage-2 CSVs work (e.g. `long_con10_adm` and its stage 2 when they finish).
 
 **l-decomposition of the deficit (2026-10-26; the collaborators' `reference_1d/l_decomp.py`, received
 2026-10-26: per-ray Misner-Sharp error on 300 directions about the origin, real spherical harmonics to l = 4
