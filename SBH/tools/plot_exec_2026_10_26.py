@@ -3,8 +3,8 @@
     python tools/plot_exec_2026_10_26.py DATA_DIR OUT_DIR
 
 DATA_DIR: cmpL_<run>_errors.csv, cmpL_<run>_puncture.csv (reference_1d/compare_pinn.py) and
-se_<run>.npz (tools/sphere_errors.py: mass error averaged over spheres) for single_a, long_con10,
-long_bia3. The second figure of the summary is tools/plot_sphere_errors.py's radius-time map.
+se_<run>.npz (tools/sphere_errors.py: mass error averaged over spheres) for single_a, long_ctl,
+long_con10, long_bia3 (long_ctl, the control run, added 2026-10-28). The second figure of the summary is tools/plot_sphere_errors.py's radius-time map.
 """
 import csv
 import os
@@ -19,6 +19,7 @@ D, OUT = sys.argv[1], sys.argv[2]
 os.makedirs(OUT, exist_ok=True)
 INK, MUTED, GRID = "#1f1f1e", "#6b6a65", "#e4e3de"
 RUN = {"single_a": ("#eb6834", "--", "no penalty, default settings"),
+       "long_ctl": ("#8a5cc2", "-.", "no penalty, final settings"),
        "long_con10": ("#2a78d6", "-", "Θ/Zⁱ penalty (W = 10)"),
        "long_bia3": ("#1baf7a", ":", "Bianchi penalty (W = 1e-3)")}
 plt.rcParams.update({"font.size": 9, "axes.edgecolor": MUTED, "axes.labelcolor": INK,

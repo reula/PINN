@@ -539,8 +539,10 @@ in job 1184283 (35.5 h; 1184284 cancelled, not needed). Same sphere averages:
 
 At t = 10: hole <m/M - 1>(r = 1) +9.7 % (`long_con10` +0.2 %, `single_a` +27 %); rms Theta over 1 < r < 15
 1.1e-2 (5.4e-6, 3.0e-2); alpha error at r 3-6 4.9e-3 (5.2e-3, 2.4e-2); drift 0.014 (0.010, 0.127). The lapse
-at the tracked puncture dips below zero at t = 9.75 (-3.7e-3; ~0.035 in the penalised runs). So the final
-settings alone fix the drift and most of the lapse error, but NOT the mass: without a penalty the outgoing
+at the tracked puncture dips below zero at t = 9.75 (-3.7e-3; ~0.035 in the penalised runs); at r = 0.03,
+0.013 against the reference 0.034 (`reference_1d/compare_pinn.py`: core / mid alpha error 3.8e-2 / 3.9e-2, 6x the
+penalised run's 6.0e-3 / 3.5e-3; max Theta 0.13). So the final settings alone fix the drift and the lapse
+error far out (r 3-6), but not the lapse near the hole and NOT the mass: without a penalty the outgoing
 deficit grows twice as fast after t ~ 5 and doubles by t = 10, and Theta grows 20x from t = 4 to 10. With
 the penalty the deficit returns to the defaults' level. The settings and the penalty act on different
 errors; neither removes the outgoing H violation (stage 2 with `--w_adm` is the one that does, section above).
@@ -831,7 +833,7 @@ one Adam -> BFGS line.
 
 **Executive summary** for the PINN team, in the format of J. Masso's 10-19 Oct summary
 (`originals/BH_PINN_executive_summary.pdf`): `docs/exec_2026-10-20/SBH_optimisers_drift_mass_2026-10-20.pdf`
-(source `summary.html`, figures from `tools/plot_exec_summary.py`). Second summary, physics only (collocation points, constraint penalties to t = 10, mass, drift; 3 pages): `docs/exec_2026-10-26/` (figures from `tools/plot_exec_2026_10_26.py` and `tools/plot_sphere_errors.py`). Note from that summary: our runs
+(source `summary.html`, figures from `tools/plot_exec_summary.py`). Second summary, physics only (collocation points, constraint penalties to t = 10, mass, drift; 3 pages): `docs/exec_2026-10-26/` (figures from `tools/plot_exec_2026_10_26.py` and `tools/plot_sphere_errors.py`; the control run `long_ctl` added and "Draft" removed on 2026-10-28). Note from that summary: our runs
 used the code's defaults, i.e. its "first baseline" (no core points, 12k QN steps per window); its
 final settings (48k core points, 24k QN steps) gave +7-8 % mass error and 0.023 drift at t = 10
 where `single_a` has 35 % and 0.127.

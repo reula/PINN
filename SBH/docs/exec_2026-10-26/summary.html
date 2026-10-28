@@ -29,31 +29,32 @@
 <body>
 
 <h1>Black-hole puncture CCZ4 PINN: constraints, mass and drift</h1>
-<div class="sub">Work of 20–26 October 2026 · O. Reula, with Claude · same code and problem as the 10–19 October summary
+<div class="sub">Work of 20–28 October 2026 · O. Reula, with Claude · same code and problem as the 10–19 October summary
 (J. Massó): one 6×40 network per 0.25 M window, single puncture m = 0.5, t ≤ 10 M, SSBroyden throughout.
 All results graded against the collaborators' 1D spherical reference (dr = 0.005) and the Misner–Sharp mass,
-not the training loss. <b>Draft</b>: the control run that attributes the last finding is running.</div>
+not the training loss. The control run (final settings, no penalty) was added on 28 October.</div>
 
 <div class="bottom"><b>Bottom line.</b> The trained networks are not Ricci-flat near the horizon, and the residual loss
 cannot see why: a constraint-violating solution still satisfies the CCZ4 evolution equations. Adding the CCZ4
 constraints Θ and Zⁱ (zero for a true solution) to the loss fixes the black hole: to t = 10 M its mass stays within
-<b>0.35 %</b> (final settings without it: +7–8 %), the lapse at the puncture within 0.003 of the reference, and the
+<b>0.35 %</b> (final settings without it: +9.7 %, as the 10–19 Oct summary's +7–8 %), the lapse at the puncture within 0.003 of the reference, and the
 lapse error near the hole drops 10×. What the penalty does not change is a mass <b>deficit</b> that leaves the hole at
-t ≈ 2 and travels outward with the gauge pulse, growing to about −20 % (sphere average) at r ≈ 10–12 by t = 10. It is the same
-with or without the penalty. Both penalised runs also hold the puncture in place: drift 0.010 and 0.007 by t = 10, against
-0.13 without a penalty and 0.023 for the 10–19 Oct final settings. Point-symmetric sampling clouds stop it too (25× less).</div>
+t ≈ 2 and travels outward with the gauge pulse, growing to about −20 % (sphere average) at r ≈ 10–12 by t = 10, as with the default settings. The penalty does
+not remove it, but it matters: with the final settings and no penalty the deficit doubles, to −36 %. Both penalised runs
+also hold the puncture in place: drift 0.010 and 0.007 by t = 10, against 0.13 without a penalty (defaults) and 0.014 for
+the final settings alone (0.023 in the 10–19 Oct summary). Point-symmetric sampling clouds stop it too (25× less).</div>
 
 <img src="overview.png" alt="Lapse at the puncture, the hole's mass, and the mass function at t = 10">
 <div class="cap"><b>Overview, t ≤ 10 M.</b> (a) α at r = 0.03 against the reference. (b) Misner–Sharp m/M − 1 at r = 1, outside
 the horizon (r ≈ 0.25), at each window end; the band is the 10–19 Oct final settings at t = 10. (c) m/M − 1 against r at t = 10.
 Mass errors are averaged over spheres (48 directions) about the tracked puncture.
-“No penalty, default settings”, “Θ/Zⁱ penalty” and “Bianchi penalty” are the runs <code>single_a</code>,
-<code>long_con10</code> and <code>long_bia3</code>; their settings are in the table of section 1.</div>
+“No penalty, default settings”, “no penalty, final settings”, “Θ/Zⁱ penalty” and “Bianchi penalty” are the runs
+<code>single_a</code>, <code>long_ctl</code> (the control run), <code>long_con10</code> and <code>long_bia3</code>; their settings are in the table of section 1.</div>
 
 <h2>1. Runs, settings and collocation points</h2>
 <p>Two configurations are compared. The <b>defaults</b> are the code's default flags, the 10–19 Oct summary's “first
 baseline”, used by the run without a penalty (<code>single_a</code>). The <b>final settings</b> are that summary's best
-configuration, used by both penalised runs and by the control run now running. The changes are more points around the
+configuration, used by both penalised runs and by the control run (<code>long_ctl</code>). The changes are more points around the
 hole, twice the QN iterations and, for the penalised runs, the penalty:</p>
 <table>
 <tr><th>per window (0.25 M)</th><th class="n">defaults</th><th class="n">final settings</th><th>distribution</th></tr>
@@ -107,32 +108,35 @@ derivatives of the network and costs ~35× the residual per point.</li>
 <p>At t = 2 (8 windows), both cut the core errors ~10× against the same run without them: core α error 1.2e-2 → 7e-4
 (direct) / 1.1e-3 (Bianchi), max Θ 0.45 → 3e-4 / 1.4e-2. Continued to t = 10:</p>
 <table>
-<tr><th>t = 10</th><th class="n">no penalty, defaults</th><th class="n">direct, W = 10</th><th class="n">Bianchi, W = 1e-3</th><th class="n">10–19 Oct final</th></tr>
-<tr><td>α at r = 0.03 (reference 0.034)</td><td class="n">0.081</td><td class="n"><b>0.037</b></td><td class="n">0.041</td><td class="n">0.041</td></tr>
-<tr><td>α error, core 0.05 ≤ r &lt; 0.5 / mid 0.5 ≤ r &lt; 5</td><td class="n">6.6e-2 / 1.0e-1</td><td class="n"><b>6.0e-3 / 3.5e-3</b></td><td class="n">2.2e-2 / 2.7e-2</td><td class="n">–</td></tr>
-<tr><td>max |Θ|</td><td class="n">0.42</td><td class="n"><b>3e-5</b></td><td class="n">2.9e-2</td><td class="n">–</td></tr>
-<tr><td>mass of the hole, m/M − 1 at r = 1</td><td class="n">+27 %</td><td class="n"><b>+0.19 %</b></td><td class="n">−6.2 %</td><td class="n">+7–8 %</td></tr>
-<tr><td>worst outer deficit (radius)</td><td class="n">−19 % (12.4)</td><td class="n">−18 % (11.7)</td><td class="n">−21 % (9.5)</td><td class="n">≤ 17 % (4–12)</td></tr>
-<tr><td>puncture drift |x<sub>p</sub>|</td><td class="n">0.13</td><td class="n">0.010</td><td class="n">0.007</td><td class="n">0.023</td></tr>
+<tr><th>t = 10</th><th class="n">no penalty, defaults</th><th class="n">no penalty, final (control)</th><th class="n">direct, W = 10</th><th class="n">Bianchi, W = 1e-3</th><th class="n">10–19 Oct final</th></tr>
+<tr><td>α at r = 0.03 (reference 0.034)</td><td class="n">0.081</td><td class="n">0.013</td><td class="n"><b>0.037</b></td><td class="n">0.041</td><td class="n">0.041</td></tr>
+<tr><td>α error, core 0.05 ≤ r &lt; 0.5 / mid 0.5 ≤ r &lt; 5</td><td class="n">6.6e-2 / 1.0e-1</td><td class="n">3.8e-2 / 3.9e-2</td><td class="n"><b>6.0e-3 / 3.5e-3</b></td><td class="n">2.2e-2 / 2.7e-2</td><td class="n">–</td></tr>
+<tr><td>max |Θ|</td><td class="n">0.42</td><td class="n">0.13</td><td class="n"><b>3e-5</b></td><td class="n">2.9e-2</td><td class="n">–</td></tr>
+<tr><td>mass of the hole, m/M − 1 at r = 1</td><td class="n">+27 %</td><td class="n">+9.7 %</td><td class="n"><b>+0.19 %</b></td><td class="n">−6.2 %</td><td class="n">+7–8 %</td></tr>
+<tr><td>worst outer deficit (radius)</td><td class="n">−19 % (12.4)</td><td class="n">−36 % (10.0)</td><td class="n">−18 % (11.7)</td><td class="n">−21 % (9.5)</td><td class="n">≤ 17 % (4–12)</td></tr>
+<tr><td>puncture drift |x<sub>p</sub>|</td><td class="n">0.13</td><td class="n">0.014</td><td class="n">0.010</td><td class="n">0.007</td><td class="n">0.023</td></tr>
 </table>
 <p>The direct term is the clear choice for the hole: Θ falls 10⁴×, and the lapse and the mass at the puncture match the
-reference. The Bianchi term, the more physical idea, does less at the weight tried and makes the hole too light (−6 %).</p>
+reference. The control run shows this is the penalty, not the settings: with the final settings alone the lapse at the
+puncture falls to 0.013 (reference 0.034; it touches zero at t ≈ 9.75), the core lapse error is 6× the penalised run's, and
+the hole is 9.7 % too heavy, the 10–19 Oct summary's +7–8 %. The Bianchi term, the more physical idea, does less at the weight tried and makes the hole too light (−6 %).</p>
 
 <img src="sphere_errors_rt.png" style="width:76%; margin:4px auto 1px" alt="Radius-time maps of the sphere-averaged mass error, lapse error and Theta for the three runs">
-<div class="cap"><b>Errors on spheres, radius against time.</b> Top: the Misner–Sharp error averaged over each sphere
+<div class="cap"><b>Errors on spheres, radius against time</b> (columns: the runs of the table above). Top: the Misner–Sharp error averaged over each sphere
 (red = too heavy, blue = too light). Middle: rms over the sphere of α − α<sub>ref</sub>. Bottom: rms of Θ. Evaluated at
 t = 0 and every window end, 48 directions × 100 radii.</div>
 
 <h2>5. What is left: an outgoing mass deficit</h2>
 <p>The maps separate two errors. Inside the outgoing front the hole's mass is what the penalties fix: steadily too heavy
 without them (+27 %), right with the direct term, uniformly too light with the Bianchi term. The second error is common
-to all three runs: a deficit band leaves the hole at t ≈ 2 and moves out along the path of the gauge pulse, reaching
-−18 to −21 % at r ≈ 10–12 by t = 10. This matches the 10–19 Oct observation (“up to 17 % at r ≈ 4–12 where the gauge
+to all four runs: a deficit band leaves the hole at t ≈ 2 and moves out along the path of the gauge pulse, reaching
+−18 to −21 % at r ≈ 10–12 by t = 10, and −36 % at r ≈ 10 with the final settings and no penalty. This matches the 10–19 Oct observation (“up to 17 % at r ≈ 4–12 where the gauge
 pulses pass”). The lapse error and Θ follow the same outgoing paths. Along a single axis the deficit can be twice its
 sphere average (−36 % on the ±x rays of the direct-penalty run), so it is not spherical.
 Where the pulse travels (r ≈ 5–15) every run rests on the sparse uniform sample, since the core and focus clouds sit at the
-hole, so that region is the first candidate. The control run (final settings, no penalty, running) will show whether the
-final settings alone change it.</p>
+hole, so that region is the first candidate. The control run settles it: the final settings
+alone do not reduce the deficit; without the penalty it grows twice as fast after t ≈ 5 and reaches −36 %, while Θ grows
+20× between t = 4 and 10. The settings and the penalty act on different errors, and neither removes this one.</p>
 
 <h2>6. The puncture drift: sampling and constraints</h2>
 <p>A single puncture should stay at the origin; in the defaults run it reaches 0.13 by t = 10. With puncture tracking off
@@ -150,22 +154,22 @@ The constraint penalties control the drift almost as well, <i>without</i> symmet
 <tr><th>puncture drift |x<sub>p</sub>|</th><th class="n">t = 2</th><th class="n">t = 3</th><th class="n">t = 5</th><th class="n">t = 7.5</th><th class="n">t = 10</th></tr>
 <tr><td>no penalty, defaults</td><td class="n">1.4e-3</td><td class="n">1.0e-2</td><td class="n">2.7e-2</td><td class="n">6.0e-2</td><td class="n">0.13</td></tr>
 <tr><td>no penalty, final settings (10–19 Oct)</td><td class="n">–</td><td class="n">–</td><td class="n">–</td><td class="n">–</td><td class="n">0.023</td></tr>
+<tr><td>no penalty, final settings (control)</td><td class="n">6.0e-4</td><td class="n">2.4e-3</td><td class="n">5.1e-3</td><td class="n">8.3e-3</td><td class="n">1.4e-2</td></tr>
 <tr><td>Θ/Zⁱ penalty</td><td class="n">3.5e-4</td><td class="n">7.7e-4</td><td class="n">9.4e-4</td><td class="n">5.7e-3</td><td class="n"><b>1.0e-2</b></td></tr>
 <tr><td>Bianchi penalty</td><td class="n">3.9e-4</td><td class="n">6.1e-4</td><td class="n">1.2e-3</td><td class="n">1.7e-3</td><td class="n"><b>6.8e-3</b></td></tr>
 </table>
 <p>To t = 5 both stay near 1e-3, the level of the symmetric clouds at t = 4, and at t = 10 they are 13–19× below the defaults and
-2–3× below the final settings alone. Why, measured on spheres of radius 0.3 about the tracked puncture (<code>tools/drift_dipole.py</code>): the tracker
+1.4–2× below the final settings alone (control run; 0.023 in the 10–19 Oct summary). Why, measured on spheres of radius 0.3 about the tracked puncture (<code>tools/drift_dipole.py</code>): the tracker
 moves the puncture with −β(x<sub>p</sub>), and the Gamma-driver feeds β from the dipole (sphere average) of Γ̂ⁱ, which CCZ4 splits
 exactly as Γ̂ⁱ = Γ̃ⁱ[γ̃] + 2Zⁱ/χ. Without a penalty the conformal metric grows a large dipole, |⟨Γ̃⟩| ≈ 0.13 at t = 10, that Γ̂ⁱ
 mostly does not follow: 2Zⁱ/χ ≈ −Γ̃ⁱ, a constraint violation the evolution equations allow. The ~10 % that does reach Γ̂ⁱ
 (|⟨Γ̂⟩| ≈ 1.4e-2) drives β (3.9e-2) and the drift. With the penalties the metric's dipole is 20–40× smaller (3.5e-3 Θ/Zⁱ,
 6e-3 Bianchi), and Γ̂ⁱ and β 5–10× smaller. The asymmetry enters the metric through the constraint-violating mode, and the
-penalties close it. The control run gives the final-settings drift on the same scale. Symmetric clouds leave the mass error
+penalties close it. The final settings alone also drift little (0.014), but their hole and outgoing deficit are worse. Symmetric clouds leave the mass error
 unchanged; drift and mass are separate problems. The penalised runs drift 10× less without symmetric clouds.</p>
 
 <h2>Next steps</h2>
 <ul>
-<li><b>Control run</b> (running): final settings without a penalty, to compare the hole's mass and the outgoing deficit.</li>
 <li><b>More interior points where the pulse travels</b> (r ≈ 5–15), e.g. a shell cloud following the pulse, to test whether
 the outgoing deficit is under-sampling.</li>
 <li><b>Combine</b> the direct penalty with point-symmetric clouds and take it to the binary, where both the drift and the
