@@ -14,7 +14,7 @@ jobs/mendieta/bh.sbatch   Mendieta job (presets single | bbh | smoke | bench | s
 jobs/hub/stage2.sh        stage2.py on the CCAD JupyterHub GPU (detached, resumable; 2026-10-27)
 jobs/mn5/*.psubmit        the collaborators' MareNostrum 5 jobs, pointed at the merged script
 dsgnar.py                 DSGNAR optimiser (vendored from Stationary/, section 4)
-tools/                    load_defs.py, bench_loss.py, check_taylor.py, taylor_proto.py, smoke_local.sh, test_dsgnar_bh.py
+tools/                    plot_losses_stages.py (both stages' losses), load_defs.py, bench_loss.py, check_taylor.py, taylor_proto.py, smoke_local.sh, test_dsgnar_bh.py
 originals/                the files as received (git-ignored), plus make_ancestor.py
 runs/                     outputs (git-ignored)
 ```
@@ -487,6 +487,17 @@ hole +0.18 %; lapse error at t = 10, r = 3-6 1.0e-2 (weight 1: 1.1e-2; the run a
 weighting problem; the correction moves the slicing where the deficit is removed. The weight-1 correction
 stays the reference version. (The same job on the JupyterHub ran out of GPU memory twice, at the 6.84 GiB
 QN-norm allocation, even with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.95`; Mendieta's copy finished first.)
+
+**Losses of both stages (2026-10-28; `tools/plot_losses_stages.py`, `plots/2026-10-28/losses_stages.png`).**
+(a) Stage 1, `long_con10`: each window's loss history from its checkpoint, drawn across its own 0.25 M. Each window
+starts at 1e-3-1e-2 (the hand-off term: the new network must first match the previous window's end) and ends at
+total ~1e-6, dominated by the Einstein residual (5e-7 - 1e-6) from t ~ 1 on; gauge, hand-off and the unweighted
+Theta/Z term end at ~1e-7. The first 8 windows (t < 2, the earlier `w8_qn_con10` run) reach lower losses. The final
+loss does not grow with t, so the growing mass deficit is not visible in the training loss. (b), (c) Stage 2:
+held-out loss of the sum / u1's on the same evenly spread points. Final ratios 0.55 / 0.49 / 0.47 (correction / H/M
+/ H/M with gauge x10), H/M part 0.77 / 0.38 / 0.44. Most of the gain comes in the first 3 000 iterations; the H/M
+correction has one transient spike near 18 000 (recovered in ~500 iterations). Halving the residual removes
+three-quarters of the deficit: the loss measures accuracy badly here too.
 
 **l-decomposition of the deficit (2026-10-26; the collaborators' `reference_1d/l_decomp.py`, received
 2026-10-26: per-ray Misner-Sharp error on 300 directions about the origin, real spherical harmonics to l = 4
