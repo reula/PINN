@@ -1057,3 +1057,27 @@ missing, ~20 + 40 min, since `*.npz` is not in git):
     cd ~/serafin/Julia/PINN && git pull && cd SBH
     OUTDIR=sing_bl SING_ARGS="--template bl" bash jobs/hub/sing.sh
     OUTDIR=sing_tr SING_ARGS="--template trumpet" bash jobs/hub/sing.sh
+
+**First hub run, `sing_bl` (2026-10-28, in progress; windows 0-5 of 8).** ~25 min per window (12000
+SSBroyden iterations, vs ~90 min for `w8_qn_con10`). Every window ends at held-out loss 3-6e-4, the d < 0.01
+band at ~1e-8 (the template carries it), but the error against the 1D reference grows from window to window:
+
+| window | t | alpha core | Khat core | gt core | At core | Ghat core | alpha inner (r < 0.05) | a_z |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 0.25 | 1.7e-3 | 3.8e-3 | 1.9e-3 | 6.4e-3 | 1.4e-2 | 6.3e-4 | -4e-5 |
+| 1 | 0.5 | 3.3e-3 | 6.9e-3 | 3.1e-3 | 7.1e-3 | 1.8e-2 | 8.1e-4 | -9e-5 |
+| 2 | 0.75 | 6.5e-3 | 9.8e-3 | 4.0e-3 | 8.6e-3 | 1.3e-2 | 1.8e-3 | -3e-5 |
+| 3 | 1.0 | 1.0e-2 | 1.4e-2 | 4.7e-3 | 1.2e-2 | 1.1e-2 | 4.0e-3 | +2e-4 |
+| 4 | 1.25 | 1.4e-2 | 1.8e-2 | 5.1e-3 | 1.6e-2 | 1.3e-2 | 8.2e-3 | +6e-4 |
+| 5 | 1.5 | 1.7e-2 | 2.3e-2 | 5.5e-3 | 2.2e-2 | 1.8e-2 | 1.6e-2 | +1.1e-3 |
+
+alpha(0.03) stays within 0.6% of the reference (0.2383 vs 0.2369 at t = 1.5), but at t = 1.5 alpha core is
+already ~20x and gt ~3x the `w8_qn_con10` values at t = 2. The trained centre drifts along z from window 3 on
+(a single puncture at rest should stay at the origin), and the inner error grows fastest; `--fixed_center`
+is the control for that.
+
+**`--pre_iters N` (`--pre_windows K`, default all windows).** Each window starts with N SSBroyden
+iterations on the IC + Sommerfeld terms alone (no interior, end or constraint points are drawn), then the
+`--iters` on the full loss. Motivation: in window 0 the initial loss is almost all IC (0.126 of 0.151), so
+the interior residual was being minimised around initial data not yet fitted. CPU smoke run (2 windows, tiny
+network) completes; the history has a `phase` column (pre / full) and the log marks pre iterations with `p`.

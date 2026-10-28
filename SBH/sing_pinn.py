@@ -26,6 +26,8 @@ Loss (the main script's weights, read from its flags): lam_einstein * Einstein r
 gauge rows on the interior points, lam_tapa x the same at t = t1, lam_bc * Sommerfeld at r = R_domain,
 lamg0 * soft IC (exact initial data in window 0, the previous window's u after that), + w_constraint *
 mean(Theta^2 + |Z^i|^2). SSBroyden on fresh points every --n_change iterations (as stage2.py).
+--pre_iters N: each window (the first --pre_windows of them) starts with N iterations on the IC + Sommerfeld
+terms alone, so the initial data are fitted before the interior residual is switched on.
 Derivatives: N from the main script's closed-form Taylor pass, the template part by autodiff (no network),
 combined by the product/chain rule; --selftest checks this against autodiff of the whole u.
 
@@ -75,6 +77,10 @@ ap.add_argument("--n_bc", type=int, default=4000)
 ap.add_argument("--n_held", type=int, default=8000)
 ap.add_argument("--iters", type=int, default=12000, help="SSBroyden iterations per window")
 ap.add_argument("--n_change", type=int, default=250)
+ap.add_argument("--pre_iters", type=int, default=0,
+                help="SSBroyden iterations on the IC + boundary terms only at the start of a window, before the "
+                     "--iters on the full loss (interior, end and constraint terms off)")
+ap.add_argument("--pre_windows", type=int, default=-1, help="windows that get the --pre_iters phase (-1: all)")
 ap.add_argument("--w_constraint", type=float, default=10.0)
 ap.add_argument("--w_gauge", type=float, default=1.0)
 ap.add_argument("--inner_frac", type=float, default=0.125,
@@ -287,6 +293,18 @@ def parts(P, win, batch):
                 ic=ns["lamg0"] * ic, constraint=a.w_constraint * con)
 
 
+def parts_pre(P, win, batch):
+    """The IC and Sommerfeld terms of parts() alone (the --pre_iters phase)."""
+    Qi, Qe, Qb, Xic, Uic = batch
+    val, dt, d, _ = u_derivs(P, win, Qb)
+    Xb = Qb[:, 1:4]
+    rb = jnp.linalg.norm(Xb, axis=1)[:, None]
+    som = dt + ns["c"] * jnp.einsum("nk,nfk->nf", Xb, d) / rb + ns["c"] * (val - FLAT[None]) / rb
+    t0 = jnp.full((Xic.shape[0], 1), win[0])
+    ic = jnp.mean((u_value(P, win, jnp.concatenate([t0, Xic], axis=1)) - Uic) ** 2)
+    return dict(bc=ns["lam_bc"] * jnp.mean(som ** 2), ic=ns["lamg0"] * ic)
+
+
 def total(p):
     return sum(p.values())
 
@@ -473,6 +491,8 @@ parts_jit = jax.jit(parts)
 bands_jit = jax.jit(dist_bands)
 loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), static_argnums=1)
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
+loss_pre = jax.jit(lambda w, unr, win, batch: total(parts_pre(unr(w), win, batch)), static_argnums=1)
+vg_pre = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts_pre(unr(w), win, batch))), static_argnums=1)
 hist = os.path.join(a.out, "sing_history.csv")
 rep = os.path.join(a.out, "sing_report.csv")
 PART_NAMES = ("einstein", "gauge", "end", "bc", "ic", "constraint")
@@ -494,17 +514,20 @@ for k in range(k0, a.N_window):
     _, cnt = bands_jit(unr(w), win, draw(kh, P, win, a.n_int, 1, 1, 1, Uic_fn)[0])
     print("  interior points per batch by distance to the puncture: "
           + ", ".join(f"{n} {int(v)}" for n, v in zip(DIST_NAMES, np.asarray(cnt))), flush=True)
-    while it < a.iters:
+    n_pre = a.pre_iters if a.pre_windows < 0 or k < a.pre_windows else 0
+    while it < n_pre + a.iters:
         key, kd = jax.random.split(key)
-        batch = draw(kd, unr(w), win, a.n_int, a.n_end, a.n_ic, a.n_bc, Uic_fn)
-        r = mb.minimize(lambda v: loss_fn(v, unr, win, batch), lambda v: vg_fn(v, unr, win, batch), w, opts)
+        pre = it < n_pre
+        batch = draw(kd, unr(w), win, 1 if pre else a.n_int, 1 if pre else a.n_end, a.n_ic, a.n_bc, Uic_fn)
+        lf, vg = (loss_pre, vg_pre) if pre else (loss_fn, vg_fn)
+        r = mb.minimize(lambda v: lf(v, unr, win, batch), lambda v: vg(v, unr, win, batch), w, opts)
         w = r.x
         it += a.n_change
         hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
         pos, vel = center(unr(w)["acc"], win, jnp.asarray(t1))
         hb, hn = (np.asarray(v) for v in bands_jit(unr(w), win, held[0]))
-        row = dict(window=k, iteration=it, seconds=round(time.time() - t_start, 1),
-                   train=float(loss_fn(w, unr, win, batch)), held=sum(hp.values()),
+        row = dict(window=k, iteration=it, phase="pre" if pre else "full", seconds=round(time.time() - t_start, 1),
+                   train=float(lf(w, unr, win, batch)), held=sum(hp.values()),
                    **{f"held_{n}": hp[n] for n in PART_NAMES},
                    **{f"held_{n}": float(v) for n, v in zip(DIST_NAMES, hb)},
                    **{f"n_{n}": int(v) for n, v in zip(DIST_NAMES, hn)},
@@ -515,7 +538,7 @@ for k in range(k0, a.N_window):
             if new:
                 wr.writeheader()
             wr.writerow(row)
-        print(f"  it {it:6d} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
+        print(f"  it {it:6d}{'p' if pre else ' '} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
               + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ") by distance "
               + " ".join(f"{n} {v:.1e}" for n, v in zip(DIST_NAMES, hb)) + f"  a(t1) {np.asarray(pos[0]).round(5).tolist()}",
               flush=True)
