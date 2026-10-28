@@ -309,6 +309,10 @@ class Config:
     # collocation points, carrying the group's OWN weight (one extra rho for dimensions;
     # no compat).  Off by default.  See RADIAL_DERIVATIVES.md.
     pde_radial: bool = False
+    # --inner-tangential: add rho (I - n n) grad of every inner residual at the inner boundary
+    # points (losses.inner_bc_raw, keys "<field>_dtan"), so the inner condition is an H^1 norm of
+    # the data mismatch on the sphere instead of an L^2 one.  Same weight as the inner group.
+    inner_tangential: bool = False
 
     pde_ramp_steps: int = 0     # ramp the PDE weights in over this many steps (0 = off)
     # Period in OPTIMISER ITERATIONS, counted on one counter that Adam and the

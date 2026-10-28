@@ -395,7 +395,9 @@ def print_config_summary(cfg: Config):
           f"   ->  lambda -> k = {k:.7g}" + ("" if abs(k - 1.0) < 1e-9 else "   (k != 1!)"))
     print(f"  domain      rho in [{cfg.rho_in:g}, {cfg.rho_out:g}]"
           f"   inner sphere areal radius {cfg.inner_radius:g}"
-          f"   h_rr {cfg.inner_h_rr if cfg.inner_h_rr is not None else 'free'}")
+          f"   h_rr {cfg.inner_h_rr if cfg.inner_h_rr is not None else 'free'}"
+          + ("   + tangential derivatives of the inner residual"
+             if getattr(cfg, "inner_tangential", False) else ""))
     if cfg.outer_bc == "robin":
         # `lam_inf` fixed vs learnable is a real difference -- an optimisable lambda_inf
         # lets the trivial (flat, lambda = const) branch re-select itself -- so the banner
@@ -1843,6 +1845,11 @@ def parse_args(argv=None):
                         "collocation points, with the same weight as the group (one extra rho "
                         "for dimensions, no compat).  For residuals the loss cannot see the "
                         "variation of between sampled points; see RADIAL_DERIVATIVES.md")
+    p.add_argument("--inner-tangential", action="store_true", dest="inner_tangential",
+                   help="also penalise rho times the TANGENTIAL gradient of every inner residual "
+                        "(an H^1 norm of the data mismatch on the inner sphere), with the same "
+                        "weight as the inner group; per-term overrides: --eq-weights "
+                        "inner_lam_dtan=..,inner_h_tan_dtan=..")
     p.add_argument("--no-pin-h-robin", action="store_false", dest="pin_h_robin",
                    help="turn OFF the metric's averaged order-1 Robin pin (it is ON by default): "
                         "without it the amplitude of h is nearly unpinned and it drifts")
@@ -2145,6 +2152,8 @@ def parse_args(argv=None):
         cfg.log_every = int(a.log_every)
     if getattr(a, "pde_radial", False):
         cfg.pde_radial = True
+    if getattr(a, "inner_tangential", False):
+        cfg.inner_tangential = True
     if getattr(a, "pin_h_robin", None) is False:
         cfg.pin_h_robin = False
     if a.outer_shells is not None:

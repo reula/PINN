@@ -154,6 +154,17 @@ exact solution does not satisfy it once the inner sphere is placed anywhere othe
 canonical chart.  (`Config.inner_h_rr` exists for special cases; no documented command uses
 it.)
 
+`--inner-tangential` (2026-10-28) imposes the inner condition in H^1 instead of L^2: it adds
+`rho (I - n n) grad` of the lambda residual and of the induced-metric residual
+`P h P - c P` at the inner points (`losses._tangential_gradient`; loss keys `inner_lam_dtan`,
+`inner_h_tan_dtan`), with the inner group's weight (override per term with `--eq-weights
+inner_lam_dtan=..,inner_h_tan_dtan=..`).  Restricted to the sphere `P h P` is the field `h_AB`
+alone, so the derivative term sees only lambda and `h_AB`: `h_rr` and `h_rA` stay free
+(`tests/test_inner_tangential.py` adds an arbitrary `a n n + n w + w n` to `h` and checks that
+nothing changes).  The exact solutions still have zero loss with it.  First runs:
+`Paper/hub_qp5.sh` (`fn_tan_*` axisymmetric, `rot_tan_*` off-axis width 40), against
+`ab_none_w2` and `qp_rot4_n32768_w4`.
+
 `inner_radius` defaults to **2**, which is the problem statement and is what
 `rho_in_of_R0(R0) = sqrt(4+R0^2)` places at `rho_in` in the canonical harmonic chart: the
 exact solution has `h_tan = 1 - R0^2/rho_in^2 = 4/(4+R0^2)` there, i.e. `0.8` for

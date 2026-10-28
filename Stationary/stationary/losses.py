@@ -216,6 +216,23 @@ def pde_radial_terms(point_fields, xs, cfg) -> dict:
 
 
 # -------------------------------------------------------------- inner boundary
+def _tangential_gradient(one, xs):
+    """`rho (I - n n) grad` of the per-point residual `one`, at each point of `xs`: (N, k, 3).
+
+    The derivative is along the sphere only, so it sees nothing but the residual's values on the
+    sphere -- the datum and the network restricted to it -- and the pair (value, this) is the H^1
+    norm of the mismatch.  The factor rho makes it dimensionless (an angular derivative), and
+    sqrt(3) makes the mean of its squares over (point, component, direction) the mean over
+    (point, component) of |rho grad_T r|^2, so its weight compares with the value term's.
+    """
+    def d(x):
+        rho = jnp.linalg.norm(x)
+        n = x / rho
+        J = jax.jacfwd(one)(x)                                    # (k, 3)
+        return jnp.sqrt(3.0) * rho * (J @ (I3 - jnp.outer(n, n)))
+    return jax.vmap(d)(xs)
+
+
 def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
     """Per-point inner boundary residuals, split by field and unreduced.
 
@@ -254,8 +271,13 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
 
         R = jax.vmap(one)(xs)
         drop = getattr(cfg, "drop_inner_ls", ()) or ()
-        return {"h": _drop_legendre_modes(R[:, :6], xs, drop),
-                "lam": _drop_legendre_modes(R[:, 6][:, None], xs, drop)[:, 0]}
+        out = {"h": _drop_legendre_modes(R[:, :6], xs, drop),
+               "lam": _drop_legendre_modes(R[:, 6][:, None], xs, drop)[:, 0]}
+        if getattr(cfg, "inner_tangential", False):
+            # not mode-filtered: --drop-inner-l is a diagnostic, and the two are not combined
+            T = _tangential_gradient(one, xs)
+            out["h_dtan"], out["lam_dtan"] = T[:, :6], T[:, 6]
+        return out
 
     def one(x):
         f = point_fields(x)
@@ -281,6 +303,12 @@ def inner_bc_raw(point_fields, xs, cfg, exact_fields=None) -> dict:
            "h_tan": _drop_legendre_modes(R[:, 2:], xs, drop)}
     if cfg.inner_h_rr is not None:
         out["h_rr"] = _drop_legendre_modes(R[:, 1][:, None], xs, drop)[:, 0]
+    if getattr(cfg, "inner_tangential", False):
+        # not mode-filtered: --drop-inner-l is a diagnostic, and the two are not combined
+        T = _tangential_gradient(one, xs)
+        out["lam_dtan"], out["h_tan_dtan"] = T[:, 0], T[:, 2:]
+        if cfg.inner_h_rr is not None:
+            out["h_rr_dtan"] = T[:, 1]
     return out
 
 

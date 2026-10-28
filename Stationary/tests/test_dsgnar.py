@@ -57,6 +57,7 @@ def _squared_norm(state, batch, cfg, model, exact_fields, **kw):
     ("--ref-solution", "--ref-asymptotic", "1.0", "--pin-lam-robin", "--pin-h-robin"),
     ("--w-lam-eq-radial", "1.0"),                              # the radial-derivative term
     ("--robin-source", "--ref-solution", "--ref-asymptotic", "1.0"),   # manufactured source
+    ("--inner-tangential",),                                   # tangential derivatives, inner
 ])
 def test_the_residual_vector_squares_to_the_total_loss(tmp_path, extra):
     cfg = _cfg(tmp_path, extra)
