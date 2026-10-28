@@ -498,17 +498,19 @@ pointwise only & $1.3\times10^{-11}$ & 0.99 & $9.1\times10^{-9}$ & $1.5\times10^
 \subsection{Off-axis data}
 
 The same datum about the axis $(1,0,1)/\sqrt2$ is a fully three-dimensional problem whose solution
-is the rotated axisymmetric one. With the general metric-only network (width 20, 2347 parameters),
-in the formulation of Sec.~\ref{sec:bcs} and after Adam and four SSBroyden stages, the error
-against the rotated reference is $9.1\times10^{-6}$ in $\lambda$ and $1.2\times10^{-3}$ in $h$ (rms
-over the shell), i.e.\ 1000 and 9 times below the perturbation. The error concentrates in $h$ near
-the inner sphere ($2.5\times10^{-3}$ for $1\le\rho\le3$, against a perturbation of
-$2.3\times10^{-2}$) and falls to $2\times10^{-7}$ beyond $\rho=30$. The loss levels off at
-$1.2\times10^{-6}$, five orders above the axisymmetric one, decreasing by only 10--25\% per stage;
-the same run with the additional outer conditions stops at the same level ($1.35\times10^{-6}$),
-so it is the network, not the formulation, that limits it. The rotated Weyl test of
-Sec.~\ref{sec:tests}, with the same network, reached $5\times10^{-9}$, but in a much weaker field.
-\pending{width 40, 32768 points (qp\_rot4): loss and errors}
+is the rotated axisymmetric one. We solve it with the general metric-only network in the
+formulation of Sec.~\ref{sec:bcs}, Adam and four SSBroyden stages. At width 20 (2347 parameters,
+16384 points) the loss levels off at $1.2\times10^{-6}$, five orders above the axisymmetric one,
+decreasing by only 10--25\% per stage; the same run with the additional outer conditions stops at
+the same level ($1.35\times10^{-6}$), so it is the network, not the formulation, that limits it.
+At width 40 (32768 points) the loss falls to $4.3\times10^{-9}$ within two stages and stays there
+(fresh/training ratio 1.00), and the error against the rotated reference is $3.4\times10^{-6}$ in
+$\lambda$ and $2.6\times10^{-4}$ in $h$ (rms over the shell), i.e.\ 2800 and 40 times below the
+perturbation (width 20: $9.1\times10^{-6}$ and $1.2\times10^{-3}$). The error concentrates in $h$
+near the inner sphere ($5.3\times10^{-4}$ for $1\le\rho\le3$, against a perturbation of
+$2.3\times10^{-2}$) and falls to $3\times10^{-8}$ beyond $\rho=30$; $|d|\le7.5\times10^{-7}$ on
+every sphere. The rotated Weyl test of Sec.~\ref{sec:tests} reached $5\times10^{-9}$ already at
+width 20, but in a much weaker field. Each stage takes 30 minutes at width 40 (10 at width 20).
 
 % =====================================================================================
 \section{Multipole moments}\label{sec:moments}
@@ -569,7 +571,8 @@ reference & $0.583847$ & $0.17471$ & $0.0220$ \\
 with centre of mass & $+1.4\times10^{-8}$ & $+9.1\times10^{-7}$ & $-7.1\times10^{-6}$ \\
 without centre of mass & $-3.5\times10^{-8}$ & $+5.8\times10^{-7}$ & $-2.5\times10^{-6}$ \\
 pointwise outer conditions only & $-6.3\times10^{-8}$ & $+7.3\times10^{-7}$ & $-3.2\times10^{-6}$ \\
-3-D network, rotated data & $-5.9\times10^{-6}$ & $+2.5\times10^{-5}$ & $-1.2\times10^{-3}$ \\
+3-D network (width 20), rotated data & $-5.9\times10^{-6}$ & $+2.5\times10^{-5}$ & $-1.2\times10^{-3}$ \\
+3-D network (width 40), rotated data & $-5\times10^{-7}$ & $+4.0\times10^{-6}$ & $-3.9\times10^{-5}$ \\
 \end{tabular}
 \end{ruledtabular}
 \end{table}
@@ -580,9 +583,10 @@ and $-5.0$ for $l=0,2,4$ (the last out to $\rho\approx30$, where $c_4\sim10^{-10
 modes are at $10^{-16}$. The network with the centre-of-mass condition gives the same powers, with
 its odd modes below $10^{-8}$ (with or without the additional outer conditions). The
 three-dimensional network on the rotated data, expanded about the data axis, has odd modes of
-$1.3\times10^{-6}$; its $l=2$ tail holds out to $\rho\approx30$ and its $l=4$ tail only to
-$\rho\approx5$, consistently with its $M_4$ being good to 5\% while $M_0$ and $M_2$ are good to
-$10^{-5}$ and $1.4\times10^{-4}$ relative. In the mass-centred harmonic
+$1.3\times10^{-6}$ at width 20, with its $l=2$ tail holding out to $\rho\approx30$ and its $l=4$
+tail only to $\rho\approx5$ ($M_4$ good to 5\%); at width 40 the odd modes are below
+$5\times10^{-8}$, the $l=2$ tail holds to $\rho_{\rm out}$ and the $l=4$ tail to $\rho\approx20$,
+and $M_0$, $M_2$, $M_4$ are good to $10^{-6}$, $2\times10^{-5}$ and $2\times10^{-3}$ relative. In the mass-centred harmonic
 chart $c_l\rho^{l+1}$ tends to $0.58387$, $0.1747$ and $0.0220$, i.e.\ to $M_0$, $M_2$ and $M_4$,
 consistently with harmonic coordinates being asymptotically Cartesian and mass
 centred~\cite{Thorne1980,Gursel1983}: a second, independent route to the same numbers.
@@ -626,8 +630,8 @@ NVIDIA A30 (24~GB). Each result is produced by the commands below, all in the re
   \texttt{Paper/hub\_qp.sh} (about 20 minutes per 10000 iterations on one A30, with the extra
   outer spheres). The outer conditions (Table~\ref{tab:ablation}), \texttt{ab\_*}, also in
   \texttt{Paper/hub\_qp.sh} (Adam 3 minutes, 11 minutes per SSBroyden stage). Off-axis data,
-  \texttt{Paper/hub\_qp3.sh} (\texttt{qp\_rot3\_*}, 10 minutes per stage) and, with the wider
-  network, \texttt{Paper/hub\_qp4.sh}.
+  \texttt{Paper/hub\_qp3.sh} (\texttt{qp\_rot3\_*}, width 20, 10 minutes per stage) and
+  \texttt{Paper/hub\_qp4.sh} (\texttt{qp\_rot4\_n32768\_*}, width 40, 30 minutes per stage).
 \item The spectral reference: \texttt{Paper/commands\_specref.sh} (reproduces the loss
   $2.793\times10^{-11}$; 36 minutes on one A30).
 \item Grading and moments: \texttt{scripts/grade\_rotated.py}, \texttt{scripts/fresh\_sample\_loss.py},

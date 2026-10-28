@@ -57,6 +57,7 @@ over qp_com); the far-field lambda error rises from 9e-10 to 7e-9, still 4e4 bel
 | qp_rot_w3 | ladder + pins, COM 24 x 8 (aliased) | 5.4e-7 | 1.82e-5 | 7.7e-4 | — | — |
 | qp_rot2_w3 | ladder + pins, COM 48 x 32 | 1.35e-6 | 8.9e-6 | 1.84e-3 | 3.8e-3 | 4.8e-6 |
 | qp_rot3_w4 | no ladder, no pins, COM 48 x 32 (hub_qp3.sh) | 1.17e-6 | 9.05e-6 | 1.19e-3 | 2.5e-3 | 1.0e-5 |
+| qp_rot4_n32768_w4 | as qp_rot3, width 40, 32768 / 2048 points (hub_qp4.sh) | 4.31e-9 | 3.39e-6 | 2.58e-4 | 5.3e-4 | 7.5e-7 |
 
 qp_rot2 still decreasing slowly (~20% per 10000 Wolfe iterations, Ricci and gauge residuals
 dominant); fresh/train 1.03. The rotated exact Weyl run (weyl_rot45_hyb, no ladder, no pins)
@@ -73,6 +74,7 @@ Moments and tails (gh_moments_runs.py, tail_decay.py, on the Mac from the copied
 |---|---|---|---|---|---|
 | ab_none_w2 | -6.3e-8 | +7.3e-7 | -3.2e-6 | -2.4e-7 | 3.9e-9 |
 | qp_rot3_w4 (about the data axis) | -5.9e-6 | +2.5e-5 | -1.2e-3 | +8.6e-5 | 1.3e-6 |
+| qp_rot4_n32768_w4 | -5e-7 | +4.0e-6 | -3.9e-5 | -1.3e-6 | 4.1e-8 |
 
 qp_rot3 tails c_l rho^(l+1): l=0 -> 0.58386; l=2 holds 0.1748 to rho ~30 then drifts (0.1437 at 100);
 l=4 holds to rho ~5 only. Relative moment errors 1e-5 (M0), 1.4e-4 (M2), 5% (M4).
@@ -80,7 +82,9 @@ Stage times: ab_none Adam 161 s, w1 649 s (7.7e-11), w2 654 s (1.25e-11); qp_com
 
 Paper updated 2026-10-27 to the final formulation (no extra outer spheres, no averaged pins):
 II.D, loss (no w_pin), Sec. V.C new (tab:ablation), V.D off-axis filled from qp_rot3, tab:moments
-two new rows, decay paragraph, appendix, conclusions. Pending: qp_rot4 (hub_qp4.sh, width 40, 32768 points).
+two new rows, decay paragraph, appendix, conclusions. qp_rot4 (2026-10-28): Adam 523 s (0.60), stages 3.99e-8, 4.34e-9, 4.37e-9, 4.31e-9 (~1770 s each, flat
+after w2); fresh/train 1.00; region errors lam 6.9e-6 / 1.1e-6 / 5.0e-8 / 1.6e-8, h 5.3e-4 / 2.3e-5 /
+6.8e-7 / 3.0e-8; tails: l=2 constant to rho 100, l=4 to ~20. Filled into V.D, tab:moments, decay.
 
 ## The inner condition (for the sentence on h_rr, h_rA in II.D)
 
