@@ -401,8 +401,7 @@ Weyl chart is not harmonic, but it satisfies the gauge condition~\eqref{eq:gauge
 source~\eqref{eq:cylsource}, which is what we impose in these tests.
 
 The inner boundary is the coordinate sphere $\rho_{\rm in}=7.5$, three times the distance from
-the origin to the ends of the rods, and the outer one is at $\rho_{\rm out}=75$; unless stated
-otherwise the Weyl tests use this shell. The inner data, $\lambda$ and the induced metric, are
+the origin to the ends of the rods, and the outer one is at $\rho_{\rm out}=75$. The inner data, $\lambda$ and the induced metric, are
 those of the exact solution, and so are the sources of the Robin conditions. For two equal rods (masses 1, gap 1) on the shell
 $[7.5,75]$ the axisymmetric network trained with SSBroyden from a random initialisation reaches a
 loss of $2.06\times10^{-13}$ in 3000 iterations, with maximum errors $6.7\times10^{-7}$ in $h$ and
@@ -478,7 +477,9 @@ $L = 10$ and $J = 36$, 1008 unknowns, computed on 2500 points with the weights o
 Its $l=2$ part decays as $\rho^{-3.00}$ from $\rho=20$ to 100, as linear theory predicts. Its
 mass (Sec.~\ref{sec:moments}) is $M_0 = 0.583847$, 1.1\% above the $R_0 = 0.577350$ of the
 spherical solution with the same $\lambda_0$: the back-reaction $6.5\times10^{-3}$ is of the size
-of $S_2^2 = 6.9\times10^{-3}$, as expected of a second-order effect. The best networks below reach
+of $S_2^2 = 6.9\times10^{-3}$, as expected of a second-order effect.
+\pending{fit of $M_0(S_2)$ from the spectral approximations at $S_2=-1/24,-1/12,-1/8,-1/6,+1/12$
+(\texttt{Paper/hub\_mass.sh}); then the network masses at $-1/24$ and $-1/6$} The best networks below reach
 a lower loss ($1.3\times10^{-11}$) with 2285 parameters, so the errors we quote are differences
 between two approximations of comparable quality, obtained by unrelated methods.
 
