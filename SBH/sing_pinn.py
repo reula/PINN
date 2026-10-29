@@ -27,7 +27,8 @@ gauge rows on the interior points, lam_tapa x the same at t = t1, lam_bc * Somme
 lamg0 * soft IC (exact initial data in window 0, the previous window's u after that), + w_constraint *
 mean(Theta^2 + |Z^i|^2). SSBroyden on fresh points every --n_change iterations (as stage2.py).
 --pre_iters N: each window (the first --pre_windows of them) starts with N iterations on the IC + Sommerfeld
-terms alone, so the initial data are fitted before the interior residual is switched on.
+terms alone, so the initial data are fitted before the interior residual is switched on; --pre_n_ic sets
+the IC points per draw in that phase (same clouds, all at t = t0).
 Derivatives: N from the main script's closed-form Taylor pass, the template part by autodiff (no network),
 combined by the product/chain rule; --selftest checks this against autodiff of the whole u.
 
@@ -81,6 +82,9 @@ ap.add_argument("--pre_iters", type=int, default=0,
                 help="SSBroyden iterations on the IC + boundary terms only at the start of a window, before the "
                      "--iters on the full loss (interior, end and constraint terms off)")
 ap.add_argument("--pre_windows", type=int, default=-1, help="windows that get the --pre_iters phase (-1: all)")
+ap.add_argument("--pre_n_ic", type=int, default=0,
+                help="IC points per draw in the --pre_iters phase (0: --n_ic). The phase evaluates no derivatives "
+                     "except on the boundary, so it can afford the whole point budget at t = t0 (e.g. 150000)")
 ap.add_argument("--w_constraint", type=float, default=10.0)
 ap.add_argument("--w_gauge", type=float, default=1.0)
 ap.add_argument("--inner_frac", type=float, default=0.125,
@@ -584,7 +588,8 @@ for k in range(k0, a.N_window):
     while it < n_pre + a.iters:
         key, kd = jax.random.split(key)
         pre = it < n_pre
-        batch = draw(kd, unr(w), win, 1 if pre else a.n_int, 1 if pre else a.n_end, a.n_ic, a.n_bc, Uic_fn)
+        batch = draw(kd, unr(w), win, 1 if pre else a.n_int, 1 if pre else a.n_end,
+                     (a.pre_n_ic or a.n_ic) if pre else a.n_ic, a.n_bc, Uic_fn)
         lf, vg = (loss_pre, vg_pre) if pre else (loss_fn, vg_fn)
         r = mb.minimize(lambda v: lf(v, unr, win, batch), lambda v: vg(v, unr, win, batch), w, opts)
         w = r.x

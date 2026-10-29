@@ -1131,3 +1131,11 @@ are `w8_qn_con10`; figures `tools/plot_sing_mass.py` and `tools/plot_sphere_erro
 * The Einstein + gauge loss at 0.01 <= d < 0.05 from the puncture rises ~50x over windows 5-7 in both BL
   runs (t = 1.5-2, the start of the chi ~ r^4 -> r^2 transition, and while the centre drifts); the trumpet
   run's stays flat.
+
+**Next pair (2026-10-29): fit the initial data on the whole point budget, and a lighter lid.**
+`--pre_n_ic N` sets the IC points per draw in the `--pre_iters` phase (same clouds as the interior, all at
+t = t0; the phase takes no derivatives except on the boundary, so 150000 points are affordable, against
+8000 normally). Both runs: `--pre_iters 4000 --pre_windows 1 --pre_n_ic 150000` (window 0 only, since the
+phase hurt warm windows). `sing_bl_ic` keeps `lam_tapa` = 2; `sing_bl_ic_t05` passes `-- --lam_tapa 0.5`, so
+the end-slice term no longer dominates the loss. Centre still trained (`--fixed_center` not used), so the
+two changes are judged alone against `sing_bl` / `sing_bl_pre`.
