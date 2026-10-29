@@ -1151,3 +1151,34 @@ point counts quoted above near the puncture). All future sing runs use them.
 The same holds for the iterations: the baseline runs `--EPOCHS_QN 24000` SSBroyden iterations per window,
 the runs above 12000; `--iters` now defaults to 24000. (Network 40 x 6, loss weights, `--w_constraint 10`
 and the 250-iteration restarts already matched.)
+
+**`--hard_ic` (2026-10-29): exact initial data built into the ansatz.**
+    u = h(x) + B(t, x) + s(t) rho N        (additive fields; for chi, alpha the same in ln u),
+    h = U0 - B(0, .)  (ln U0 - ln B(0, .) for chi, alpha),     s = t / t1 in window 0, s = 1 later,
+with U0 the exact data (BL, or the trumpet's 1D slice) and B the template part at t = 0 about the initial
+centres. h is fixed (no trained parameters, no t), so it and its x-derivatives are computed once per draw at
+the batch's points (`hard_stacks`), not per iteration. In window 0, u(0) = U0 identically (to 1e-10, the chi
+floor; the IC loss is 0 and the `--pre_iters` phase is skipped there); later windows keep the soft hand-off.
+h stays in EVERY window because it carries the exact data's far field (psi^-4 - 1 etc.): a first version
+with h in window 0 only left that whole field to the network of window 1 (hand-off IC error 0.27 in a small
+CPU smoke run, 0.044 with h kept). Unlike the main script's `--ic_mode hard` there is no chain through
+earlier windows' networks. `--selftest` checks the hard stacks against autodiff in window 0 and in a later
+window (8e-15, 2e-10).
+
+**Laptop CPU NaN (2026-10-29).** With the full 40 x 6 network and the default 16000 boundary points, the
+jit-compiled loss is NaN at the very first evaluation on the M2 CPU, while the same function run
+de-optimized (`JAX_DEBUG_NANS=True`) is finite; 2000 boundary points are fine, and the hub GPU computes the
+same configuration without trouble (also with the code before `--hard_ic`). An XLA CPU compilation issue,
+not the ansatz: run full-size configurations on the GPU only, and use small `--n_bc` for CPU smoke tests.
+
+**State after the IC phase.** Every run now saves `pre_000.pkl` at the end of window 0's `--pre_iters`
+phase; `--stop_after_pre` exits there; `--eval_spheres X.npz --eval_pre` grades that state. `--eval_spheres`
+also stores `ic_rms`: each field group's rms error against the exact initial data on the t = 0 spheres.
+`tools/plot_ic_error.py OUT.png NAME=X.npz ...` plots the t = 0 errors by radius (mass, alpha, chi, Khat,
+Theta against the 1D reference for every run; gt, At, Ghat, beta against the exact data for sing runs).
+
+**Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
+A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
+allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
+phase needs ~10 GB. One run per GPU (peak 10.1 GB alone). Measured alone at baseline settings: 87 s per 250
+iterations, ~2.3 h per window, ~19 h per 8-window run.

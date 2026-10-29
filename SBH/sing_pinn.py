@@ -95,8 +95,8 @@ ap.add_argument("--inner_frac", type=float, default=0.125,
                      "puncture, so every batch has points right at it (no exclusion zone anywhere)")
 ap.add_argument("--inner_sigma", type=float, default=0.05)
 ap.add_argument("--hard_ic", action="store_true",
-                help="window 0 satisfies the exact initial data identically: u = U0 + [B(t) - B(t0)] + s rho N "
-                     "(ln u for chi, alpha), s = (t - t0)/(t1 - t0); later windows keep the soft hand-off")
+                help="u = h(x) + B(t) + s rho N with the fixed offset h = U0 - B(0) (ln for chi, alpha) in EVERY "
+                     "window, s = t/t1 in window 0 (so u(0) = U0 identically), s = 1 later (soft hand-off)")
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true", help="continue after the last saved window in OUT_DIR")
 ap.add_argument("--selftest", action="store_true", help="check the template and the derivative stacks, then exit")
@@ -215,8 +215,10 @@ def u_derivs(P, win, Q, H=None):
     Bv, Bt, Bd, Bdd = bv[:, :22], bt[:, :22], bd[:, :22], bdd[:, DD]
     rv, rt, rd, rdd = bv[:, 22], bt[:, 22], bd[:, 22], bdd[:, 22]
     N, Nt, Nd, Ndd = net_derivs(P["net"], win, Q)
-    if H is not None:                                # N -> s N, s = (t - t0)/(t1 - t0)
-        sv, st = ((Q[:, 0] - win[0]) / (win[1] - win[0]))[:, None], 1.0 / (win[1] - win[0])
+    if H is not None:                                # window 0: N -> s N, s = t/t1
+        w0 = win[0] == 0.0
+        sv = jnp.where(w0, (Q[:, 0] - win[0]) / (win[1] - win[0]), 1.0)[:, None]
+        st = jnp.where(w0, 1.0 / (win[1] - win[0]), 0.0)
         N, Nt, Nd, Ndd = sv * N, st * N + sv * Nt, sv[:, :, None] * Nd, sv[:, :, None, None] * Ndd
     ND, NdD = N[:, DD], Nd[:, DD]
     pv = rv[:, None] * N
@@ -265,11 +267,11 @@ def u_value(P, win, Q, hard=False):
     B, rho = bv[:, :22], bv[:, 22:]
     phi = rho * mlp_value(P["net"], Q[:, 0:1], Q[:, 1:4], win[0], win[1])
     if hard:
-        phi = phi * (Q[:, 0:1] - win[0]) / (win[1] - win[0])
+        phi = phi * jnp.where(win[0] == 0.0, (Q[:, 0:1] - win[0]) / (win[1] - win[0]), 1.0)
     u = B + phi
     u = u.at[:, CHI].set(B[:, CHI] * jnp.exp(phi[:, CHI])).at[:, AL].set(B[:, AL] * jnp.exp(phi[:, AL]))
     if hard:
-        h = jax.vmap(lambda x: hard_h(win, x))(Q[:, 1:4])
+        h = jax.vmap(hard_h)(Q[:, 1:4])
         e = u + h
         u = e.at[:, CHI].set(u[:, CHI] * jnp.exp(h[:, CHI])).at[:, AL].set(u[:, AL] * jnp.exp(h[:, AL]))
     return u
@@ -296,27 +298,28 @@ def initial_data(X):
     return U.at[:, CHI].set(psi ** -4).at[:, AL].set(1.0 / psi)
 
 
-# ---- --hard_ic (window 0 only) ------------------------------------------------------------------
-def hard_h(win, x):
-    """The offset h(x) (22,) that makes u(t0) = U0 exactly: U0 - B(t0) for the additive fields, ln U0 - ln B(t0)
-    for chi and alpha. B(t0) does not depend on the trained parameters (the centre at t0 is a0, its velocity v0)."""
+# ---- --hard_ic ----------------------------------------------------------------------------------
+W_IC = (jnp.asarray(0.0), jnp.asarray(1.0), jnp.asarray(C0), jnp.zeros((NP, 3)))   # t = 0, centres C0, at rest
+
+
+def hard_h(x):
+    """The fixed offset h(x) (22,): U0 - B(0) for the additive fields, ln U0 - ln B(0) for chi and alpha, with B(0)
+    the template part at t = 0 about the initial centres. It carries the exact data's far field (psi) in every
+    window; with s = 0 at t = 0 in window 0, u(0) = U0 identically."""
     U0 = initial_data(x[None])[0]
-    B0 = bg_point(jnp.concatenate([win[0][None], x]), jnp.zeros((NP, 2, 3)), win)[:22]
+    B0 = bg_point(jnp.concatenate([W_IC[0][None], x]), jnp.zeros((NP, 2, 3)), W_IC)[:22]
     h = U0 - B0
     return h.at[CHI].set(jnp.log(_pos(U0[CHI])) - jnp.log(B0[CHI])).at[AL].set(jnp.log(_pos(U0[AL])) - jnp.log(B0[AL]))
 
 
 @jax.jit
-def _hard_chunk(win, X):
-    def one(x):
-        f = lambda xx: hard_h(win, xx)
-        return f(x), jax.jacfwd(f)(x), jax.jacfwd(jax.jacfwd(f))(x)[DD]
-    return jax.vmap(one)(X)
+def _hard_chunk(X):
+    return jax.vmap(lambda x: (hard_h(x), jax.jacfwd(hard_h)(x), jax.jacfwd(jax.jacfwd(hard_h))(x)[DD]))(X)
 
 
-def hard_stacks(win, X, chunk=16384):
+def hard_stacks(X, chunk=16384):
     """(h, d_xyz h, d_xyz d_xyz h) at X (n,3), the last for the _DD_OUTPUT_IDXS fields only; once per draw."""
-    out = [_hard_chunk(win, X[i:i + chunk]) for i in range(0, X.shape[0], chunk)]
+    out = [_hard_chunk(X[i:i + chunk]) for i in range(0, X.shape[0], chunk)]
     return tuple(jnp.concatenate(z) for z in zip(*out))
 
 
@@ -428,7 +431,7 @@ def draw(key, P, win, n_int, n_end, n_ic, n_bc, Uic_fn, hard=False):
     u = jax.random.normal(k[4], (n_bc, 3))
     Qb = jnp.concatenate([tb[:, None], R * u / jnp.linalg.norm(u, axis=1, keepdims=True)], axis=1)
     Xic = clouds(k[5], jnp.full((n_ic,), t0), pos_of_t)
-    H = [hard_stacks(win, Q[:, 1:4]) if hard else None for Q in (Qi, Qe, Qb)]
+    H = [hard_stacks(Q[:, 1:4]) if hard else None for Q in (Qi, Qe, Qb)]
     return (Qi, Qe, Qb, Xic, Uic_fn(Xic), *H)
 
 
@@ -537,10 +540,19 @@ if a.selftest:
 
     t, x, y, z = Qh[:, 0:1], Qh[:, 1:2], Qh[:, 2:3], Qh[:, 3:4]
     ref = ns["r_ccz4_evolution"](apply_h, P, t, x, y, z, 0.0, 0.25)
-    D = u_derivs(P, w0, Qh, hard_stacks(w0, Qh[:, 1:4]))
-    print(f"--hard_ic stacks vs autodiff: max |residual difference| {float(jnp.abs(residual(D) - ref).max()):.2e} "
+    D = u_derivs(P, w0, Qh, hard_stacks(Qh[:, 1:4]))
+    print(f"--hard_ic window 0 stacks vs autodiff: max |residual difference| {float(jnp.abs(residual(D) - ref).max()):.2e} "
           f"(max |residual| {float(jnp.abs(ref).max()):.2e}); value difference "
           f"{float(jnp.abs(D[0] - apply_h(P, t, x, y, z, 0.0, 0.25)).max()):.2e}")
+
+    def apply_h1(params, t, x, y, z, ws, we):
+        return u_value(params, win, jnp.concatenate([t, x, y, z], axis=1), True)
+
+    t, x, y, z = Qi[:, 0:1], Qi[:, 1:2], Qi[:, 2:3], Qi[:, 3:4]
+    ref = ns["r_ccz4_evolution"](apply_h1, P, t, x, y, z, t0, t1)
+    D = u_derivs(P, win, Qi, hard_stacks(Qi[:, 1:4]))
+    print(f"--hard_ic later window stacks vs autodiff: max |residual difference| "
+          f"{float(jnp.abs(residual(D) - ref).max()):.2e} (max |residual| {float(jnp.abs(ref).max()):.2e})")
     Q0 = Qh.at[:, 0].set(0.0)
     print(f"--hard_ic: max |u(t0) - U0| {float(jnp.abs(u_value(P, w0, Q0, True) - initial_data(Q0[:, 1:4])).max()):.2e}")
     sys.exit(0)
@@ -595,6 +607,10 @@ if a.eval_spheres:
             assert abs(REF_T[j] - (t + T_OFF)) < 1e-6, f"no reference snapshot at t = {t + T_OFF}"
             for q, (col, row) in REFQ.items():
                 res[q] = o0[:, col].reshape(NDIR, NR) - np.interp(rs, REF_R, REF_U[j, row])[None, :]
+            if i == 0 and t == float(win[0]):                    # every field against the exact initial data
+                du = (o0 - np.asarray(initial_data(Sd * Nd))).reshape(NDIR, NR, 22)
+                acc_["ic_groups"] = [g for g, _ in REP_GROUPS]
+                acc_["ic_rms"] = np.stack([np.sqrt((du[:, :, idx] ** 2).mean(axis=(0, 2))) for _, idx in REP_GROUPS])
             acc_["t"].append(t)
             acc_["center"].append(pos)
             for q, v in res.items():
@@ -603,7 +619,7 @@ if a.eval_spheres:
             i1 = int(np.argmin(np.abs(rs - 1.0)))
             print(f"t = {t:6.3f}  <m/M-1>(r=1) {res['mass'].mean(0)[i1]:+.2e}  min over r {res['mass'].mean(0).min():+.2e}"
                   f"  centre {pos.round(5).tolist()}", flush=True)
-    np.savez(a.eval_spheres, r=rs, M=MASS, T_OFF=T_OFF, **{q: np.asarray(v) for q, v in acc_.items()})
+    np.savez(a.eval_spheres, r=rs, M=MASS, T_OFF=T_OFF, **{q: np.asarray(v) for q, v in acc_.items()})   # ic_rms: (groups, r)
     print("wrote", a.eval_spheres)
     sys.exit(0)
 
@@ -655,7 +671,7 @@ for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1), a0, v0)
     P = {"net": P["net"], "acc": jnp.zeros((NP, 2, 3))}          # warm network, fresh centre correction
-    hard = a.hard_ic and k == 0
+    hard = a.hard_ic
     if prev is None:
         Uic_fn = jax.jit(initial_data)
     else:
@@ -671,7 +687,7 @@ for k in range(k0, a.N_window):
     _, cnt = bands_jit(unr(w), win, draw(kh, P, win, a.n_int, 1, 1, 1, Uic_fn)[0])
     print("  interior points per batch by distance to the puncture: "
           + ", ".join(f"{n} {int(v)}" for n, v in zip(DIST_NAMES, np.asarray(cnt))), flush=True)
-    n_pre = a.pre_iters if (a.pre_windows < 0 or k < a.pre_windows) and not hard else 0
+    n_pre = a.pre_iters if (a.pre_windows < 0 or k < a.pre_windows) and not (hard and k == 0) else 0
     while it < n_pre + a.iters:
         key, kd = jax.random.split(key)
         pre = it < n_pre
