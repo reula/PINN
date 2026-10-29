@@ -83,6 +83,8 @@ ap.add_argument("--pre_iters", type=int, default=0,
                 help="SSBroyden iterations on the IC + boundary terms only at the start of a window, before the "
                      "--iters on the full loss (interior, end and constraint terms off)")
 ap.add_argument("--pre_windows", type=int, default=-1, help="windows that get the --pre_iters phase (-1: all)")
+ap.add_argument("--stop_after_pre", action="store_true",
+                help="exit after window 0's --pre_iters phase (its state is saved as pre_000.pkl in every run)")
 ap.add_argument("--pre_n_ic", type=int, default=0,
                 help="IC points per draw in the --pre_iters phase (0: --n_ic). The phase evaluates no derivatives "
                      "except on the boundary, so it can afford the whole point budget at t = t0 (e.g. 150000)")
@@ -92,6 +94,9 @@ ap.add_argument("--inner_frac", type=float, default=0.125,
                 help="share of the interior points in the inner cloud: a narrow Gaussian (--inner_sigma) about each "
                      "puncture, so every batch has points right at it (no exclusion zone anywhere)")
 ap.add_argument("--inner_sigma", type=float, default=0.05)
+ap.add_argument("--hard_ic", action="store_true",
+                help="window 0 satisfies the exact initial data identically: u = U0 + [B(t) - B(t0)] + s rho N "
+                     "(ln u for chi, alpha), s = (t - t0)/(t1 - t0); later windows keep the soft hand-off")
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true", help="continue after the last saved window in OUT_DIR")
 ap.add_argument("--selftest", action="store_true", help="check the template and the derivative stacks, then exit")
@@ -99,6 +104,7 @@ ap.add_argument("--eval_spheres", default=None, metavar="NPZ",
                 help="evaluate the saved windows in --out on spheres (as tools/sphere_errors.py, same npz layout: "
                      "Misner-Sharp m/M - 1 about the trained centre, alpha/chi/Khat/Theta - 1D reference about the "
                      "origin; t = 0 and every window end; r in [0.05, 20], 100 radii x 48 directions), then exit")
+ap.add_argument("--eval_pre", action="store_true", help="--eval_spheres on pre_000.pkl (after the IC phase) instead")
 argv = sys.argv[1:]
 rest = argv[argv.index("--") + 1:] if "--" in argv else []
 a = ap.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
@@ -202,12 +208,16 @@ def net_derivs(net, win, Q):
     return v - _shift[None], vt, vd, vdd
 
 
-def u_derivs(P, win, Q):
-    """Derivative stack of u at points Q (n,4), in _ccz4_residual_one's layout."""
+def u_derivs(P, win, Q, H=None):
+    """Derivative stack of u at points Q (n,4), in _ccz4_residual_one's layout. H: the --hard_ic offset's
+    stacks at Q (hard_stacks), or None (soft IC)."""
     bv, bt, bd, bdd = bg_derivs(P["acc"], win, Q)
     Bv, Bt, Bd, Bdd = bv[:, :22], bt[:, :22], bd[:, :22], bdd[:, DD]
     rv, rt, rd, rdd = bv[:, 22], bt[:, 22], bd[:, 22], bdd[:, 22]
     N, Nt, Nd, Ndd = net_derivs(P["net"], win, Q)
+    if H is not None:                                # N -> s N, s = (t - t0)/(t1 - t0)
+        sv, st = ((Q[:, 0] - win[0]) / (win[1] - win[0]))[:, None], 1.0 / (win[1] - win[0])
+        N, Nt, Nd, Ndd = sv * N, st * N + sv * Nt, sv[:, :, None] * Nd, sv[:, :, None, None] * Ndd
     ND, NdD = N[:, DD], Nd[:, DD]
     pv = rv[:, None] * N
     pt = rt[:, None] * N + rv[:, None] * Nt
@@ -224,6 +234,18 @@ def u_derivs(P, win, Q):
         d = d.at[:, f].set((b1 + b[:, None] * p1) * E[:, None])
         dd = dd.at[:, fD].set(E[:, None, None] * (b2 + b1[:, :, None] * p1[:, None, :] + p1[:, :, None] * b1[:, None, :]
                                                   + b[:, None, None] * (p2 + p1[:, :, None] * p1[:, None, :])))
+    if H is not None:                                # + h (additive fields), x e^h (chi, alpha)
+        hv, hd, hdd = H
+        V = (val, dt, d, dd)
+        val, d, dd = val + hv, d + hd, dd + hdd
+        for f, fD in ((CHI, DCHI), (AL, DAL)):
+            E = jnp.exp(hv[:, f])
+            v, v1, v2, h1, h2 = V[0][:, f], V[2][:, f], V[3][:, fD], hd[:, f], hdd[:, fD]
+            val = val.at[:, f].set(v * E)
+            dt = dt.at[:, f].set(V[1][:, f] * E)
+            d = d.at[:, f].set((v1 + v[:, None] * h1) * E[:, None])
+            dd = dd.at[:, fD].set(E[:, None, None] * (v2 + v1[:, :, None] * h1[:, None, :] + h1[:, :, None] * v1[:, None, :]
+                                                      + v[:, None, None] * (h2 + h1[:, :, None] * h1[:, None, :])))
     return val, dt, d, dd
 
 
@@ -238,15 +260,22 @@ def mlp_value(net, t, Q3, ws, we):
     return h @ L["kernel"] + L["bias"]
 
 
-def u_value(P, win, Q):
+def u_value(P, win, Q, hard=False):
     bv = jax.vmap(lambda q: bg_point(q, P["acc"], win))(Q)
     B, rho = bv[:, :22], bv[:, 22:]
     phi = rho * mlp_value(P["net"], Q[:, 0:1], Q[:, 1:4], win[0], win[1])
+    if hard:
+        phi = phi * (Q[:, 0:1] - win[0]) / (win[1] - win[0])
     u = B + phi
-    return u.at[:, CHI].set(B[:, CHI] * jnp.exp(phi[:, CHI])).at[:, AL].set(B[:, AL] * jnp.exp(phi[:, AL]))
+    u = u.at[:, CHI].set(B[:, CHI] * jnp.exp(phi[:, CHI])).at[:, AL].set(B[:, AL] * jnp.exp(phi[:, AL]))
+    if hard:
+        h = jax.vmap(lambda x: hard_h(win, x))(Q[:, 1:4])
+        e = u + h
+        u = e.at[:, CHI].set(u[:, CHI] * jnp.exp(h[:, CHI])).at[:, AL].set(u[:, AL] * jnp.exp(h[:, AL]))
+    return u
 
 
-u_value_jit = jax.jit(u_value)
+u_value_jit = jax.jit(u_value, static_argnames="hard")
 
 
 # ---- initial data (window 0) --------------------------------------------------------------------
@@ -265,6 +294,30 @@ def initial_data(X):
     psi = 1.0 + sum(MASS / (2.0 * jnp.linalg.norm(X - jnp.asarray(c), axis=1)) for c in C0)
     U = jnp.tile(FLAT[None], (X.shape[0], 1))
     return U.at[:, CHI].set(psi ** -4).at[:, AL].set(1.0 / psi)
+
+
+# ---- --hard_ic (window 0 only) ------------------------------------------------------------------
+def hard_h(win, x):
+    """The offset h(x) (22,) that makes u(t0) = U0 exactly: U0 - B(t0) for the additive fields, ln U0 - ln B(t0)
+    for chi and alpha. B(t0) does not depend on the trained parameters (the centre at t0 is a0, its velocity v0)."""
+    U0 = initial_data(x[None])[0]
+    B0 = bg_point(jnp.concatenate([win[0][None], x]), jnp.zeros((NP, 2, 3)), win)[:22]
+    h = U0 - B0
+    return h.at[CHI].set(jnp.log(_pos(U0[CHI])) - jnp.log(B0[CHI])).at[AL].set(jnp.log(_pos(U0[AL])) - jnp.log(B0[AL]))
+
+
+@jax.jit
+def _hard_chunk(win, X):
+    def one(x):
+        f = lambda xx: hard_h(win, xx)
+        return f(x), jax.jacfwd(f)(x), jax.jacfwd(jax.jacfwd(f))(x)[DD]
+    return jax.vmap(one)(X)
+
+
+def hard_stacks(win, X, chunk=16384):
+    """(h, d_xyz h, d_xyz d_xyz h) at X (n,3), the last for the _DD_OUTPUT_IDXS fields only; once per draw."""
+    out = [_hard_chunk(win, X[i:i + chunk]) for i in range(0, X.shape[0], chunk)]
+    return tuple(jnp.concatenate(z) for z in zip(*out))
 
 
 # ---- loss ---------------------------------------------------------------------------------------
@@ -287,16 +340,17 @@ def ein_gauge(res):
 
 
 def parts(P, win, batch):
-    Qi, Qe, Qb, Xic, Uic = batch
-    Di = u_derivs(P, win, Qi)
+    Qi, Qe, Qb, Xic, Uic, Hi, He, Hb = batch
+    hard = Hi is not None
+    Di = u_derivs(P, win, Qi, Hi)
     e_i, g_i = ein_gauge(residual(Di))
-    e_e, g_e = ein_gauge(residual(u_derivs(P, win, Qe)))
-    val, dt, d, _ = u_derivs(P, win, Qb)
+    e_e, g_e = ein_gauge(residual(u_derivs(P, win, Qe, He)))
+    val, dt, d, _ = u_derivs(P, win, Qb, Hb)
     Xb = Qb[:, 1:4]
     rb = jnp.linalg.norm(Xb, axis=1)[:, None]
     som = dt + ns["c"] * jnp.einsum("nk,nfk->nf", Xb, d) / rb + ns["c"] * (val - FLAT[None]) / rb
     t0 = jnp.full((Xic.shape[0], 1), win[0])
-    ic = jnp.mean((u_value(P, win, jnp.concatenate([t0, Xic], axis=1)) - Uic) ** 2)
+    ic = jnp.mean((u_value(P, win, jnp.concatenate([t0, Xic], axis=1), hard) - Uic) ** 2)
     con = zeta(Di) if a.w_constraint > 0 else jnp.zeros(())
     return dict(einstein=e_i, gauge=g_i, end=ns["lam_tapa"] * (e_e + g_e), bc=ns["lam_bc"] * jnp.mean(som ** 2),
                 ic=ns["lamg0"] * ic, constraint=a.w_constraint * con)
@@ -304,13 +358,13 @@ def parts(P, win, batch):
 
 def parts_pre(P, win, batch):
     """The IC and Sommerfeld terms of parts() alone (the --pre_iters phase)."""
-    Qi, Qe, Qb, Xic, Uic = batch
-    val, dt, d, _ = u_derivs(P, win, Qb)
+    Qi, Qe, Qb, Xic, Uic, Hi, He, Hb = batch
+    val, dt, d, _ = u_derivs(P, win, Qb, Hb)
     Xb = Qb[:, 1:4]
     rb = jnp.linalg.norm(Xb, axis=1)[:, None]
     som = dt + ns["c"] * jnp.einsum("nk,nfk->nf", Xb, d) / rb + ns["c"] * (val - FLAT[None]) / rb
     t0 = jnp.full((Xic.shape[0], 1), win[0])
-    ic = jnp.mean((u_value(P, win, jnp.concatenate([t0, Xic], axis=1)) - Uic) ** 2)
+    ic = jnp.mean((u_value(P, win, jnp.concatenate([t0, Xic], axis=1), Hb is not None) - Uic) ** 2)
     return dict(bc=ns["lam_bc"] * jnp.mean(som ** 2), ic=ns["lamg0"] * ic)
 
 
@@ -322,10 +376,10 @@ DIST_BANDS = ((0.0, 0.01), (0.01, 0.05), (0.05, 0.5), (0.5, 1e9))
 DIST_NAMES = ("d<0.01", "d0.01-0.05", "d0.05-0.5", "d>0.5")
 
 
-def dist_bands(P, win, Q):
+def dist_bands(P, win, Q, H=None):
     """Einstein + gauge loss of the interior points split by distance to the nearest puncture: each band's
     contribution to the mean over all points (they add up to einstein + gauge), and its point count."""
-    res = residual(u_derivs(P, win, Q))
+    res = residual(u_derivs(P, win, Q, H))
     per = (ns["lam_einstein"] * jnp.sum(res[:, :18] ** 2, axis=1) / 18
            + ns["lam_gauge"] * a.w_gauge * jnp.sum(res[:, 18:22] ** 2, axis=1) / 4)
     pos = jax.vmap(lambda t: center(P["acc"], win, t)[0])(Q[:, 0])               # (n, NP, 3)
@@ -362,7 +416,7 @@ def clouds(key, t, pos_of_t):
     return jnp.where(rr > R, X / rr * R, X)
 
 
-def draw(key, P, win, n_int, n_end, n_ic, n_bc, Uic_fn):
+def draw(key, P, win, n_int, n_end, n_ic, n_bc, Uic_fn, hard=False):
     t0, t1 = float(win[0]), float(win[1])
     pos_of_t = jax.jit(jax.vmap(lambda tt: center(P["acc"], win, tt)[0]))
     k = jax.random.split(key, 6)
@@ -374,7 +428,8 @@ def draw(key, P, win, n_int, n_end, n_ic, n_bc, Uic_fn):
     u = jax.random.normal(k[4], (n_bc, 3))
     Qb = jnp.concatenate([tb[:, None], R * u / jnp.linalg.norm(u, axis=1, keepdims=True)], axis=1)
     Xic = clouds(k[5], jnp.full((n_ic,), t0), pos_of_t)
-    return Qi, Qe, Qb, Xic, Uic_fn(Xic)
+    H = [hard_stacks(win, Q[:, 1:4]) if hard else None for Q in (Qi, Qe, Qb)]
+    return (Qi, Qe, Qb, Xic, Uic_fn(Xic), *H)
 
 
 # ---- report against the 1D reference (single puncture at the origin only) -----------------------
@@ -389,7 +444,7 @@ REP_GROUPS = (("alpha", [18]), ("chi", [12]), ("Khat", [13]), ("Theta", [14]), (
               ("At", list(range(6, 12))), ("Ghat", [15, 16, 17]), ("beta", [19, 20, 21]))
 
 
-def report(P, win, t):
+def report(P, win, t, hard=False):
     """rms field errors vs the 1D reference at time t (run time), on 8 rays from the ORIGIN."""
     j = int(np.argmin(np.abs(REF_T - (t + T_OFF))))
     if abs(REF_T[j] - (t + T_OFF)) > 1e-6:
@@ -399,7 +454,7 @@ def report(P, win, t):
     rad = np.stack([np.interp(rr, REF_R, REF_U[j, f]) for f in range(10)], axis=1)
     ref = np.asarray(jax.vmap(lambda rv, x: stpl.lift(jnp, pack, rv, x))(jnp.asarray(rad), jnp.asarray(X)))
     Q = jnp.concatenate([jnp.full((len(X), 1), t), jnp.asarray(X)], axis=1)
-    u = np.asarray(u_value_jit(P, win, Q))
+    u = np.asarray(u_value_jit(P, win, Q, hard=hard))
     row = {}
     for bn, lo, hi in REP_BANDS:
         m = (rr >= lo) & (rr < hi)
@@ -472,6 +527,22 @@ if a.selftest:
     pos, vel = center(P["acc"], win, jnp.asarray(0.4))
     b = u_value(P, win, jnp.concatenate([jnp.full((1, 1), 0.4), pos[:1] + 1e-4], axis=1))[0, ns["BETA_SLICE"]]
     print(f"shift at the puncture {np.asarray(b)} vs -da/dt {-np.asarray(vel[0])}")
+    # 3. --hard_ic: stacks against autodiff, and u(t0) = the exact initial data.
+    w0 = (jnp.asarray(0.0), jnp.asarray(0.25), jnp.asarray(C0), jnp.zeros((NP, 3)))
+    Qh = draw(jax.random.PRNGKey(6), P, w0, 64, 4, 4, 4, lambda X: jnp.zeros((X.shape[0], 22)))[0]
+    Qh = jnp.concatenate([Qh, jnp.concatenate([jnp.full((4, 1), 0.1), jnp.asarray(C0[:1]) + dn[1:5]], axis=1)])
+
+    def apply_h(params, t, x, y, z, ws, we):
+        return u_value(params, w0, jnp.concatenate([t, x, y, z], axis=1), True)
+
+    t, x, y, z = Qh[:, 0:1], Qh[:, 1:2], Qh[:, 2:3], Qh[:, 3:4]
+    ref = ns["r_ccz4_evolution"](apply_h, P, t, x, y, z, 0.0, 0.25)
+    D = u_derivs(P, w0, Qh, hard_stacks(w0, Qh[:, 1:4]))
+    print(f"--hard_ic stacks vs autodiff: max |residual difference| {float(jnp.abs(residual(D) - ref).max()):.2e} "
+          f"(max |residual| {float(jnp.abs(ref).max()):.2e}); value difference "
+          f"{float(jnp.abs(D[0] - apply_h(P, t, x, y, z, 0.0, 0.25)).max()):.2e}")
+    Q0 = Qh.at[:, 0].set(0.0)
+    print(f"--hard_ic: max |u(t0) - U0| {float(jnp.abs(u_value(P, w0, Q0, True) - initial_data(Q0[:, 1:4])).max()):.2e}")
     sys.exit(0)
 
 if a.eval_spheres:
@@ -488,12 +559,12 @@ if a.eval_spheres:
     KH, AT = ns["KHAT_IDX"], ns["AT_SLICE"]
     REFQ = {"chi": (12, 4), "Khat": (13, 5), "Theta": (14, 6), "alpha": (18, 8)}   # (u column, reference row)
 
-    def sphere_eval(P, win, t):
+    def sphere_eval(P, win, t, hard):
         pos = center(P["acc"], win, jnp.asarray(t))[0][0]
 
         def out(s, c):
             X = c[None, :] + s * Nd
-            return u_value(P, win, jnp.concatenate([jnp.full_like(s, t), X], axis=1))
+            return u_value(P, win, jnp.concatenate([jnp.full_like(s, t), X], axis=1), hard)
 
         def metric(o):
             return unpack(o[:, GT]) / o[:, CHI][:, None, None]
@@ -510,15 +581,15 @@ if a.eval_spheres:
                        + R ** 2 * (jnp.einsum("pi,pij,pj->p", Ed, Kij, Ed) / jnp.einsum("pi,pij,pj->p", Ed, g, Ed)) ** 2)
         return m, out(Sd, jnp.zeros(3)), pos
 
-    sphere_jit = jax.jit(sphere_eval)
-    files = sorted(f for f in os.listdir(a.out) if f.startswith("window_") and f.endswith(".pkl"))
+    sphere_jit = jax.jit(sphere_eval, static_argnums=3)
+    files = sorted(f for f in os.listdir(a.out) if f.startswith("pre_" if a.eval_pre else "window_") and f.endswith(".pkl"))
     acc_ = {"t": [], "center": []}
     for i, f in enumerate(files):
         St = pickle.load(open(os.path.join(a.out, f), "rb"))
         P = jax.tree_util.tree_map(jnp.asarray, St["params"])
         win = tuple(jnp.asarray(v) for v in St["win"])
         for t in ([float(win[0])] if i == 0 else []) + [float(win[1])]:
-            m, o0, pos = (np.asarray(v) for v in sphere_jit(P, win, t))
+            m, o0, pos = (np.asarray(v) for v in sphere_jit(P, win, t, bool(St.get("hard", False))))
             res = {"mass": m.reshape(NDIR, NR) / MASS - 1.0}
             j = int(np.argmin(np.abs(REF_T - (t + T_OFF))))
             assert abs(REF_T[j] - (t + T_OFF)) < 1e-6, f"no reference snapshot at t = {t + T_OFF}"
@@ -553,13 +624,20 @@ if a.resume:
     if done:
         S = pickle.load(open(os.path.join(a.out, done[-1]), "rb"))
         P = jax.tree_util.tree_map(jnp.asarray, S["params"])
-        prev = (P, tuple(jnp.asarray(v) for v in S["win"]))
+        prev = (P, tuple(jnp.asarray(v) for v in S["win"]), bool(S.get("hard", False)))
         a0, v0 = jnp.asarray(S["a_end"]), jnp.asarray(S["v_end"])
         k0, key = S["window"] + 1, jnp.asarray(S["key"])
         print(f"resumed after window {S['window']}")
 
 parts_jit = jax.jit(parts)
 bands_jit = jax.jit(dist_bands)
+
+
+def save_state(name, P, win, k, pos, vel, hard):
+    S = {"params": jax.tree_util.tree_map(np.asarray, P), "win": [np.asarray(v) for v in win], "window": k,
+         "a_end": np.asarray(pos), "v_end": np.asarray(vel), "key": np.asarray(key), "config": vars(a), "hard": hard}
+    pickle.dump(S, open(os.path.join(a.out, name + ".tmp"), "wb"))
+    os.replace(os.path.join(a.out, name + ".tmp"), os.path.join(a.out, name))
 loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), static_argnums=1)
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 loss_pre = jax.jit(lambda w, unr, win, batch: total(parts_pre(unr(w), win, batch)), static_argnums=1)
@@ -577,33 +655,35 @@ for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1), a0, v0)
     P = {"net": P["net"], "acc": jnp.zeros((NP, 2, 3))}          # warm network, fresh centre correction
+    hard = a.hard_ic and k == 0
     if prev is None:
         Uic_fn = jax.jit(initial_data)
     else:
-        Pp, wp = prev
-        Uic_fn = jax.jit(lambda X, Pp=Pp, wp=wp: u_value(Pp, wp, jnp.concatenate([jnp.full((X.shape[0], 1), wp[1]), X], axis=1)))
+        Pp, wp, hp_ = prev
+        Uic_fn = jax.jit(lambda X, Pp=Pp, wp=wp, hp_=hp_: u_value(Pp, wp, jnp.concatenate([jnp.full((X.shape[0], 1), wp[1]), X],
+                                                                                      axis=1), hp_))
     w, unr = ns["flatten_util"].ravel_pytree(P)
     key, kh = jax.random.split(key)
-    held = draw(kh, P, win, a.n_held, a.n_held // 8, a.n_held // 4, a.n_held // 8, Uic_fn)
+    held = draw(kh, P, win, a.n_held, a.n_held // 8, a.n_held // 4, a.n_held // 8, Uic_fn, hard)
     print(f"window {k}: t in [{t0:g}, {t1:g}], {w.size} parameters, centre {np.asarray(a0).round(5).tolist()}, "
           f"velocity {np.asarray(v0).round(5).tolist()}", flush=True)
     t_start, it = time.time(), 0
     _, cnt = bands_jit(unr(w), win, draw(kh, P, win, a.n_int, 1, 1, 1, Uic_fn)[0])
     print("  interior points per batch by distance to the puncture: "
           + ", ".join(f"{n} {int(v)}" for n, v in zip(DIST_NAMES, np.asarray(cnt))), flush=True)
-    n_pre = a.pre_iters if a.pre_windows < 0 or k < a.pre_windows else 0
+    n_pre = a.pre_iters if (a.pre_windows < 0 or k < a.pre_windows) and not hard else 0
     while it < n_pre + a.iters:
         key, kd = jax.random.split(key)
         pre = it < n_pre
         batch = draw(kd, unr(w), win, 1 if pre else a.n_int, 1 if pre else a.n_end,
-                     (a.pre_n_ic or a.n_ic) if pre else a.n_ic, a.n_bc, Uic_fn)
+                     (a.pre_n_ic or a.n_ic) if pre else a.n_ic, a.n_bc, Uic_fn, hard and not pre)
         lf, vg = (loss_pre, vg_pre) if pre else (loss_fn, vg_fn)
         r = mb.minimize(lambda v: lf(v, unr, win, batch), lambda v: vg(v, unr, win, batch), w, opts)
         w = r.x
         it += a.n_change
         hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
         pos, vel = center(unr(w)["acc"], win, jnp.asarray(t1))
-        hb, hn = (np.asarray(v) for v in bands_jit(unr(w), win, held[0]))
+        hb, hn = (np.asarray(v) for v in bands_jit(unr(w), win, held[0], held[5]))
         row = dict(window=k, iteration=it, phase="pre" if pre else "full", seconds=round(time.time() - t_start, 1),
                    train=float(lf(w, unr, win, batch)), held=sum(hp.values()),
                    **{f"held_{n}": hp[n] for n in PART_NAMES},
@@ -621,9 +701,13 @@ for k in range(k0, a.N_window):
               + " ".join(f"{n} {v:.1e}" for n, v in zip(DIST_NAMES, hb)) + f"  a(t1) {np.asarray(pos[0]).round(5).tolist()}"
               + (f"  peak mem {mem_gb():.2f} GB" if mem_gb() is not None else ""),
               flush=True)
+        if k == 0 and n_pre and it == n_pre:
+            save_state("pre_000.pkl", unr(w), win, k, pos, vel, False)
+            if a.stop_after_pre:
+                sys.exit(0)
     P = unr(w)
     pos, vel = center(P["acc"], win, jnp.asarray(t1))
-    rr = report(P, win, t1)
+    rr = report(P, win, t1, hard)
     if rr is not None:
         rr = dict(window=k, t=t1, ax=float(pos[0, 0]), ay=float(pos[0, 1]), az=float(pos[0, 2]), **rr)
         new = not os.path.exists(rep)
@@ -636,9 +720,6 @@ for k in range(k0, a.N_window):
               "mid alpha %.2e Khat %.2e" % (t1, rr["alpha_r0.03"], rr["alpha_r0.03_ref"], rr["alpha_core"],
                                              rr["chi_core"], rr["Khat_core"], rr["gt_core"], rr["alpha_mid"], rr["Khat_mid"]),
               flush=True)
-    S = {"params": jax.tree_util.tree_map(np.asarray, P), "win": [np.asarray(v) for v in win], "window": k,
-         "a_end": np.asarray(pos), "v_end": np.asarray(vel), "key": np.asarray(key), "config": vars(a)}
-    pickle.dump(S, open(os.path.join(a.out, f"window_{k:03d}.pkl.tmp"), "wb"))
-    os.replace(os.path.join(a.out, f"window_{k:03d}.pkl.tmp"), os.path.join(a.out, f"window_{k:03d}.pkl"))
-    prev, a0, v0 = (P, win), pos, vel
+    save_state(f"window_{k:03d}.pkl", P, win, k, pos, vel, hard)
+    prev, a0, v0 = (P, win, hard), pos, vel
 print("done:", a.out)
