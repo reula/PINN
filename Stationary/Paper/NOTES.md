@@ -102,3 +102,41 @@ condition (10-18) came after the fix.  The ablations at the end of Paper/hub_qp.
 ab_nopins, ab_none: qp_com from scratch without the ladder, without the pins, without both) test
 whether the method can drop them.
 
+
+## The author's \claude{} notes of 2026-10-29, and what was done
+
+- Weyl two-rod subsubsection: moved from II.C to the tests section (V.C, label sec:weylsol kept);
+  its rotation paragraph merged into "A rotated Weyl configuration". II.C is now "The spherical
+  solutions" (sec:spherical).
+- "spectral solution" in II.D: now "a spectral approximation" with a forward reference; the
+  spectral method is introduced in III ("Spectral approximations", eq:spectral: the basis of
+  stationary/specref.py, Gauss-Newton on the loss's residual vector) with its two uses (grading;
+  how small the loss can be: a floor reached by both methods is the problem's). The 1.8e-5 / 3e-9
+  pair is the l <= 6, 24-mode approximation (VERIFICATION.md, PERTURBATION.md:287,304).
+- lambda_0 "chosen so that lambda -> 1": replaced. lambda_0, S_1, S_2, r_in are free data; the
+  symmetry is lambda -> k lambda (scaling, not adding a constant), fixed by lambda_infty = 1; for
+  spherical data M = r_in (1 - lambda_0) / (2 sqrt(lambda_0)) (1/sqrt 3 for the quadrupole
+  problem, checked).
+- Parameter counts: explained in III from eq:mlp, (n_in+1) n_out per layer: axisym 3 in / 5 out
+  -> 2285, 3-D 4 in (n, t; no decay feature in HybridNet) / 7 out -> 2347 (stationary/model.py).
+- Loss: what a loss and a residual are, each term named, the bar defined.
+- Spectral paragraph reworded; "l = 2 tail decays as rho^-3" now says it is the l = 2 part; the
+  reference's specifics (L = 10, J = 36, 1008 unknowns, 2500 points, 37 min, DSGNAR.md:674-679)
+  moved to IV.A, with its mass and the remark that the best networks now have a lower loss
+  (1.3e-11 vs 2.8e-11), so the quoted errors compare two approximations of similar quality.
+- Mass: M0 = 0.583847 vs R0 = 0.577350, back-reaction 6.5e-3 ~ S2^2 = 6.9e-3. Scaling with S2 NOT
+  checked (would need a spectral solve at S2/2).
+- Pipeline test: explained, with the closed-form Schwarzschild fields as the example.
+- "standard shell" (Weyl): rho_in = 7.5 (3 x 2.5, the distance to the rods' ends), rho_out = 75;
+  table caption "standard units" -> the units of masses 1 and 0.1. (HUB.md calls [3.5, 35] the
+  standard shell of the rotated runs: a different usage, not in the paper.)
+- Ablation subsection and tab:ablation removed; its numbers are two sentences in II.D. The table
+  rows remain in VERIFICATION.md.
+- Also edited in the author's new text: typos (choosen, Schwarszchild, Schwarszshild, ofcourse,
+  firts), "the activation function is a tanh multilayer perceptron", "root seeking algorithms"
+  (Adam and SSBroyden minimise), "asserts the stability of the approximation parameters"
+  (-> overfitting check).
+
+Conflict found: PERTURBATION.md item 4 says the mass is untouched by the quadrupole (l = 0
+back-reaction O(S2^2/rho^6)); MULTIPOLES_GH_THORNE.md:686 and the moments give +1.1%. The paper
+follows the moments.
