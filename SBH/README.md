@@ -1058,7 +1058,7 @@ missing, ~20 + 40 min, since `*.npz` is not in git):
     OUTDIR=sing_bl SING_ARGS="--template bl" bash jobs/hub/sing.sh
     OUTDIR=sing_tr SING_ARGS="--template trumpet" bash jobs/hub/sing.sh
 
-**First hub run, `sing_bl` (2026-10-28, in progress; windows 0-5 of 8).** ~25 min per window (12000
+**First hub run, `sing_bl` (2026-10-28, 8 windows, 3 h 25 min).** ~25 min per window (12000
 SSBroyden iterations, vs ~90 min for `w8_qn_con10`). Every window ends at held-out loss 3-6e-4, the d < 0.01
 band at ~1e-8 (the template carries it), but the error against the 1D reference grows from window to window:
 
@@ -1070,6 +1070,8 @@ band at ~1e-8 (the template carries it), but the error against the 1D reference 
 | 3 | 1.0 | 1.0e-2 | 1.4e-2 | 4.7e-3 | 1.2e-2 | 1.1e-2 | 4.0e-3 | +2e-4 |
 | 4 | 1.25 | 1.4e-2 | 1.8e-2 | 5.1e-3 | 1.6e-2 | 1.3e-2 | 8.2e-3 | +6e-4 |
 | 5 | 1.5 | 1.7e-2 | 2.3e-2 | 5.5e-3 | 2.2e-2 | 1.8e-2 | 1.6e-2 | +1.1e-3 |
+| 6 | 1.75 | 2.0e-2 | 2.7e-2 | 6.0e-3 | 3.1e-2 | 2.3e-2 | 2.9e-2 | +1.8e-3 |
+| 7 | 2.0 | 2.0e-2 | 3.3e-2 | 6.4e-3 | 4.4e-2 | 3.0e-2 | 4.4e-2 | +2.7e-3 |
 
 alpha(0.03) stays within 0.6% of the reference (0.2383 vs 0.2369 at t = 1.5), but at t = 1.5 alpha core is
 already ~20x and gt ~3x the `w8_qn_con10` values at t = 2. The trained centre drifts along z from window 3 on
@@ -1081,3 +1083,27 @@ iterations on the IC + Sommerfeld terms alone (no interior, end or constraint po
 `--iters` on the full loss. Motivation: in window 0 the initial loss is almost all IC (0.126 of 0.151), so
 the interior residual was being minimised around initial data not yet fitted. CPU smoke run (2 windows, tiny
 network) completes; the history has a `phase` column (pre / full) and the log marks pre iterations with `p`.
+
+**Results of the three hub runs (2026-10-29; 8 windows each, ~3.5 h each).** At t = 2 against the 1D
+reference ("core" = rms over 0.05 <= r < 0.5 on 8 rays; trumpet: the reference at t + 10):
+
+| run | alpha(0.03) (ref) | alpha core | Khat core | gt core | At core | Ghat core | Theta core | alpha inner | alpha far | a_z(t=2) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `w8_qn_con10` (baseline, 12 h) | 0.289 (0.281) | 7.1e-4 | 8.7e-3 | 1.8e-3 | | | (max 3.1e-4) | | | |
+| `sing_bl` | 0.2821 (0.2814) | 2.0e-2 | 3.3e-2 | 6.4e-3 | 4.4e-2 | 3.0e-2 | 1.2e-3 | 4.4e-2 | 1.9e-3 | +2.7e-3 |
+| `sing_bl_pre` (`--pre_iters 2000`) | 0.2816 (0.2814) | 1.3e-2 | 1.9e-2 | 5.6e-3 | 2.1e-2 | 2.9e-2 | 7.2e-4 | 2.1e-2 | 3.9e-3 | -1.8e-3 |
+| `sing_tr` (trumpet, t = 10-12) | 0.0348 (0.0347) | 2.7e-3 | 4.2e-2 | 2.2e-3 | 1.9e-2 | 4.3e-3 | 6.6e-5 | 1.5e-3 | 1.2e-2 | -3.1e-4 |
+
+* The template gets the lapse at the puncture right: alpha(0.03) is within 0.25% of the reference at t = 2
+  in both BL runs (`w8_qn_con10`: 2.8%). Everywhere else the error is 3-30x the baseline's, and it grows
+  steadily from window to window although every window ends at held-out loss 3e-4 to 1e-3 and IC 4e-5:
+  the errors accumulate through the window chain.
+* `--pre_iters 2000` helps modestly (+5% time): at t = 2 alpha core 1.5x, Khat 1.7x, At 2x, alpha inner 2x
+  lower; window 0 alpha core 7.7e-4 vs 1.7e-3. It does not stop the accumulation.
+* The centre drifts along z in both BL runs, with opposite signs (+2.7e-3, -1.8e-3): a weakly determined
+  mode, not an effect of the IC fit. The inner error grows with it. Next: `--fixed_center` as the control.
+* Trumpet: the losses fall through the windows (held 5.7e-4 -> 1.5e-4) and most fields stay at ~2e-3, but
+  Khat core grows linearly (8.7e-3 -> 4.2e-2) and alpha(0.03) stays frozen at 0.0348 while the reference
+  moves 0.0353 -> 0.0358 -> 0.0347: the template's drift (`trumpet_drift.png`) is not supplied by N inside
+  r_c, where rho ~ r^2 is small, as anticipated. alpha far is 1e-2 from window 0 on (the t = 10 slice
+  has the outgoing gauge pulse at r ~ 10, which the IC fit does not resolve).
