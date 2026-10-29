@@ -1177,6 +1177,24 @@ also stores `ic_rms`: each field group's rms error against the exact initial dat
 `tools/plot_ic_error.py OUT.png NAME=X.npz ...` plots the t = 0 errors by radius (mass, alpha, chi, Khat,
 Theta against the 1D reference for every run; gt, At, Ghat, beta against the exact data for sing runs).
 
+**IC phase alone, `sing_bl_ic_pre` (2026-10-29; hub, `--pre_iters 4000 --pre_windows 1 --pre_n_ic 150000
+--stop_after_pre`, 326 s, peak 4.3 GB).** IC loss 8.7e-8 at the end. `plots/2026-10-29/sing_ic_error.png`
+(baseline, `sing_bl` window 0 after full training, and this state; all at t = 0):
+- gt, At, Khat, Theta, Ghat, beta are exactly 0: the BL template already is the exact data in those fields,
+  the output layer starts at zero, and the IC + Sommerfeld loss has zero gradient in their columns, so
+  they stay zero. Only chi and alpha are fitted.
+- chi: rms 3-6e-4 for r > 0.2 (baseline 5e-6 to 1e-5, i.e. ~50x better); `sing_bl` after full training 2e-3
+  to 6e-3. alpha: 1e-4 to 1.5e-3, close to the baseline beyond r ~ 3, worse in 0.1 < r < 1.
+- mass: |<m/M - 1>| up to 1e-2 (sign changes through r), against the baseline's 1e-5 to 1e-4 for r > 0.2.
+  The IC loss averages over 22 fields of which 20 are exact, so 8.7e-8 means rms ~3e-4 in chi and alpha;
+  the mass uses chi's radial derivative and amplifies that. The soft fit is not converged at this level,
+  which is the case for `--hard_ic`.
+
+**`sing_bl_hard` first launch (2026-10-29): died before its first iteration.** Run alone after
+`sing_bl_ic_pre`, it failed ~5 min after starting with RESOURCE_EXHAUSTED "Failed to load in-memory CUBIN ...
+out of memory" in `jit_parts` (MEM_FRACTION 0.95, no other run of ours on the GPU). Cause not yet known:
+the hard stacks themselves are ~0.2 GB at baseline counts; check `nvidia-smi` for other processes on the GPU.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
