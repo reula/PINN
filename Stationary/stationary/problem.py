@@ -313,6 +313,11 @@ class Config:
     # points (losses.inner_bc_raw, keys "<field>_dtan"), so the inner condition is an H^1 norm of
     # the data mismatch on the sphere instead of an L^2 one.  Same weight as the inner group.
     inner_tangential: bool = False
+    # --stage-base <run>: train a second-stage network (model.StagedNet), a correction of scale
+    # stage_eps on top of that run's frozen solution, with the same loss.  width/depth/fourier are
+    # the correction's.  The base is reloaded from its run directory whenever this run is loaded.
+    stage_base: str | None = None
+    stage_eps: float = 1e-4
 
     pde_ramp_steps: int = 0     # ramp the PDE weights in over this many steps (0 = off)
     # Period in OPTIMISER ITERATIONS, counted on one counter that Adam and the

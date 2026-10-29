@@ -165,6 +165,18 @@ nothing changes).  The exact solutions still have zero loss with it.  First runs
 `Paper/hub_qp5.sh` (`fn_tan_*` axisymmetric, `rot_tan_*` off-axis width 40), against
 `ab_none_w2` and `qp_rot4_n32768_w4`.
 
+`--stage-base <run> [--stage-eps 1e-4]` (2026-10-29) trains a **second-stage network**
+(`model.StagedNet`): the run's solution is frozen and a correction is trained on the same loss,
+`h = h_0 + eps sym3(y[:6])`, `lambda = lambda_0 exp(eps y[6])`, with `y` a metric-only network on
+`(n, t)` (`--width/--depth/--fourier` are the correction's).  `eps` is about the first stage's
+error, so `y` is O(1) (multi-stage networks, Wang and Lai 2024).  Give the base run's problem
+flags; the base is reloaded from its directory whenever the staged run is loaded
+(`train.make_model`).  Only the correction's parameters are trained and saved.
+`tests/test_staged.py`: eps = 0 reproduces the base (fields and Christoffel symbols), the loss has
+a gradient in the correction, a staged run rebuilds from its config.  First test:
+`Paper/hub_stage.sh`, on the rotated Weyl test `weyl_rot45_hyb`, against the base continued for the
+same budget.
+
 `inner_radius` defaults to **2**, which is the problem statement and is what
 `rho_in_of_R0(R0) = sqrt(4+R0^2)` places at `rho_in` in the canonical harmonic chart: the
 exact solution has `h_tan = 1 - R0^2/rho_in^2 = 4/(4+R0^2)` there, i.e. `0.8` for

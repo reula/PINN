@@ -34,12 +34,19 @@ from . import diagnostics, exact
 from .losses import (FIRST_ORDER_PDE_KEYS, GROUP_KEYS, default_weights, equation_keys,
                      group_terms, outer_pin_terms, pde_radial_terms, reference_consistency,
                      total_loss)
-from .model import (AxisymHybridNet, FieldNet, HybridNet, SymFieldNet, SymHybridNet,
+from .model import (AxisymHybridNet, FieldNet, HybridNet, StagedNet, SymFieldNet, SymHybridNet,
                     point_fields)
 from .problem import Config, sample_shell, sample_sphere
 
 
 def make_model(cfg: Config):
+    if getattr(cfg, "stage_base", None):
+        from .evaluate import load_run
+        _, base_model, base_state = load_run(cfg.stage_base)
+        base_params = base_state["net"]
+        return StagedNet(base=lambda x: base_model.apply(base_params, x), eps=cfg.stage_eps,
+                         width=cfg.width, depth=cfg.depth, fourier=cfg.fourier,
+                         rho_in=cfg.rho_in, rho_out=cfg.rho_out)
     cls = {"sym": SymFieldNet, "sym_hybrid": SymHybridNet, "hybrid": HybridNet,
            "axisym_hybrid": AxisymHybridNet, "mlp": FieldNet}.get(cfg.arch, FieldNet)
     kw = dict(width=cfg.width, depth=cfg.depth, fourier=cfg.fourier,
@@ -1850,6 +1857,13 @@ def parse_args(argv=None):
                         "(an H^1 norm of the data mismatch on the inner sphere), with the same "
                         "weight as the inner group; per-term overrides: --eq-weights "
                         "inner_lam_dtan=..,inner_h_tan_dtan=..")
+    p.add_argument("--stage-base", default=None, dest="stage_base",
+                   help="a finished run: train a second-stage correction network on top of its "
+                        "frozen solution (model.StagedNet), with the same loss; --width/--depth/"
+                        "--fourier set the correction network.  Give the base run's problem flags.")
+    p.add_argument("--stage-eps", type=float, default=None, dest="stage_eps",
+                   help="scale of the second-stage correction (default 1e-4): about the first "
+                        "stage's error, so the correction network's outputs are O(1)")
     p.add_argument("--no-pin-h-robin", action="store_false", dest="pin_h_robin",
                    help="turn OFF the metric's averaged order-1 Robin pin (it is ON by default): "
                         "without it the amplitude of h is nearly unpinned and it drifts")
@@ -2154,6 +2168,10 @@ def parse_args(argv=None):
         cfg.pde_radial = True
     if getattr(a, "inner_tangential", False):
         cfg.inner_tangential = True
+    if getattr(a, "stage_base", None):
+        cfg.stage_base = a.stage_base
+    if getattr(a, "stage_eps", None) is not None:
+        cfg.stage_eps = a.stage_eps
     if getattr(a, "pin_h_robin", None) is False:
         cfg.pin_h_robin = False
     if a.outer_shells is not None:

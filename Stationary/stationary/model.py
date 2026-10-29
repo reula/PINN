@@ -120,7 +120,7 @@ class FieldNet(nn.Module):
 
 def point_fields(model, params):
     """Adapt the batched network to the single-point `fields` signature."""
-    if isinstance(model, (HybridNet, SymHybridNet, AxisymHybridNet)):
+    if isinstance(model, (HybridNet, SymHybridNet, AxisymHybridNet, StagedNet)):
         def h_of(y):
             return model.apply(params, y[None, :]).h[0]
 
@@ -250,6 +250,50 @@ class HybridNet(nn.Module):
         G = jnp.zeros(x.shape[:-1] + (3, 3, 3))
         h, lam = _blend_inner(x, h, lam, self.rho_in, self.hard_inner)
         return Fields(h, G, lam)
+
+
+class StagedNet(nn.Module):
+    """A second-stage network: a frozen earlier solution plus a small trained correction.
+
+        h = h_0 + eps * sym3(y[:6]),    lambda = lambda_0 * exp(eps * y[6])
+
+    with (h_0, lambda_0) = `base(x)` (the earlier stage, parameters fixed) and y the output of a
+    metric-only network on the features (n, t) of `HybridNet`.  The correction is trained on the
+    same loss, so it learns what the first stage left over; eps sets its scale, so that y is O(1)
+    when the correction is of the size of the first stage's error (multi-stage networks, Wang and
+    Lai 2024).  Gamma is the Christoffel symbol of the total h, as in HybridNet.
+    """
+    derives_gamma = True
+
+    base: Callable = None
+    eps: float = 1e-4
+    width: int = 20
+    depth: int = 6
+    fourier: int = 0
+    rho_in: float = 2.0
+    rho_out: float = 20.0
+    out_std: float = 1e-2
+
+    @nn.compact
+    def __call__(self, x):
+        x = jnp.atleast_2d(x)
+        f0 = self.base(x)
+        rho = jnp.linalg.norm(x, axis=-1, keepdims=True)
+        n = x / rho
+        t = jnp.log(rho / self.rho_in) / jnp.log(self.rho_out / self.rho_in)
+        feats = [n, t]
+        for i in range(1, self.fourier + 1):
+            feats.append(jnp.sin(jnp.pi * i * t))
+            feats.append(jnp.cos(jnp.pi * i * t))
+        z = jnp.concatenate(feats, axis=-1)
+        for _ in range(self.depth):
+            z = jnp.tanh(_dense(self.width)(z))
+        y = _dense(7, kernel_init=nn.initializers.normal(self.out_std),
+                   bias_init=nn.initializers.zeros)(z)
+        lam0 = f0.lam.reshape(x.shape[:-1])
+        h = f0.h + self.eps * sym3(y[..., :6])
+        lam = lam0 * jnp.exp(self.eps * y[..., 6])
+        return Fields(h, jnp.zeros(x.shape[:-1] + (3, 3, 3)), lam)
 
 
 class SymHybridNet(nn.Module):
