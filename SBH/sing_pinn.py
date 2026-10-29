@@ -90,6 +90,10 @@ ap.add_argument("--inner_sigma", type=float, default=0.05)
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true", help="continue after the last saved window in OUT_DIR")
 ap.add_argument("--selftest", action="store_true", help="check the template and the derivative stacks, then exit")
+ap.add_argument("--eval_spheres", default=None, metavar="NPZ",
+                help="evaluate the saved windows in --out on spheres (as tools/sphere_errors.py, same npz layout: "
+                     "Misner-Sharp m/M - 1 about the trained centre, alpha/chi/Khat/Theta - 1D reference about the "
+                     "origin; t = 0 and every window end; r in [0.05, 20], 100 radii x 48 directions), then exit")
 argv = sys.argv[1:]
 rest = argv[argv.index("--") + 1:] if "--" in argv else []
 a = ap.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
@@ -463,6 +467,68 @@ if a.selftest:
     pos, vel = center(P["acc"], win, jnp.asarray(0.4))
     b = u_value(P, win, jnp.concatenate([jnp.full((1, 1), 0.4), pos[:1] + 1e-4], axis=1))[0, ns["BETA_SLICE"]]
     print(f"shift at the puncture {np.asarray(b)} vs -da/dt {-np.asarray(vel[0])}")
+    sys.exit(0)
+
+if a.eval_spheres:
+    NR, NDIR = 100, 48
+    rs = np.geomspace(0.05, 20.0, NR)
+    kk = np.arange(NDIR) + 0.5                                   # Fibonacci sphere, as tools/sphere_errors.py
+    cz = 1.0 - 2.0 * kk / NDIR
+    ph = np.pi * (1.0 + 5 ** 0.5) * kk
+    nd = np.stack([np.sqrt(1 - cz ** 2) * np.cos(ph), np.sqrt(1 - cz ** 2) * np.sin(ph), cz], axis=1)
+    ed = np.cross(nd, np.where(np.abs(nd[:, 2:3]) < 0.9, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]))
+    ed /= np.linalg.norm(ed, axis=1, keepdims=True)
+    Nd, Ed = jnp.asarray(np.repeat(nd, NR, axis=0)), jnp.asarray(np.repeat(ed, NR, axis=0))
+    Sd = jnp.asarray(np.tile(rs, NDIR)[:, None])
+    KH, AT = ns["KHAT_IDX"], ns["AT_SLICE"]
+    REFQ = {"chi": (12, 4), "Khat": (13, 5), "Theta": (14, 6), "alpha": (18, 8)}   # (u column, reference row)
+
+    def sphere_eval(P, win, t):
+        pos = center(P["acc"], win, jnp.asarray(t))[0][0]
+
+        def out(s, c):
+            X = c[None, :] + s * Nd
+            return u_value(P, win, jnp.concatenate([jnp.full_like(s, t), X], axis=1))
+
+        def metric(o):
+            return unpack(o[:, GT]) / o[:, CHI][:, None, None]
+
+        def R_of(s):
+            return s[:, 0] * jnp.sqrt(jnp.einsum("pi,pij,pj->p", Ed, metric(out(s, pos)), Ed))
+
+        o = out(Sd, pos)
+        R, dR = jax.jvp(R_of, (Sd,), (jnp.ones_like(Sd),))
+        g = metric(o)
+        K = o[:, KH] + 2.0 * o[:, TH]
+        Kij = (unpack(o[:, AT]) + unpack(o[:, GT]) * K[:, None, None] / 3.0) / o[:, CHI][:, None, None]
+        m = 0.5 * R * (1.0 - dR ** 2 / jnp.einsum("pi,pij,pj->p", Nd, g, Nd)
+                       + R ** 2 * (jnp.einsum("pi,pij,pj->p", Ed, Kij, Ed) / jnp.einsum("pi,pij,pj->p", Ed, g, Ed)) ** 2)
+        return m, out(Sd, jnp.zeros(3)), pos
+
+    sphere_jit = jax.jit(sphere_eval)
+    files = sorted(f for f in os.listdir(a.out) if f.startswith("window_") and f.endswith(".pkl"))
+    acc_ = {"t": [], "center": []}
+    for i, f in enumerate(files):
+        St = pickle.load(open(os.path.join(a.out, f), "rb"))
+        P = jax.tree_util.tree_map(jnp.asarray, St["params"])
+        win = tuple(jnp.asarray(v) for v in St["win"])
+        for t in ([float(win[0])] if i == 0 else []) + [float(win[1])]:
+            m, o0, pos = (np.asarray(v) for v in sphere_jit(P, win, t))
+            res = {"mass": m.reshape(NDIR, NR) / MASS - 1.0}
+            j = int(np.argmin(np.abs(REF_T - (t + T_OFF))))
+            assert abs(REF_T[j] - (t + T_OFF)) < 1e-6, f"no reference snapshot at t = {t + T_OFF}"
+            for q, (col, row) in REFQ.items():
+                res[q] = o0[:, col].reshape(NDIR, NR) - np.interp(rs, REF_R, REF_U[j, row])[None, :]
+            acc_["t"].append(t)
+            acc_["center"].append(pos)
+            for q, v in res.items():
+                acc_.setdefault(q + "_mean", []).append(v.mean(axis=0))
+                acc_.setdefault(q + "_rms", []).append(np.sqrt((v ** 2).mean(axis=0)))
+            i1 = int(np.argmin(np.abs(rs - 1.0)))
+            print(f"t = {t:6.3f}  <m/M-1>(r=1) {res['mass'].mean(0)[i1]:+.2e}  min over r {res['mass'].mean(0).min():+.2e}"
+                  f"  centre {pos.round(5).tolist()}", flush=True)
+    np.savez(a.eval_spheres, r=rs, M=MASS, T_OFF=T_OFF, **{q: np.asarray(v) for q, v in acc_.items()})
+    print("wrote", a.eval_spheres)
     sys.exit(0)
 
 # ---- training -------------------------------------------------------------------------------------

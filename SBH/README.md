@@ -1107,3 +1107,27 @@ reference ("core" = rms over 0.05 <= r < 0.5 on 8 rays; trumpet: the reference a
   moves 0.0353 -> 0.0358 -> 0.0347: the template's drift (`trumpet_drift.png`) is not supplied by N inside
   r_c, where rho ~ r^2 is small, as anticipated. alpha far is 1e-2 from window 0 on (the t = 10 slice
   probably has an outgoing gauge pulse in r > 5 that the IC fit does not resolve; not checked).
+
+**Mass and loss histories (2026-10-29; `sing_pinn.py --eval_spheres NPZ` = `tools/sphere_errors.py` for
+these runs, same npz layout; baseline = `tools/sphere_errors.py` on `long_con10`'s first 8 windows, which
+are `w8_qn_con10`; figures `tools/plot_sing_mass.py` and `tools/plot_sphere_errors.py` ->
+`plots/2026-10-29/`: `sing_mass_profiles.png`, `sing_mass_time.png`, `sing_losses.png`,
+`sing_sphere_errors_rt.png`).**
+
+* The sing runs' mass error is set by the INITIAL-DATA fit, not by the template or the evolution: already at
+  t = 0, <m/M - 1> is ~ +1 % over 0.2 < r < 3, +3 to +6 % at r ~ 3-8 and -4 to -10 % beyond r ~ 10, in
+  all three runs (the trumpet's from its own t = 10 slice), and that pattern persists to t = 2. The
+  baseline's t = 0 error is < 1e-4 over 0.2 < r < 10 and ~ -0.1 to -0.4 % at t = 2. The IC term ends every
+  window at ~4e-5 (sing_bl) but the far field is clearly not fitted well enough for the mass, which
+  depends on first derivatives of the metric. Not yet diagnosed: candidates are the sampling (the IC
+  points use the same Gaussian clouds as the interior, so r > 5 gets only the uniform bulk) and the
+  baseline's extra IC terms (`loss_g0`, `loss_gt0`, `loss_ic_log`) that sing_pinn.py does not have.
+* The centre drifts in all three components, not only z: |a(2)| = 6.5e-3 (`sing_bl`), 2.7e-3
+  (`sing_bl_pre`), 1.9e-3 (`sing_tr`), growing steadily from window 1.
+* `--pre_iters` on warm windows is destructive: at the start of every window after the first, the
+  IC + boundary-only phase drives the Einstein residual from ~1e-4 back up to ~0.1 (`sing_losses.png`,
+  middle top) and the full phase spends ~2000 iterations recovering. Its gain at t = 2 comes from window 0;
+  `--pre_windows 1` should keep that and drop the cost.
+* The Einstein + gauge loss at 0.01 <= d < 0.05 from the puncture rises ~50x over windows 5-7 in both BL
+  runs (t = 1.5-2, the start of the chi ~ r^4 -> r^2 transition, and while the centre drifts); the trumpet
+  run's stays flat.
