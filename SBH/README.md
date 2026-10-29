@@ -1148,3 +1148,6 @@ defaults printed by load_defs). So `sing_bl`, `sing_bl_pre`, `sing_tr` are not a
 (3.5x fewer points, 4x fewer on the boundary). From now on the defaults ARE the baseline counts:
 `--n_int 128000 --n_end 8000 --n_ic 12800 --n_bc 16000` (the interior shares are unchanged, so ~4x the
 point counts quoted above near the puncture). All future sing runs use them.
+The same holds for the iterations: the baseline runs `--EPOCHS_QN 24000` SSBroyden iterations per window,
+the runs above 12000; `--iters` now defaults to 24000. (Network 40 x 6, loss weights, `--w_constraint 10`
+and the 250-iteration restarts already matched.)

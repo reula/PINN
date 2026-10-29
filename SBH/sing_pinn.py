@@ -77,7 +77,7 @@ ap.add_argument("--n_end", type=int, default=8000, help="points at t = t1 (the l
 ap.add_argument("--n_ic", type=int, default=12800, help="IC points (baseline NI 8000 + core_ic_points 4800)")
 ap.add_argument("--n_bc", type=int, default=16000, help="boundary points (baseline Nb)")
 ap.add_argument("--n_held", type=int, default=8000)
-ap.add_argument("--iters", type=int, default=12000, help="SSBroyden iterations per window")
+ap.add_argument("--iters", type=int, default=24000, help="SSBroyden iterations per window (baseline --EPOCHS_QN)")
 ap.add_argument("--n_change", type=int, default=250)
 ap.add_argument("--pre_iters", type=int, default=0,
                 help="SSBroyden iterations on the IC + boundary terms only at the start of a window, before the "
