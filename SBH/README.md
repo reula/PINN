@@ -1139,3 +1139,12 @@ t = t0; the phase takes no derivatives except on the boundary, so 150000 points 
 phase hurt warm windows). `sing_bl_ic` keeps `lam_tapa` = 2; `sing_bl_ic_t05` passes `-- --lam_tapa 0.5`, so
 the end-slice term no longer dominates the loss. Centre still trained (`--fixed_center` not used), so the
 two changes are judged alone against `sing_bl` / `sing_bl_pre`.
+
+**Point counts (2026-10-29): the runs above used FEWER points than the baseline.** `sing_pinn.py`'s
+defaults were 32000 interior + 4000 end + 8000 IC + 4000 boundary = 48000 per batch; `w8_qn_con10` uses
+Nint 80000 + core_points 48000 = 128000 interior, NI 8000 end, NI 8000 + core_ic_points 4800 = 12800 IC,
+Nb 16000 boundary (~165000; the `Nint: 80000` lines in the sing logs are the main script's unused
+defaults printed by load_defs). So `sing_bl`, `sing_bl_pre`, `sing_tr` are not a like-for-like comparison
+(3.5x fewer points, 4x fewer on the boundary). From now on the defaults ARE the baseline counts:
+`--n_int 128000 --n_end 8000 --n_ic 12800 --n_bc 16000` (the interior shares are unchanged, so ~4x the
+point counts quoted above near the puncture). All future sing runs use them.
