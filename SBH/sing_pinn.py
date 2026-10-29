@@ -566,6 +566,12 @@ vg_pre = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts_pre(u
 hist = os.path.join(a.out, "sing_history.csv")
 rep = os.path.join(a.out, "sing_report.csv")
 PART_NAMES = ("einstein", "gauge", "end", "bc", "ic", "constraint")
+
+
+def mem_gb():
+    """Peak device memory so far in GB (None where the backend does not report it, e.g. CPU)."""
+    st = jax.devices()[0].memory_stats()
+    return st["peak_bytes_in_use"] / 1e9 if st and "peak_bytes_in_use" in st else None
 for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1), a0, v0)
@@ -611,7 +617,8 @@ for k in range(k0, a.N_window):
             wr.writerow(row)
         print(f"  it {it:6d}{'p' if pre else ' '} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
               + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ") by distance "
-              + " ".join(f"{n} {v:.1e}" for n, v in zip(DIST_NAMES, hb)) + f"  a(t1) {np.asarray(pos[0]).round(5).tolist()}",
+              + " ".join(f"{n} {v:.1e}" for n, v in zip(DIST_NAMES, hb)) + f"  a(t1) {np.asarray(pos[0]).round(5).tolist()}"
+              + (f"  peak mem {mem_gb():.2f} GB" if mem_gb() is not None else ""),
               flush=True)
     P = unr(w)
     pos, vel = center(P["acc"], win, jnp.asarray(t1))
