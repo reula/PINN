@@ -1106,4 +1106,4 @@ reference ("core" = rms over 0.05 <= r < 0.5 on 8 rays; trumpet: the reference a
   Khat core grows linearly (8.7e-3 -> 4.2e-2) and alpha(0.03) stays frozen at 0.0348 while the reference
   moves 0.0353 -> 0.0358 -> 0.0347: the template's drift (`trumpet_drift.png`) is not supplied by N inside
   r_c, where rho ~ r^2 is small, as anticipated. alpha far is 1e-2 from window 0 on (the t = 10 slice
-  has the outgoing gauge pulse at r ~ 10, which the IC fit does not resolve).
+  probably has an outgoing gauge pulse in r > 5 that the IC fit does not resolve; not checked).
