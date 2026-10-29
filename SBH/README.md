@@ -1193,7 +1193,14 @@ Theta against the 1D reference for every run; gt, At, Ghat, beta against the exa
 **`sing_bl_hard` first launch (2026-10-29): died before its first iteration.** Run alone after
 `sing_bl_ic_pre`, it failed ~5 min after starting with RESOURCE_EXHAUSTED "Failed to load in-memory CUBIN ...
 out of memory" in `jit_parts` (MEM_FRACTION 0.95, no other run of ours on the GPU). Cause not yet known:
-the hard stacks themselves are ~0.2 GB at baseline counts; check `nvidia-smi` for other processes on the GPU.
+the hard stacks themselves are ~0.2 GB at baseline counts. `nvidia-smi` afterwards: GPU empty, so no other
+process. The traceback is at the first held-out `parts_jit` call, i.e. after the first 250 iterations had run:
+the BFC pool (no preallocation, may grow to MEM_FRACTION 0.95 and never returns memory) had left too little
+outside it to load a newly compiled kernel. `sing_pinn.py --mem_report` (compiles window 0's value+gradient
+step at full size, soft and hard, prints XLA's memory analysis; on the laptop CPU: temp 18.52 GB soft, 18.58 GB
+hard, arguments 0.01 vs 0.22 GB) shows the hard ansatz does not enlarge the step. Fixes: `parts_jit` is
+compiled on the held-out set before training starts, and `jobs/hub/sing.sh` defaults to MEM_FRACTION 0.85
+(~3.7 GB left for kernels compiled later: end-of-window report, next window's IC).
 
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one

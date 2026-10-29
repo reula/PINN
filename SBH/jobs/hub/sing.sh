@@ -30,7 +30,7 @@ echo "SING_ARGS=${SING_ARGS:-}"
 
 PY="$HERE/../Stationary/.venv/bin/python"
 export JAX_ENABLE_X64=1 MPLBACKEND=Agg XLA_PYTHON_CLIENT_PREALLOCATE=false
-export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-0.95}
+export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-0.85}   # room for kernels compiled later (2026-10-29)
 export PYTHONPATH="$HERE/.pydeps${PYTHONPATH:+:$PYTHONPATH}"
 "$PY" -c "import tqdm" 2>/dev/null || "$PY" -m pip install -q --target "$HERE/.pydeps" tqdm
 "$PY" -c "import jax; d = jax.devices(); print('jax', jax.__version__, d); raise SystemExit(d[0].platform != 'gpu')" \

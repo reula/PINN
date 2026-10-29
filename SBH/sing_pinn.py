@@ -104,6 +104,9 @@ ap.add_argument("--eval_spheres", default=None, metavar="NPZ",
                 help="evaluate the saved windows in --out on spheres (as tools/sphere_errors.py, same npz layout: "
                      "Misner-Sharp m/M - 1 about the trained centre, alpha/chi/Khat/Theta - 1D reference about the "
                      "origin; t = 0 and every window end; r in [0.05, 20], 100 radii x 48 directions), then exit")
+ap.add_argument("--mem_report", action="store_true",
+                help="compile window 0's training step (value and gradient, full batch) soft and --hard_ic, print "
+                     "XLA's memory analysis of each, and exit")
 ap.add_argument("--eval_pre", action="store_true", help="--eval_spheres on pre_000.pkl (after the IC phase) instead")
 argv = sys.argv[1:]
 rest = argv[argv.index("--") + 1:] if "--" in argv else []
@@ -658,6 +661,15 @@ loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), s
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 loss_pre = jax.jit(lambda w, unr, win, batch: total(parts_pre(unr(w), win, batch)), static_argnums=1)
 vg_pre = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts_pre(unr(w), win, batch))), static_argnums=1)
+if a.mem_report:
+    w0_, unr0 = ns["flatten_util"].ravel_pytree(P)
+    win0 = (jnp.asarray(0.0), jnp.asarray(float(edges[1])), a0, v0)
+    for hard_ in (False, True):
+        bt = draw(key, P, win0, a.n_int, a.n_end, a.n_ic, a.n_bc, jax.jit(initial_data), hard_)
+        m = vg_fn.lower(w0_, unr0, win0, bt).compile().memory_analysis()
+        print(f"hard_ic {hard_}: temp {m.temp_size_in_bytes / 1e9:.2f} GB  arguments {m.argument_size_in_bytes / 1e9:.2f} GB"
+              f"  output {m.output_size_in_bytes / 1e9:.3f} GB  code {m.generated_code_size_in_bytes / 1e9:.3f} GB", flush=True)
+    sys.exit(0)
 hist = os.path.join(a.out, "sing_history.csv")
 rep = os.path.join(a.out, "sing_report.csv")
 PART_NAMES = ("einstein", "gauge", "end", "bc", "ic", "constraint")
@@ -684,6 +696,7 @@ for k in range(k0, a.N_window):
     print(f"window {k}: t in [{t0:g}, {t1:g}], {w.size} parameters, centre {np.asarray(a0).round(5).tolist()}, "
           f"velocity {np.asarray(v0).round(5).tolist()}", flush=True)
     t_start, it = time.time(), 0
+    parts_jit(unr(w), win, held)                     # compile before training fills the GPU memory pool
     _, cnt = bands_jit(unr(w), win, draw(kh, P, win, a.n_int, 1, 1, 1, Uic_fn)[0])
     print("  interior points per batch by distance to the puncture: "
           + ", ".join(f"{n} {int(v)}" for n, v in zip(DIST_NAMES, np.asarray(cnt))), flush=True)
