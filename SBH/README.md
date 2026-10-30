@@ -1218,9 +1218,9 @@ Window 0 is 3-14x better than `sing_bl` / `sing_bl_pre` (those used ~3.5x fewer 
 iterations), but alpha and Khat grow from window 1 on; at t = 1.5 Khat equals the baseline's t = 2 value
 and alpha is ~6x the baseline's. |a| reaches 7e-4 at t = 1.5. Mass (`plots/2026-10-30/sing_mass_*.png`,
 `tools/plot_sing_mass.py` now includes this run and drops a resumed window's first attempt from the loss
-history): exact at t = 0 (1e-15), -1.8e-3 at r = 1 by t = 0.25 (baseline -1.6e-4) and ~-1e-2 from t = 0.5,
+history): exact at t = 0 (1e-15), -1.8e-3 at r = 1 by t = 0.25 (baseline -4.5e-5) and ~-1e-2 from t = 0.5,
 the same level as the soft runs and ~10x the baseline; at r = 10 it drifts positive to +2.5e-2 by t = 1.5
-(baseline -2e-3). Exact initial data remove the IC error but not the error the evolution adds: the mass is
+(baseline -3.3e-3). Exact initial data remove the IC error but not the error the evolution adds: the mass is
 lost in the first two windows, mostly at r ~ 1-10.
 
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
