@@ -177,6 +177,17 @@ a gradient in the correction, a staged run rebuilds from its config.  First test
 `Paper/hub_stage.sh`, on the rotated Weyl test `weyl_rot45_hyb`: corrections of width 20 (with
 and without Fourier features in t) and 40, against the base continued for the same budget and
 against one width-40 network from scratch (is a second network better than a bigger first one?).
+**Result (2026-10-30): the staged networks overfit.**  Training losses 2.8e-9 (st_a), 1.5e-10 (st_b),
+1.2e-11 (st_c) against 5.1e-9 for the base, but on five fresh samples (`scripts/fresh_sample_loss.py`)
+6.3e-4, 1.5e-8 and 5.2e-9: fresh/training 2e5, 95 and 436, against 1.2 for the base and the
+continued base (st_ctl, 4.1e-9) and 1.6 for one width-40 network (st_w40, 2.2e-9).  All resampled
+every 500 iterations.  The report's residuals (its own evaluation points) are no lower than the
+base's (Ricci rms 3.1e-3 st_c vs 3.5e-3).  The errors against the exact solution did fall (st_c max
+|dh| 5.8e-5, |dlam| 3.0e-6 vs 1.6e-4, 1.7e-5), but with the equations no better satisfied off the
+sample this is not a solved problem.  Likely mechanism: a correction of scale eps cancels the
+residual at the points with small-amplitude, short-wavelength wiggles, whose second derivatives
+are large; 8192 points in 3-D do not constrain that.
+
 
 `inner_radius` defaults to **2**, which is the problem statement and is what
 `rho_in_of_R0(R0) = sqrt(4+R0^2)` places at `rho_in` in the canonical harmonic chart: the
