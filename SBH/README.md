@@ -1271,6 +1271,10 @@ weight are not the mechanism; the sharp hand-over between the template and the n
 a larger r_c (0.5 or 1: the seam sits where the fields are smoother and slower), a gentler cutoff (r^2 in
 the exponent, or a wider ratio R_TPL/r_c), or dropping W altogether beyond r_c so the template's far field
 is kept and only the correction is learned.
+`plots/2026-10-30/sing_sphere_errors_rt.png` (`tools/plot_sphere_errors.py`, now with Khat and chi rows)
+shows the same in (t, r): the hard run's alpha and Khat error appears as a band at r = 0.2-0.6 in window 1
+and darkens in place; chi's band sits at r = 1-3 and spreads outward; the baseline's error instead grows
+from the puncture outward along a front r ~ t.
 
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one

@@ -3,7 +3,8 @@
     python tools/plot_sphere_errors.py OUT.png NAME=RUN.npz [NAME=RUN.npz ...] [--linear_r]
 
 RUN.npz from tools/sphere_errors.py. One column per run; rows: the sphere-averaged Misner-Sharp
-error <m/M - 1> (signed), and the rms over each sphere of alpha - alpha_ref and of Theta.
+error <m/M - 1> (signed), and the rms over each sphere of alpha, Khat, chi - the 1D reference and of Theta
+(Khat and chi rows added 2026-10-30).
 """
 import sys
 
@@ -21,6 +22,8 @@ plt.rcParams.update({"font.size": 9, "axes.edgecolor": MUTED, "xtick.color": MUT
                      "axes.titleweight": "bold", "axes.titlesize": 9.5, "axes.titlelocation": "left"})
 ROWS = [("mass_mean", "⟨m/M − 1⟩ on spheres", "RdBu_r", SymLogNorm(linthresh=3e-3, vmin=-0.3, vmax=0.3, base=10)),
         ("alpha_rms", "rms of α − α_ref on spheres", "magma_r", LogNorm(1e-4, 1e-1)),
+        ("Khat_rms", "rms of K̂ − K̂_ref on spheres", "magma_r", LogNorm(1e-4, 1e-1)),
+        ("chi_rms", "rms of χ − χ_ref on spheres", "magma_r", LogNorm(1e-5, 1e-2)),
         ("Theta_rms", "rms of Θ on spheres", "magma_r", LogNorm(1e-5, 1e0))]
 fig, axs = plt.subplots(len(ROWS), len(runs), figsize=(3.6 * len(runs) + 0.9, 2.7 * len(ROWS)),
                         sharex=True, sharey=True, squeeze=False)
