@@ -1202,6 +1202,27 @@ hard, arguments 0.01 vs 0.22 GB) shows the hard ansatz does not enlarge the step
 compiled on the held-out set before training starts, and `jobs/hub/sing.sh` defaults to MEM_FRACTION 0.85
 (~3.7 GB left for kernels compiled later: end-of-window report, next window's IC).
 
+**`sing_bl_hard`, windows 0-5 (2026-10-30; hub, baseline settings, `--template bl --hard_ic`, ~2.7 h per
+window, peak 10.47 GB).** The hub stopped during window 6; relaunched with the same command (no `rm`), it
+resumed after window 5. The IC loss is 4.6e-34 throughout window 0 (exact); later windows fit the hand-off
+softly (1.8e-5 to 2.6e-5). Core rms vs the 1D reference at the window ends:
+
+| t | alpha | chi | Khat | gt |
+|---|---|---|---|---|
+| 0.25 | 4.8e-4 | 1.4e-4 | 2.7e-4 | 8.6e-4 |
+| 0.5 | 1.8e-3 | 5.8e-4 | 2.4e-3 | 1.9e-3 |
+| 1.0 | 2.1e-3 | 4.8e-4 | 7.8e-3 | 3.5e-3 |
+| 1.5 | 4.6e-3 | 5.4e-4 | 8.7e-3 | 4.0e-3 |
+
+Window 0 is 3-14x better than `sing_bl` / `sing_bl_pre` (those used ~3.5x fewer points and half the
+iterations), but alpha and Khat grow from window 1 on; at t = 1.5 Khat equals the baseline's t = 2 value
+and alpha is ~6x the baseline's. |a| reaches 7e-4 at t = 1.5. Mass (`plots/2026-10-30/sing_mass_*.png`,
+`tools/plot_sing_mass.py` now includes this run and drops a resumed window's first attempt from the loss
+history): exact at t = 0 (1e-15), -1.8e-3 at r = 1 by t = 0.25 (baseline -1.6e-4) and ~-1e-2 from t = 0.5,
+the same level as the soft runs and ~10x the baseline; at r = 10 it drifts positive to +2.5e-2 by t = 1.5
+(baseline -2e-3). Exact initial data remove the IC error but not the error the evolution adds: the mass is
+lost in the first two windows, mostly at r ~ 1-10.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full

@@ -25,7 +25,9 @@ os.makedirs(OUT, exist_ok=True)
 RUNS = [("w8_qn_con10 (baseline)", "long_con10_w8.npz", "#222222"),
         ("sing_bl", "sing_bl_sph.npz", "#2a6fdb"),
         ("sing_bl_pre", "sing_bl_pre_sph.npz", "#e07b00"),
-        ("sing_tr (t = 10-12)", "sing_tr_sph.npz", "#1b9e77")]
+        ("sing_tr (t = 10-12)", "sing_tr_sph.npz", "#1b9e77"),
+        ("sing_bl_hard", "sing_bl_hard_sph.npz", "#d1495b")]
+RUNS = [r for r in RUNS if os.path.exists(os.path.join(D, r[1]))]
 Z = {n: np.load(os.path.join(D, f)) for n, f, _ in RUNS}
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.grid": True, "grid.alpha": 0.25})
 
@@ -37,14 +39,16 @@ def symlog(ax, lin=1e-4):
 
 # ---- mass error vs r -------------------------------------------------------------------------------
 fig, axs = plt.subplots(1, 3, figsize=(15, 4.3), sharey=True, constrained_layout=True)
-for ax, k in zip(axs, (0, 4, 8)):
+for ax, tk in zip(axs, (0.0, 1.0, 2.0)):
     for n, _, c in RUNS:
         z = Z[n]
-        ax.plot(z["r"], z["mass_mean"][k], color=c, lw=1.6, label=n)
+        k = np.flatnonzero(np.isclose(z["t"], tk))
+        if k.size:                                         # runs still going lack the later times
+            ax.plot(z["r"], z["mass_mean"][k[0]], color=c, lw=1.6, label=n)
     ax.set_xscale("log")
     symlog(ax)
     ax.axvline(1.0, color="0.6", lw=0.7, ls=":")          # horizon r ~ M/2 = 0.25 in isotropic, ~1 for trumpet
-    ax.set_title(f"t = {float(Z[RUNS[0][0]]['t'][k]):g}")
+    ax.set_title(f"t = {tk:g}")
     ax.set_xlabel("r (coordinate distance from the centre)")
 axs[0].set_ylabel("⟨m/M − 1⟩ on spheres (symlog, linear below 1e-4)")
 axs[0].legend(fontsize=8, loc="lower left")
@@ -74,8 +78,14 @@ PCOL = ["#2a6fdb", "#7a5195", "#e07b00", "#8c8c8c", "#d1495b", "#1b9e77"]
 H = {}
 for n, _, _ in RUNS[1:]:
     rows = list(csv.DictReader(open(os.path.join(D, n.split()[0], "sing_history.csv"))))
-    H[n] = rows
-fig, axs = plt.subplots(2, 3, figsize=(17, 8), constrained_layout=True)
+    keep = []                                              # a resumed window restarts: drop its first attempt
+    for r in rows:
+        while keep and keep[-1]["window"] == r["window"] and int(keep[-1]["iteration"]) >= int(r["iteration"]):
+            keep.pop()
+        keep.append(r)
+    H[n] = keep
+nr = len(RUNS) - 1
+fig, axs = plt.subplots(2, max(nr, 3), figsize=(5.7 * max(nr, 3), 8), constrained_layout=True)
 for ax, (n, _, c) in zip(axs[0], RUNS[1:]):
     rows = H[n]
     x = np.arange(1, len(rows) + 1) * 250
@@ -96,7 +106,7 @@ ax = axs[1, 0]
 for n, _, c in RUNS[1:]:
     rows = H[n]
     ax.semilogy(np.arange(1, len(rows) + 1) * 250, [float(r["held"]) for r in rows], color=c, lw=1.4, label=n)
-ax.set_title("held-out total, all three")
+ax.set_title("held-out total, all runs")
 ax.set_xlabel("iteration")
 ax.legend(fontsize=8)
 ax = axs[1, 1]
