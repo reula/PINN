@@ -1276,6 +1276,27 @@ shows the same in (t, r): the hard run's alpha and Khat error appears as a band 
 and darkens in place; chi's band sits at r = 1-3 and spreads outward; the baseline's error instead grows
 from the puncture outward along a front r ~ t.
 
+**Inner network at the seam, `--r_in` (2026-10-30).** The seam is a resolution problem: N takes x/R with
+R = 24, so the shell 0.2-0.6 is 0.01-0.025 in input units. `--r_in R_in` adds a second, smaller network at
+the seam's scale, N = N_out(t, x/24) + exp(-(r/R_in)^2) N_in(t, (x - a0)/R_in), with a0 the window-start
+centre (constant in the window: no extra time derivative; r = |x - a0|) and N_in of `--inner_hidden` x
+`--inner_layers` (32 x 4, ~4000 parameters). Template, rho, the hard IC and the IC/hand-off are untouched:
+N_in's stacks go through _taylor_mlp with the input scaled by 24/R_in (chain rule), times the window
+(product rule), and add to N_out's before rho. The two networks live at very different scales, so they
+are trained in blocks rather than jointly (`--schedule`, default `inner:8000,outer:8000,inner:4000,outer:4000`
+= 24000 iterations per window, replacing `--iters`): in a block only that network's parameters move (outer
+= N_out and the centre; `joint` = everything) and the optimiser restarts as it does every `--n_change`
+anyway; inner blocks draw their bulk interior/end/IC points inside 3 R_in (w = e^-9 there), the held-out
+set is the full draw. Freezing is exact (the optimiser sees w[idx] only), done outside the jitted loss, so
+no extra compilation. The history's `phase` column holds the block name. Precedent: Stationary's
+`--stage_base` (a correction network trained on a frozen run). `--selftest --r_in 1.5 --hard_ic`: stacks vs
+autodiff 1.8e-10, hard IC 8e-15 (random N_in output layer, so the product/chain rule is exercised).
+Alternative not taken: moving the seam with a larger r_c.
+CPU smoke run (2 windows, 1000 interior points, `inner:250,outer:250,joint:250`): 13362 parameters, IC
+6.7e-34, hand-off and `--eval_spheres` fine. `--mem_report --r_in 1.5`: temp 22.8 GB vs 18.5 GB without the
+inner network (+23%; the single-network run peaked at 10.45 GB on the A30, so expect ~13 GB). First hub run:
+`sing_bl_inner` = `--template bl --hard_ic --r_in 1.5`, baseline settings, default schedule.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full

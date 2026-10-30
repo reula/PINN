@@ -95,11 +95,14 @@ for ax, (n, _, c) in zip(axs[0], RUNS[1:]):
     pre = [i for i, r in enumerate(rows) if r.get("phase") == "pre"]
     for i in pre:
         ax.axvspan(x[i] - 250, x[i], color="#e07b00", alpha=0.08, lw=0)
+    inner = [i for i, r in enumerate(rows) if r.get("phase") == "inner"]      # --r_in runs: N_in-only blocks
+    for i in inner:
+        ax.axvspan(x[i] - 250, x[i], color="#2a6fdb", alpha=0.08, lw=0)
     for i in range(1, len(rows)):
         if rows[i]["window"] != rows[i - 1]["window"]:
             ax.axvline(x[i - 1], color="0.6", lw=0.6)
     ax.set_ylim(1e-8, 1)
-    ax.set_title(n + (" (shaded: IC + boundary-only phase)" if pre else ""))
+    ax.set_title(n + (" (orange: IC + boundary-only phase)" if pre else "") + (" (blue: inner-network blocks)" if inner else ""))
     ax.set_xlabel("iteration (8 windows end to end; grey lines = window hand-offs)")
 axs[0, 0].legend(fontsize=7.5, ncol=2, loc="upper right")
 ax = axs[1, 0]

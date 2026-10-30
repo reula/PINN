@@ -29,6 +29,10 @@ mean(Theta^2 + |Z^i|^2). SSBroyden on fresh points every --n_change iterations (
 --pre_iters N: each window (the first --pre_windows of them) starts with N iterations on the IC + Sommerfeld
 terms alone, so the initial data are fitted before the interior residual is switched on; --pre_n_ic sets
 the IC points per draw in that phase (same clouds, all at t = t0).
+--r_in R (2026-10-30): N = N_out(t, x/R_domain) + exp(-(r/R)^2) N_in(t, (x - a0)/R), a second, smaller network
+(--inner_hidden x --inner_layers) at the seam's own scale (a0 = window-start centre, r = |x - a0|); trained in
+blocks per window (--schedule inner:N,outer:N,...: one block's parameters move, the rest are frozen; inner
+blocks draw their bulk points inside 3 R).
 Derivatives: N from the main script's closed-form Taylor pass, the template part by autodiff (no network),
 combined by the product/chain rule; --selftest checks this against autodiff of the whole u.
 
@@ -97,6 +101,16 @@ ap.add_argument("--inner_sigma", type=float, default=0.05)
 ap.add_argument("--hard_ic", action="store_true",
                 help="u = h(x) + B(t) + s rho N with the fixed offset h = U0 - B(0) (ln for chi, alpha) in EVERY "
                      "window, s = t/t1 in window 0 (so u(0) = U0 identically), s = 1 later (soft hand-off)")
+ap.add_argument("--r_in", type=float, default=0.0,
+                help="> 0: a second, inner network N_in(t, (x - a0)/r_in) windowed by exp(-(r/r_in)^2) is added to N "
+                     "(a0 = the window-start centre), to resolve the template seam r_c..3 r_c at its own scale; "
+                     "trained in blocks (--schedule). 0 = off")
+ap.add_argument("--inner_hidden", type=int, default=32)
+ap.add_argument("--inner_layers", type=int, default=4)
+ap.add_argument("--schedule", default="inner:8000,outer:8000,inner:4000,outer:4000",
+                help="with --r_in: the training blocks of every window, NAME:ITERS,... with NAME inner (N_in alone, "
+                     "interior/end/IC points drawn inside 3 r_in), outer (N_out and the centre, the full draw) or "
+                     "joint (everything); replaces --iters. Each ITERS a multiple of --n_change")
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true", help="continue after the last saved window in OUT_DIR")
 ap.add_argument("--selftest", action="store_true", help="check the template and the derivative stacks, then exit")
@@ -206,9 +220,36 @@ _zero = _init_net(jax, jnp, jax.random.PRNGKey(0), 2, 1)
 _shift = ns["_taylor_mlp"](_zero, *[jnp.zeros((1, 1))] * 4, 0.0, 1.0)[0][0]   # flat values the pass adds
 
 
-def net_derivs(net, win, Q):
-    v, vt, vd, vdd = ns["_taylor_mlp"](net, Q[:, 0:1], Q[:, 1:2], Q[:, 2:3], Q[:, 3:4], win[0], win[1])
+def mlp_derivs(net, win, t, X):
+    v, vt, vd, vdd = ns["_taylor_mlp"](net, t, X[:, 0:1], X[:, 1:2], X[:, 2:3], win[0], win[1])
     return v - _shift[None], vt, vd, vdd
+
+
+def inner_window(X):
+    """w = exp(-r^2 / r_in^2) and its first and second x-derivatives at the offsets X (n,3) from a0."""
+    w = jnp.exp(-jnp.sum(X ** 2, axis=1) / a.r_in ** 2)
+    dw = w[:, None] * (-2.0 * X / a.r_in ** 2)
+    ddw = w[:, None, None] * (4.0 * X[:, :, None] * X[:, None, :] / a.r_in ** 4 - 2.0 * jnp.eye(3)[None] / a.r_in ** 2)
+    return w, dw, ddw
+
+
+def net_derivs(P, win, Q):
+    """Stacks of N = N_out(t, x/R) + w(r) N_in(t, (x - a0)/r_in): the second term with --r_in > 0, a0 the
+    window-start centre (constant in the window, so no extra time derivative), r = |x - a0|."""
+    N, Nt, Nd, Ndd = mlp_derivs(P["net"], win, Q[:, 0:1], Q[:, 1:4])
+    if "inner" in P:
+        X = Q[:, 1:4] - win[2][0][None]
+        s = R / a.r_in                                   # _taylor_mlp divides by R: feed s X so the input is X / r_in
+        v, vt, vd, vdd = mlp_derivs(P["inner"], win, Q[:, 0:1], s * X)
+        vd, vdd = s * vd, s * s * vdd
+        w, dw, ddw = inner_window(X)
+        vD, vdD = v[:, DD], vd[:, DD]
+        N = N + w[:, None] * v
+        Nt = Nt + w[:, None] * vt
+        Nd = Nd + w[:, None, None] * vd + v[:, :, None] * dw[:, None, :]
+        Ndd = Ndd + (w[:, None, None, None] * vdd + vdD[:, :, :, None] * dw[:, None, None, :]
+                     + vdD[:, :, None, :] * dw[:, None, :, None] + vD[:, :, None, None] * ddw[:, None, :, :])
+    return N, Nt, Nd, Ndd
 
 
 def u_derivs(P, win, Q, H=None):
@@ -217,7 +258,7 @@ def u_derivs(P, win, Q, H=None):
     bv, bt, bd, bdd = bg_derivs(P["acc"], win, Q)
     Bv, Bt, Bd, Bdd = bv[:, :22], bt[:, :22], bd[:, :22], bdd[:, DD]
     rv, rt, rd, rdd = bv[:, 22], bt[:, 22], bd[:, 22], bdd[:, 22]
-    N, Nt, Nd, Ndd = net_derivs(P["net"], win, Q)
+    N, Nt, Nd, Ndd = net_derivs(P, win, Q)
     if H is not None:                                # window 0: N -> s N, s = t/t1
         w0 = win[0] == 0.0
         sv = jnp.where(w0, (Q[:, 0] - win[0]) / (win[1] - win[0]), 1.0)[:, None]
@@ -268,7 +309,11 @@ def mlp_value(net, t, Q3, ws, we):
 def u_value(P, win, Q, hard=False):
     bv = jax.vmap(lambda q: bg_point(q, P["acc"], win))(Q)
     B, rho = bv[:, :22], bv[:, 22:]
-    phi = rho * mlp_value(P["net"], Q[:, 0:1], Q[:, 1:4], win[0], win[1])
+    N = mlp_value(P["net"], Q[:, 0:1], Q[:, 1:4], win[0], win[1])
+    if "inner" in P:
+        X = Q[:, 1:4] - win[2][0][None]
+        N = N + inner_window(X)[0][:, None] * mlp_value(P["inner"], Q[:, 0:1], R / a.r_in * X, win[0], win[1])
+    phi = rho * N
     if hard:
         phi = phi * jnp.where(win[0] == 0.0, (Q[:, 0:1] - win[0]) / (win[1] - win[0]), 1.0)
     u = B + phi
@@ -401,7 +446,7 @@ def ball(key, n, rad):
     return u / jnp.linalg.norm(u, axis=1, keepdims=True) * rad * jax.random.uniform(k2, (n, 1)) ** (1 / 3)
 
 
-def clouds(key, t, pos_of_t):
+def clouds(key, t, pos_of_t, rad=None):
     """Points at times t (n,): inner, core and focused Gaussian clouds about each puncture (antithetic pairs
     xi, -xi, so every cloud is symmetric about its centre) and a uniform bulk in the ball r <= R. No exclusion
     zone: the inner cloud (sigma 0.05) puts points right at the puncture."""
@@ -416,24 +461,24 @@ def clouds(key, t, pos_of_t):
             g = (a.inner_sigma, a.core_sigma, a.focus_sigma)[j] * jax.random.normal(kA, (m // 2, 3))
             X.append(pos[used:used + m, A] + jnp.concatenate([g, -g]))
             used += m
-    X.append(ball(keys[-1], n - used, R))
+    X.append(ball(keys[-1], n - used, R if rad is None else rad))      # rad: the bulk ball of an inner block
     X = jnp.concatenate(X)
     rr = jnp.linalg.norm(X, axis=1, keepdims=True)
     return jnp.where(rr > R, X / rr * R, X)
 
 
-def draw(key, P, win, n_int, n_end, n_ic, n_bc, Uic_fn, hard=False):
+def draw(key, P, win, n_int, n_end, n_ic, n_bc, Uic_fn, hard=False, rad=None):
     t0, t1 = float(win[0]), float(win[1])
     pos_of_t = jax.jit(jax.vmap(lambda tt: center(P["acc"], win, tt)[0]))
     k = jax.random.split(key, 6)
     ti = t0 + (t1 - t0) * jax.random.uniform(k[0], (n_int,))
-    Qi = jnp.concatenate([ti[:, None], clouds(k[1], ti, pos_of_t)], axis=1)
+    Qi = jnp.concatenate([ti[:, None], clouds(k[1], ti, pos_of_t, rad)], axis=1)
     te = jnp.full((n_end,), t1)
-    Qe = jnp.concatenate([te[:, None], clouds(k[2], te, pos_of_t)], axis=1)
+    Qe = jnp.concatenate([te[:, None], clouds(k[2], te, pos_of_t, rad)], axis=1)
     tb = t0 + (t1 - t0) * jax.random.uniform(k[3], (n_bc,))
     u = jax.random.normal(k[4], (n_bc, 3))
     Qb = jnp.concatenate([tb[:, None], R * u / jnp.linalg.norm(u, axis=1, keepdims=True)], axis=1)
-    Xic = clouds(k[5], jnp.full((n_ic,), t0), pos_of_t)
+    Xic = clouds(k[5], jnp.full((n_ic,), t0), pos_of_t, rad)
     H = [hard_stacks(Q[:, 1:4]) if hard else None for Q in (Qi, Qe, Qb)]
     return (Qi, Qe, Qb, Xic, Uic_fn(Xic), *H)
 
@@ -477,6 +522,10 @@ def random_params(key):
     P = {"net": _init_net(jax, jnp, key, a.hidden, a.layers), "acc": 0.5 * jax.random.normal(key, (NP, 2, 3))}
     P["net"]["params"]["MLP"][f"Dense_{a.layers}"]["kernel"] = 0.3 * jax.random.normal(
         jax.random.PRNGKey(4), (a.hidden, 22), jnp.float64)
+    if a.r_in > 0:
+        P["inner"] = _init_net(jax, jnp, jax.random.PRNGKey(5), a.inner_hidden, a.inner_layers)
+        P["inner"]["params"]["MLP"][f"Dense_{a.inner_layers}"]["kernel"] = 0.3 * jax.random.normal(
+            jax.random.PRNGKey(7), (a.inner_hidden, 22), jnp.float64)
     return P
 
 
@@ -635,6 +684,33 @@ opts = {"maxiter": a.n_change, "gtol": 0.0, "update_method": "ssbroyden2", "init
         "line_search": "wolfe", "c2": 0.9, "scale_invariant": True, "max_iter": 100, "alphamin": 1e-15}
 key = jax.random.PRNGKey(a.seed)
 P = {"net": _init_net(jax, jnp, jax.random.PRNGKey(a.seed + 1), a.hidden, a.layers), "acc": jnp.zeros((NP, 2, 3))}
+if a.r_in > 0:
+    if NP > 1:
+        raise SystemExit("--r_in: one inner network, so one puncture")
+    P["inner"] = _init_net(jax, jnp, jax.random.PRNGKey(a.seed + 2), a.inner_hidden, a.inner_layers)
+
+
+def parse_schedule(s):
+    out = []
+    for item in s.split(","):
+        name, n = item.split(":")
+        if name not in ("inner", "outer", "joint") or int(n) % a.n_change:
+            raise SystemExit(f"--schedule: '{item}' is not inner|outer|joint:ITERS with ITERS a multiple of --n_change")
+        out.append((name, int(n)))
+    return out
+
+
+SCHED = parse_schedule(a.schedule) if a.r_in > 0 else [("full", a.iters)]
+BLOCK_KEYS = {"inner": ("inner",), "outer": ("net", "acc")}       # the parameters a block trains (others: all)
+
+
+def block_idx(P, name):
+    """Flat-vector indices (as ravel_pytree orders them) of the parameters block `name` trains."""
+    m, _ = ns["flatten_util"].ravel_pytree(
+        {k: jax.tree_util.tree_map(lambda x: jnp.full_like(x, float(k in BLOCK_KEYS[name])), v) for k, v in P.items()})
+    return jnp.asarray(np.flatnonzero(np.asarray(m)))
+
+
 a0, v0 = jnp.asarray(C0), jnp.zeros((NP, 3))
 prev = None                                                    # (P, win) of the previous window
 k0 = 0
@@ -643,6 +719,8 @@ if a.resume:
     if done:
         S = pickle.load(open(os.path.join(a.out, done[-1]), "rb"))
         P = jax.tree_util.tree_map(jnp.asarray, S["params"])
+        if (a.r_in > 0) != ("inner" in P):
+            raise SystemExit("--r_in must match the saved run (inner network present or not)")
         prev = (P, tuple(jnp.asarray(v) for v in S["win"]), bool(S.get("hard", False)))
         a0, v0 = jnp.asarray(S["a_end"]), jnp.asarray(S["v_end"])
         k0, key = S["window"] + 1, jnp.asarray(S["key"])
@@ -682,7 +760,7 @@ def mem_gb():
 for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1), a0, v0)
-    P = {"net": P["net"], "acc": jnp.zeros((NP, 2, 3))}          # warm network, fresh centre correction
+    P = {**P, "acc": jnp.zeros((NP, 2, 3))}                      # warm network(s), fresh centre correction
     hard = a.hard_ic
     if prev is None:
         Uic_fn = jax.jit(initial_data)
@@ -701,36 +779,47 @@ for k in range(k0, a.N_window):
     print("  interior points per batch by distance to the puncture: "
           + ", ".join(f"{n} {int(v)}" for n, v in zip(DIST_NAMES, np.asarray(cnt))), flush=True)
     n_pre = a.pre_iters if (a.pre_windows < 0 or k < a.pre_windows) and not (hard and k == 0) else 0
-    while it < n_pre + a.iters:
-        key, kd = jax.random.split(key)
-        pre = it < n_pre
-        batch = draw(kd, unr(w), win, 1 if pre else a.n_int, 1 if pre else a.n_end,
-                     (a.pre_n_ic or a.n_ic) if pre else a.n_ic, a.n_bc, Uic_fn, hard and not pre)
+    for bname, n_block in ([("pre", n_pre)] if n_pre else []) + SCHED:
+        pre = bname == "pre"
+        idx = block_idx(P, bname) if bname in BLOCK_KEYS else None      # None: every parameter
+        rad = 3.0 * a.r_in if bname == "inner" else None                # w(3 r_in) = e^-9: N_in acts inside
         lf, vg = (loss_pre, vg_pre) if pre else (loss_fn, vg_fn)
-        r = mb.minimize(lambda v: lf(v, unr, win, batch), lambda v: vg(v, unr, win, batch), w, opts)
-        w = r.x
-        it += a.n_change
-        hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
-        pos, vel = center(unr(w)["acc"], win, jnp.asarray(t1))
-        hb, hn = (np.asarray(v) for v in bands_jit(unr(w), win, held[0], held[5]))
-        row = dict(window=k, iteration=it, phase="pre" if pre else "full", seconds=round(time.time() - t_start, 1),
-                   train=float(lf(w, unr, win, batch)), held=sum(hp.values()),
-                   **{f"held_{n}": hp[n] for n in PART_NAMES},
-                   **{f"held_{n}": float(v) for n, v in zip(DIST_NAMES, hb)},
-                   **{f"n_{n}": int(v) for n, v in zip(DIST_NAMES, hn)},
-                   **{f"a{A}_{c}": float(pos[A, i]) for A in range(NP) for i, c in enumerate("xyz")})
-        new = not os.path.exists(hist)
-        with open(hist, "a", newline="") as f:
-            wr = csv.DictWriter(f, fieldnames=list(row))
-            if new:
-                wr.writeheader()
-            wr.writerow(row)
-        print(f"  it {it:6d}{'p' if pre else ' '} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
-              + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ") by distance "
-              + " ".join(f"{n} {v:.1e}" for n, v in zip(DIST_NAMES, hb)) + f"  a(t1) {np.asarray(pos[0]).round(5).tolist()}"
-              + (f"  peak mem {mem_gb():.2f} GB" if mem_gb() is not None else ""),
-              flush=True)
-        if k == 0 and n_pre and it == n_pre:
+        for _ in range(n_block // a.n_change):
+            key, kd = jax.random.split(key)
+            batch = draw(kd, unr(w), win, 1 if pre else a.n_int, 1 if pre else a.n_end,
+                         (a.pre_n_ic or a.n_ic) if pre else a.n_ic, a.n_bc, Uic_fn, hard and not pre, rad)
+            if idx is None:
+                w = mb.minimize(lambda v: lf(v, unr, win, batch), lambda v: vg(v, unr, win, batch), w, opts).x
+            else:                                                       # the block's parameters; the rest frozen
+                wb = w
+
+                def vg_b(v):
+                    lv, g = vg(wb.at[idx].set(v), unr, win, batch)
+                    return lv, g[idx]
+                w = wb.at[idx].set(mb.minimize(lambda v: lf(wb.at[idx].set(v), unr, win, batch), vg_b, w[idx], opts).x)
+            it += a.n_change
+            hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
+            pos, vel = center(unr(w)["acc"], win, jnp.asarray(t1))
+            hb, hn = (np.asarray(v) for v in bands_jit(unr(w), win, held[0], held[5]))
+            row = dict(window=k, iteration=it, phase=bname, seconds=round(time.time() - t_start, 1),
+                       train=float(lf(w, unr, win, batch)), held=sum(hp.values()),
+                       **{f"held_{n}": hp[n] for n in PART_NAMES},
+                       **{f"held_{n}": float(v) for n, v in zip(DIST_NAMES, hb)},
+                       **{f"n_{n}": int(v) for n, v in zip(DIST_NAMES, hn)},
+                       **{f"a{A}_{c}": float(pos[A, i]) for A in range(NP) for i, c in enumerate("xyz")})
+            new = not os.path.exists(hist)
+            with open(hist, "a", newline="") as f:
+                wr = csv.DictWriter(f, fieldnames=list(row))
+                if new:
+                    wr.writeheader()
+                wr.writerow(row)
+            tag = {"pre": "p", "inner": "i", "outer": "o"}.get(bname, " ")
+            print(f"  it {it:6d}{tag} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
+                  + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ") by distance "
+                  + " ".join(f"{n} {v:.1e}" for n, v in zip(DIST_NAMES, hb)) + f"  a(t1) {np.asarray(pos[0]).round(5).tolist()}"
+                  + (f"  peak mem {mem_gb():.2f} GB" if mem_gb() is not None else ""),
+                  flush=True)
+        if pre and k == 0:
             save_state("pre_000.pkl", unr(w), win, k, pos, vel, False)
             if a.stop_after_pre:
                 sys.exit(0)
