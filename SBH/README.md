@@ -1259,6 +1259,19 @@ gt, 3-10x in mass; Khat is comparable. The IC is not the limiting error; the evo
 Plots: `plots/2026-10-30/sing_mass_*.png`, `sing_losses.png`, `sing_ic_error.png` (now with sing_bl_hard:
 exactly 0 at t = 0 in every panel).
 
+**Where the error is: the template seam (2026-10-30; `tools/plot_error_by_radius.py` ->
+`plots/2026-10-30/error_by_radius.png`, alpha/Khat/chi rms vs r at t = 0.25, 1, 2, sing_bl_hard vs baseline).**
+Inside r = 0.2 the hard run beats the baseline at every time (Khat at t = 2: 6.4e-3 vs 1.5e-2 in 0.05-0.2;
+alpha at t = 1: 1.3e-3 vs 8.6e-3): the template does its job. The alpha and Khat errors peak in
+r_c <= r <= 3 r_c = 0.2-0.6, where W falls from e^-1 to e^-81 and rho rises from 1/2 to 0.9: already at
+t = 0.25 (alpha 4.3e-4 vs 1.1e-4 in 0.2-1, 4x the baseline), 1.1e-2 vs 5.4e-4 at t = 2 (20x). chi's error
+peaks just outside, 0.5-3, and the 1-10 band (where the mass is lost) is 10-15x the baseline in all three
+fields at t >= 1: the seam error propagates outward. So the point-count deficit in 1-10 and the lam_tapa
+weight are not the mechanism; the sharp hand-over between the template and the network is. Candidates:
+a larger r_c (0.5 or 1: the seam sits where the fields are smoother and slower), a gentler cutoff (r^2 in
+the exponent, or a wider ratio R_TPL/r_c), or dropping W altogether beyond r_c so the template's far field
+is kept and only the correction is learned.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
