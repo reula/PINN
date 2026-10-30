@@ -1223,6 +1223,14 @@ the same level as the soft runs and ~10x the baseline; at r = 10 it drifts posit
 (baseline -3.3e-3). Exact initial data remove the IC error but not the error the evolution adds: the mass is
 lost in the first two windows, mostly at r ~ 1-10.
 
+**Point density on spheres (2026-10-30, `tools/plot_point_density.py` -> `plots/2026-10-30/point_density.png`).**
+Same totals (128000 interior, 12800 IC), different mixtures. Baseline: 60% of Nint in a s = 2 Gaussian + 40%
+uniform, plus core_points 48000 at s = 0.5, nothing below r = 0.02 (min_puncture_dist). sing_pinn.py:
+12.5% s = 0.05 (inner), 37.5% s = 0.5, 25% s = 2, 25% uniform. So sing_pinn.py moves 16000 points from the
+s = 2 cloud to the puncture: ~12000 interior points at r < 0.1 (baseline ~100) and 45900 in 1 <= r <= 10
+against 61400 (-25%), i.e. fewer exactly where sing_bl_hard loses its mass; identical for r < 1 above
+0.2 and for r > 8. (The IC set has the same shapes at 1/10 the count.)
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
