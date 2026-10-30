@@ -9,9 +9,13 @@
 #   st_a     correction width 20 depth 6, eps 1e-4 (about the base's error)
 #   st_b     the same with 4 Fourier features in t (the base's error is concentrated near the
 #            inner sphere, i.e. of higher radial frequency than the solution)
+#   st_c     correction width 40 depth 6 with the 4 Fourier features (9007 parameters): capacity,
+#            which limited the 3-D network on the off-axis quadrupole (width 20 -> 40: loss / 270)
+#   st_w40   the control for st_c: ONE width-40 network (8687 parameters) from scratch with the
+#            base's settings -- is a second network better than a bigger first one?
 #
 #   bash Paper/hub_stage.sh        launches itself detached and returns
-# Resumable.  Log: logs/hub_stage.log.  About 1 h.
+# Resumable.  Log: logs/hub_stage.log.  About 2.5 h.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -56,7 +60,9 @@ PYEOF
 arm st_ctl --init-from "$BASE/params.pkl"
 arm st_a   --stage-base "$BASE" --stage-eps 1e-4 --width 20 --depth 6 --fourier 0
 arm st_b   --stage-base "$BASE" --stage-eps 1e-4 --width 20 --depth 6 --fourier 4
-summary weyl_rot45_hyb st_ctl st_a st_b
+arm st_c   --stage-base "$BASE" --stage-eps 1e-4 --width 40 --depth 6 --fourier 4
+arm st_w40 --width 40 --depth 6
+summary weyl_rot45_hyb st_ctl st_a st_b st_c st_w40
 echo "=== hub_stage finished $(date -u '+%F %T UTC')"
-curl -s -H "Title: hub_stage finished" -d "second-stage network on rotated Weyl: st_ctl, st_a, st_b done" \
+curl -s -H "Title: hub_stage finished" -d "second-stage network on rotated Weyl: st_ctl, st_a, st_b, st_c, st_w40 done" \
      https://ntfy.sh/pinn-reula-f0798d1ec301 > /dev/null || true

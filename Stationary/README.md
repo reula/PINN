@@ -174,8 +174,9 @@ flags; the base is reloaded from its directory whenever the staged run is loaded
 (`train.make_model`).  Only the correction's parameters are trained and saved.
 `tests/test_staged.py`: eps = 0 reproduces the base (fields and Christoffel symbols), the loss has
 a gradient in the correction, a staged run rebuilds from its config.  First test:
-`Paper/hub_stage.sh`, on the rotated Weyl test `weyl_rot45_hyb`, against the base continued for the
-same budget.
+`Paper/hub_stage.sh`, on the rotated Weyl test `weyl_rot45_hyb`: corrections of width 20 (with
+and without Fourier features in t) and 40, against the base continued for the same budget and
+against one width-40 network from scratch (is a second network better than a bigger first one?).
 
 `inner_radius` defaults to **2**, which is the problem statement and is what
 `rho_in_of_R0(R0) = sqrt(4+R0^2)` places at `rho_in` in the canonical harmonic chart: the
