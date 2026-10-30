@@ -1230,6 +1230,13 @@ uniform, plus core_points 48000 at s = 0.5, nothing below r = 0.02 (min_puncture
 s = 2 cloud to the puncture: ~12000 interior points at r < 0.1 (baseline ~100) and 45900 in 1 <= r <= 10
 against 61400 (-25%), i.e. fewer exactly where sing_bl_hard loses its mass; identical for r < 1 above
 0.2 and for r > 8. (The IC set has the same shapes at 1/10 the count.)
+The plot also shows a candidate log-uniform sampler (uniform in ln r on 0.02 <= r <= 24, n ~ r^-3, ~18000
+points per e-fold). Interior counts by band (r < 0.1 / 0.1-1 / 1-10 / 10-24): baseline 101 / 36833 / 61379 /
+29685; sing_pinn.py 11918 / 40522 / 45873 / 29685; log-uniform 29053 / 41570 / 41570 / 15803. It puts 23% of
+the points inside r = 0.1, which the template already covers, and has fewer in 1-10 than either run. Since
+the loss is a mean over the points, the sampling density is also the weight of the residual: log-uniform
+weights the residual squared by r^-3. Log-uniform on 0.2-24 instead would give ~43000 / 61600 / 23400 in
+0.2-1 / 1-10 / 10-24, close to the baseline.
 
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one

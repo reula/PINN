@@ -11,6 +11,8 @@ as a check. Mixtures (window 0, puncture at the origin):
     (min_puncture_dist) are redrawn. IC: 8000 = 60% s = 2 + 40% uniform, plus core_ic_points 4800 at s = 0.5.
   sing_pinn.py (defaults = sing_bl_hard): every set (interior 128000, IC 12800) is 12.5% s = 0.05 (inner),
     37.5% s = 0.5 (core), 25% s = 2 (focus), the rest uniform; no exclusion.
+  log-uniform (a candidate, not implemented in either script): all points uniform in ln r for
+    0.02 <= r <= 24, i.e. the same count per e-fold, n ~ 1 / r^3.
 The time sampling (baseline: exponential in t) does not change the spatial density.
 """
 import os
@@ -26,8 +28,11 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path
                                                          "2026-10-30", "point_density.png")
 
 
+LOG_R = (0.02, R)
+
+
 def mixture(n_main, n_core, focus_frac, inner_frac=0.0, core_frac=0.0, sing=False):
-    """[(N, sigma)] Gaussians and the uniform count."""
+    """[(N, sigma)] Gaussians and the uniform count (a negative count = that many log-uniform points)."""
     if sing:
         n = n_main
         g = [(2 * int(f * n / 2), s) for f, s in ((inner_frac, 0.05), (core_frac, 0.5), (focus_frac, 2.0))]
@@ -38,12 +43,16 @@ def mixture(n_main, n_core, focus_frac, inner_frac=0.0, core_frac=0.0, sing=Fals
 
 SETS = {"baseline (w8_qn_con10)": {"interior": mixture(80000, 48000, 0.6), "IC (t = 0)": mixture(8000, 4800, 0.6)},
         "sing_pinn.py (sing_bl_hard)": {"interior": mixture(128000, 0, 0.25, 0.125, 0.375, True),
-                                        "IC (t = 0)": mixture(12800, 0, 0.25, 0.125, 0.375, True)}}
-RMIN_EXCL = {"baseline (w8_qn_con10)": 0.02, "sing_pinn.py (sing_bl_hard)": 0.0}
-COL = {"baseline (w8_qn_con10)": "#222222", "sing_pinn.py (sing_bl_hard)": "#d1495b"}
+                                        "IC (t = 0)": mixture(12800, 0, 0.25, 0.125, 0.375, True)},
+        "log-uniform in r, 0.02-24": {"interior": ([], -128000), "IC (t = 0)": ([], -12800)}}
+RMIN_EXCL = {"baseline (w8_qn_con10)": 0.02, "sing_pinn.py (sing_bl_hard)": 0.0, "log-uniform in r, 0.02-24": 0.0}
+COL = {"baseline (w8_qn_con10)": "#222222", "sing_pinn.py (sing_bl_hard)": "#d1495b",
+       "log-uniform in r, 0.02-24": "#2a6fdb"}
 
 
 def density(r, gauss, nu, rmin):
+    if nu < 0:
+        return np.where((r >= LOG_R[0]) & (r <= LOG_R[1]), -nu / (4 * np.pi * r ** 3 * np.log(LOG_R[1] / LOG_R[0])), 0.0)
     n = sum(N * (2 * np.pi * s ** 2) ** -1.5 * np.exp(-r ** 2 / (2 * s ** 2)) for N, s in gauss) + nu / (4 / 3 * np.pi * R ** 3)
     if rmin > 0:                                           # redrawn points: zero inside, total count unchanged
         rq = np.geomspace(1e-6, R, 20001)
@@ -53,6 +62,8 @@ def density(r, gauss, nu, rmin):
 
 
 def sample(gauss, nu, rmin, rng):
+    if nu < 0:
+        return LOG_R[0] * (LOG_R[1] / LOG_R[0]) ** rng.uniform(size=-nu)
     X = [s * rng.standard_normal((N, 3)) for N, s in gauss]
     u = rng.standard_normal((nu, 3))
     X.append(u / np.linalg.norm(u, axis=1, keepdims=True) * R * rng.uniform(size=(nu, 1)) ** (1 / 3))
@@ -71,7 +82,7 @@ for j, part in enumerate(("interior", "IC (t = 0)")):
     for name, sets in SETS.items():
         g, nu = sets[part]
         n = density(r, g, nu, RMIN_EXCL[name])
-        tot = sum(N for N, _ in g) + nu
+        tot = sum(N for N, _ in g) + abs(nu)
         rs = sample(g, nu, RMIN_EXCL[name], rng)
         h = np.histogram(rs, edges)[0] * tot / rs.size     # redrawn points keep the total
         vol = 4 / 3 * np.pi * (edges[1:] ** 3 - edges[:-1] ** 3)
@@ -89,7 +100,7 @@ for j, part in enumerate(("interior", "IC (t = 0)")):
 axs[0, 0].set_ylabel("n(r)")
 axs[1, 0].set_ylabel("dN / d ln r")
 fig.suptitle("Collocation-point density (curves: the sampling mixture; dots: one draw binned in shells). "
-             "Shaded: 1 ≤ r ≤ 10, where sing_bl_hard loses mass", fontsize=10.5)
+             "Shaded: 1 ≤ r ≤ 10, where sing_bl_hard loses mass. Log-uniform: a candidate", fontsize=10.5)
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 fig.savefig(OUT, dpi=130)
 print("wrote", OUT)
@@ -97,5 +108,6 @@ for name, sets in SETS.items():
     g, nu = sets["interior"]
     rq = np.geomspace(1e-6, R, 40001)
     dN = 4 * np.pi * rq ** 2 * density(rq, g, nu, RMIN_EXCL[name])
-    print(name, "interior points in 1 <= r <= 10:", int(np.trapezoid(np.where((rq >= 1) & (rq <= 10), dN, 0), rq)),
-          " r < 0.1:", int(np.trapezoid(np.where(rq < 0.1, dN, 0), rq)))
+    band = lambda lo, hi: int(np.trapezoid(np.where((rq >= lo) & (rq < hi), dN, 0), rq))
+    print(f"{name:30s} interior points  r < 0.1: {band(0, 0.1):6d}  0.1-1: {band(0.1, 1):6d}  1-10: {band(1, 10):6d}"
+          f"  10-24: {band(10, R + 1):6d}")
