@@ -129,6 +129,8 @@ ax.set_ylim(1e-6, 1e-1)
 ax.set_title("|a(t)|: drift of the trained centre (true value 0)")
 ax.set_xlabel("t (window end)")
 ax.legend(fontsize=8)
+for ax in axs[1, 3:]:
+    ax.set_visible(False)
 fig.suptitle("sing_pinn.py runs: held-out loss histories (8000 held-out interior points per window) and centre drift",
              fontsize=11)
 fig.savefig(os.path.join(OUT, "sing_losses.png"), dpi=130)

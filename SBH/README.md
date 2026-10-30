@@ -1238,6 +1238,27 @@ the loss is a mean over the points, the sampling density is also the weight of t
 weights the residual squared by r^-3. Log-uniform on 0.2-24 instead would give ~43000 / 61600 / 23400 in
 0.2-1 / 1-10 / 10-24, close to the baseline.
 
+**`sing_bl_hard` finished (2026-10-30 18:46 UTC; two hub stops, resumed with the same command each time,
+windows 6 and 7 restarted from their start). Final grades at t = 2, core rms vs the 1D reference:**
+
+| run | alpha | chi | Khat | gt | alpha(0.03) (ref 0.2814) |
+|---|---|---|---|---|---|
+| baseline w8_qn_con10 | 7.1e-4 | - | 8.7e-3 | 1.8e-3 | - |
+| sing_bl_hard | 7.6e-3 | 7.8e-4 | 1.1e-2 | 4.7e-3 | 0.2820 |
+| sing_bl_pre | 1.3e-2 | 8.3e-4 | 1.9e-2 | 5.6e-3 | - |
+| sing_bl | 2.0e-2 | 1.9e-3 | 3.3e-2 | 6.4e-3 | 0.2821 |
+
+Mass <m/M - 1> at t = 2: baseline -3.6e-3 / -2.1e-3 / -3.9e-3 / -4.9e-3 at r = 0.3 / 1 / 3 / 10;
+sing_bl_hard -1.1e-2 / -1.1e-2 / -3.6e-2 / +2.8e-2; sing_bl_pre -1.4e-2 / -1.6e-2 / +2.2e-3 / +7.9e-2.
+Centre drift |a(2)| = 1.8e-3 (sing_bl_pre 2.7e-3, sing_bl 6.5e-3). Loss: window 6's end term jumped to
+1.3e-3 from 2.4e-4 at the end of window 5 and stayed there in window 7 (held-out total 1.5e-3 -> 1.0e-3);
+the restarts do not explain it (window 6 reached the same values in all three attempts).
+Verdict: exact initial data are the best of the sing variants (alpha 1.7x, Khat 1.7x better than
+sing_bl_pre at t = 2, mass 2-3x smaller at r <= 3), but the run is still 10x the baseline in alpha, 2.5x in
+gt, 3-10x in mass; Khat is comparable. The IC is not the limiting error; the evolution in 1 <= r <= 10 is.
+Plots: `plots/2026-10-30/sing_mass_*.png`, `sing_losses.png`, `sing_ic_error.png` (now with sing_bl_hard:
+exactly 0 at t = 0 in every panel).
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
