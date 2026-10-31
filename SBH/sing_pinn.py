@@ -107,10 +107,12 @@ ap.add_argument("--r_in", type=float, default=0.0,
                      "trained in blocks (--schedule). 0 = off")
 ap.add_argument("--inner_hidden", type=int, default=32)
 ap.add_argument("--inner_layers", type=int, default=4)
-ap.add_argument("--schedule", default="inner:8000,outer:8000,inner:4000,outer:4000",
+ap.add_argument("--schedule", default="outer:8000,inner:8000,outer:4000,inner:4000",
                 help="with --r_in: the training blocks of every window, NAME:ITERS,... with NAME inner (N_in alone, "
                      "interior/end/IC points drawn inside 3 r_in), outer (N_out and the centre, the full draw) or "
-                     "joint (everything); replaces --iters. Each ITERS a multiple of --n_change")
+                     "joint (everything); replaces --iters. Each ITERS a multiple of --n_change. Outer first: N_out "
+                     "starts with a zero output layer and its hidden layers get no gradient until it moves; with "
+                     "the residual already small (inner first) it never does (sing_bl_inner, 2026-10-31)")
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true", help="continue after the last saved window in OUT_DIR")
 ap.add_argument("--selftest", action="store_true", help="check the template and the derivative stacks, then exit")

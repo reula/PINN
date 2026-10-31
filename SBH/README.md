@@ -1297,6 +1297,25 @@ CPU smoke run (2 windows, 1000 interior points, `inner:250,outer:250,joint:250`)
 inner network (+23%; the single-network run peaked at 10.45 GB on the A30, so expect ~13 GB). First hub run:
 `sing_bl_inner` = `--template bl --hard_ic --r_in 1.5`, baseline settings, default schedule.
 
+**`sing_bl_inner`, window 0 (2026-10-31; inner-first schedule): the outer blocks stalled.** Held-out loss
+1.947e-4 after the first inner block, 1.942e-4 after 8000 outer iterations; 1.368e-4 -> 1.367e-4 in the
+second pair (flat to three digits at every 250; only the boundary term moved, at 1e-8). N_out starts with
+a zero output layer, so its hidden layers get no gradient until the output layer moves; with the residual
+already small and small-scale after the inner block, the near-constant features (inputs x/24, |x|/24 < 0.2
+inside r = 5) cannot reduce it and the bootstrap never happens. The single network escapes this only
+because it starts against the large, smooth residual of the raw template. The default `--schedule` is now
+`outer:8000,inner:8000,outer:4000,inner:4000` (outer first; in window 0 the first 8000 iterations then
+replicate sing_bl_hard's, same seeds); the inner-first run is kept as `sing_bl_inner_ifirst`.
+Its window 0 is nevertheless an "inner network only" result (13362 parameters, 4054 trained): at t = 0.25,
+core rms alpha 5.9e-4, chi 7.7e-5, Khat 2.8e-4, gt 1.1e-3 (sing_bl_hard 4.8e-4 / 1.4e-4 / 2.7e-4 / 8.6e-4),
+held-out 1.37e-4 (7.6e-5). By band (alpha / Khat / chi rms; hard -> inner): seam 0.2-1: 4.3e-4 -> 5.2e-4 /
+3.4e-4 -> 3.3e-4 / 2.7e-4 -> 1.5e-4; 1-3: 9.9e-5 -> 1.0e-4 / 1.2e-4 -> 2.0e-4 / 1.5e-4 -> 8.6e-5; 3-10:
+9.4e-5 -> 7.3e-5 / 6.4e-5 -> 1.1e-4 / 1.2e-4 -> 1.4e-5; mass at r = 1: -1.7e-3 -> -3.9e-4 (baseline -4.5e-5).
+So a 1.5-scale network matches the 24-scale one at the seam and beats it in chi, the mass and the far
+field, but does not resolve the alpha/Khat seam error: at x/1.5 the seam 0.2-0.6 is still only 0.13-0.4
+input units. Next run: outer first and `--r_in 0.75` (seam at 0.27-0.8 input units; w = 0.53 at r = 0.6,
+0.17 at r = 1, 0.018 at r = 1.5).
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
