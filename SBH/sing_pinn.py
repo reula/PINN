@@ -118,6 +118,9 @@ ap.add_argument("--schedule", default="outer:8000,inner:8000,outer:4000,inner:40
                      "the residual already small (inner first) it never does (sing_bl_inner, 2026-10-31)")
 ap.add_argument("--stop_after_window", type=int, default=-1,
                 help="exit after this window is saved (0 = window 0 only: a 2.7 h seam experiment); -1 = all")
+ap.add_argument("--ckpt_every", type=int, default=2000,
+                help="save partial.pkl (parameters, iteration, RNG key) every this many iterations inside a window, "
+                     "so --resume continues mid-window after a hub restart (2026-10-31); 0 = off")
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true", help="continue after the last saved window in OUT_DIR")
 ap.add_argument("--selftest", action="store_true", help="check the template and the derivative stacks, then exit")
@@ -732,6 +735,19 @@ if a.resume:
         a0, v0 = jnp.asarray(S["a_end"]), jnp.asarray(S["v_end"])
         k0, key = S["window"] + 1, jnp.asarray(S["key"])
         print(f"resumed after window {S['window']}")
+part = None                                                    # partial.pkl of window k0 (mid-window resume)
+PARTIAL = os.path.join(a.out, "partial.pkl")
+if a.resume and os.path.exists(PARTIAL):
+    S = pickle.load(open(PARTIAL, "rb"))
+    if S["window"] == k0:
+        part = S
+        P, key = jax.tree_util.tree_map(jnp.asarray, S["params"]), jnp.asarray(S["key"])
+        print(f"resuming window {k0} at iteration {S['it']} (partial.pkl)")
+    else:
+        os.remove(PARTIAL)                                     # stale: from a window that was completed since
+if a.stop_after_window >= 0 and k0 > a.stop_after_window:
+    print(f"--stop_after_window {a.stop_after_window}: already done")
+    sys.exit(0)
 
 parts_jit = jax.jit(parts)
 bands_jit = jax.jit(dist_bands)
@@ -742,6 +758,13 @@ def save_state(name, P, win, k, pos, vel, hard):
          "a_end": np.asarray(pos), "v_end": np.asarray(vel), "key": np.asarray(key), "config": vars(a), "hard": hard}
     pickle.dump(S, open(os.path.join(a.out, name + ".tmp"), "wb"))
     os.replace(os.path.join(a.out, name + ".tmp"), os.path.join(a.out, name))
+
+
+def save_partial(P, win, k, it, kh, hard):
+    S = {"params": jax.tree_util.tree_map(np.asarray, P), "win": [np.asarray(v) for v in win], "window": k, "it": it,
+         "key": np.asarray(key), "kh": np.asarray(kh), "hard": hard}
+    pickle.dump(S, open(PARTIAL + ".tmp", "wb"))
+    os.replace(PARTIAL + ".tmp", PARTIAL)
 loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), static_argnums=1)
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 loss_pre = jax.jit(lambda w, unr, win, batch: total(parts_pre(unr(w), win, batch)), static_argnums=1)
@@ -767,7 +790,9 @@ def mem_gb():
 for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1), a0, v0)
-    P = {**P, "acc": jnp.zeros((NP, 2, 3))}                      # warm network(s), fresh centre correction
+    mid = part is not None and k == k0                           # resuming this window mid-way
+    if not mid:
+        P = {**P, "acc": jnp.zeros((NP, 2, 3))}                  # warm network(s), fresh centre correction
     hard = a.hard_ic
     if prev is None:
         Uic_fn = jax.jit(initial_data)
@@ -776,11 +801,15 @@ for k in range(k0, a.N_window):
         Uic_fn = jax.jit(lambda X, Pp=Pp, wp=wp, hp_=hp_: u_value(Pp, wp, jnp.concatenate([jnp.full((X.shape[0], 1), wp[1]), X],
                                                                                       axis=1), hp_))
     w, unr = ns["flatten_util"].ravel_pytree(P)
-    key, kh = jax.random.split(key)
+    if mid:
+        kh = jnp.asarray(part["kh"])                             # the same held-out set as before the restart
+    else:
+        key, kh = jax.random.split(key)
     held = draw(kh, P, win, a.n_held, a.n_held // 8, a.n_held // 4, a.n_held // 8, Uic_fn, hard)
     print(f"window {k}: t in [{t0:g}, {t1:g}], {w.size} parameters, centre {np.asarray(a0).round(5).tolist()}, "
           f"velocity {np.asarray(v0).round(5).tolist()}", flush=True)
     t_start, it = time.time(), 0
+    it_done = int(part["it"]) if mid else 0                      # iterations already in the history (seconds restart)
     parts_jit(unr(w), win, held)                     # compile before training fills the GPU memory pool
     _, cnt = bands_jit(unr(w), win, draw(kh, P, win, a.n_int, 1, 1, 1, Uic_fn)[0])
     print("  interior points per batch by distance to the puncture: "
@@ -792,6 +821,9 @@ for k in range(k0, a.N_window):
         rad = 3.0 * a.r_in if bname == "inner" else None                # w(3 r_in) = e^-9: N_in acts inside
         lf, vg = (loss_pre, vg_pre) if pre else (loss_fn, vg_fn)
         for _ in range(n_block // a.n_change):
+            if it < it_done:                                    # done before the restart (the saved key is past them)
+                it += a.n_change
+                continue
             key, kd = jax.random.split(key)
             batch = draw(kd, unr(w), win, 1 if pre else a.n_int, 1 if pre else a.n_end,
                          (a.pre_n_ic or a.n_ic) if pre else a.n_ic, a.n_bc, Uic_fn, hard and not pre, rad)
@@ -826,6 +858,8 @@ for k in range(k0, a.N_window):
                   + " ".join(f"{n} {v:.1e}" for n, v in zip(DIST_NAMES, hb)) + f"  a(t1) {np.asarray(pos[0]).round(5).tolist()}"
                   + (f"  peak mem {mem_gb():.2f} GB" if mem_gb() is not None else ""),
                   flush=True)
+            if a.ckpt_every and it % a.ckpt_every == 0:
+                save_partial(unr(w), win, k, it, kh, hard)
         if pre and k == 0:
             save_state("pre_000.pkl", unr(w), win, k, pos, vel, False)
             if a.stop_after_pre:
@@ -846,6 +880,8 @@ for k in range(k0, a.N_window):
                                              rr["chi_core"], rr["Khat_core"], rr["gt_core"], rr["alpha_mid"], rr["Khat_mid"]),
               flush=True)
     save_state(f"window_{k:03d}.pkl", P, win, k, pos, vel, hard)
+    if os.path.exists(PARTIAL):
+        os.remove(PARTIAL)
     prev, a0, v0 = (P, win, hard), pos, vel
     if k == a.stop_after_window:
         print(f"--stop_after_window {k}: done")

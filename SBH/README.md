@@ -1344,6 +1344,15 @@ regenerating it: the sweep is r_c = 0.1 and 0.3 around the current 0.2, plus `--
 of 0.2; selftest with p = 4, r_c = 0.3: stacks 1.5e-10, hard IC 7e-15). Three window-0 runs, ~2.8 h each:
 `sing_w0_rc01`, `sing_w0_rc03`, `sing_w0_rho4` (`--template bl --hard_ic --stop_after_window 0` + the flag).
 
+**Mid-window checkpoints (2026-10-31).** The hub container restarted three times in three days (window 6 of
+sing_bl_hard twice, then the sweep's first run at iteration 10250 of 24000: 2.5 h lost each time, since
+windows only saved at their end). `--ckpt_every N` (default 2000, ~15 min of work) writes `partial.pkl`
+(parameters, iteration, RNG key, the held-out set's key) inside a window; `--resume` continues from it
+(same held-out set, same key sequence; the `seconds` column restarts), removes it when the window is saved,
+and drops a stale one. `--stop_after_window K` with `--resume` exits at once when window K is already saved,
+so a sweep loop can be relaunched as is. Laptop test: killed after the first checkpoint, resumed at 250,
+finished, third launch "already done".
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
