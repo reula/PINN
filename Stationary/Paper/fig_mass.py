@@ -49,10 +49,10 @@ for p, tag in zip(ax, "ab"):
     p.grid(True, which="major", color=GRID, lw=0.6)
     for s in ("top", "right"):
         p.spines[s].set_visible(False)
-    p.text(0.5, 0.92, f"({tag})", transform=p.transAxes, fontsize=8, color=INK, ha="center")
+    p.text(0.0, 1.02, f"({tag})", transform=p.transAxes, fontsize=8, color=INK, va="bottom")
     p.set_xticks([-1/6, -1/12, 0, 1/12]); p.set_xticklabels([r"$-\frac{1}{6}$", r"$-\frac{1}{12}$", "0", r"$\frac{1}{12}$"])
 ax[0].legend(frameon=False, loc="upper right", handlelength=1.6)
-ax[1].legend(frameon=False, loc="upper right", handlelength=1.6)
+ax[1].legend(frameon=False, loc="lower left", handlelength=1.6)
 fig.tight_layout(pad=0.3, w_pad=0.8)
 fig.savefig(out, dpi=300)
 fig.savefig(out.rsplit(".", 1)[0] + ".pdf")
