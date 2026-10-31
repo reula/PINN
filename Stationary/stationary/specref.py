@@ -136,7 +136,7 @@ class SpectralAxisym:
 
 
 def solve(cfg, exact_fields, batch, ls=(2,), n_radial=32, nonlinear=False, iters=8,
-          weights=None, verbose=True, c0=None):
+          weights=None, verbose=True, c0=None, rcond=1e-13):
     """Least-squares solve of the run's residual over the spectral field.  Returns (model, c, info)."""
     from .losses import residual_vector
 
@@ -164,19 +164,35 @@ def solve(cfg, exact_fields, batch, ls=(2,), n_radial=32, nonlinear=False, iters
         t0 = time.time()
         J = jac(c)
         sv = np.linalg.svd(np.asarray(J), compute_uv=False)
-        dc, *_ = np.linalg.lstsq(np.asarray(J), -np.asarray(r), rcond=1e-13)
+        dc, *_ = np.linalg.lstsq(np.asarray(J), -np.asarray(r), rcond=rcond)
         lin = float(np.linalg.norm(np.asarray(r) + np.asarray(J) @ dc))
-        c = c + jnp.asarray(dc)
-        r = res(c)
+        # Backtracking: the full Gauss-Newton step from the spherical background overshoots for a
+        # large datum (S2 = -0.25: |r| 0.98 -> 5.2, and the old loop then stopped and kept that
+        # iterate).  Halve the step until |r| does not grow (1.001: a stalled, converged step is
+        # still taken in full, as before); if no step helps, keep c and stop.
+        r_old, t, ok = float(jnp.linalg.norm(r)), 1.0, False
+        for _ in range(12):
+            c_try = c + t * jnp.asarray(dc)
+            r_try = res(c_try)
+            if float(jnp.linalg.norm(r_try)) <= 1.001 * r_old:
+                ok = True
+                break
+            t *= 0.5
+        if ok:
+            c, r = c_try, r_try
         step = {"iter": it, "linear_residual": lin, "residual": float(jnp.linalg.norm(r)),
                 "loss": float(jnp.sum(r * r)), "sv_max": float(sv[0]), "sv_min": float(sv[-1]),
-                "cond": float(sv[0] / max(sv[-1], 1e-300)), "wall": time.time() - t0}
+                "cond": float(sv[0] / max(sv[-1], 1e-300)), "wall": time.time() - t0,
+                "step_length": t if ok else 0.0}
         info["steps"].append(step)
         if verbose:
             print(f"[specref] {'Newton ' + str(it) if nonlinear else 'linear'}: "
                   f"|r0 + J dc| = {lin:.3e}, |r(c)| = {step['residual']:.3e} "
-                  f"(loss {step['loss']:.3e}), cond(J) = {step['cond']:.2e}  "
-                  f"({step['wall']:.1f}s)", flush=True)
+                  f"(loss {step['loss']:.3e}), cond(J) = {step['cond']:.2e}, "
+                  f"step {step['step_length']:g}  ({step['wall']:.1f}s)", flush=True)
+        if nonlinear and not ok:
+            print("[specref] no step length reduces the residual: stopping", flush=True)
+            break
         if nonlinear and it > 0 and step["residual"] > 0.999 * info["steps"][-2]["residual"]:
             break
     return model, c, info
@@ -424,6 +440,9 @@ def main(argv=None):
     ap.add_argument("--n-coll", type=int, default=3000)
     ap.add_argument("--n-bnd", type=int, default=400)
     ap.add_argument("--iters", type=int, default=8)
+    ap.add_argument("--rcond", type=float, default=1e-13,
+                    help="relative singular-value cutoff of the Gauss-Newton step (default 1e-13; "
+                         "1e-9 for bases whose Jacobian has cond > 1e10, e.g. l <= 14 with 48 radial)")
     ap.add_argument("--params", default="params.pkl")
     ap.add_argument("--scale-exps", default=None,
                     help="override the run's rho exponents compat,ricci,gauge,lam_eq, e.g. 3,4,3,4")
@@ -482,7 +501,7 @@ def main(argv=None):
         print(f"[specref] reusing {npz}")
     else:
         ref_model, c, info = solve(cfg_s, exact_fields, batch, ls=ls, n_radial=a.n_radial,
-                                   nonlinear=a.nonlinear, iters=a.iters)
+                                   nonlinear=a.nonlinear, iters=a.iters, rcond=a.rcond)
         np.savez(npz, c=np.asarray(c), ls=np.asarray(ls), n_radial=a.n_radial,
                  info=json.dumps(info))
 
