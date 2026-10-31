@@ -241,7 +241,8 @@ against the old one).  Networks: ms_s2h_w2 loss 3.19e-12 (fresh 0.98), dlam 2.66
 (perturbation 4.6e-3 / 5.2e-3); ms_s2d_w2 loss 2.53e-10 (fresh 1.00), dlam 2.18e-7, dh 1.86e-6
 (perturbation 2.2e-2 / 2.4e-2).  The -1/6 reference's Gauss-Newton stalled at |r| 3.7e-5 (l <= 10
 is short for a 50% datum), so part of the 2.2e-7 may be the reference's.
-Paper: IV.A paragraph and tab:mass; appendix.  PERTURBATION.md item 4 ("mass untouched") was
+Paper: IV.A paragraph, tab:mass and fig:mass (Paper/fig_mass.py -> figs/mass_s2.png, reads the
+run dirs' gh_moments.json); appendix.  PERTURBATION.md item 4 ("mass untouched") was
 wrong and is corrected there.
 
 ## A second-stage network on the rotated Weyl test (hub_stage.sh, hub, 2026-10-30 21:42)
