@@ -12,8 +12,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 out = sys.argv[1] if len(sys.argv) > 1 else "Paper/figs/mass_s2.png"
-RUNS = ["ms_s2h_w2", "ab_none_w2", "ms_s2t_cfg", "ms_s2d_w2", "ms_s2p_cfg"]
-NET = {"ms_s2h_w2", "ab_none_w2", "ms_s2d_w2"}           # the others hold only a reference
+import os
+RUNS = [r for r in ["ms_s2_030_w2", "ms_s2_025_w2", "ms_s2d_w2", "ms_s2t_cfg", "ab_none_w2", "ms_s2h_w2", "ms_s2p_cfg"]
+        if os.path.exists(f"runs/{r}/gh_moments.json")]
+NET = {r for r in RUNS if r.endswith("_w2")}            # the _cfg ones hold only a reference
 R0 = 1 / np.sqrt(3)
 REF, NETC, INK, MUTED, GRID = "#2a78d6", "#eb6834", "#1f1f1e", "#898781", "#e1e0d9"
 
@@ -29,7 +31,7 @@ A = np.stack([s2 ** k for k in (2, 3, 4)], 1)
 a, b, c = np.linalg.lstsq(A, dM, rcond=None)[0]
 print(f"[fig_mass] fit M0 - R0 = {a:.3f} S2^2 {b:+.3f} S2^3 {c:+.2f} S2^4, "
       f"max residual {np.abs(dM - A @ [a, b, c]).max():.1e}")
-x = np.linspace(-0.18, 0.1, 300)
+x = np.linspace(s2.min() - 0.02, s2.max() + 0.02, 300)
 
 plt.rcParams.update({"font.size": 8, "axes.labelsize": 8, "legend.fontsize": 7,
                      "xtick.labelsize": 7, "ytick.labelsize": 7})
