@@ -1337,7 +1337,12 @@ errors have the opposite sign inside r = 0.2 (its puncture failure). Hypotheses 
 (1 - W) U0 background's steep seam sources a residual that the network cancels only approximately, leaving
 a PDE-consistent (small-residual) but wrong mode; or rho lets the network act too far in (rho(0.1) = 0.2).
 Both are testable with window 0 alone (`--stop_after_window 0`, 2.7 h on the hub): a sweep in r_c (0.1,
-0.5, 1.0; moves W and rho together) shows whether the bump moves with the seam.
+0.5, 1.0; moves W and rho together) shows whether the bump moves with the seam. The BL template table
+(`reference_1d/sing_bl_m0.5_dense.npz`) only reaches r = 1, so r_c <= 0.33 (R_TPL = 3 r_c) without
+regenerating it: the sweep is r_c = 0.1 and 0.3 around the current 0.2, plus `--rho_power 4` at r_c = 0.2
+(rho = r^p/(r^p + r_c^p); p = 4 keeps the correction out of the template region, rho(r_c/2) = 0.06 instead
+of 0.2; selftest with p = 4, r_c = 0.3: stacks 1.5e-10, hard IC 7e-15). Three window-0 runs, ~2.8 h each:
+`sing_w0_rc01`, `sing_w0_rc03`, `sing_w0_rho4` (`--template bl --hard_ic --stop_after_window 0` + the flag).
 
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one

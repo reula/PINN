@@ -64,6 +64,9 @@ ap.add_argument("--t_snap", type=float, default=10.0, help="trumpet: time of the
 ap.add_argument("--ref_file", default=None,
                 help="1D reference for the per-window report (default reference_1d/ref_single_m0.5_dr0.005_t20.npz)")
 ap.add_argument("--r_c", type=float, default=0.2, help="cutoff radius of the template and of rho")
+ap.add_argument("--rho_power", type=float, default=2.0,
+                help="rho = r^p / (r^p + r_c^p): p = 2 (default) lets the correction act well inside the template "
+                     "(rho(r_c/2) = 0.2); p = 4 keeps it out (0.06). 2026-10-31")
 ap.add_argument("--centers", default="0,0,0", help="initial puncture positions 'x,y,z;x,y,z'")
 ap.add_argument("--fixed_center", action="store_true", help="do not train the puncture positions")
 ap.add_argument("--a_scale", type=float, default=0.01, help="s_a: displacement per unit of p1, p2")
@@ -203,7 +206,7 @@ def bg_point(q, acc, win):
         add = add.at[ns["BETA_SLICE"]].add(-w * vel[A])
         logs = logs + w * jnp.log(_pos(jnp.stack([rad[stpl.I_CHI], rad[stpl.I_ALPHA]])))
         r2 = jnp.sum(xi ** 2)
-        rho = rho * r2 / (r2 + a.r_c ** 2)
+        rho = rho * r2 ** (a.rho_power / 2) / (r2 ** (a.rho_power / 2) + a.r_c ** a.rho_power)
     B = FLAT + add
     B = B.at[CHI].set(jnp.exp(logs[0])).at[AL].set(jnp.exp(logs[1]))
     return jnp.concatenate([B, rho[None]])
