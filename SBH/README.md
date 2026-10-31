@@ -1316,6 +1316,29 @@ field, but does not resolve the alpha/Khat seam error: at x/1.5 the seam 0.2-0.6
 input units. Next run: outer first and `--r_in 0.75` (seam at 0.27-0.8 input units; w = 0.53 at r = 0.6,
 0.17 at r = 1, 0.018 at r = 1.5).
 
+**`sing_bl_inner` relaunched outer-first with `--r_in 0.75` (2026-10-31 09:05 UTC).** Window 0: the outer
+blocks now train (2.15e-4 at 8000, not bit-identical to sing_bl_hard's 1.76e-4: the extra zero terms change
+the compiled arithmetic and 8000 quasi-Newton iterations amplify that; within the run-to-run spread), the
+inner blocks continue the descent (1.44e-4 at 16000, 9.0e-5 at 24000; sing_bl_hard 7.6e-5). At t = 0.25
+(alpha / Khat / chi rms by band, hard -> inner 0.75): seam 0.2-1: 4.3e-4 -> 4.8e-4 / 3.4e-4 -> 4.1e-4 /
+2.7e-4 -> 1.9e-4; 1-3: 9.9e-5 -> 9.7e-5 / 1.2e-4 -> 1.6e-4 / 1.5e-4 -> 1.6e-4; mass at r = 1: -1.7e-3 ->
+-8.0e-4. Neither the 1.5- nor the 0.75-scale inner network reduces the alpha/Khat seam error: it is not a
+resolution problem.
+
+**The seam error is a coherent bump the loss prefers (`tools/plot_seam_profile.py` ->
+`plots/2026-10-31/seam_profile.png`: signed sphere-mean errors vs r with W and rho overlaid).** At t = 0.25
+the alpha error of sing_bl_hard and sing_bl_inner coincide: one smooth positive bump, +1e-4 at r = 0.1
+rising to +8e-4 at r = 0.5, back to 0 at r = 0.8. Two different networks giving the same error means the
+loss, minimized to the same level, prefers this wrong solution; capacity is not the issue. The bump starts
+inside the template region (r = 0.1-0.2, where W = 1 and the template alone is exact): there u = T(t) + rho N,
+so rho N is wrong by +1e-4 to +5e-4 where the right value is 0. Khat's error at t = 0.25 is a +-1.5e-4
+dipole across r = 0.15-0.4; by t = 0.5 both are 3e-3 bumps over 0.1-1 (alpha +, Khat + then -). The baseline's
+errors have the opposite sign inside r = 0.2 (its puncture failure). Hypotheses that remain: the W T(t) +
+(1 - W) U0 background's steep seam sources a residual that the network cancels only approximately, leaving
+a PDE-consistent (small-residual) but wrong mode; or rho lets the network act too far in (rho(0.1) = 0.2).
+Both are testable with window 0 alone (`--stop_after_window 0`, 2.7 h on the hub): a sweep in r_c (0.1,
+0.5, 1.0; moves W and rho together) shows whether the bump moves with the seam.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full

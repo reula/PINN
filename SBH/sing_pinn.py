@@ -113,6 +113,8 @@ ap.add_argument("--schedule", default="outer:8000,inner:8000,outer:4000,inner:40
                      "joint (everything); replaces --iters. Each ITERS a multiple of --n_change. Outer first: N_out "
                      "starts with a zero output layer and its hidden layers get no gradient until it moves; with "
                      "the residual already small (inner first) it never does (sing_bl_inner, 2026-10-31)")
+ap.add_argument("--stop_after_window", type=int, default=-1,
+                help="exit after this window is saved (0 = window 0 only: a 2.7 h seam experiment); -1 = all")
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true", help="continue after the last saved window in OUT_DIR")
 ap.add_argument("--selftest", action="store_true", help="check the template and the derivative stacks, then exit")
@@ -842,4 +844,7 @@ for k in range(k0, a.N_window):
               flush=True)
     save_state(f"window_{k:03d}.pkl", P, win, k, pos, vel, hard)
     prev, a0, v0 = (P, win, hard), pos, vel
+    if k == a.stop_after_window:
+        print(f"--stop_after_window {k}: done")
+        sys.exit(0)
 print("done:", a.out)
