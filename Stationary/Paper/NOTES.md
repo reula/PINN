@@ -137,6 +137,6 @@ whether the method can drop them.
   (Adam and SSBroyden minimise), "asserts the stability of the approximation parameters"
   (-> overfitting check).
 
-Conflict found: PERTURBATION.md item 4 says the mass is untouched by the quadrupole (l = 0
-back-reaction O(S2^2/rho^6)); MULTIPOLES_GH_THORNE.md:686 and the moments give +1.1%. The paper
-follows the moments.
+Conflict (resolved 2026-10-31): PERTURBATION.md item 4 said the mass is untouched by the
+quadrupole; the moments give +1.1%, and the S2 scan (hub_mass.sh) confirms a 0.83 S2^2 shift.
+PERTURBATION.md carries a dated correction; the paper has tab:mass.

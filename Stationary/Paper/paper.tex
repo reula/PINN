@@ -476,10 +476,41 @@ $L = 10$ and $J = 36$, 1008 unknowns, computed on 2500 points with the weights o
 37 minutes. Its loss is $2.8\times10^{-11}$ on its own points and also on those of a network run.
 Its $l=2$ part decays as $\rho^{-3.00}$ from $\rho=20$ to 100, as linear theory predicts. Its
 mass (Sec.~\ref{sec:moments}) is $M_0 = 0.583847$, 1.1\% above the $R_0 = 0.577350$ of the
-spherical solution with the same $\lambda_0$: the back-reaction $6.5\times10^{-3}$ is of the size
-of $S_2^2 = 6.9\times10^{-3}$, as expected of a second-order effect.
-\pending{fit of $M_0(S_2)$ from the spectral approximations at $S_2=-1/24,-1/12,-1/8,-1/6,+1/12$
-(\texttt{Paper/hub\_mass.sh}); then the network masses at $-1/24$ and $-1/6$} The best networks below reach
+spherical solution with the same $\lambda_0$ (the approximation solved with the additional outer
+conditions of Sec.~\ref{sec:bcs} gives the same six digits). The shift is the $l=0$
+back-reaction of the quadrupole, second order in $S_2$ according to linear theory. To check this
+we solved the spectral approximation for four more amplitudes (Table~\ref{tab:mass}). The shift
+is positive for both signs of $S_2$ and doubling $S_2$ multiplies it by 4.2 and 4.7; the fit
+$M_0-R_0 = aS_2^2+bS_2^3+cS_2^4$ to the five values, with $a=0.83$, $b=-0.77$, $c=5.2$,
+reproduces them to $4\times10^{-5}$, and no term linear in $S_2$ is needed (the even part of the
+two values at $S_2=\pm1/12$ alone gives $a = 0.87$). The quadrupole moment is linear to leading
+order, with $M_2/S_2$ going from $-2.00$ at $S_2=-1/24$ to $-2.43$ at $-1/6$. For $S_2=-1/24$ and
+$-1/6$ we also trained the networks (Appendix~\ref{app:repro}): their masses agree with those of
+their references to $2\times10^{-9}$ and $4\times10^{-7}$ ($4\times10^{-8}$ at $-1/12$), far
+below the shifts, and their errors scale with the data: loss $3.2\times10^{-12}$ and rms errors
+$2.7\times10^{-9}$ in $\lambda$, $1.0\times10^{-7}$ in $h$ at $-1/24$; $2.5\times10^{-10}$,
+$2.2\times10^{-7}$ and $1.9\times10^{-6}$ at $-1/6$, where $\lambda$ ranges from $1/4$ to $1/2$ on
+the sphere and the reference itself is less converged (its Gauss--Newton residual is 100 times
+that at $-1/12$).
+
+\begin{table}
+\caption{Mass and quadrupole moment of the spectral approximations (1008 unknowns) for five
+amplitudes of the datum, $R_0 = 1/\sqrt3 = 0.577350$. The spread over the fit windows of
+Sec.~\ref{sec:moments} is below $10^{-4}$ in $M_0$ and $4\times10^{-3}$ in $M_2$, largest at
+$S_2=-1/6$.}
+\label{tab:mass}
+\begin{ruledtabular}
+\begin{tabular}{ccccc}
+$S_2$ & $M_0$ & $M_0-R_0$ & $(M_0-R_0)/S_2^2$ & $M_2$ \\
+\hline
+$-1/24$ & 0.578886 & $1.54\times10^{-3}$ & 0.885 & 0.0833 \\
+$-1/12$ & 0.583847 & $6.50\times10^{-3}$ & 0.936 & 0.1747 \\
+$-1/8$  & 0.593055 & $1.57\times10^{-2}$ & 1.005 & 0.2793 \\
+$-1/6$  & 0.60797  & $3.06\times10^{-2}$ & 1.102 & 0.405 \\
+$+1/12$ & 0.582915 & $5.57\times10^{-3}$ & 0.801 & $-0.1540$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table} The best networks below reach
 a lower loss ($1.3\times10^{-11}$) with 2285 parameters, so the errors we quote are differences
 between two approximations of comparable quality, obtained by unrelated methods.
 
@@ -685,6 +716,10 @@ NVIDIA A30 (24~GB). Each result is produced by the commands below, all in the re
   (20 minutes each with the extra outer spheres). Off-axis data,
   \texttt{Paper/hub\_qp3.sh} (\texttt{qp\_rot3\_*}, width 20, 10 minutes per stage) and
   \texttt{Paper/hub\_qp4.sh} (\texttt{qp\_rot4\_n32768\_*}, width 40, 30 minutes per stage).
+  The mass against $S_2$ (Table~\ref{tab:mass}), \texttt{Paper/hub\_mass.sh}: the networks
+  \texttt{ms\_s2h\_*} ($S_2=-1/24$) and \texttt{ms\_s2d\_*} ($-1/6$), and the spectral
+  approximation of each amplitude (\texttt{specref\_nonlinear\_fine} in the run directory;
+  \texttt{Paper/commands\_specref.sh} for its settings, 35--40 minutes each).
 \item The spectral reference: \texttt{Paper/commands\_specref.sh} (reproduces the loss
   $2.793\times10^{-11}$; 36 minutes on one A30).
 \item Grading and moments: \texttt{scripts/grade\_rotated.py}, \texttt{scripts/fresh\_sample\_loss.py},

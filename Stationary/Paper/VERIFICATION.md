@@ -215,3 +215,53 @@ rms dlam 5.6e-6 and dh 8.5e-4, against Armijo rot_ssbm's 2.25e-6, 1.56e-5 and 1.
 `qp_com`, `qp_nocom` and `qp_rot`, each Adam + SSBroyden stages with a final check. Also the
 rotated Weyl test with the metric-only network, `weyl_rot45_hyb` (`Paper/commands_weyl.sh`).
 Pending.
+
+## The mass as a function of S2 (hub_mass.sh, hub, finished 2026-10-31 00:26)
+
+Fine spectral references (l = 0..10, 36 radial, 1008 unknowns, 2500 points, final formulation +
+COM, --iters 10) at five amplitudes; networks (ab_none settings, only --lam-bc-S2 changed) at
+-1/24 and -1/6.  Moments by scripts/gh_moments_runs.py (<run>/gh_moments.json), R0 = 0.5773503.
+
+| S2 | run dir | ref M0 | M0 - R0 | /S2^2 | ref M2 | M0 spread | GN |r| | net - ref M0 |
+|---|---|---|---|---|---|---|---|---|
+| -1/24 | ms_s2h_w2 | 0.5788859 | 1.536e-3 | 0.885 | 0.08325 | 4e-7 | 6.3e-9 | -1.9e-9 |
+| -1/12 | ab_none_w2 | 0.5838468 | 6.497e-3 | 0.936 | 0.17471 | 4e-6 | 4.0e-7 | -3.6e-8 |
+| -1/8 | ms_s2t_cfg | 0.5930546 | 1.570e-2 | 1.005 | 0.27929 | 3e-5 | 5.4e-6 | (no network) |
+| -1/6 | ms_s2d_w2 | 0.6079697 | 3.062e-2 | 1.102 | 0.40523 | 1.1e-4 | 3.7e-5 | -4.3e-7 |
+| +1/12 | ms_s2p_cfg | 0.5829155 | 5.565e-3 | 0.801 | -0.15402 | 5e-7 | 2.2e-7 | (no network) |
+
+Fits of M0 - R0 (scratch, numpy lstsq): a S2^2 alone, a = 1.06, max residual 1.8e-3 (the cubic and
+quartic terms matter at 1/6); a S2^2 + b S2^3: 0.870, -1.33, residual 4.9e-4; + c S2^4: 0.830,
+-0.769, 5.18, residual 3.7e-5 (within the -1/6 reference's spread); with a linear term added
+(4 parameters, 5 points): linear coefficient -1.4e-3, i.e. 2% of the quadratic term at 1/12, not
+significant.  Even part at +-1/12: 6.03e-3 = 0.868 S2^2.  Ratios dM(2 S2)/dM(S2): 4.23, 4.71.
+Reference at -1/12 in the final formulation: M0 identical to the old (extra outer conditions)
+reference to 7 digits; ab_none_w2 against it: rms dlam 7.1e-9, dh 1.45e-7 (vs 9.1e-9 / 1.5e-7
+against the old one).  Networks: ms_s2h_w2 loss 3.19e-12 (fresh 0.98), dlam 2.66e-9, dh 1.04e-7
+(perturbation 4.6e-3 / 5.2e-3); ms_s2d_w2 loss 2.53e-10 (fresh 1.00), dlam 2.18e-7, dh 1.86e-6
+(perturbation 2.2e-2 / 2.4e-2).  The -1/6 reference's Gauss-Newton stalled at |r| 3.7e-5 (l <= 10
+is short for a 50% datum), so part of the 2.2e-7 may be the reference's.
+Paper: IV.A paragraph and tab:mass; appendix.  PERTURBATION.md item 4 ("mass untouched") was
+wrong and is corrected there.
+
+## A second-stage network on the rotated Weyl test (hub_stage.sh, hub, 2026-10-30 21:42)
+
+Base weyl_rot45_hyb (width 20, 7000 SSBroyden iterations, loss 5.1e-9).  All arms its settings
+(8192 + 512 points, resampled every 500, SSBroyden up to 20000), errors against the exact rotated
+Weyl solution, fresh = mean loss on 5 fresh samples / training loss (scripts/fresh_sample_loss.py,
+Mac CPU).
+
+| run | what | train loss | fresh | iters | max dh | max dlam | rms dh | rms dlam |
+|---|---|---|---|---|---|---|---|---|
+| base | width 20 | 5.13e-9 | 1.18 | 7000 | 1.64e-4 | 1.73e-5 | 2.31e-5 | 1.85e-6 |
+| st_ctl | base continued | 4.09e-9 | 1.22 | 2000 | 1.48e-4 | 1.04e-5 | 2.18e-5 | 1.79e-6 |
+| st_a | + corr. w20, eps 1e-4 | 2.81e-9 | 2.2e5 | 1750 | 1.95e-4 | 1.24e-5 | 2.59e-5 | 2.48e-6 |
+| st_b | + corr. w20, fourier 4 | 1.53e-10 | 95 | 3750 | 8.75e-5 | 4.74e-6 | 1.07e-5 | 7.96e-7 |
+| st_c | + corr. w40, fourier 4 | 1.19e-11 | 436 | 3168 | 5.80e-5 | 3.01e-6 | 9.74e-6 | 6.09e-7 |
+| st_w40 | one width-40 net | 2.22e-9 | 1.58 | 8000 | 7.68e-5 | 5.02e-6 | 1.29e-5 | 9.94e-7 |
+
+Verdict: the staged networks overfit (fresh/training 95-2e5; on fresh points st_c's loss 5.2e-9 is
+the base's), although the errors fell 2.4-5.7x; report residuals on the report's own points are no
+lower than the base's.  Not in the paper.  The honest result is st_w40: width 40 beats width 20 by
+2-3.5x in error at fresh 1.6.  README §5 has the entry; a second round would need denser points,
+more frequent redraws and no Fourier features on the correction.

@@ -684,6 +684,11 @@ The +- are the window spreads; they largely cancel in the differences, which use
 
 - **Back-reaction of the data on the mass.** The quadrupolar data raise the mass from the
   background's R0 = 0.57735 to M0 = 0.583847 (+1.1%), the non-linear l = 0 back-reaction.
+  Checked against S2 (Paper/hub_mass.sh, 2026-10-31; fine references at S2 = -1/24, -1/12, -1/8,
+  -1/6, +1/12): M0 - R0 = 1.54e-3, 6.50e-3, 1.57e-2, 3.06e-2, 5.57e-3 -- positive for both signs,
+  x4.2 and x4.7 per doubling -- fitted by 0.83 S2^2 - 0.77 S2^3 + 5.2 S2^4 to 4e-5; M2 = 0.0833,
+  0.1747, 0.2793, 0.405, -0.1540 (M2/S2 from -2.00 to -2.43).  Table and fits in
+  Paper/VERIFICATION.md.
 - **The moments do not see the chart.** The pre-COM run, whose pointwise error was ~1e-3, has
   moments within ~1e-5 of the reference: the translation mode moves the chart, not the geometry.
   Its mass-centring shift measured from the chart sphere of radius rho is +9e-6 at rho = 1,

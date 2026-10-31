@@ -50,6 +50,10 @@ Read off:
 4. **The `l = 0` back-reaction of the quadrupole is `O(S2^2/rho^6)`**: a few 1e-3 at rho = 1, and
    1e-14 at rho = 100.  So the mass and the far-field level are untouched by the quadrupole, and
    the agreement of `lambda(rho_out)` with the spherical value is meaningful.
+   **Wrong, corrected 2026-10-31:** the l = 0 back-reaction has a 1/rho part, i.e. it shifts the
+   mass: M0 - R0 = 0.83 S2^2 + ... = 6.5e-3 (+1.1%) at S2 = -1/12, measured on the fine spectral
+   references at five amplitudes (Paper/hub_mass.sh, Paper/VERIFICATION.md).  Hence lambda(rho_out)
+   differs from the spherical value by about 2 dM / rho_out = 1.3e-4 at rho = 100.
 5. The scalar kernel `{1,3,4}` on `P` annihilates `rho^-1` and `rho^-3`, forces `rho^-2` (the
    dipole) to vanish, and its first unintended victim is `rho^-5`, whose coefficient is
    `O(M^5) = 0.06` -- i.e. `6e-12` at rho = 100.  Below anything measured here.
