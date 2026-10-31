@@ -9,7 +9,7 @@
 # and the fine reference of ab_none_w2 itself (S2 = -1/12 in the final formulation; the paper's
 # reference was solved with the extra outer conditions of ib16k_ssbroyden).  Then the GH moments of
 # every network and reference (scripts/gh_moments_runs.py).
-#   s2h  S2 = -1/24 (half)       s2d  S2 = -1/6 (double; lambda on the sphere in [1/4, 1/2])
+#   s2h  S2 = -1/24 (half)       s2d  S2 = -1/6 (double; lambda on the sphere in [1/6, 5/12])
 # and two amplitudes with the spectral reference only (no training: a 10-step Adam run only provides
 # the run directory the spectral solve reads its problem from), for the fit of the reference masses:
 #   s2t  S2 = -1/8               s2p  S2 = +1/12 (the sign separates an S2^3 term from S2^2)
