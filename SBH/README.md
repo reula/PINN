@@ -1496,6 +1496,15 @@ required). The question (the author's): is the template redundant once the netwo
 zero at the puncture stays r^4 (the BL form) times a smooth factor; the 1+log evolution turns it into r^2
 (trumpet), which the template carried and this ansatz cannot. The chi floor (1e-5, r < 0.015 at t = 0)
 masks the innermost region in the loss.
+1D result (laptop, window 0, `plots/2026-11-02/sing_1d_notemplate.png`): the radial network alone reaches
+held-out 5.8e-8 at 4000 iterations (the template run 2.2e-7) and the same errors: by band 0.03-0.1 / 0.1-0.2
+/ 0.2-0.6 / 0.6-1 / 1-3 / 3-10, alpha 4e-5 / 2e-5 / 2e-5 / 3e-6 / 5e-6 / 1e-5 (template run 5e-5 / 3e-5 / 1e-5 /
+2e-6 / 6e-6 / 9e-6), Khat 2e-5 / 2e-5 / 2e-5 / 9e-6 / 4e-6 / 1e-5 (6e-6 / 4e-5 / 6e-5 / 2e-5 / 7e-6 / 8e-6),
+chi 8e-6 / 2e-5 / 1e-5 / 1e-5 / 3e-5 / 2e-5 (5e-6 / 1e-5 / 2e-5 / 1e-5 / 5e-6 / 7e-6); mass +2e-4 / -2e-4 / +4e-4
+at r = 0.3 / 1 / 3 (template run -2e-4 / -7e-5 / -5e-5). So in window 0 the template is not needed once the
+network is radial and the exact data enter as the offset: same accuracy in the fields, the mass 3-8x worse
+in 1-3. The puncture zero (r^4 vs r^2) did not bite in window 0 (0.03-0.1: alpha 4e-5 vs 5e-5); whether it
+does by t = 2 is for the multi-window comparison.
 
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
