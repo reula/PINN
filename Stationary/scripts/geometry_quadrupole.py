@@ -52,7 +52,11 @@ def main():
     ap.add_argument("--n-r", type=int, default=36)
     ap.add_argument("--n-theta", type=int, default=48)
     ap.add_argument("--n-radii", type=int, default=14)
-    ap.add_argument("--only", choices=("slice", "hawking"), default=None)
+    ap.add_argument("--only", choices=("slice", "hawking", "profiles"), default=None)
+    ap.add_argument("--angles", default="0,45,90",
+                    help="polar angles in degrees of the rays of geometry_profiles.png (0 = the "
+                         "symmetry axis, taken at cylindrical radius 0.1 rho_in as in the slice)")
+    ap.add_argument("--n-rays", type=int, default=80, help="radii on each ray")
     ap.add_argument("--zoom", type=float, default=6.0,
                     help="half-width of the second, zoomed slice (geometry_slice_zoom.png)")
     ap.add_argument("--moments", default=None,
@@ -75,6 +79,56 @@ def main():
     name = os.path.basename(os.path.normpath(a.run))
     M0 = json.load(open(a.moments or os.path.join(a.run, "gh_moments.json")))["ref"]["M_ernst"][0]
     print(f"[geom] M_0 of the reference {M0:.6f} (from {a.moments or os.path.join(a.run, 'gh_moments.json')})")
+
+    if a.only == "profiles":
+        angles = [float(v) for v in a.angles.split(",")]
+        r = float(cfg.rho_in) * (float(cfg.rho_out) / float(cfg.rho_in)) ** np.linspace(0, 1, a.n_rays)
+        floor = 0.1 * float(cfg.rho_in)
+        ys = []
+        for deg in angles:
+            s = np.maximum(np.sin(np.radians(deg)), floor / r)
+            ys.append(np.stack([r * s, np.zeros_like(r), r * np.sqrt(np.maximum(1 - s**2, 0.0))], -1))
+        ys = jnp.asarray(np.stack(ys, 1))                                   # (n_rays, n_angles, 3)
+        print(f"[geom] {ys.shape[0] * ys.shape[1]} nodes on {len(angles)} rays ...", flush=True)
+        net = _panels(*cylindrical_metric(lambda x: pf(x).h, lambda x: pf(x).lam, "vacuum", axis), ys)
+        ref = _panels(*cylindrical_metric(lambda x: rf(x).h, lambda x: rf(x).lam, "vacuum", axis), ys)
+        bg = _panels(*cylindrical_metric(lambda x: sph(x).h, lambda x: sph(x).lam, "vacuum", axis), ys)
+        sh = (ys.shape[0], ys.shape[1])
+        g = lambda d, k: np.asarray(d[k]).reshape(sh)                       # noqa: E731
+        np.savez(os.path.join(out, "geometry_profiles.npz"), r=r, angles=angles,
+                 K_net=g(net, "K"), K_ref=g(ref, "K"), K_sph=g(bg, "K"),
+                 S_ref=g(ref, "speciality"), S_net=g(net, "speciality"),
+                 ric_net=g(net, "vacuum_defect"))
+        cols = ["#2a78d6", "#eb6834", "#2a9d5c", "#8e5bd0"]
+        lab = lambda d: "axis" if d == 0 else ("equator" if d == 90 else f"{d:g}°")  # noqa: E731
+        fig, ax = plt.subplots(2, 2, figsize=(9.5, 7.2), constrained_layout=True)
+        for j, deg in enumerate(angles):
+            c = cols[j % len(cols)]
+            ax[0, 0].loglog(r, g(ref, "K")[:, j], color=c, label=f"reference, {lab(deg)}")
+            ax[0, 0].loglog(r, g(bg, "K")[:, j], "--", color=c, lw=1.0)
+            ax[0, 1].semilogx(r, g(ref, "K")[:, j] / g(bg, "K")[:, j], color=c, label=lab(deg))
+            ax[1, 0].loglog(r, np.maximum(g(ref, "speciality")[:, j], 1e-30), color=c, label=lab(deg))
+            ax[1, 1].loglog(r, np.maximum(np.abs(g(net, "K")[:, j] / g(ref, "K")[:, j] - 1), 1e-30),
+                            color=c, label=f"|K_net/K_ref - 1|, {lab(deg)}")
+            ax[1, 1].loglog(r, np.maximum(g(net, "vacuum_defect")[:, j], 1e-30), ":", color=c, lw=1.2)
+        ax[0, 0].loglog(r, 48 * float(cfg.R0) ** 2 / (r + float(cfg.R0)) ** 6, ":", color="k", lw=1.0,
+                        label="Schwarzschild 48 M²/r⁶ (M = R0, r = rho + R0)")
+        ax[0, 0].set_ylabel("Kretschmann K   (dashed: spherical solution)")
+        ax[0, 1].set_ylabel("K_ref / K_sph"); ax[0, 1].axhline(1, color="grey", lw=0.8)
+        ax[1, 0].set_ylabel("speciality |S - 1| of the reference (0 = type D)")
+        ax[1, 1].set_ylabel("solid: |K_net/K_ref - 1|;  dotted: |R⁽⁴⁾_ab|/√K of the network")
+        for p, t in zip(ax.ravel(), "abcd"):
+            p.set_xlabel("coordinate radius rho"); p.grid(alpha=0.3, which="both")
+            p.text(0.03, 0.92, f"({t})", transform=p.transAxes)
+            p.axvline(float(cfg.rho_in), color="grey", lw=0.8)
+        for p in (ax[0, 0], ax[0, 1], ax[1, 0], ax[1, 1]):
+            p.legend(fontsize=7, frameon=False)
+        fig.suptitle(f"{name}: S2 = {cfg.lam_bc_S2:g}, geometry along rays at "
+                     f"{', '.join(lab(d) for d in angles)} from the axis", fontsize=10)
+        png = os.path.join(out, "geometry_profiles.png")
+        fig.savefig(png, dpi=140); plt.close(fig)
+        print(f"[geom] wrote {png}", flush=True)
+        return
 
     if a.only != "hawking":
         R, Z, ys, mask = slice_grid(cfg, n_r=a.n_r, n_theta=a.n_theta)
