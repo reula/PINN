@@ -45,7 +45,7 @@ cd reference_1d
 [ -f ref_single_m0.5_dr0.005_t20.npz ] || JAX_PLATFORMS=cpu "$PY" -u sph_reference.py --dr 0.005 --tfinal 20 \
     --snap_dt 0.25 --r_save 30 --out ref_single_m0.5_dr0.005_t20.npz
 [ -f sing_bl_m0.5_dense_r3.npz ] || JAX_PLATFORMS=cpu "$PY" -u sph_reference.py --dr 0.005 --tfinal 2.5 \
-    --snap_dt 0.02 --r_save 3.0 --out sing_bl_m0.5_dense_r3.npz        # r_c up to 1 (t <= 2 runs), ~7 min
+    --snap_dt 0.02 --r_save 3.0 --out sing_bl_m0.5_dense_r3.npz        # r_c up to 1 (t <= 2 runs); ~1 h on a shared CPU
 cd ..
 
 "$PY" -u "$SCRIPT" --out "runs/$OUTDIR" --resume ${SING_ARGS:-}

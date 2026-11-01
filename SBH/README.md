@@ -1393,6 +1393,23 @@ check: max |u(0) - U0| = 1e-16. Laptop: 88 s per 250 iterations with 500 interio
 (500 iterations) already shows alpha's error peaking at the seam (1.4e-3 at r = 0.22). Hub:
 `SCRIPT=sing_1d.py OUTDIR=1d_rc02 SING_ARGS="--hard_ic" bash jobs/hub/sing.sh`.
 
+**1D twin of sing_bl_hard, window 0 (2026-11-01, laptop, 2000 interior points, 4000 iterations, ~1 h once the
+CPU was free; `plots/2026-11-01/sing_1d_rc02.png`).** Held-out loss 2.2e-7 (3D: 7.6e-5, 350x); at t = 0.25,
+rms vs the reference by band (alpha / Khat / chi): 0.05-0.2: 3.5e-5 / 2.7e-5 / 7.7e-6; 0.2-0.6: 1.0e-5 /
+6.0e-5 / 2.3e-5; 0.6-1: 2.3e-6 / 2.2e-5 / 1.4e-5; 1-3: 6.4e-6 / 7.1e-6 / 5.3e-6 (3D sing_bl_hard: alpha 4.1e-4
+/ 5.1e-4 / 9.4e-5 / 9.9e-5; the baseline 2.8e-3 / 1.3e-4 / 2.6e-5 / 3.6e-5). Largest signed errors: alpha
++8.6e-5 at r = 0.04, Khat +1.0e-4 at r = 0.41, chi +2.9e-5 at 0.30; mass -2.0e-4 / -6.8e-5 / -5.2e-5 / +1.6e-4
+at r = 0.3 / 1 / 3 / 10 (3D: -1.7e-3 at r = 1). No seam bump: the same ansatz, cutoffs, weights and shell
+weighting solve window 0 to 1e-5 in spherical symmetry, 50x better than the 3D run and 10x better than the
+baseline in the seam band. So the 3D seam error is not a property of the template ansatz; it is the 3D run
+failing to reach the loss level the ansatz allows (7.6e-5 vs 2.2e-7), and the seam is simply where the
+sharpest radial structure the network must supply sits. What differs in 3D: the network is a 3D MLP that
+has to represent a radial function (a feature at r = 0.3 is a sphere of radius 0.0125 in x/24 input units,
+in every direction), the residual has angular parts that must also vanish, 128000 points instead of 2000.
+The inner-network runs (same loss plateau ~9e-5 with 1.5x the parameters) say capacity alone is not it.
+Next, to separate representation from optimisation in 3D: `--radial_net`, the 3D run with a network of
+(t, |x - a0|) (one puncture), i.e. the 1D ansatz inside the 3D loss, points and optimiser.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
