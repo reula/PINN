@@ -1416,6 +1416,39 @@ r^2 keeps rho N smooth at the puncture). Selftest: stacks vs autodiff 6e-12, har
 twin's level (1e-7) the 3D MLP's representation of radial functions is the obstacle; if it stays at 1e-4,
 the 3D loss/sampling/optimisation is.
 
+**1D sweep on the hub (2026-11-01, 9 min per run on the A30, two windows to t = 0.5, 2000 interior points,
+4000 iterations per window; `plots/2026-11-01/sing_1d_sweep.png`).** rms vs the reference at t = 0.5 by
+band 0.05-0.2 / 0.2-0.6 / 0.6-1 / 1-3 / 3-10 (alpha | Khat), mass at r = 1, final held-out loss:
+
+| run | alpha | Khat | mass | loss |
+|---|---|---|---|---|
+| r_c 0.1 | 3e-4 1e-4 5e-5 5e-5 1e-5 | 1e-3 2e-4 8e-5 2e-5 3e-5 | -5.7e-4 | 7.5e-7 |
+| r_c 0.2 (twin) | 9e-5 1e-4 1e-5 8e-6 2e-5 | 3e-4 4e-4 5e-5 4e-5 1e-5 | -3.1e-4 | 2.9e-7 |
+| r_c 0.3 | 4e-5 4e-5 1e-5 3e-6 2e-6 | 8e-5 1e-4 1e-5 4e-6 7e-6 | -8.9e-5 | 1.8e-7 |
+| r_c 0.5 | 4e-5 2e-5 3e-6 7e-6 6e-7 | 2e-5 4e-5 2e-5 2e-6 1e-6 | -6.0e-5 | 1.5e-7 |
+| r_c 1.0 | 3e-5 4e-6 5e-6 5e-6 3e-6 | 4e-6 9e-6 1e-5 6e-6 6e-6 | -3.5e-5 | 1.5e-7 |
+| rho_power 4 | 7e-5 2e-5 5e-6 2e-6 5e-6 | 6e-5 2e-4 8e-6 1e-5 7e-6 | +1.9e-5 | 1.9e-7 |
+| w_power 2 | 1e-4 4e-5 1e-5 4e-6 1e-5 | 1e-4 7e-5 2e-5 7e-6 8e-6 | -4.4e-5 | 1.8e-7 |
+| x_scale 1 | 4e-5 3e-5 7e-6 6e-6 5e-6 | 2e-4 1e-4 8e-6 2e-5 4e-6 | -1.3e-4 | 1.8e-7 |
+| soft IC | 1e-4 1e-4 6e-6 2e-5 4e-5 | 2e-4 3e-4 4e-5 4e-5 2e-5 | -2.6e-6 | 2.7e-7 |
+
+In 1D everything is at 1e-5 to 1e-4 and the second window roughly triples the twin's window-0 error
+(alpha 2.5e-5 -> 6.4e-5, mass -6.8e-5 -> -3.1e-4): the hand-off error grows here too, just 30x lower.
+Larger r_c is monotonically better (1.0: 10-40x better than 0.2 in the seam band and the mass, with the
+r <= 3 table), a gentler W (p = 2) helps Khat and the mass 3-7x, rho^4 helps the mass but not Khat in the
+seam, the input scale hardly matters, and the hard IC buys 2x in alpha/Khat at t = 0.5 but nothing in the
+mass. Laptop window-0 runs agree (r_c 0.5: alpha 1.9e-5, Khat 4.1e-6, mass +2.0e-5; r_c 1.0: Khat 2.2e-6;
+soft: alpha 4.0e-5, mass +9.0e-5).
+
+**`sing_w0_radial` (3D code, radial network; hub, 13:34 UTC) stalls at 3.6e-3** from iteration 1000 on
+(3.5e-2 at 250, 8.6e-3 at 500, 3.9e-3 at 1000, flat to 22500; 815 s for the first 250 iterations, 3x the
+MLP's: the per-point jacfwd stacks), the loss spread over all radii (d0.05-0.5 1.0e-3, d>0.5 8e-4), while
+the same network, shell weighting, weights and optimiser give 1.5e-6 at 1000 iterations in sing_1d.py, and
+the laptop smoke run (2000 points) was already 300x behind the 1D twin at 500 iterations. So it is not the
+point count; something in the 3D path blocks the radial network. Tests: the trained centre frozen
+(`--fixed_center`; the one freedom the 1D twin lacks) and no inner cloud (`--inner_frac 0`; the 1/r term of
+the chain rule).
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
