@@ -1471,6 +1471,10 @@ Graded from the checkpoint at 10250 (`--eval_spheres` on partial.pkl), t = 0.25,
 symmetry built into the network the 3D code reaches the 1D level; the 3D MLP's representation of a
 spherically symmetric tensor field was the whole seam problem. For two punctures: one lifted radial
 network per puncture about a_A(t) plus a small 3D MLP for the non-spherical remainder.
+Final window 0 (24000 iterations, 3.2 h; held-out 4.2e-8, flat since 4000): core rms alpha 2.2e-5, chi
+4.9e-6, Khat 1.4e-5, gt 8.3e-6 (sing_bl_hard 4.8e-4 / 1.4e-4 / 2.7e-4 / 8.6e-4); by band alpha 3e-5 / 6e-6 /
+8e-7 / 1e-6 / 9e-7, Khat 7e-6 / 2e-5 / 4e-6 / 4e-6 / 3e-6, chi 6e-6 / 2e-6 / 2e-6 / 7e-7 / 1e-6; mass -1.6e-5 /
+-2.9e-5 / -2.3e-5 / +9.9e-5 at r = 0.3 / 1 / 3 / 10. Added to `plots/2026-11-01/seam_profile.png`.
 
 **Early stopping (2026-11-01).** The loss reaches its floor long before 24000 iterations (the radial run
 by 4000). `--stop_floor F --stop_tol 1.05 --stop_patience N`: a window ends once the held-out loss has

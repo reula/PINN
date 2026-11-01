@@ -22,7 +22,8 @@ OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path
 RUNS = [("w8_qn_con10 (baseline)", "long_con10_w8.npz", "#222222"), ("sing_bl_hard", "sing_bl_hard_sph.npz", "#d1495b"),
         ("sing_bl_inner (r_in 0.75, w0)", "sing_bl_inner75_sph.npz", "#2a6fdb"),
         ("r_c = 0.1 (w0)", "sing_w0_rc01_sph.npz", "#7a5195"), ("r_c = 0.3 (w0)", "sing_w0_rc03_sph.npz", "#1b9e77"),
-        ("rho_power 4 (w0)", "sing_w0_rho4_sph.npz", "#e07b00")]
+        ("rho_power 4 (w0)", "sing_w0_rho4_sph.npz", "#e07b00"),
+        ("lifted radial network (w0)", "sing_w0_radial_sph.npz", "#17a2b8")]
 Z = {n: np.load(os.path.join(D, f)) for n, f, _ in RUNS if os.path.exists(os.path.join(D, f))}
 R_C = 0.2
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.grid": True, "grid.alpha": 0.25})
