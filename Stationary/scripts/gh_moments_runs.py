@@ -7,7 +7,7 @@ with the median and spread over fit windows rho_lo in {1, 1.25, 1.5} x rho_in an
 symmetry axis is cfg.lam_bc_axis (rotated data) or R z (rotated Weyl), else z.  Weyl runs are
 compared with the closed-form rod moments (in chart units); quadrupole runs with the reference
 (--ref, rotated onto the run's axis).  The shift returned by mass centring is the run's centre of
-mass along the axis in its own chart.  Writes <run>/gh_moments.json.
+mass along the axis in its own chart.  Writes <run>/gh_moments[_<tag>].json.
 """
 from __future__ import annotations
 
@@ -58,6 +58,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("runs", nargs="+")
     ap.add_argument("--ref", default=None)
+    ap.add_argument("--tag", default="",
+                    help="write <run>/gh_moments_<tag>.json instead of gh_moments.json, so that a "
+                         "variant reference does not overwrite the one the figures read")
     a = ap.parse_args(argv)
     for run in a.runs:
         cfg, model, state = load_run(run, "params.pkl")[:3]
@@ -91,7 +94,7 @@ def main(argv=None):
             print(f"[gh]   reference M0..M5 {fmt(res['ref']['M_ernst'])}", flush=True)
             print(f"[gh]             spread {fmt(res['ref']['M_ernst_spread'])}", flush=True)
             print(f"[gh]   net - ref        {fmt(d)}", flush=True)
-        with open(os.path.join(run, "gh_moments.json"), "w") as fh:
+        with open(os.path.join(run, f"gh_moments{'_' + a.tag if a.tag else ''}.json"), "w") as fh:
             json.dump(res, fh, indent=1, default=float)
 
 

@@ -180,7 +180,11 @@ def solve(cfg, exact_fields, batch, ls=(2,), n_radial=32, nonlinear=False, iters
             t *= 0.5
         if ok:
             c, r = c_try, r_try
-        step = {"iter": it, "linear_residual": lin, "residual": float(jnp.linalg.norm(r)),
+        try:                                       # peak device memory so far (CUDA only)
+            peak_gb = float(jax.devices()[0].memory_stats()["peak_bytes_in_use"]) / 2**30
+        except Exception:
+            peak_gb = float("nan")
+        step = {"iter": it, "linear_residual": lin, "peak_gb": peak_gb, "residual": float(jnp.linalg.norm(r)),
                 "loss": float(jnp.sum(r * r)), "sv_max": float(sv[0]), "sv_min": float(sv[-1]),
                 "cond": float(sv[0] / max(sv[-1], 1e-300)), "wall": time.time() - t0,
                 "step_length": t if ok else 0.0}
@@ -189,7 +193,8 @@ def solve(cfg, exact_fields, batch, ls=(2,), n_radial=32, nonlinear=False, iters
             print(f"[specref] {'Newton ' + str(it) if nonlinear else 'linear'}: "
                   f"|r0 + J dc| = {lin:.3e}, |r(c)| = {step['residual']:.3e} "
                   f"(loss {step['loss']:.3e}), cond(J) = {step['cond']:.2e}, "
-                  f"step {step['step_length']:g}  ({step['wall']:.1f}s)", flush=True)
+                  f"step {step['step_length']:g}, peak {step['peak_gb']:.1f} GB  ({step['wall']:.1f}s)",
+                  flush=True)
         if nonlinear and not ok:
             print("[specref] no step length reduces the residual: stopping", flush=True)
             break
