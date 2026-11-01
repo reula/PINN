@@ -4,6 +4,7 @@
 #
 #   OUTDIR=sing_bl SING_ARGS="--template bl" bash jobs/hub/sing.sh
 #   OUTDIR=sing_tr SING_ARGS="--template trumpet" bash jobs/hub/sing.sh
+#   SCRIPT=sing_1d.py OUTDIR=1d_rc02 SING_ARGS="--hard_ic" bash jobs/hub/sing.sh      (the 1D twin, 2026-11-01)
 #
 # launches itself detached and returns; waits for the Stationary hub batches first (WAIT_FOR, as in
 # stage2.sh).  The template tables (reference_1d/*.npz, git-ignored) are generated on the CPU if they
@@ -27,6 +28,8 @@ if [ -n "$WAIT_FOR" ] && pgrep -f "$WAIT_FOR" > /dev/null; then
 fi
 echo "=== hub sing $OUTDIR $(date -u '+%F %T UTC')  HEAD $(git rev-parse --short HEAD)"
 echo "SING_ARGS=${SING_ARGS:-}"
+SCRIPT=${SCRIPT:-sing_pinn.py}
+echo "SCRIPT=$SCRIPT"
 
 PY="$HERE/../Stationary/.venv/bin/python"
 export JAX_ENABLE_X64=1 MPLBACKEND=Agg XLA_PYTHON_CLIENT_PREALLOCATE=false
@@ -41,7 +44,9 @@ cd reference_1d
     --snap_dt 0.02 --r_save 1.0 --out sing_bl_m0.5_dense.npz
 [ -f ref_single_m0.5_dr0.005_t20.npz ] || JAX_PLATFORMS=cpu "$PY" -u sph_reference.py --dr 0.005 --tfinal 20 \
     --snap_dt 0.25 --r_save 30 --out ref_single_m0.5_dr0.005_t20.npz
+[ -f sing_bl_m0.5_dense_r3.npz ] || JAX_PLATFORMS=cpu "$PY" -u sph_reference.py --dr 0.005 --tfinal 2.5 \
+    --snap_dt 0.02 --r_save 3.0 --out sing_bl_m0.5_dense_r3.npz        # r_c up to 1 (t <= 2 runs), ~7 min
 cd ..
 
-"$PY" -u sing_pinn.py --out "runs/$OUTDIR" --resume ${SING_ARGS:-}
+"$PY" -u "$SCRIPT" --out "runs/$OUTDIR" --resume ${SING_ARGS:-}
 echo "=== done $(date -u '+%F %T UTC')"
