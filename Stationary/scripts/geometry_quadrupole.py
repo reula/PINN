@@ -51,6 +51,12 @@ def main():
     ap.add_argument("--n-theta", type=int, default=48)
     ap.add_argument("--n-radii", type=int, default=14)
     ap.add_argument("--only", choices=("slice", "hawking"), default=None)
+    ap.add_argument("--zoom", type=float, default=6.0,
+                    help="half-width of the second, zoomed slice (geometry_slice_zoom.png)")
+    ap.add_argument("--moments", default=None,
+                    help="gh_moments.json holding the reference's M_0 (default: the run's own, "
+                         "which scripts/gh_moments_runs.py wrote against --ref; the reference's "
+                         "directory may hold another variant's)")
     a = ap.parse_args()
     import matplotlib
     matplotlib.use("Agg")
@@ -65,7 +71,8 @@ def main():
     axis = axis_from_config(cfg)
     out = a.out or a.run
     name = os.path.basename(os.path.normpath(a.run))
-    M0 = json.load(open(os.path.join(os.path.dirname(a.ref), "gh_moments.json")))["ref"]["M_ernst"][0]
+    M0 = json.load(open(a.moments or os.path.join(a.run, "gh_moments.json")))["ref"]["M_ernst"][0]
+    print(f"[geom] M_0 of the reference {M0:.6f} (from {a.moments or os.path.join(a.run, 'gh_moments.json')})")
 
     if a.only != "hawking":
         R, Z, ys, mask = slice_grid(cfg, n_r=a.n_r, n_theta=a.n_theta)
@@ -83,19 +90,32 @@ def main():
             (put(ref["speciality"]), "speciality  |S - 1|, reference (0 = type D)", "magma"),
             (put(net["speciality"]), "speciality  |S - 1|, network", "magma"),
         ]
-        fig, ax = plt.subplots(2, 3, figsize=(15.5, 8.2), constrained_layout=True)
-        for p, (d, title, cmap) in zip(ax.ravel(), panels):
-            im = p.pcolormesh(R, Z, np.log10(np.maximum(d, 1e-30)), cmap=cmap, shading="auto")
-            p.set_title(title, fontsize=10)
-            p.set_xlabel("rho"); p.set_ylabel("z"); p.set_aspect("equal")
-            fig.colorbar(im, ax=p, shrink=0.85, label="log10")
-        fig.suptitle(f"{name}: gauge-invariant geometry, S2 = {cfg.lam_bc_S2:g} "
-                     f"(lambda on the sphere from {cfg.lam0 + cfg.lam_bc_S2:.3f} to "
-                     f"{cfg.lam0 - 0.5 * cfg.lam_bc_S2:.3f});  reference {os.path.basename(a.ref)}",
-                     fontsize=10)
-        png = os.path.join(out, "geometry_slice.png")
-        fig.savefig(png, dpi=130); plt.close(fig)
-        print(f"[geom] wrote {png}", flush=True)
+        np.savez(os.path.join(out, "geometry_slice.npz"), R=R, Z=Z,
+                 **{t: np.asarray(d) for t, (d, _, _) in zip("abcdef", panels)})
+        for zoom, fname in ((None, "geometry_slice.png"), (a.zoom, "geometry_slice_zoom.png")):
+            fig, ax = plt.subplots(2, 3, figsize=(15.5, 8.2) if zoom is None else (15.5, 5.6),
+                                   constrained_layout=True)
+            for p, (d, title, cmap) in zip(ax.ravel(), panels):
+                v = np.log10(np.maximum(d, 1e-30))
+                if zoom is not None:                         # colour range of the zoomed region only
+                    inside = (R < zoom) & (np.abs(Z) < zoom)
+                    kw = dict(vmin=np.nanmin(v[inside]), vmax=np.nanmax(v[inside]))
+                else:
+                    kw = {}
+                im = p.pcolormesh(R, Z, v, cmap=cmap, shading="auto", **kw)
+                p.set_title(title, fontsize=10)
+                p.set_xlabel("rho"); p.set_ylabel("z"); p.set_aspect("equal")
+                if zoom is not None:
+                    p.set_xlim(0, zoom); p.set_ylim(-zoom, zoom)
+                fig.colorbar(im, ax=p, shrink=0.85, label="log10")
+            fig.suptitle(f"{name}: gauge-invariant geometry, S2 = {cfg.lam_bc_S2:g} "
+                         f"(lambda on the sphere from {cfg.lam0 + cfg.lam_bc_S2:.3f} to "
+                         f"{cfg.lam0 - 0.5 * cfg.lam_bc_S2:.3f});  reference "
+                         f"{os.path.basename(a.ref)}" + ("" if zoom is None else f";  zoom rho < {zoom:g}"),
+                         fontsize=10)
+            png = os.path.join(out, fname)
+            fig.savefig(png, dpi=130); plt.close(fig)
+            print(f"[geom] wrote {png}", flush=True)
 
     if a.only != "slice":
         radii = np.geomspace(float(cfg.rho_in), float(cfg.rho_out) * 0.98, a.n_radii)
@@ -106,6 +126,7 @@ def main():
             rows.append([float(g[0]["hawking_mass"]), float(g[1]["hawking_mass"]),
                          float(g[2]["hawking_mass"]), float(g[1]["lam_mean"]), float(g[1]["r_areal"])])
         P = np.asarray(rows)
+        np.savez(os.path.join(out, "hawking_profile.npz"), radii=radii, P=P, M0=M0)
         fig, ax = plt.subplots(1, 2, figsize=(13, 4.6), constrained_layout=True)
         ax[0].plot(radii, P[:, 0], "o-", label="m_H  network")
         ax[0].plot(radii, P[:, 1], "s--", label="m_H  reference")
