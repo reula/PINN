@@ -156,7 +156,7 @@ def geometry_slice_figure(run_dir, out_png=None, n_r=48, n_theta=64, n_quad=200,
         (K_net, "Kretschmann  K_net  (log)", "viridis", True),
         (K_ex, "Kretschmann  K_exact  (log)", "viridis", True),
         (err, "gauge-invariant error  |K_net/K_exact - 1|", "magma", True),
-        (put(net["vacuum_defect"]), "vacuum defect  |R_ab|/sqrt|K|", "cividis", True),
+        (put(net["vacuum_defect"]), r"4-D Ricci  $|R^{(4)}_{ab}|/\sqrt{|K|}$", "cividis", True),
         (put(net["speciality"]), "algebraic speciality  |S - 1|   (0 = type D)", "magma", True),
         (put(np.abs(net["pontryagin"])), "Pontryagin  |C.C~|   (0 = static)", "magma", True),
     ]

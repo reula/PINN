@@ -12,7 +12,9 @@ frame, as there.  Writes into the run directory:
     geometry_slice.png     (rho, z) slice, six panels: Kretschmann of the reference; its change
                            from the spherical background |K_ref/K_sph - 1| (what the quadrupole
                            does to the curvature); the gauge-invariant error |K_net/K_ref - 1|;
-                           the network's vacuum defect |R_ab|/sqrt|K|; the algebraic speciality
+                           the network's 4-D Ricci |R^(4)_ab|/sqrt|K| (the Ricci tensor of the static
+                           vacuum completion g = -lam dt^2 + h/lam, over the curvature scale; 0 for an
+                           exact solution); the algebraic speciality
                            |S - 1| of the reference and of the network (0 = type D; the sphere
                            is type D, the quadrupole is not)
     hawking_profile.png    m_H(rho) of the network, of the reference and of the spherical solution,
@@ -86,7 +88,7 @@ def main():
             (Kr, "Kretschmann of the reference  K_ref", "viridis"),
             (np.abs(Kr / Kb - 1.0), "change from the sphere  |K_ref/K_sph - 1|", "viridis"),
             (np.abs(Kn / Kr - 1.0), "gauge-invariant error  |K_net/K_ref - 1|", "magma"),
-            (put(net["vacuum_defect"]), "network vacuum defect  |R_ab|/sqrt|K|", "cividis"),
+            (put(net["vacuum_defect"]), r"network: 4-D Ricci  $|R^{(4)}_{ab}|/\sqrt{|K|}$", "cividis"),
             (put(ref["speciality"]), "speciality  |S - 1|, reference (0 = type D)", "magma"),
             (put(net["speciality"]), "speciality  |S - 1|, network", "magma"),
         ]
