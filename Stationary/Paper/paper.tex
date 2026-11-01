@@ -123,6 +123,12 @@ The harmonic condition still allows the radial maps $\rho\to c_1\rho + c_2 F_2(\
 The domain is the shell $\rho_{\rm in}\le\rho\le\rho_{\rm out}$.
 
 \paragraph{Inner sphere.} We prescribe $\lambda$ and the induced metric,
+
+\begin{equation}
+  \lambda|_{S_{in}} = \lambda_{in}, \qquad h_{induced}|_{S_{in}} = h_{2D}
+\end{equation}
+where $\lambda_{in}$ is any positive smooth function defined on the inner boundary and $h_{2D}$ is any positive definite 2-metric defined on that same boundary. In particular we shall later use: 
+
 \begin{equation}
   \lambda = \lambda_0 + S_1\, n\cdot e + S_2\, P_2(n\cdot e), \qquad
   P h P = \frac{r_{\rm in}^2}{\rho_{\rm in}^2}\, P ,
@@ -134,9 +140,12 @@ In harmonic gauge these are determined by the solution itself, and prescribing t
 Numerically this shows up as a loss that stalls instead of decreasing: a spectral approximation of the quadrupolar problem (Secs.~\ref{sec:specref} and~\ref{sec:quadrupole}; 6 Legendre and 24 Chebyshev modes) computed with $h_{rA}=0$ imposed stalled at a loss of $1.8\times10^{-5}$, with a non-decaying $l=2$ part, and the same approximation reached $3\times10^{-9}$ once the condition was removed.
 Since the spectral approximation is unrelated to the networks, this floor is a property of the boundary-value problem, not of the approximation method.
 
+\claude{This paragraph should go on the specific solution section, not here. Here we are looking at the generic problem}
 The constants $\lambda_0$, $S_1$, $S_2$ and $r_{\rm in}$ are free data.
 The equations~\eqref{eq:ricci}--\eqref{eq:lam} are invariant under $\lambda\to k\lambda$ with $k$ constant, and this scale is fixed by the outer condition $\lambda\to1$ below.
 For spherical data ($S_1=S_2=0$) $\lambda_0$ and $r_{\rm in}$ then fix the mass: with $r_S$ the Schwarzschild areal radius of the inner sphere, $\lambda_0 = 1-2M/r_S$ and $r_{\rm in} = \sqrt{\lambda_0}\,r_S$ (since $h=\lambda\gamma$), so $M = r_{\rm in}(1-\lambda_0)/(2\sqrt{\lambda_0})$.
+
+\claude{This part continues ok}
 In the traditional approach to the problem one would look for boundary conditions that would imply the enforcement of the harmonic gauge condition once the equations are solved.
 In our approach the harmonic gauge condition is imposed directly in the interior: since the connection is the Christoffel symbol of the network metric, $\Gamma^i=S^i$ is a condition on the first derivatives of $h$, and it enters the loss as one more residual, together with the field equations (Sec.~\ref{sec:code}); the boundary conditions then only have to select a unique solution among those of the equations and the gauge condition.
 This considerably simplifies their choice, since no conditions are needed whose role is to propagate the gauge.
@@ -147,7 +156,7 @@ This considerably simplifies their choice, since no conditions are needed whose 
   \label{eq:robin}
 \end{equation}
 which annihilate the decaying powers $\rho^{-p_f},\dots,\rho^{-p_f-n+1}$.
-The exponents chosen imply the asymptotic conditions, $\delta h\sim\rho^{-2}$, $\Gamma\sim\rho^{-3}$, $\lambda-1\sim\rho^{-1}$.
+The exponents chosen imply the asymptotic conditions, $\delta h\sim\rho^{-2}$, $\Gamma\sim\rho^{-3}$, $\lambda-1\sim\rho^{-1}$. \claude{We don't apply to lambda, but to P! We need to say it better, like the asymptotic conditions in the multipolar sense are not applied to lambda, which violates them, but rather to P....}
 Applying them to the Schwarzschild solution~\eqref{eq:schw} gives local decay rates $2.00$, $3.005$ and $0.952$ at $\rho=20$.
 For the scalar we impose the condition on the Geroch--Hansen potential~\cite{Geroch1970,Hansen1974}
 \begin{equation}
@@ -157,7 +166,9 @@ For the scalar we impose the condition on the Geroch--Hansen potential~\cite{Ger
 whose monopole $M/\rho + M^3/\rho^3+\dots$ has no $\rho^{-2}$ term, unlike $\lambda = 1-2M/\rho+2M^2/\rho^2-\dots$.
 The Robin conditions are chosen so that $\lambda_\infty=1$, and $h_{\infty} = \delta$.
 These pointwise conditions on the outer sphere are all that is imposed there.
-We also tried strengthening them: the same conditions on further spheres inside $\rho_{\rm out}$ (at $0.7$, $0.8$, $0.9\,\rho_{\rm out}$), and spherical means of order-one Robin combinations of $h_{rr}$, $\operatorname{tr}h$ and $\mathcal P$ at $\rho_{\rm out}$.
+
+\claude{I would take away all this, it only confuses and does not add anything important
+}We also tried strengthening them: the same conditions on further spheres inside $\rho_{\rm out}$ (at $0.7$, $0.8$, $0.9\,\rho_{\rm out}$), and spherical means of order-one Robin combinations of $h_{rr}$, $\operatorname{tr}h$ and $\mathcal P$ at $\rho_{\rm out}$.
 With the inner condition~\eqref{eq:innerbc} and the center of mass fixed (see below) they do not improve the solution: added to the run of Sec.~\ref{sec:quadrupole} with the center-of-mass condition, both together raise the loss seven times ($9.2\times10^{-11}$ against $1.3\times10^{-11}$) and the error three times in $\lambda$ and in $h$, and either one alone is no better than none.
 The only quantity they improve is the far-field $\lambda$ error, from $7\times10^{-9}$ to $9\times10^{-10}$, already $4\times10^{4}$ times below the perturbation there.
 We therefore do not use them.
@@ -207,7 +218,7 @@ For axisymmetric problems there is a simpler system, namely we look for $(h, \la
   \label{eq:axisym}
 \end{gather}
 with $a,b,c,d,u$ functions of $(t,\mu=n\cdot z)$, and optionally of $\rho_{\rm in}/\rho$ (the decay feature).
-At width 20 and depth 6 the five layers between hidden layers have $5\times21\times20 = 2100$ parameters in every network, and the counts differ only in the first and last layers: the axisymmetric network, with the three inputs $(t,\mu,\rho_{\rm in}/\rho)$ and the five outputs $(a,b,c,d,u)$, has $4\times20+2100+21\times5 = 2285$ (2265 without the decay feature), and the general one, with the four inputs $(n,t)$ and seven outputs, $5\times20+2100+21\times7 = 2347$.
+At width 20 and depth 6 the five layers between hidden layers have $5\times21\times20 = 2100$ parameters in every network, and the counts differ only in the first and last layers: the axisymmetric network, with the three inputs $(t,\mu,\rho_{\rm in}/\rho)$ and the five outputs $(a,b,c,d,u)$, has $4\times20+2100+21\times5 = 2285$ (2265 without the decay feature), and the general one, with the four inputs $(n,t)$ and seven outputs, $5\times20+2100+21\times7 = 2347$. \claude{add here a note about the bigger networks we also used}
 Spherically symmetric tests use $h = \alpha(\rho)\delta+\beta(\rho)nn$.
 
 \paragraph{Loss.} The parameters are found by minimizing a loss: a non-negative function of $\theta$ that vanishes exactly when the network fields satisfy the equations, the gauge and the boundary conditions at the sampled points.
@@ -224,7 +235,7 @@ $p=(2,1,2)$ makes every residual dimensionless; for the quadrupolar problem, in 
 $w_{\rm in}=w_{\rm out}=w_{\rm com}=100$ (10 for the Weyl tests).
 The center-of-mass term uses a fixed product quadrature on each sphere, Gauss--Legendre in $\mu=\cos\theta$ and uniform in $\phi$: $24\times8$ nodes for the axisymmetric network and $48\times32$ for the three-dimensional one (with data about an axis other than $z$, the coarser rule aliases the angular structure on the inner sphere; $48\times32$ agrees with $96\times64$ there).
 
-\paragraph{Sampling points} Interior points are drawn log-uniformly in $\rho$ with uniform directions, boundary points uniformly on the inner and outer spheres; all are redrawn every 500 iterations.
+\paragraph{Sampling points} Since we expect the largest features of our approximations to be near the inner boundary, interior points are drawn log-uniformly in $\rho$ with uniform directions, boundary points uniformly on the inner and outer spheres; all are redrawn every 500 iterations. \claude{Perhaps we can rewrite the above sentence}
 Every result is checked on five fresh samples, on which the loss agrees with the training loss to within a few per cent (the ratio is 0.99--1.05 for the quadrupolar runs).
 This checks that the parameters have not adapted to the particular points (overfitting): the network satisfies the equations between the points as well as at them.
 
@@ -245,7 +256,7 @@ For axisymmetric data even under $z\to-z$ we write the fields as the spherical s
 with $P_l(\mu)$ the Legendre polynomials, $e = \hat z-\mu n$ and $l = 0,2,\dots,L$ (for $l=0$ only $f^0_0$, $f^0_1$, $f^0_2$), and each $f^l_a(\rho) = \sum_{j<J} c^l_{aj}\,T_j(2t-1)$ a sum of Chebyshev polynomials of $\ln\rho$.
 The coefficients $c$ minimize the same residual vector as the networks, on a fixed set of points, by the Gauss--Newton method: with $r(c)$ the vector of all residuals and $J = \partial r/\partial c$, $c\to c-(J^TJ)^{-1}J^Tr$, which converges in a few iterations for so few unknowns.
 The method has nothing in common with the networks except the residual, so two independent things are compared.
-It also tells how small the loss of a given problem can become: a floor reached by both methods belongs to the problem, as for the inner condition of Sec.~\ref{sec:bcs}.
+It also tells how small the loss of a given problem can become: a floor reached by both methods belongs to the problem, as for the inner condition of Sec.~\ref{sec:bcs}.\claude{This sentence is not clear, neither the ones that follow}
 Its rotated version grades the off-axis runs.
 The parameters of the approximation used for the quadrupolar problem are given in Sec.~\ref{sec:quadrupole}.
 
@@ -263,6 +274,7 @@ We give it the closed-form fields of an exact solution instead, for the spherica
   \tfrac{\rho-R_0}{\rho+R_0}\Bigr),
 \end{equation}
 and evaluate the loss through the same code: the derivatives by the same automatic differentiation, and the same residuals, boundary terms and weights.
+\claude{I think we need to explain this, is it so that the exact solution is converted into a neural form via a loss looking to the difference with the exact solution and then automatic differentiation is applied to the neural representation?}
 Every term must vanish to rounding; an error in a sign or an index anywhere in the equations, the gauge or the boundary operators leaves a residual of order one.
 For~\eqref{eq:schw} the total loss is below $10^{-16}$.
 For the two-rod Weyl solution it is $1.3\times10^{-28}$ with the gauge source~\eqref{eq:cylsource}; with the harmonic condition ($S=0$) it is not small, since the Weyl chart is not harmonic, which shows that the check is sensitive to the gauge term.
