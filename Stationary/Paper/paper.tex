@@ -479,46 +479,68 @@ mass (Sec.~\ref{sec:moments}) is $M_0 = 0.583847$, 1.1\% above the $R_0 = 0.5773
 spherical solution with the same $\lambda_0$ (the approximation solved with the additional outer
 conditions of Sec.~\ref{sec:bcs} gives the same six digits). The shift is the $l=0$
 back-reaction of the quadrupole, second order in $S_2$ according to linear theory. To check this
-we solved the spectral approximation for four more amplitudes (Table~\ref{tab:mass},
-Fig.~\ref{fig:mass}). The shift
-is positive for both signs of $S_2$ and doubling $S_2$ multiplies it by 4.2 and 4.7; the fit
-$M_0-R_0 = aS_2^2+bS_2^3+cS_2^4$ to the five values, with $a=0.83$, $b=-0.77$, $c=5.2$,
-reproduces them to $4\times10^{-5}$, and no term linear in $S_2$ is needed (the even part of the
-two values at $S_2=\pm1/12$ alone gives $a = 0.87$). The quadrupole moment is linear to leading
-order, with $M_2/S_2$ going from $-2.00$ at $S_2=-1/24$ to $-2.43$ at $-1/6$. For $S_2=-1/24$ and
-$-1/6$ we also trained the networks (Appendix~\ref{app:repro}): their masses agree with those of
-their references to $2\times10^{-9}$ and $4\times10^{-7}$ ($4\times10^{-8}$ at $-1/12$), far
-below the shifts, and their errors scale with the data: loss $3.2\times10^{-12}$ and rms errors
-$2.7\times10^{-9}$ in $\lambda$, $1.0\times10^{-7}$ in $h$ at $-1/24$; $2.5\times10^{-10}$,
-$2.2\times10^{-7}$ and $1.9\times10^{-6}$ at $-1/6$, where $\lambda$ ranges from $1/6$ to $5/12$ on
-the sphere and the reference itself is less converged (its Gauss--Newton residual is 100 times
-that at $-1/12$).
+we trained networks and solved the spectral reference for seven amplitudes (Table~\ref{tab:mass},
+Fig.~\ref{fig:mass}). For $|S_2|\leq1/6$ the shift is positive for both signs of $S_2$ and
+doubling $S_2$ multiplies it by 4.2 and 4.7; the fit $M_0-R_0 = aS_2^2+bS_2^3+cS_2^4$ to the five
+spectral references with $a=0.83$, $b=-0.77$, $c=5.2$ reproduces them to $4\times10^{-5}$, and no
+term linear in $S_2$ is needed (the even part of the two values at $S_2=\pm1/12$ alone gives
+$a = 0.87$). The quadrupole moment is linear to leading order, with $M_2/S_2$ going from $-2.00$
+at $S_2=-1/24$ to $-2.43$ at $-1/6$. The masses of the networks (width 20, Appendix~\ref{app:repro})
+agree with those of their spectral references to $2\times10^{-9}$ at $-1/24$, $4\times10^{-8}$ at
+$-1/12$ and $4\times10^{-7}$ at $-1/6$, far below the shifts, and their errors scale with the data:
+loss $3.2\times10^{-12}$ and rms errors $2.7\times10^{-9}$ in $\lambda$, $1.0\times10^{-7}$ in $h$
+at $-1/24$; $2.5\times10^{-10}$, $2.2\times10^{-7}$ and $1.9\times10^{-6}$ at $-1/6$, where
+$\lambda$ ranges from $1/6$ to $5/12$ on the sphere.
 
-\begin{table}
-\caption{Mass and quadrupole moment of the spectral approximations (1008 unknowns) for five
-amplitudes of the datum, $R_0 = 1/\sqrt3 = 0.577350$. The spread over the fit windows of
-Sec.~\ref{sec:moments} is below $10^{-4}$ in $M_0$ and $4\times10^{-3}$ in $M_2$, largest at
-$S_2=-1/6$.}
+Beyond that the shift stops being quadratic: $(M_0-R_0)/S_2^2$ rises from 1.10 at $-1/6$ to 1.48
+at $-1/4$ and 2.10 at $-0.30$, where $\lambda$ falls to $1/12$ and $1/30$ at the poles of the
+sphere, and the fit of the small amplitudes underestimates the shift by 9\% and 27\% there. The
+hard end also asks more of both methods. At $S_2=-1/4$ the spectral reference needs angular modes
+up to $l=14$ and 48 radial modes (its residual is $4.6\times10^{-5}$), and the width-20 network
+then reaches a loss of $2.5\times10^{-8}$ with rms errors $3.9\times10^{-7}$ in $\lambda$ and
+$7.0\times10^{-6}$ in $h$ and a mass $6\times10^{-7}$ from that of the reference. A width-40
+network lowers the loss on its training points to $2.3\times10^{-10}$ and the errors to
+$1.9\times10^{-7}$ and $3.4\times10^{-6}$ (mass $7\times10^{-7}$ away), but on fresh samples its
+loss is eleven times its training loss. At $S_2=-0.30$ the spectral reference needs $l\leq20$: with
+$l\leq14$ it stalls at a loss of $1.3\times10^{-6}$, and the corrected one (residual
+$7\times10^{-5}$) moves its mass by $5\times10^{-4}$. The networks do not converge there. The width-20
+one stops at a loss of $1.6\times10^{-6}$, errors $4.7\times10^{-5}$ and $8.1\times10^{-5}$ and a
+mass $7\times10^{-5}$ from the reference's; the width-40 one reaches $4\times10^{-8}$ on its
+training points but 170 times that on fresh samples, errors $1.2\times10^{-5}$ and
+$1.5\times10^{-5}$ and a mass $1.1\times10^{-3}$ away, within the $4\times10^{-3}$ spread of
+the extraction of the mass.
+
+\begin{table*}
+\caption{Mass and quadrupole moment of the network (the best one for each amplitude; width in
+the third column, empty where none was trained) and of the spectral reference, with
+$R_0 = 1/\sqrt3 = 0.577350$. The spectral references use $l\leq10$ and 36 radial modes for
+$|S_2|\leq1/6$, $l\leq14$ and 48 radial modes at $-1/4$ and $l\leq20$ and 48 at $-0.30$. The spread
+of the mass over the fit windows of Sec.~\ref{sec:moments} is below $10^{-4}$ in $M_0$ up to
+$S_2=-1/6$, and $1.1\times10^{-3}$ and $4.2\times10^{-3}$ at $-1/4$ and $-0.30$.}
 \label{tab:mass}
 \begin{ruledtabular}
-\begin{tabular}{ccccc}
-$S_2$ & $M_0$ & $M_0-R_0$ & $(M_0-R_0)/S_2^2$ & $M_2$ \\
+\begin{tabular}{cccccccc}
+ & & & \multicolumn{2}{c}{$M_0$} & & \multicolumn{2}{c}{$M_2$} \\
+$S_2$ & $\lambda_{\min}$ & width & network & spectral ref. & $(M_0^{\rm spec}-R_0)/S_2^2$ & network & spectral ref. \\
 \hline
-$-1/24$ & 0.578886 & $1.54\times10^{-3}$ & 0.885 & 0.0833 \\
-$-1/12$ & 0.583847 & $6.50\times10^{-3}$ & 0.936 & 0.1747 \\
-$-1/8$  & 0.593055 & $1.57\times10^{-2}$ & 1.005 & 0.2793 \\
-$-1/6$  & 0.60797  & $3.06\times10^{-2}$ & 1.102 & 0.405 \\
-$+1/12$ & 0.582915 & $5.57\times10^{-3}$ & 0.801 & $-0.1540$ \\
+$-0.30$ & 0.033 & 40 & 0.765429 & 0.766484 & 2.101 & 1.4696 & 1.4072 \\
+$-1/4$ & 0.083 & 40 & 0.669611 & 0.669610 & 1.476 & 0.8067 & 0.8067 \\
+$-1/6$ & 0.167 & 20 & 0.607969 & 0.607970 & 1.102 & 0.4052 & 0.4052 \\
+$-1/8$ & 0.208 & -- & -- & 0.593055 & 1.005 & -- & 0.2793 \\
+$-1/12$ & 0.250 & 20 & 0.583847 & 0.583847 & 0.936 & 0.1747 & 0.1747 \\
+$-1/24$ & 0.292 & 20 & 0.578886 & 0.578886 & 0.885 & 0.0833 & 0.0833 \\
+$+1/12$ & 0.417 & -- & -- & 0.582915 & 0.801 & -- & $-0.1540$ \\
 \end{tabular}
 \end{ruledtabular}
-\end{table}
+\end{table*}
 
 \begin{figure}
 \includegraphics[width=\columnwidth]{figs/mass_s2.png}
-\caption{The mass shift (a) and the quadrupole moment (b) of the spectral approximations against
-the amplitude $S_2$ of the datum (Table~\ref{tab:mass}). Solid: the fit
-$0.83S_2^2-0.77S_2^3+5.2S_2^4$; dashed: its quadratic term, and $-2S_2$. The crosses are the
-masses of the trained networks, which agree with the references to $4\times10^{-7}$ or better.}
+\caption{The mass shift (a) and the quadrupole moment (b) against the amplitude $S_2$ of the datum
+(Table~\ref{tab:mass}): the masses of the networks (points) and of the spectral references (open
+squares, with the spread of the extraction). Solid: the fit
+$0.83S_2^2-0.77S_2^3+5.2S_2^4$ of the five spectral references with $|S_2|\leq1/6$, dashed beyond
+them; dotted: its quadratic term, and $-2S_2$.}
 \label{fig:mass}
 \end{figure} The best networks below reach
 a lower loss ($1.3\times10^{-11}$) with 2285 parameters, so the errors we quote are differences
@@ -728,8 +750,14 @@ NVIDIA A30 (24~GB). Each result is produced by the commands below, all in the re
   \texttt{Paper/hub\_qp4.sh} (\texttt{qp\_rot4\_n32768\_*}, width 40, 30 minutes per stage).
   The mass against $S_2$ (Table~\ref{tab:mass}), \texttt{Paper/hub\_mass.sh}: the networks
   \texttt{ms\_s2h\_*} ($S_2=-1/24$) and \texttt{ms\_s2d\_*} ($-1/6$), and the spectral
-  approximation of each amplitude (\texttt{specref\_nonlinear\_fine} in the run directory;
-  \texttt{Paper/commands\_specref.sh} for its settings, 35--40 minutes each).
+  reference of each amplitude (\texttt{specref\_nonlinear\_fine} in the run directory;
+  \texttt{Paper/commands\_specref.sh} for its settings, 35--40 minutes each). The hard end:
+  the networks \texttt{ms\_s2\_025\_*} and \texttt{ms\_s2\_030\_*} continued by
+  \texttt{Paper/hub\_hard2.sh} and, at width 40, \texttt{Paper/hub\_hard3.sh}
+  (\texttt{*\_b40\_*}); the spectral references with the damped step of
+  \texttt{stationary/specref.py}, \texttt{Paper/hub\_hardref.sh} ($-1/4$, tag \texttt{damp}) and
+  \texttt{Paper/hub\_bigref.sh} ($-0.30$, tag \texttt{big\_l20}; 12--40 minutes per Newton step
+  on one A30, 6\,GB of device memory).
 \item The spectral reference: \texttt{Paper/commands\_specref.sh} (reproduces the loss
   $2.793\times10^{-11}$; 36 minutes on one A30).
 \item Grading and moments: \texttt{scripts/grade\_rotated.py}, \texttt{scripts/fresh\_sample\_loss.py},

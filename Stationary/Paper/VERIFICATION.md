@@ -294,3 +294,29 @@ Datum lambda = 1/3 + S2 P2: minimum 1/12 (S2 = -0.25) and 1/30 (-0.30) at the po
 4. Next (hub_hard3.sh, Mendieta): DSGNAR on top of the stalls (5 cycles x 60, sketch 2000) and a
    width-40 network, at both amplitudes; the -0.30 reference with the corrected solver
    (hub_hardref.sh --run 30 damp).
+
+## The hard end graded (2026-11-01; Mendieta: hub_hardref.sh, hub_bigref.sh, hub_hard2.sh, hub_hard3.sh)
+
+Networks against the corrected spectral references; moments by scripts/gh_moments_runs.py --tag.
+
+| S2 | run | loss (train) | fresh/train | rms dlam | rms dh | M0 net - spec | M2 net - spec |
+|---|---|---|---|---|---|---|---|
+| -0.25 | ms_s2_025_w5 (width 20) | 2.5e-8 | 1.17 | 3.9e-7 | 7.0e-6 | -6.4e-7 | +2.6e-5 |
+| -0.25 | ms_s2_025_b40_w3 (width 40) | 2.3e-10 | 11 | 1.9e-7 | 3.4e-6 | +6.5e-7 | -6.2e-6 |
+| -0.25 | ms_s2_025_dsg (DSGNAR on w5) | 2.1e-8 | 1.5 | - | - | - | - |
+| -0.30 | ms_s2_030_w2 (width 20) | 1.6e-6 | 265 | 4.7e-5 | 8.1e-5 | -7.4e-5 | -4.8e-2 |
+| -0.30 | ms_s2_030_b40_w3 (width 40) | 4.0e-8 | 170 | 1.2e-5 | 1.5e-5 | -1.1e-3 | +6.2e-2 |
+| -0.30 | ms_s2_030_dsg (DSGNAR on w5) | 3.6e-7 | 1022 | - | - | - | - |
+
+Spectral references: S2 = -0.25: l <= 14, 48 radial, backtracking, |r| 4.6e-5 (loss 2.1e-9), M0 0.669610,
+M2 0.80673.  S2 = -0.30: l <= 14 (tag damp) stalled at |r| 1.15e-3, loss 1.3e-6, M0 0.765980; l <= 20
+(tag big_l20) |r| 7.3e-5, loss 5.3e-9, M0 0.766484 +- 4.2e-3 (window spread), M2 1.4072; l <= 14 with
+72 radial (big_r72): cond(J) 8e13 (7e11 for l <= 20), the damped steps never leave |r| 0.32, M0 0.521
+(nonsense).  Memory: peak device 6.3 GB at 2544 unknowns (24 GB card), host 14.5 GB at 1824 unknowns.
+(M0 - R0)/S2^2: 0.80 (+1/12), 0.885, 0.936, 1.005, 1.102 (-1/6), 1.476 (-1/4), 2.101 (-0.30); the
+five-value fit gives 0.0841 at -1/4 (measured 0.0923) and 0.1374 at -0.30 (0.1891).
+DSGNAR on the stalls (5 cycles x 60, sketch 2000): -0.25 every cycle ends on the trust radius, 2.0e-8
+-> 1.7e-8 in cycle 1, no net gain; -0.30 accepts 55 of 60 steps per cycle (10-70x down on its sample)
+but each new sample starts higher, fresh/training 1022: it fits its sample at 16384 points.
+Width 40 at -0.30 overfits (fresh/training 170, fresh samples spread 4e-8 to 3e-5): the best fresh
+loss of the -0.30 networks is not below ~7e-6.  Paper: IV.A paragraphs, tab:mass, fig:mass, appendix.
