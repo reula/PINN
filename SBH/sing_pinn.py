@@ -108,6 +108,10 @@ ap.add_argument("--r_in", type=float, default=0.0,
                 help="> 0: a second, inner network N_in(t, (x - a0)/r_in) windowed by exp(-(r/r_in)^2) is added to N "
                      "(a0 = the window-start centre), to resolve the template seam r_c..3 r_c at its own scale; "
                      "trained in blocks (--schedule). 0 = off")
+ap.add_argument("--radial_net", action="store_true",
+                help="N = N(t, |x - a0|/R): a RADIAL network (inputs t and r; one puncture, a0 = the window-start "
+                     "centre), i.e. the 1D ansatz inside the 3D loss, points and optimiser (2026-11-01). Its "
+                     "stacks come from autodiff in (t, r) and the chain rule to x, y, z")
 ap.add_argument("--inner_hidden", type=int, default=32)
 ap.add_argument("--inner_layers", type=int, default=4)
 ap.add_argument("--schedule", default="outer:8000,inner:8000,outer:4000,inner:4000",
@@ -246,7 +250,10 @@ def inner_window(X):
 def net_derivs(P, win, Q):
     """Stacks of N = N_out(t, x/R) + w(r) N_in(t, (x - a0)/r_in): the second term with --r_in > 0, a0 the
     window-start centre (constant in the window, so no extra time derivative), r = |x - a0|."""
-    N, Nt, Nd, Ndd = mlp_derivs(P["net"], win, Q[:, 0:1], Q[:, 1:4])
+    if a.radial_net:
+        N, Nt, Nd, Ndd = radial_derivs(P["net"], win, Q)
+    else:
+        N, Nt, Nd, Ndd = mlp_derivs(P["net"], win, Q[:, 0:1], Q[:, 1:4])
     if "inner" in P:
         X = Q[:, 1:4] - win[2][0][None]
         s = R / a.r_in                                   # _taylor_mlp divides by R: feed s X so the input is X / r_in
@@ -305,10 +312,8 @@ def u_derivs(P, win, Q, H=None):
     return val, dt, d, dd
 
 
-def mlp_value(net, t, Q3, ws, we):
-    """N's value (n,22) without the Taylor pass (as _taylor_mlp's first output, minus its flat values)."""
+def _mlp(net, Z):
     mp = net["params"]["MLP"]
-    Z = jnp.concatenate([2.0 * (t - ws) / (we - ws) - 1.0, Q3 / R], axis=1)
     h = Z
     for i in range(len(mp) - 1):
         h = jnp.tanh(h @ mp[f"Dense_{i}"]["kernel"] + mp[f"Dense_{i}"]["bias"])
@@ -316,10 +321,57 @@ def mlp_value(net, t, Q3, ws, we):
     return h @ L["kernel"] + L["bias"]
 
 
+def mlp_value(net, t, Q3, ws, we, a0=None):
+    """N's value (n,22) without the Taylor pass (as _taylor_mlp's first output, minus its flat values); with
+    a0 (--radial_net) the radial network's value at r = |Q3 - a0|."""
+    if a0 is not None:
+        r = jnp.sqrt(jnp.sum((Q3 - a0[None]) ** 2, axis=1, keepdims=True) + R_EPS2)
+        return _mlp(net, jnp.concatenate([2.0 * (t - ws) / (we - ws) - 1.0, r / R], axis=1))
+    return _mlp(net, jnp.concatenate([2.0 * (t - ws) / (we - ws) - 1.0, Q3 / R], axis=1))
+
+
+R_EPS2 = 1e-30
+
+
+def _init_radial(key):
+    """The radial network's parameters: 2 inputs (t, r), the last layer zero (as stage2_net.init_net)."""
+    sizes = [2] + [a.hidden] * a.layers + [22]
+    mlp = {}
+    for i in range(len(sizes) - 1):
+        key, k = jax.random.split(key)
+        kern = jax.nn.initializers.glorot_normal()(k, (sizes[i], sizes[i + 1]), jnp.float64)
+        mlp[f"Dense_{i}"] = {"kernel": jnp.zeros_like(kern) if i == len(sizes) - 2 else kern,
+                             "bias": jnp.zeros((sizes[i + 1],), jnp.float64)}
+    return {"params": {"MLP": mlp}}
+
+
+def radial_derivs(net, win, Q):
+    """Stacks of the radial network N(t, r), r = |x - a0|, at Q (n,4): value, d_t, d_xyz (n,22,3) and
+    d_xyz d_xyz of the DD fields (n,11,3,3), from autodiff in (t, r) and the chain rule
+    (d_i r = n_i, d_i d_j r = (delta_ij - n_i n_j)/r)."""
+    a0, ws, we = win[2][0], win[0], win[1]
+
+    def one(q):
+        X = q[1:4] - a0
+        r = jnp.sqrt(jnp.sum(X ** 2) + R_EPS2)
+        n = X / r
+        g = lambda tr: _mlp(net, jnp.stack([2.0 * (tr[0] - ws) / (we - ws) - 1.0, tr[1] / R]))
+        tr = jnp.stack([q[0], r])
+        v = g(tr)
+        vt = jax.jvp(g, (tr,), (jnp.array([1.0, 0.0]),))[1]
+        vr = jax.jvp(g, (tr,), (jnp.array([0.0, 1.0]),))[1]
+        vrr = jax.jacfwd(jax.jacfwd(g))(tr)[:, 1, 1]
+        nn = n[:, None] * n[None, :]
+        Nd = vr[:, None] * n[None, :]
+        Ndd = vrr[DD][:, None, None] * nn[None] + vr[DD][:, None, None] * ((jnp.eye(3) - nn) / r)[None]
+        return v, vt, Nd, Ndd
+    return jax.vmap(one)(Q)
+
+
 def u_value(P, win, Q, hard=False):
     bv = jax.vmap(lambda q: bg_point(q, P["acc"], win))(Q)
     B, rho = bv[:, :22], bv[:, 22:]
-    N = mlp_value(P["net"], Q[:, 0:1], Q[:, 1:4], win[0], win[1])
+    N = mlp_value(P["net"], Q[:, 0:1], Q[:, 1:4], win[0], win[1], win[2][0] if a.radial_net else None)
     if "inner" in P:
         X = Q[:, 1:4] - win[2][0][None]
         N = N + inner_window(X)[0][:, None] * mlp_value(P["inner"], Q[:, 0:1], R / a.r_in * X, win[0], win[1])
@@ -529,7 +581,8 @@ def report(P, win, t, hard=False):
 
 # ---- selftest ------------------------------------------------------------------------------------
 def random_params(key):
-    P = {"net": _init_net(jax, jnp, key, a.hidden, a.layers), "acc": 0.5 * jax.random.normal(key, (NP, 2, 3))}
+    P = {"net": _init_radial(key) if a.radial_net else _init_net(jax, jnp, key, a.hidden, a.layers),
+         "acc": 0.5 * jax.random.normal(key, (NP, 2, 3))}
     P["net"]["params"]["MLP"][f"Dense_{a.layers}"]["kernel"] = 0.3 * jax.random.normal(
         jax.random.PRNGKey(4), (a.hidden, 22), jnp.float64)
     if a.r_in > 0:
@@ -693,7 +746,10 @@ mb = ns["_minimize_mod"]
 opts = {"maxiter": a.n_change, "gtol": 0.0, "update_method": "ssbroyden2", "initial_scale": True,
         "line_search": "wolfe", "c2": 0.9, "scale_invariant": True, "max_iter": 100, "alphamin": 1e-15}
 key = jax.random.PRNGKey(a.seed)
-P = {"net": _init_net(jax, jnp, jax.random.PRNGKey(a.seed + 1), a.hidden, a.layers), "acc": jnp.zeros((NP, 2, 3))}
+P = {"net": _init_radial(jax.random.PRNGKey(a.seed + 1)) if a.radial_net
+     else _init_net(jax, jnp, jax.random.PRNGKey(a.seed + 1), a.hidden, a.layers), "acc": jnp.zeros((NP, 2, 3))}
+if a.radial_net and NP > 1:
+    raise SystemExit("--radial_net: one puncture")
 if a.r_in > 0:
     if NP > 1:
         raise SystemExit("--r_in: one inner network, so one puncture")

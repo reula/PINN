@@ -1409,6 +1409,12 @@ in every direction), the residual has angular parts that must also vanish, 12800
 The inner-network runs (same loss plateau ~9e-5 with 1.5x the parameters) say capacity alone is not it.
 Next, to separate representation from optimisation in 3D: `--radial_net`, the 3D run with a network of
 (t, |x - a0|) (one puncture), i.e. the 1D ansatz inside the 3D loss, points and optimiser.
+Implemented (2026-11-01): `--radial_net`, a 2-input network of (t, r/24) with the same width/depth, its
+stacks from autodiff in (t, r) per point and the chain rule (d_i r = n_i, d_i d_j r = (delta - n n)/r; rho ~
+r^2 keeps rho N smooth at the puncture). Selftest: stacks vs autodiff 6e-12, hard IC 8e-15. Hub run
+`sing_w0_radial` = `--template bl --hard_ic --radial_net --stop_after_window 0`: if its loss reaches the 1D
+twin's level (1e-7) the 3D MLP's representation of radial functions is the obstacle; if it stays at 1e-4,
+the 3D loss/sampling/optimisation is.
 
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
