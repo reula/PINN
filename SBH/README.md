@@ -1485,6 +1485,18 @@ laptop test). Both check every --n_change, the pre/IC phase excluded. Laptop tes
 rule): both windows ended early, the run continued and saved. Tonight's run: `sing_radial`, 8 windows to t = 2 with the
 lifted radial network, `--stop_rel 0.02 --stop_patience 1000`, continuing from sing_w0_radial's window 0.
 
+**No template, `--no_template` (2026-11-01; both scripts).** W = 0 and rho = 1: u = flat + N, with the hard-IC
+offset h so chi = psi^-4 exp(N_chi) and alpha = psi^-1 exp(N_alpha) carry the exact data's puncture structure
+and the network supplies the departure from the initial data everywhere, puncture included (`--hard_ic`
+required). The question (the author's): is the template redundant once the network is radial? Tests: the
+1D twin on the laptop (`notpl`, window 0) and `sing_w0_radial_notpl` on the hub after sing_radial
+(`--template bl --hard_ic --radial_net --no_template --stop_after_window 0 --stop_rel 0.02
+--stop_patience 1000`), against sing_w0_radial (held-out 4.2e-8, alpha 6e-6 in the seam band). Selftest with
+`--no_template --radial_net`: stacks 1.8e-12, hard IC 6e-14. Caveat built into the ansatz: with h fixed, chi's
+zero at the puncture stays r^4 (the BL form) times a smooth factor; the 1+log evolution turns it into r^2
+(trumpet), which the template carried and this ansatz cannot. The chi floor (1e-5, r < 0.015 at t = 0)
+masks the innermost region in the loss.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full

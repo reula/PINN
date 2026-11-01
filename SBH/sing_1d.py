@@ -40,6 +40,7 @@ ap.add_argument("--w_power", type=float, default=4.0, help="W = exp(-(r/r_c)^w_p
 ap.add_argument("--rho_power", type=float, default=2.0)
 ap.add_argument("--x_scale", type=float, default=24.0, help="the network sees r / x_scale (24 = sing_pinn.py)")
 ap.add_argument("--hard_ic", action="store_true")
+ap.add_argument("--no_template", action="store_true", help="W = 0, rho = 1: the radial network alone (needs --hard_ic)")
 ap.add_argument("--hidden", type=int, default=40)
 ap.add_argument("--layers", type=int, default=6)
 ap.add_argument("--tfinal", type=float, default=0.5)
@@ -65,6 +66,8 @@ rest = argv[argv.index("--") + 1:] if "--" in argv else []
 a = ap.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
 os.makedirs(a.out, exist_ok=True)
 
+if a.no_template and not a.hard_ic:
+    raise SystemExit("--no_template needs --hard_ic")
 tfile = a.template_file or os.path.join(REF, "sing_bl_m0.5_dense.npz")
 R_TPL = 3.0 * a.r_c
 tab = stpl.load_table(tfile, "bl", R_TPL)
@@ -118,10 +121,10 @@ def U0_rad(r):
 def bg_rad(t, r):
     """Template part B (10,) and rho at (t, r): W-blended template, multiplicative chi and alpha."""
     T = radial(t, jnp.minimum(r, R_TPL))
-    w = jnp.exp(-(r / a.r_c) ** a.w_power)
+    w = jnp.exp(-(r / a.r_c) ** a.w_power) * (0.0 if a.no_template else 1.0)
     B = FLAT_RAD + w * (T - FLAT_RAD)
     B = B.at[I_CHI].set(jnp.exp(w * jnp.log(_pos(T[I_CHI])))).at[I_AL].set(jnp.exp(w * jnp.log(_pos(T[I_AL]))))
-    rho = r ** a.rho_power / (r ** a.rho_power + a.r_c ** a.rho_power)
+    rho = 1.0 if a.no_template else r ** a.rho_power / (r ** a.rho_power + a.r_c ** a.rho_power)
     return B, rho
 
 

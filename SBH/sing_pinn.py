@@ -64,6 +64,9 @@ ap.add_argument("--t_snap", type=float, default=10.0, help="trumpet: time of the
 ap.add_argument("--ref_file", default=None,
                 help="1D reference for the per-window report (default reference_1d/ref_single_m0.5_dr0.005_t20.npz)")
 ap.add_argument("--r_c", type=float, default=0.2, help="cutoff radius of the template and of rho")
+ap.add_argument("--no_template", action="store_true",
+                help="W = 0 and rho = 1: no template, u = flat + N (with --hard_ic: + the exact-data offset h, so "
+                     "chi = psi^-4 exp(N_chi) carries the puncture); the network alone (2026-11-01)")
 ap.add_argument("--rho_power", type=float, default=2.0,
                 help="rho = r^p / (r^p + r_c^p): p = 2 (default) lets the correction act well inside the template "
                      "(rho(r_c/2) = 0.2); p = 4 keeps it out (0.06). 2026-10-31")
@@ -212,17 +215,18 @@ def bg_point(q, acc, win):
     pos, vel = center(acc, win, t)
     add = jnp.zeros(22)
     logs = jnp.zeros(2)                     # ln chi, ln alpha
-    rho = 1.0
+    rho = jnp.ones(())
     for A in range(NP):
         xi = X - pos[A]
         rad, r = tpl_fields(t + T_OFF, xi)
-        w = jnp.exp(-(r / a.r_c) ** 4)
+        w = jnp.exp(-(r / a.r_c) ** 4) * (0.0 if a.no_template else 1.0)
         f = stpl.lift(jnp, pack, FLAT_RAD + w * (rad - FLAT_RAD), xi) - FLAT
         add = add + f
         add = add.at[ns["BETA_SLICE"]].add(-w * vel[A])
         logs = logs + w * jnp.log(_pos(jnp.stack([rad[stpl.I_CHI], rad[stpl.I_ALPHA]])))
         r2 = jnp.sum(xi ** 2)
-        rho = rho * r2 ** (a.rho_power / 2) / (r2 ** (a.rho_power / 2) + a.r_c ** a.rho_power)
+        if not a.no_template:                        # --no_template: rho = 1, the network acts at the puncture too
+            rho = rho * r2 ** (a.rho_power / 2) / (r2 ** (a.rho_power / 2) + a.r_c ** a.rho_power)
     B = FLAT + add
     B = B.at[CHI].set(jnp.exp(logs[0])).at[AL].set(jnp.exp(logs[1]))
     return jnp.concatenate([B, rho[None]])
@@ -754,6 +758,8 @@ opts = {"maxiter": a.n_change, "gtol": 0.0, "update_method": "ssbroyden2", "init
 key = jax.random.PRNGKey(a.seed)
 P = {"net": _init_radial(jax.random.PRNGKey(a.seed + 1)) if a.radial_net
      else _init_net(jax, jnp, jax.random.PRNGKey(a.seed + 1), a.hidden, a.layers), "acc": jnp.zeros((NP, 2, 3))}
+if a.no_template and not a.hard_ic:
+    raise SystemExit("--no_template needs --hard_ic (the offset h carries chi's r^4 zero at the puncture)")
 if a.radial_net and NP > 1:
     raise SystemExit("--radial_net: one puncture")
 if a.r_in > 0:
