@@ -156,3 +156,39 @@ PERTURBATION.md carries a dated correction; the paper has tab:mass.
 - What changed between two versions: `git diff <old> -- Paper/paper.tex`, or `latexdiff` (a coloured PDF
   with insertions and deletions) on `git show <old>:Stationary/Paper/paper.tex` against the current file.
 - The latest PDF is committed (Paper/paper.pdf) and can be opened from GitHub.
+
+## The author's \claude{} notes of 2026-11-01, and what was done
+
+1. "This paragraph should go on the specific solution section" (the free constants lambda_0, S_1, S_2,
+   r_in; the scaling lambda -> k lambda fixed by lambda_infty = 1; M from lambda_0 and r_in): moved to
+   IV.A after the datum, with the numbers of the quadrupolar problem (M = R_0 = 1/sqrt 3).
+2. "This part continues ok": removed (nothing to do).
+3. "We don't apply to lambda but to P": II.D rewritten.  The exponents of the asymptotic expansion
+   (dh ~ rho^-2, Gamma ~ rho^-3) are imposed on h and its connection; lambda's multipolar expansion
+   (-2M/rho + 2M^2/rho^2 ...) violates lambda - 1 ~ rho^-1, so the scalar condition is on the
+   Geroch-Hansen potential P (P_infty = 0, i.e. lambda_infty = 1); the Schwarzschild decay rates
+   2.00 / 3.005 / 0.952 are now attributed to dh / Gamma / lambda - 1.
+4. "I would take away all this" (the extra outer spheres and averaged conditions that were tried):
+   the passage is removed.  Four references to it were simplified: IV.A (the parenthetical on the
+   mass), V.B (the run that drifted to d_z = 7.6e-5 is now "the same run with extra conditions on the
+   outer spheres"), V.D (width 20 plateau: the sentence on the 1.35e-6 run is gone; "points to the
+   network and not to the formulation"), appendix.  The numbers stay in VERIFICATION.md.
+5. "add a note about the bigger networks": III, width 40 depth 6: 5x41x40 = 8200 hidden parameters,
+   4x40 + 8200 + 41x5 = 8565 (axisymmetric), 5x40 + 8200 + 41x7 = 8687 (general); both counts checked
+   by building the networks.
+6. "Perhaps we can rewrite the above sentence" (sampling): interior points have uniform directions and
+   log-uniform radius, i.e. density ~ rho^-3, concentrated near the inner boundary.
+7. "This sentence is not clear, neither the ones that follow" (spectral approximations): rewritten;
+   the agreement of two unrelated methods is not an artifact of either; a stall of the spectral
+   approximation points to the problem (as for h_rA prescribed on the inner sphere); the rotated
+   approximation is the spectral reference for off-axis data.
+8. "is the exact solution converted into a neural form...?" (pipeline test): NO.  No network is
+   trained or fitted, the closed-form fields replace the network function in the same code, and
+   automatic differentiation differentiates them directly; the loss measures the residuals of the
+   equations, gauge and boundary conditions, not a difference from the exact solution.  The paragraph
+   now says so.
+
+Build note: VS Code's LaTeX Workshop rebuilds on file changes; a second build running at the same time
+(mine, with latexmk -g or -C) corrupted paper.aux ("File ended while scanning use of \@writefile").
+Use plain `latexmk -pdf paper.tex`, never -g/-C while the editor is open; to recover, run "LaTeX
+Workshop: Clean up auxiliary files" and build again.
