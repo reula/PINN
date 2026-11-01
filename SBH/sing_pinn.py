@@ -122,6 +122,15 @@ ap.add_argument("--schedule", default="outer:8000,inner:8000,outer:4000,inner:40
                      "the residual already small (inner first) it never does (sing_bl_inner, 2026-10-31)")
 ap.add_argument("--stop_after_window", type=int, default=-1,
                 help="exit after this window is saved (0 = window 0 only: a 2.7 h seam experiment); -1 = all")
+ap.add_argument("--stop_floor", type=float, default=0.0,
+                help="end a window early once the held-out loss has stayed within --stop_tol of this floor for "
+                     "--stop_patience iterations (2026-11-01; e.g. 5e-8 for the lifted radial network); 0 = off")
+ap.add_argument("--stop_tol", type=float, default=1.05)
+ap.add_argument("--stop_rel", type=float, default=0.0,
+                help="end a window early once the best held-out loss of the last --stop_patience iterations is less "
+                     "than this fraction below the best of the --stop_patience before (plateau, robust to the "
+                     "check-to-check noise near the floor; no floor needed); 0 = off")
+ap.add_argument("--stop_patience", type=int, default=1000, help="iterations (a multiple of --n_change)")
 ap.add_argument("--ckpt_every", type=int, default=2000,
                 help="save partial.pkl (parameters, iteration, RNG key) every this many iterations inside a window, "
                      "so --resume continues mid-window after a hub restart (2026-10-31); 0 = off")
@@ -868,7 +877,11 @@ for k in range(k0, a.N_window):
     print("  interior points per batch by distance to the puncture: "
           + ", ".join(f"{n} {int(v)}" for n, v in zip(DIST_NAMES, np.asarray(cnt))), flush=True)
     n_pre = a.pre_iters if (a.pre_windows < 0 or k < a.pre_windows) and not (hard and k == 0) else 0
+    held_hist, stop = [], False                              # held-out totals of this window (full blocks only)
+    n_pat = max(a.stop_patience // a.n_change, 1)
     for bname, n_block in ([("pre", n_pre)] if n_pre else []) + SCHED:
+        if stop:
+            break
         pre = bname == "pre"
         idx = block_idx(P, bname) if bname in BLOCK_KEYS else None      # None: every parameter
         rad = 3.0 * a.r_in if bname == "inner" else None                # w(3 r_in) = e^-9: N_in acts inside
@@ -913,6 +926,17 @@ for k in range(k0, a.N_window):
                   flush=True)
             if a.ckpt_every and it % a.ckpt_every == 0:
                 save_partial(unr(w), win, k, it, kh, hard)
+            if not pre:
+                held_hist.append(row["held"])
+                if a.stop_floor > 0 and len(held_hist) >= n_pat and max(held_hist[-n_pat:]) <= a.stop_tol * a.stop_floor:
+                    print(f"  early stop: held-out within {a.stop_tol}x the floor {a.stop_floor:.1e} for {a.stop_patience} iterations")
+                    stop = True
+                if (a.stop_rel > 0 and len(held_hist) >= 2 * n_pat                 # best of the last N vs the N before
+                        and min(held_hist[-n_pat:]) > (1.0 - a.stop_rel) * min(held_hist[-2 * n_pat:-n_pat])):
+                    print(f"  early stop: held-out improved by less than {a.stop_rel:.0%} over the last {a.stop_patience} iterations")
+                    stop = True
+                if stop:
+                    break
         if pre and k == 0:
             save_state("pre_000.pkl", unr(w), win, k, pos, vel, False)
             if a.stop_after_pre:

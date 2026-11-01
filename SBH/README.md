@@ -1459,6 +1459,28 @@ the lifted function (as sing_1d.py); selftest 6e-12. Laptop, 2000 points: held-o
 representation of a radial tensor field is. The hub run with the wrong ansatz is kept as
 `sing_w0_radial_cart`; `sing_w0_radial` is relaunched with the lifted network.
 
+**`sing_w0_radial`, lifted radial network in the 3D code (hub, 2026-11-01 18:02 UTC; 0.5 s per iteration,
+peak 15 GB).** Held-out 8.8e-7 / 5.6e-8 / 4.7e-8 / 4.7e-8 at 1000 / 4000 / 8000 / 10250 iterations
+(sing_bl_hard: 9.9e-3 / 3.8e-4 / 1.8e-4 / 1.6e-4; the 1D twin 1.5e-6 at 1000), evenly spread over all
+distance bands (1e-9 to 1e-8), the floor from ~4000 on presumably the template table's own accuracy.
+Graded from the checkpoint at 10250 (`--eval_spheres` on partial.pkl), t = 0.25, rms by band 0.05-0.2 /
+0.2-0.6 / 0.6-1 / 1-3 / 3-10: alpha 3e-5 / 7e-6 / 1e-6 / 2e-6 / 1e-6 (sing_bl_hard 4e-4 / 5e-4 / 9e-5 / 1e-4 /
+9e-5; baseline 3e-3 / 1e-4 / 3e-5 / 4e-5 / 1e-4), Khat 1e-5 / 4e-5 / 9e-6 / 3e-6 / 2e-6, chi 6e-6 / 2e-6 /
+3e-6 / 5e-7 / 3e-6; mass -1.1e-5 / -4.5e-5 / -1.1e-5 / +9.8e-5 at r = 0.3 / 1 / 3 / 10 (baseline -3.6e-4 /
+-4.5e-5 / -2.6e-5 / -9.2e-5; sing_bl_hard -1.2e-3 / -1.7e-3 / +4.6e-4 / +4.3e-5). Conclusion: with the
+symmetry built into the network the 3D code reaches the 1D level; the 3D MLP's representation of a
+spherically symmetric tensor field was the whole seam problem. For two punctures: one lifted radial
+network per puncture about a_A(t) plus a small 3D MLP for the non-spherical remainder.
+
+**Early stopping (2026-11-01).** The loss reaches its floor long before 24000 iterations (the radial run
+by 4000). `--stop_floor F --stop_tol 1.05 --stop_patience N`: a window ends once the held-out loss has
+stayed within 1.05 F for N iterations; `--stop_rel X --stop_patience N`: once the best held-out loss of the
+last N iterations is less than X below the best of the N before (no floor needed; later windows have
+higher floors; the min-vs-min form is robust to the 2x check-to-check noise near the floor seen in the
+laptop test). Both check every --n_change, the pre/IC phase excluded. Laptop test (2 windows, plateau
+rule): both windows ended early, the run continued and saved. Tonight's run: `sing_radial`, 8 windows to t = 2 with the
+lifted radial network, `--stop_rel 0.02 --stop_patience 1000`, continuing from sing_w0_radial's window 0.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
