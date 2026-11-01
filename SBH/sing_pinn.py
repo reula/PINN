@@ -325,17 +325,24 @@ def mlp_value(net, t, Q3, ws, we, a0=None):
     """N's value (n,22) without the Taylor pass (as _taylor_mlp's first output, minus its flat values); with
     a0 (--radial_net) the radial network's value at r = |Q3 - a0|."""
     if a0 is not None:
-        r = jnp.sqrt(jnp.sum((Q3 - a0[None]) ** 2, axis=1, keepdims=True) + R_EPS2)
-        return _mlp(net, jnp.concatenate([2.0 * (t - ws) / (we - ws) - 1.0, r / R], axis=1))
+        return jax.vmap(lambda tt, X: radial_point(net, tt, X, ws, we))(t[:, 0], Q3 - a0[None])
     return _mlp(net, jnp.concatenate([2.0 * (t - ws) / (we - ws) - 1.0, Q3 / R], axis=1))
 
 
 R_EPS2 = 1e-30
 
 
+def radial_point(net, t, X, ws, we):
+    """The radial network at one point: 10 radial functions of (t, r = |X|), lifted to the 22 Cartesian fields
+    (a delta + b n n, c delta + d n n, scalars, g n, B n), so the correction is a spherically symmetric TENSOR
+    field, as in sing_1d.py (a radial function per Cartesian component is not: wrong for gt, At, Ghat, beta)."""
+    r = jnp.sqrt(jnp.sum(X ** 2) + R_EPS2)
+    return stpl.lift(jnp, pack, _mlp(net, jnp.stack([2.0 * (t - ws) / (we - ws) - 1.0, r / R])), X)
+
+
 def _init_radial(key):
-    """The radial network's parameters: 2 inputs (t, r), the last layer zero (as stage2_net.init_net)."""
-    sizes = [2] + [a.hidden] * a.layers + [22]
+    """The radial network's parameters: 2 inputs (t, r), 10 outputs, the last layer zero (as stage2_net.init_net)."""
+    sizes = [2] + [a.hidden] * a.layers + [10]
     mlp = {}
     for i in range(len(sizes) - 1):
         key, k = jax.random.split(key)
@@ -346,25 +353,15 @@ def _init_radial(key):
 
 
 def radial_derivs(net, win, Q):
-    """Stacks of the radial network N(t, r), r = |x - a0|, at Q (n,4): value, d_t, d_xyz (n,22,3) and
-    d_xyz d_xyz of the DD fields (n,11,3,3), from autodiff in (t, r) and the chain rule
-    (d_i r = n_i, d_i d_j r = (delta_ij - n_i n_j)/r)."""
+    """Stacks of the lifted radial network at Q (n,4): value, d_t, d_xyz (n,22,3) and d_xyz d_xyz of the DD
+    fields (n,11,3,3), by autodiff of radial_point (jvp in t, jacfwd in x, y, z), as sing_1d.py."""
     a0, ws, we = win[2][0], win[0], win[1]
 
     def one(q):
-        X = q[1:4] - a0
-        r = jnp.sqrt(jnp.sum(X ** 2) + R_EPS2)
-        n = X / r
-        g = lambda tr: _mlp(net, jnp.stack([2.0 * (tr[0] - ws) / (we - ws) - 1.0, tr[1] / R]))
-        tr = jnp.stack([q[0], r])
-        v = g(tr)
-        vt = jax.jvp(g, (tr,), (jnp.array([1.0, 0.0]),))[1]
-        vr = jax.jvp(g, (tr,), (jnp.array([0.0, 1.0]),))[1]
-        vrr = jax.jacfwd(jax.jacfwd(g))(tr)[:, 1, 1]
-        nn = n[:, None] * n[None, :]
-        Nd = vr[:, None] * n[None, :]
-        Ndd = vrr[DD][:, None, None] * nn[None] + vr[DD][:, None, None] * ((jnp.eye(3) - nn) / r)[None]
-        return v, vt, Nd, Ndd
+        f = lambda qq: radial_point(net, qq[0], qq[1:4] - a0, ws, we)
+        v, vt = jax.jvp(f, (q,), (jnp.array([1.0, 0.0, 0.0, 0.0]),))
+        g = lambda X: f(jnp.concatenate([q[:1], X]))
+        return v, vt, jax.jacfwd(g)(q[1:]), jax.jacfwd(jax.jacfwd(g))(q[1:])[DD]
     return jax.vmap(one)(Q)
 
 
@@ -584,7 +581,7 @@ def random_params(key):
     P = {"net": _init_radial(key) if a.radial_net else _init_net(jax, jnp, key, a.hidden, a.layers),
          "acc": 0.5 * jax.random.normal(key, (NP, 2, 3))}
     P["net"]["params"]["MLP"][f"Dense_{a.layers}"]["kernel"] = 0.3 * jax.random.normal(
-        jax.random.PRNGKey(4), (a.hidden, 22), jnp.float64)
+        jax.random.PRNGKey(4), (a.hidden, 10 if a.radial_net else 22), jnp.float64)
     if a.r_in > 0:
         P["inner"] = _init_net(jax, jnp, jax.random.PRNGKey(5), a.inner_hidden, a.inner_layers)
         P["inner"]["params"]["MLP"][f"Dense_{a.inner_layers}"]["kernel"] = 0.3 * jax.random.normal(

@@ -1448,6 +1448,16 @@ the laptop smoke run (2000 points) was already 300x behind the 1D twin at 500 it
 point count; something in the 3D path blocks the radial network. Tests: the trained centre frozen
 (`--fixed_center`; the one freedom the 1D twin lacks) and no inner cloud (`--inner_frac 0`; the 1/r term of
 the chain rule).
+Both still stall (1.2e-2 / 6.7e-3 at 750 iterations). The cause was the ansatz: that `--radial_net` gave
+each of the 22 CARTESIAN components as a function of r, which is a spherically symmetric field only for the
+scalars; gt, At, Ghat, beta must be a delta + b n n, g n, B n (the 1D twin outputs the 10 radial functions
+and lifts them), so the solution was outside the ansatz and the loss had a floor. Fixed: the radial network
+outputs the 10 radial functions, `radial_point` lifts them (sing_template.lift), the stacks are autodiff of
+the lifted function (as sing_1d.py); selftest 6e-12. Laptop, 2000 points: held-out 7.7e-3 / 4.9e-5 /
+1.3e-5 at 250 / 500 / 750 iterations, the 1D twin's track (9.3e-3 / 5.9e-5), against 1.9e-2 / 1.5e-2 /
+1.2e-2 for the Cartesian version. So the 3D loss, points and optimiser are not the obstacle; the 3D MLP's
+representation of a radial tensor field is. The hub run with the wrong ansatz is kept as
+`sing_w0_radial_cart`; `sing_w0_radial` is relaunched with the lifted network.
 
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
