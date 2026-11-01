@@ -542,7 +542,53 @@ squares, with the spread of the extraction). Solid: the fit
 $0.83S_2^2-0.77S_2^3+5.2S_2^4$ of the five spectral references with $|S_2|\leq1/6$, dashed beyond
 them; dotted: its quadratic term, and $-2S_2$.}
 \label{fig:mass}
-\end{figure} The best networks below reach
+\end{figure}
+
+\paragraph{The geometry of the network solution.} To see how strongly the datum $S_2=-1/4$
+($\lambda$ from 0.083 at the poles of the sphere to 0.458 at the equator) deforms the geometry, we
+evaluate the gauge-invariant curvature of the width-20 network in the cylindrical chart about the
+axis, for the static vacuum spacetime $g=-\lambda\,\dd t^2+h/\lambda$ (Fig.~\ref{fig:geometry}).
+The Kretschmann scalar $K$ is of order one at the sphere ($7.9$ on the axis and $2.2$ at the
+equator, for $\rho=1$) and falls as $\rho^{-6}$, by twelve orders of magnitude between $\rho=1$ and
+$\rho=100$. Against the spherical (Schwarzschild) reference with the same $\lambda_0$ it is 13
+times larger on the axis at the sphere (a maximum of 14.6 at $\rho\simeq1.3$), but at the equator
+it goes from 3.6 times larger at the sphere to $0.14$ at $\rho\simeq1.8$, a change by a factor 25
+within 0.8 in $\rho$; beyond $\rho\simeq10$ the ratio tends to $(M_0/R_0)^2=1.35$, the mass
+shift. The algebraic speciality $|S-1|$ ($S=1$ for type D, which the spherical reference is) is of
+order one at the equator of the sphere (1.0 at $\rho=1$, $0.29$ at $3$, $1.3\times10^{-3}$ at 10),
+so near the sphere the solution is far from type D, and it decays as a power of $\rho$. The
+network's four-dimensional Ricci tensor, which vanishes for an exact solution, has the norm
+$|R^{(4)}_{ab}|/\sqrt{K}=3.5\times10^{-5}$ (median) for $1\le\rho<3$, $6\times10^{-6}$ for
+$3\le\rho<10$ and $7\times10^{-7}$ beyond, and its curvature differs from that of the spectral
+reference by $7.6\times10^{-5}$, $5.0\times10^{-6}$ and $1.3\times10^{-6}$ in the same ranges
+(the largest value, $5\times10^{-2}$, is on the axis at the sphere).
+
+The Hawking mass of the coordinate spheres (Fig.~\ref{fig:hawking}) rises from $0.500$ at the
+sphere to $0.668$ at $\rho=3.5$ and stays there, and the lapse mass $r_a(1-\lambda)/2$ approaches
+the same value from above ($0.687$ at $\rho=1$). Both are within $1.1\times10^{-4}$ of the mass
+$M_0=0.66961$ of the multipole extraction for $\rho\gtrsim8$, well inside the $1.1\times10^{-3}$
+spread of that extraction, while the spherical reference has the constant $0.577$. The Hawking mass
+of the network differs from that of the spectral reference by $6\times10^{-6}$ (relative to $M_0$)
+at the sphere and by $3\times10^{-7}$ beyond $\rho\simeq5$.
+
+\begin{figure*}
+\includegraphics[width=\textwidth]{figs/geometry_s2_025_slice_zoom.png}
+\caption{Gauge-invariant geometry of the network at $S_2=-1/4$, meridional plane, $\rho<6$ (the sphere
+$\rho=1$ is the white half-disk): its Kretschmann scalar $K$; its change from the spherical
+(Schwarzschild) reference, $|K/K_{\rm sph}-1|$; its algebraic speciality $|S-1|$ (zero for type D);
+its four-dimensional Ricci tensor $|R^{(4)}_{ab}|/\sqrt{|K|}$; its error in $K$ against the
+spectral reference; and $|1-\lambda|$. Logarithmic colour scales.}
+\label{fig:geometry}
+\end{figure*}
+
+\begin{figure*}
+\includegraphics[width=0.8\textwidth]{figs/geometry_s2_025_hawking.png}
+\caption{Hawking mass and lapse mass of the network at $S_2=-1/4$ on coordinate spheres, with its mass
+$M_0$; the grey curves are the Hawking mass of the spectral reference and of the spherical
+(Schwarzschild) reference (left), and the deviations of the network from $M_0$ and from the
+spectral reference (right).}
+\label{fig:hawking}
+\end{figure*} The best networks below reach
 a lower loss ($1.3\times10^{-11}$) with 2285 parameters, so the errors we quote are differences
 between two approximations of comparable quality, obtained by unrelated methods.
 
@@ -758,6 +804,10 @@ NVIDIA A30 (24~GB). Each result is produced by the commands below, all in the re
   \texttt{stationary/specref.py}, \texttt{Paper/hub\_hardref.sh} ($-1/4$, tag \texttt{damp}) and
   \texttt{Paper/hub\_bigref.sh} ($-0.30$, tag \texttt{big\_l20}; 12--40 minutes per Newton step
   on one A30, 6\,GB of device memory).
+\item The geometry figures (Figs.~\ref{fig:geometry} and~\ref{fig:hawking}):
+  \texttt{scripts/geometry\_quadrupole.py} on the run \texttt{ms\_s2\_025\_w5} with the spectral
+  reference \texttt{specref\_nonlinear\_damp.npz} (about 5 minutes for the slice and one hour for the
+  Hawking profile on a laptop CPU).
 \item The spectral reference: \texttt{Paper/commands\_specref.sh} (reproduces the loss
   $2.793\times10^{-11}$; 36 minutes on one A30).
 \item Grading and moments: \texttt{scripts/grade\_rotated.py}, \texttt{scripts/fresh\_sample\_loss.py},
