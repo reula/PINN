@@ -50,7 +50,7 @@ x1, x2 = np.linspace(-1 / 6, 0.1, 200), np.linspace(-0.32, -1 / 6, 100)
 
 plt.rcParams.update({"font.size": 8, "axes.labelsize": 8, "legend.fontsize": 7,
                      "xtick.labelsize": 7, "ytick.labelsize": 7})
-fig, ax = plt.subplots(1, 2, figsize=(3.4, 2.0))
+fig, ax = plt.subplots(1, 2, figsize=(3.4, 2.35))
 ax[0].plot(x1, fit(x1), color=INK, lw=1.0, label=r"fit, $|S_2|\leq 1/6$")
 ax[0].plot(x2, fit(x2), "--", color=INK, lw=1.0)
 ax[0].plot(x1, a * x1**2, ":", color=MUTED, lw=1.0, label=rf"${a:.2f}\,S_2^2$")
@@ -70,10 +70,11 @@ for p, tag in zip(ax, "ab"):
     for sp in ("top", "right"):
         p.spines[sp].set_visible(False)
     p.text(0.0, 1.02, f"({tag})", transform=p.transAxes, fontsize=8, color=INK, va="bottom")
-    p.set_xticks([-0.3, -0.2, -0.1, 0, 0.1])
-ax[0].legend(frameon=False, loc="center right", bbox_to_anchor=(1.02, 0.52), handlelength=1.6)
+    p.set_xticks([-0.3, -0.15, 0])
+hs, ls = ax[0].get_legend_handles_labels()
+fig.legend(hs, ls, loc="upper center", ncol=2, frameon=False, handlelength=1.6, columnspacing=1.2)
 ax[1].legend(frameon=False, loc="lower left", handlelength=1.6)
-fig.tight_layout(pad=0.3, w_pad=0.8)
+fig.tight_layout(pad=0.3, w_pad=0.8, rect=[0, 0, 1, 0.82])
 fig.savefig(out, dpi=300)
 fig.savefig(out.rsplit(".", 1)[0] + ".pdf")
 print("[fig_mass] wrote", out)
