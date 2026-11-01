@@ -140,3 +140,19 @@ whether the method can drop them.
 Conflict (resolved 2026-10-31): PERTURBATION.md item 4 said the mass is untouched by the
 quadrupole; the moments give +1.1%, and the S2 scan (hub_mass.sh) confirms a 0.83 S2^2 shift.
 PERTURBATION.md carries a dated correction; the paper has tab:mass.
+
+## Working on paper.tex (2026-11-01)
+
+- Editor: VS Code with the LaTeX Workshop extension (settings in the repository's .vscode/settings.json:
+  latexmk on save, PDF in a tab, word wrap in .tex).  Cmd+Option+J: source -> PDF; Cmd+click in the PDF:
+  PDF -> source.  Without VS Code: `latexmk -pdf -pvc paper.tex` in Paper/ and Skim.
+- paper.tex has ONE SENTENCE PER LINE (Paper/sentence_per_line.py did it, whitespace only, and checks
+  that every paragraph is identical after collapsing whitespace; run it after a large paste:
+  `python Paper/sentence_per_line.py Paper/paper.tex`).  Equations, tables, figures and comments are
+  left alone.  New text is written that way, so `git diff` shows which sentence changed.
+- Small corrections: edit the text directly.  Notes for Claude: \claude{...} (magenta; \notesfalse
+  hides them).  Before asking for work, commit your own edits (`git commit -am "my edits"`) or tell
+  Claude, who commits them first so that the changes stay separate.
+- What changed between two versions: `git diff <old> -- Paper/paper.tex`, or `latexdiff` (a coloured PDF
+  with insertions and deletions) on `git show <old>:Stationary/Paper/paper.tex` against the current file.
+- The latest PDF is committed (Paper/paper.pdf) and can be opened from GitHub.
