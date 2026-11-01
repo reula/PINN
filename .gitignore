@@ -40,3 +40,4 @@ clementina/__pycache__/
 FETCH_HEAD
 Stationary/Untitled.ipynb
 Evolution_try/vendor/dsgnar_pinn/pinn/references/
+*.synctex.gz
