@@ -1353,6 +1353,29 @@ and drops a stale one. `--stop_after_window K` with `--resume` exits at once whe
 so a sweep loop can be relaunched as is. Laptop test: killed after the first checkpoint, resumed at 250,
 finished, third launch "already done".
 
+**Window-0 seam sweep, first two runs (2026-11-01; `sing_w0_rc01` done 01:13 UTC, `sing_w0_rc03` 03:59; the
+hub stopped again ~04:51 during `sing_w0_rho4`, checkpoint at 6000).** At t = 0.25, core rms alpha / chi /
+Khat / gt and held-out loss: r_c = 0.1: 5.4e-4 / 1.5e-4 / 4.5e-4 / 1.7e-3, 4.1e-4; r_c = 0.2 (sing_bl_hard):
+4.8e-4 / 1.4e-4 / 2.7e-4 / 8.6e-4, 7.6e-5; r_c = 0.3: 2.6e-4 / 1.3e-4 / 2.6e-4 / 4.7e-4, (not logged).
+By band (alpha / Khat / chi rms, r_c 0.1 -> 0.2 -> 0.3; baseline): 0.05-0.2: 7.0e-4 -> 4.1e-4 -> 1.8e-4 (2.8e-3)
+/ 5.8e-4 -> 1.7e-4 -> 1.8e-4 (2.9e-3) / 3.2e-5 -> 2.6e-5 -> 2.8e-5 (1.6e-5); 0.2-0.6: 3.5e-4 -> 5.1e-4 -> 3.1e-4
+(1.3e-4) / 3.5e-4 -> 3.8e-4 -> 3.2e-4 (2.2e-4) / 2.7e-4 -> 2.4e-4 -> 2.1e-4 (4.3e-5); 0.6-1: 2.1e-4 -> 9.4e-5 ->
+7.3e-5 (2.6e-5) / 2.4e-4 -> 1.9e-4 -> 1.9e-4 (5.5e-5) / 3.4e-4 -> 3.4e-4 -> 2.8e-4 (2.2e-5); 1-3: 1.8e-4 -> 9.9e-5
+-> 5.0e-5 (3.6e-5) / 1.9e-4 -> 1.2e-4 -> 1.2e-4 (4.2e-5) / 1.8e-4 -> 1.5e-4 -> 1.5e-4 (7.4e-6); mass at r = 1:
+-1.5e-3 -> -1.7e-3 -> -9.2e-4 (-4.5e-5). `plots/2026-11-01/seam_profile.png` (signed, W for the three r_c):
+- alpha: the positive bump's inner edge moves with the seam (plateau from r = 0.1 at r_c = 0.1; rise at 0.2
+  / 0.3 for r_c = 0.2 / 0.3) but its outer edge stays at r ~ 0.6-0.8 for all three; its height is 8e-4 at
+  r_c = 0.1 and 0.2 and 4e-4 at 0.3. So the bump fills the region between the seam and r ~ 0.7 (where the
+  lapse evolves fastest in window 0), and shrinks as the template covers more of it.
+- Khat: the same +/- dipole for all three, shifted with r_c (sign change at r = 0.17 / 0.22 / 0.27), same
+  amplitude 3e-4: it is a seam feature.
+- chi: identical for all three (2-3e-4 bump over 0.3-2, baseline 5e-5): not a seam feature.
+- r_c = 0.1 is worse everywhere (loss 5x) : the network has to do more of the fast region.
+Conclusion so far: a larger template region helps monotonically (0.3 halves alpha's error and the mass
+loss vs 0.2), which argues for regenerating the BL template table beyond r = 1 (it is a 1D evolution,
+cheap) and trying r_c = 0.5 and 1; for two punctures the limit is their separation. chi's error (and the
+mass lost at r ~ 1-3) needs a different explanation; `--rho_power 4` (pending) tests rho.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
