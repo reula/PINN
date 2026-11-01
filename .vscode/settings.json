@@ -3,17 +3,53 @@
   "latex-workshop.view.pdf.viewer": "tab",
   "latex-workshop.latex.recipe.default": "first",
   "latex-workshop.latex.recipes": [
-    { "name": "latexmk", "tools": ["latexmk"] }
+    {
+      "name": "latexmk",
+      "tools": [
+        "latexmk"
+      ]
+    }
   ],
   "latex-workshop.latex.tools": [
     {
       "name": "latexmk",
       "command": "latexmk",
-      "args": ["-synctex=1", "-interaction=nonstopmode", "-file-line-error", "-pdf", "%DOC%"]
+      "args": [
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "-pdf",
+        "%DOC%"
+      ]
     }
   ],
   "[latex]": {
     "editor.wordWrap": "on",
     "editor.rulers": []
-  }
+  },
+  "cSpell.language": "en-GB",
+  "cSpell.words": [
+    "Cederbaum",
+    "Chebyshev",
+    "Christoffel",
+    "DSGNAR",
+    "Gauss",
+    "Geroch",
+    "Hawking",
+    "Kretschmann",
+    "Legendre",
+    "Mendieta",
+    "Newton",
+    "Petrov",
+    "Ricci",
+    "Robin",
+    "SSBroyden",
+    "Schwarzschild",
+    "Weyl",
+    "autodiff",
+    "axisymmetric",
+    "harmonically",
+    "specref",
+    "tanh"
+  ]
 }
