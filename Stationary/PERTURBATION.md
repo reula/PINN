@@ -330,3 +330,15 @@ Stationary run before 0773b6a solved the over-determined problem (they are in
   a small rho^-1 part is not excluded by the outer condition.  Whether it is that, or truncation,
   is not yet settled;
 * the `ib16k_*` arms (hub, 2026-10-15) against the nonlinear reference.
+
+
+## Update 2026-11-01: the spectral solver damps its Newton step (stationary/specref.py)
+
+`solve` now backtracks: the step is halved until |r| does not grow (factor 1.001, so a stalled,
+converged step is still taken in full) and the iterate is kept; with no acceptable step it stops.
+Before, a step that raised |r| was taken and the loop then stopped on "residual grew", leaving the
+worse iterate.  That happened at S2 = -0.25 and -0.30 with l <= 14, 48 radial modes (first step
+|r| 0.98 -> 5.2).  `--rcond` sets the singular-value cutoff of the least-squares step (default
+1e-13); **1e-9 is worse** for these bases (M0 0.537 instead of 0.6696 at S2 = -0.25): do not raise
+it.  The references of the scan up to S2 = -1/6 never took a rejected step on a small test and are
+unaffected.  Details: Paper/VERIFICATION.md, "The hard end of the S2 scan".

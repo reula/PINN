@@ -266,3 +266,31 @@ the base's), although the errors fell 2.4-5.7x; report residuals on the report's
 lower than the base's.  Not in the paper.  The honest result is st_w40: width 40 beats width 20 by
 2-3.5x in error at fresh 1.6.  README §5 has the entry; a second round would need denser points,
 more frequent redraws and no Fourier features on the correction.
+
+## The hard end of the S2 scan: S2 = -0.25 and -0.30 (hub_mass.sh, hub_hardref.sh, hub_hard2.sh; Mendieta, 2026-10-31)
+
+Datum lambda = 1/3 + S2 P2: minimum 1/12 (S2 = -0.25) and 1/30 (-0.30) at the poles.
+
+1. The first references (tag fine, l <= 14, 48 radial, 4000 points, 1824 unknowns, undamped
+   Gauss-Newton) DIVERGED: |r| 0.98 -> 5.2 (-0.25) and 2.9 -> 14.5 (-0.30) on step 1; the loop
+   stopped on "residual grew" and kept that iterate.  Their masses (0.676, 0.734) and every
+   "net - ref" printed for these two runs are meaningless.  cond(J) was 1.5e11 (4.6e9 at -1/6).
+2. Fix (stationary/specref.py, 242e33e): backtracking step (halve until |r| <= 1.001 |r_old|,
+   keep the iterate and stop if none helps) and --rcond.  Variants on ms_s2_025_w2 at full size
+   (Mendieta, hub_hardref.sh), each its own tag:
+   - `damp` (backtracking, rcond 1e-13): CONVERGED, |r| 9.8e-1 -> ... -> 4.58e-5 (loss 2.1e-9) in
+     10 steps (steps 1, 0.25, 1, 0.5, 0.5, 1, 1, ...); M0 = 0.669610, M2 = 0.80673.  The scan's
+     network ms_s2_025_w2 against it: M0 +4.6e-7, M2 +1.5e-5.
+   - `rc9` (backtracking, rcond 1e-9): WORSE, M0 = 0.5373, M2 = 1.110 (nonsense).  A coarser
+     cutoff removes real directions at this resolution; the near-singular directions were NOT the
+     problem, the undamped step was.  Do not use --rcond above the default for these bases.
+   - on a small basis (l <= 6, 10 radial, CPU) every step is taken in full at -1/12, -0.25 and
+     -0.30: the damping is inactive where the old solver worked, so the earlier references stand.
+3. Networks (ab_none settings, S2 changed): ms_s2_025: loss 3.2e-8 after w2 (fresh 1.5); three more
+   stages at 32768 points / redraws every 250 (hub_hard2.sh, w3-w5): 2.5e-8, stall, fresh/training
+   1.17.  ms_s2_030: loss 1.6e-6 after w2 (fresh 265, overfitting); after w3-w5 ~2e-6 on the last
+   sample, fresh/training 38: not converged, the loss changes by factors of 4 between samples.
+   The -0.30 network's mass is not used.
+4. Next (hub_hard3.sh, Mendieta): DSGNAR on top of the stalls (5 cycles x 60, sketch 2000) and a
+   width-40 network, at both amplitudes; the -0.30 reference with the corrected solver
+   (hub_hardref.sh --run 30 damp).
