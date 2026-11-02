@@ -1506,6 +1506,30 @@ network is radial and the exact data enter as the offset: same accuracy in the f
 in 1-3. The puncture zero (r^4 vs r^2) did not bite in window 0 (0.03-0.1: alpha 4e-5 vs 5e-5); whether it
 does by t = 2 is for the multi-window comparison.
 
+**`sing_radial`, the lifted radial network over 8 windows to t = 2 (hub, 2026-11-01 21:42 - 2026-11-02 00:50
+UTC; windows 1-7 with the plateau early stop, 2000-6000 iterations each, 15-50 min).** Core rms vs the 1D
+reference at the window ends (alpha / chi / Khat / gt): t = 0.25: 2.2e-5 / 4.9e-6 / 1.4e-5 / 8.3e-6; 0.5:
+2.6e-5 / 8.3e-6 / 4.8e-5 / 2.3e-5; 0.75: 5.3e-5 / 1.2e-5 / 1.7e-4 / 3.6e-5; 1: 1.0e-4 / 1.0e-5 / 3.2e-4 / 4.1e-5;
+1.25: 2.0e-4 / 6.1e-6 / 4.7e-4 / 4.4e-5; 1.5: 2.5e-4 / 4.2e-5 / 6.8e-4 / 9.9e-5; 1.75: 2.2e-4 / 4.4e-5 / 1.1e-3 /
+1.6e-4; 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4 (baseline at t = 2: 7.1e-4 / - / 8.7e-3 / 1.8e-3; sing_bl_hard
+7.6e-3 / 7.8e-4 / 1.1e-2 / 4.7e-3). Held-out loss at the window ends: 4.2e-8, 3.1e-7, 2.2e-7, 6.5e-7, 1.1e-6,
+4.1e-6, 4.6e-5, 4.0e-5: a 10x jump into window 6 (t = 1.5-1.75; the Einstein and end terms both), where
+sing_bl_hard's end term also jumped; windows 6 and 7 are still 2x below the 3D MLP's window 0. Mass
+<m/M - 1> at r = 0.3 / 1 / 3 / 10: 1e-4 or less through t = 1.5 (e.g. t = 1: -1.4e-4 / +9e-6 / -3.5e-4 /
++1.6e-4; baseline -5.3e-4 / -3.3e-4 / -6.4e-4 / -1.3e-3), +6.9e-4 / +4.6e-4 / -2.0e-3 / +9.4e-4 at 1.75, then
++3.6e-3 / +1.4e-3 / +3.2e-3 / +2.1e-3 at t = 2 (baseline -3.6e-3 / -2.1e-3 / -3.9e-3 / -4.9e-3; sing_bl_hard
+-1.1e-2 / -1.1e-2 / -3.6e-2 / +2.8e-2). By band at t = 2 (0.05-0.2 / 0.2-1 / 1-3 / 3-10): alpha 5e-4 / 6e-4 /
+3e-4 / 9e-5 (baseline 1e-3 / 5e-4 / 3e-4 / 8e-4), Khat 2e-3 / 4e-4 / 5e-4 / 2e-4 (1e-2 / 2e-3 / 4e-4 / 2e-4), chi
+1e-4 / 3e-4 / 1e-4 / 6e-5 (1e-4 / 4e-4 / 3e-4 / 3e-4). Plots: `plots/2026-11-02/sing_mass_time.png`,
+`sing_mass_profiles.png`, `sing_losses.png`, `error_by_radius.png`, `sing_sphere_errors_rt.png`.
+Reading: through t = 1.5 the radial run is 3-10x better than the baseline everywhere and 10-100x better
+than the 3D MLP; at t = 2 it is comparable to the baseline in the seam band and the mass (opposite sign),
+and still 5x better in Khat inside r = 0.2 and 4-9x in alpha/chi beyond r = 3. The error grows ~2x per
+window from a 1e-5 start (the hand-off), with a step at window 6 that needs understanding (the 2%
+plateau rule ended window 6 after the minimum 2000 iterations at 4.6e-5: maybe stopped too soon, maybe
+a real change at t ~ 1.5 - the lapse front, the trumpet transition at the puncture that the BL offset
+cannot follow). Total GPU time for windows 1-7: 3 h.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full

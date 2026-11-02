@@ -20,13 +20,14 @@ import numpy as np
 
 D = sys.argv[1]
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "plots",
-                                                          "2026-10-29")
+                                                          "2026-11-02")
 os.makedirs(OUT, exist_ok=True)
 RUNS = [("w8_qn_con10 (baseline)", "long_con10_w8.npz", "#222222"),
         ("sing_bl", "sing_bl_sph.npz", "#2a6fdb"),
         ("sing_bl_pre", "sing_bl_pre_sph.npz", "#e07b00"),
         ("sing_tr (t = 10-12)", "sing_tr_sph.npz", "#1b9e77"),
-        ("sing_bl_hard", "sing_bl_hard_sph.npz", "#d1495b")]
+        ("sing_bl_hard", "sing_bl_hard_sph.npz", "#d1495b"),
+        ("sing_radial (lifted radial net)", "sing_radial_sph.npz", "#17a2b8")]
 RUNS = [r for r in RUNS if os.path.exists(os.path.join(D, r[1]))]
 Z = {n: np.load(os.path.join(D, f)) for n, f, _ in RUNS}
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.grid": True, "grid.alpha": 0.25})
