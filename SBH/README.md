@@ -1536,14 +1536,18 @@ after 2000: the 10x step into window 6 is a real floor, not the plateau rule. Th
 loss differ, though: the 8000-iteration window 6 has core rms alpha 1.8e-3, chi 3.4e-4, Khat 9.8e-4, gt
 5.7e-4 against 2.2e-4 / 4.4e-5 / 1.1e-3 / 1.6e-4 for the 2000-iteration one, i.e. at this loss level the
 solution is no longer pinned down by the loss (a 4.6e-5 floor admits alpha errors from 2e-4 to 2e-3).
-What raises the floor at t >= 1.5 is still open (both ansatze, with and without template, show it; the
-3D MLP's end term jumped there too). Window 7 of the rerun was at 7000 of 8000 iterations when the hub
-stopped (2026-11-02 ~23:10 UTC); its partial.pkl is there.
+What raises the floor at t >= 1.5 is open; the no-template run does NOT show the step (its floors grow
+smoothly, see below), so it is tied to the template (the table's accuracy or the W T(t) + (1 - W) U0
+seam at late times) rather than to the physics; the 3D MLP's end term jumped there too.
 
 **`sing_radial_notpl`, the radial network alone over 8 windows (hub, 2026-11-02 07:46-21:05 UTC with two
 hub stops; `plots/2026-11-03/sing_mass_time.png`, `sing_sphere_errors_rt.png`, `error_by_radius.png`).**
-Held-out loss at the window ends (iterations:loss) and sing_radial's for comparison are in the line
-below; core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+Held-out loss at the window ends (iterations : loss), windows 0-7: 11250 : 1.2e-8, 10750 : 2.6e-8,
+5500 : 9.7e-8, 7500 : 5.7e-8, 3250 : 2.2e-7, 4750 : 2.3e-7, 2750 : 1.0e-6, 2250 : 8.0e-6 (sing_radial:
+24000 : 4.2e-8, 6000 : 3.1e-7, 2500 : 2.2e-7, 3000 : 6.5e-7, 3500 : 1.1e-6, 2250 : 4.1e-6, 2000 : 4.6e-5,
+3250 : 4.0e-5): without the template the loss is 2-5x LOWER in every window and grows smoothly (~3x per
+window) with no step at window 6, while the field errors near the puncture are 2-3x larger: the loss
+floor and the error are not tied one to one at this level. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
