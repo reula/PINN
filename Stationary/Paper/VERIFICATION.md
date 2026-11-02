@@ -320,3 +320,17 @@ DSGNAR on the stalls (5 cycles x 60, sketch 2000): -0.25 every cycle ends on the
 but each new sample starts higher, fresh/training 1022: it fits its sample at 16384 points.
 Width 40 at -0.30 overfits (fresh/training 170, fresh samples spread 4e-8 to 3e-5): the best fresh
 loss of the -0.30 networks is not below ~7e-6.  Paper: IV.A paragraphs, tab:mass, fig:mass, appendix.
+
+## Collocation points, metric-only 3-D network on the rotated quadrupole (for V.C of the paper)
+
+From DSGNAR.md rounds 20-26 (older formulation: rho^4 weights with the Robin ladder, width 20, SSBroyden,
+fine spectral reference rotated; not rerun in the final formulation):
+
+| run | points | loss | rms dh | dh rho 1-3 | rms dlam |
+|---|---|---|---|---|---|
+| rot_ssbm3 | 16384 | 1.3e-6 | 1.17e-3 | 2.4e-3 | 1.7e-5 |
+| rot_coll64k | 65536 | 2.6e-7 | 7.2e-4 | 1.5e-3 | 1.4e-5 |
+| rot_coll128k | 131072 | 1.16e-7 | 9.9e-4 | 2.1e-3 | 1.0e-5 |
+| rot_coll256k_2g | 262144 | 1.18e-7 | 7.5e-4 | 1.6e-3 | 1.4e-5 |
+
+4x points: loss 5x, dh 1.6x, dlam 1.2x; 16x: loss 11x, dh 1.6x; the h error then wanders between 7e-4 and 1e-3.

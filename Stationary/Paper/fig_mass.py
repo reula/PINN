@@ -1,4 +1,4 @@
-"""Fig. mass: the mass shift M0 - R0 and the quadrupole moment M2 against the datum's amplitude S2
+"""Fig. mass: the mass shift M_ADM - M_0 (M_0 = R_0) and the quadrupole moment M2 against the datum's amplitude S2
 (Paper/hub_mass.sh, hub_hard*.sh, hub_bigref.sh; Sec. IV.A, tab:mass).  The NETWORK masses are the
 points (the study object); the spectral reference's mass is the grey marker beside each, the
 yardstick.  The curve is the fit of the spectral references with |S2| <= 1/6 and continues dashed
@@ -57,7 +57,7 @@ ax[0].plot(x1, a * x1**2, ":", color=MUTED, lw=1.0, label=rf"${a:.2f}\,S_2^2$")
 ax[0].errorbar(s2, dM, yerr=e0, fmt="s", color=REFC, ms=4.5, mfc="none", lw=0.8, capsize=1.5,
                label="spectral reference")
 ax[0].plot(sn, Mn0 - R0, "o", color=NETC, ms=3.5, label="network")
-ax[0].set_ylabel(r"$M_0 - R_0$")
+ax[0].set_ylabel(r"$M_{\rm ADM} - M_0$")
 ax[1].plot(np.linspace(-0.32, 0.1, 50), -2 * np.linspace(-0.32, 0.1, 50), ":", color=MUTED, lw=1.0,
            label=r"$-2\,S_2$")
 ax[1].errorbar(s2, M2, yerr=e2, fmt="s", color=REFC, ms=4.5, mfc="none", lw=0.8, capsize=1.5)

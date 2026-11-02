@@ -17,7 +17,7 @@ and contracted in its orthonormal frame, as there.  Writes into the run director
                            the static vacuum completion g = -lam dt^2 + h/lam, over the curvature
                            scale; 0 for an exact solution); its error |K_net/K_spec - 1| against the
                            spectral reference (the only panel that uses it); |1 - lambda|
-    hawking_profile.png    m_H(rho) and the lapse mass r_a(1 - lambda)/2 of the network and its M_0,
+    hawking_profile.png    m_H(rho) and the lapse mass r_a(1 - lambda)/2 of the network and its M_ADM,
                            with the spectral and the spherical references as grey overlays
     geometry_profiles.png  the same curvature quantities along rays (--only profiles)
 """
@@ -205,17 +205,17 @@ def main():
         ax[0].plot(radii, P[:, 1], "s--", lw=0.9, ms=3, color="grey",
                    label="m_H of the spectral reference")
         ax[0].plot(radii, P[:, 2], ":", color="grey", label="m_H of the spherical (Schwarzschild) reference")
-        ax[0].axhline(M0n, color="k", lw=1, ls=":", label=f"network: M_0 = {M0n:.5f}")
+        ax[0].axhline(M0n, color="k", lw=1, ls=":", label=f"network: M_ADM = {M0n:.5f}")
         ax[0].set_xscale("log"); ax[0].set_xlabel("coordinate radius rho"); ax[0].set_ylabel("mass")
         ax[0].set_title("Hawking mass profile (vacuum reading)"); ax[0].legend(fontsize=8)
         ax[0].grid(alpha=0.3)
-        ax[1].plot(radii, np.abs(P[:, 0] / M0n - 1), "o-", label="network: |m_H/M_0 - 1|")
+        ax[1].plot(radii, np.abs(P[:, 0] / M0n - 1), "o-", label="network: |m_H/M_ADM - 1|")
         ax[1].plot(radii, np.abs(0.5 * Pn[:, 1] * (1 - Pn[:, 0]) / M0n - 1), "^-",
-                   label="network: |m_lapse/M_0 - 1|")
+                   label="network: |m_lapse/M_ADM - 1|")
         ax[1].plot(radii, np.abs(P[:, 0] - P[:, 1]) / M0n, "s--", lw=0.9, ms=3, color="grey",
-                   label="network error: |m_H(net) - m_H(spec)| / M_0  (spectral reference)")
+                   label="network error: |m_H(net) - m_H(spec)| / M_ADM  (spectral reference)")
         ax[1].set_xscale("log"); ax[1].set_yscale("log"); ax[1].set_xlabel("coordinate radius rho")
-        ax[1].set_title("approach of the network to its mass M_0, and its error"); ax[1].legend(fontsize=8)
+        ax[1].set_title("approach of the network to its mass M_ADM, and its error"); ax[1].legend(fontsize=8)
         ax[1].grid(alpha=0.3, which="both")
         for p in ax:
             p.axvline(float(cfg.rho_in), color="grey", lw=0.8); p.axvline(float(cfg.rho_out), color="grey", lw=0.8)

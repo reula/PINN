@@ -192,3 +192,31 @@ Build note: VS Code's LaTeX Workshop rebuilds on file changes; a second build ru
 (mine, with latexmk -g or -C) corrupted paper.aux ("File ended while scanning use of \@writefile").
 Use plain `latexmk -pdf paper.tex`, never -g/-C while the editor is open; to recover, run "LaTeX
 Workshop: Clean up auxiliary files" and build again.
+
+## The author's \claude{} notes of 2026-11-02, and what was done
+
+1. "do we say what t is": IV.A/III spectral approximations: t = ln(rho/rho_in)/ln(rho_out/rho_in) in [0,1], as for the networks.
+2. "This notes on commands are not needed in the paper": the command file name is gone from the caption of
+   tab:firstorder (the appendix list keeps it).
+3. "we can not compare with a first-order network ...": the 2048-point first-order run is no longer cited.
+   The point-count evidence is now the metric-only 3-D network on the rotated quadrupole (DSGNAR.md rounds
+   20-26, older boundary-condition formulation, width 20, SSBroyden): 16384 points: loss 1.3e-6, rms dh
+   1.17e-3, dlam 1.7e-5; 65536: 2.6e-7, 7.2e-4, 1.4e-5; 131072: 1.16e-7, 9.9e-4, 1.0e-5; 262144: 1.18e-7,
+   7.5e-4, 1.4e-5.  No rotated-Weyl run with more than 8192 points exists.
+4. "Is that M=1 in Schwarzschild?": no, M_0 = R_0 = 1/sqrt 3 (M = 1 is the Schwarzschild TEST, R_0 = 1).
+5. "The above paragraph is very complicated ... r_in = rho_in only if M = 0": the problem paragraph is
+   rewritten in three sentences.  r_in = rho_in is possible because the harmonic gauge leaves the radial
+   map rho -> rho + c_2 F_2(rho) free (c_1 = 1 for h -> delta, c_2 fixed by the inner datum:
+   exact.reference_fields_asymptotic builds exactly that chart); in the canonical chart r_h = sqrt(rho^2 -
+   R_0^2) < rho.  The paragraph says so and gives M_0 = r_in (1 - lambda_0)/(2 sqrt(lambda_0)) = 1/sqrt 3.
+6. "We haven't said what M_0 is ... reserve M_0 for the inner mass": notation changed.  M_0 = R_0 is the mass
+   of the spherical (Schwarzschild) reference (II.B, V.B, IV.A); the Geroch-Hansen monopole, the ADM mass of
+   the solution, is M_ADM everywhere (extraction formulas, tables, text, fig:mass, fig:hawking, the figure
+   scripts).  The mass-scan discussion (tab:mass, fig:mass, the hard-end paragraph) moved from IV.A to the
+   multipole section, as a paragraph "The mass as a function of the datum".  M_infty was the alternative.
+7. "Why two figures?": 4.2 and 4.7 are two doublings, -1/24 -> -1/12 and -1/12 -> -1/6, not two signs; the
+   dependence on the sign is weak (shift 6.50e-3 at -1/12 against 5.57e-3 at +1/12).  Reworded.
+8. Found while moving the text: the sentence "The best networks below reach a lower loss (1.3e-11) with
+   2285 parameters ..." had been stranded after the Hawking figure by my earlier rewrite; it is back in the
+   spectral-approximation paragraph of IV.A.  Bare "reference" in the multipole section and abstract
+   became "spectral reference".

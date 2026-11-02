@@ -34,7 +34,7 @@ The connection is the Christoffel symbol of the network metric.
 We test the solver on Schwarzschild in harmonic coordinates and on two-rod Weyl solutions, on the symmetry axis and rotated so that no symmetry is left.
 For quadrupolar data, which have no closed-form solution, we compare with an independent spectral solution of the same problem.
 The harmonic gauge and the inner data leave the asymptotic chart free to translate, and this translation dominates the error until it is fixed by Cederbaum's pseudo-Newtonian center of mass, a conserved flux of the static equations; with it, the solution agrees with the spectral one to five to six orders below the size of the perturbation.
-Finally, we read the Geroch--Hansen mass moments of the computed solutions off the symmetry axis, without constructing Weyl coordinates; they reproduce the exact moments of the Weyl solutions and the reference moments of the quadrupolar one.
+Finally, we read the Geroch--Hansen mass moments of the computed solutions off the symmetry axis, without constructing Weyl coordinates; they reproduce the exact moments of the Weyl solutions and the spectral-reference moments of the quadrupolar one.
 \end{abstract}
 
 \maketitle
@@ -115,7 +115,7 @@ In the harmonic chart the spherically symmetric solutions are
   \label{eq:schw}
 \end{equation}
 i.e.\ $h = \dd\rho^2+(\rho^2-R_0^2)\,\dd\Omega^2$.
-With $k=1$ this is Schwarzschild in harmonic coordinates: $M = R_0$, areal radius $r = \rho+R_0$, $\lambda = 1-2M/r$.
+With $k=1$ this is Schwarzschild in harmonic coordinates: its mass is $M_0 = R_0$, with areal radius $r = \rho+R_0$ and $\lambda = 1-2M_0/r$.
 The harmonic condition still allows the radial maps $\rho\to c_1\rho + c_2 F_2(\rho)$, $F_2 = 2R_0+\rho\ln\frac{\rho-R_0}{\rho+R_0}$, fixed by the round inner metric and $h\to\delta$.
 
 \subsection{Boundary and asymptotic conditions}\label{sec:bcs}
@@ -246,7 +246,7 @@ For axisymmetric data even under $z\to-z$ we write the fields as the spherical s
      \qquad + f^l_4 P_l''\,\bigl(e_ie_j-\tfrac12(1-\mu^2)P_{ij}\bigr)\bigr] ,
   \label{eq:spectral}
 \end{gather}
-with $P_l(\mu)$ the Legendre polynomials, $e = \hat z-\mu n$ and $l = 0,2,\dots,L$ (for $l=0$ only $f^0_0$, $f^0_1$, $f^0_2$), and each $f^l_a(\rho) = \sum_{j<J} c^l_{aj}\,T_j(2t-1)$ \claude{do we say what t is} a sum of Chebyshev polynomials of $\ln\rho$.
+with $P_l(\mu)$ the Legendre polynomials, $e = \hat z-\mu n$ and $l = 0,2,\dots,L$ (for $l=0$ only $f^0_0$, $f^0_1$, $f^0_2$), and each $f^l_a(\rho)$ a sum of Chebyshev polynomials of $\ln\rho$, $f^l_a=\sum_{j<J} c^l_{aj}\,T_j(2t-1)$, with $t=\ln(\rho/\rho_{\rm in})/\ln(\rho_{\rm out}/\rho_{\rm in})\in[0,1]$ as for the networks.
 The coefficients $c$ minimize the same residual vector as the networks, on a fixed set of points, by the Gauss--Newton method: with $r(c)$ the vector of all residuals and $J = \partial r/\partial c$, $c\to c-(J^TJ)^{-1}J^Tr$, which converges in a few iterations for so few unknowns.
 Apart from the residual that it minimizes, this method has nothing in common with the networks, so an agreement between the two is not an artifact of either.
 It also shows how small the loss can become for a given problem, and whether a stall belongs to the problem or to the representation: a stall of the spectral approximation, which has many parameters and a different optimizer, points to the problem itself, as when $h_{rA}$ was prescribed on the inner sphere (Sec.~\ref{sec:bcs}).
@@ -276,7 +276,7 @@ The rotated Weyl solution solves the system to $3\times10^{-14}$ or better at ev
 
 \subsection{Schwarzschild in harmonic coordinates}\label{sec:schw}
 
-We check the algorithm with the Schwarzschild solution of unit mass ($M_0 = 1$).
+We check the algorithm with the Schwarzschild solution of unit mass ($M_0 = R_0 = 1$).
 For that we use the spherical network with $R_0=1$, $\lambda_0 = 0.381966$ on the sphere of $h$-areal radius 2 and Robin conditions at $\rho_{\rm out}=100$.
 We recover the exact solution.
 The Robin condition is not set to zero, but rather to the value the exact solutions would produce, so it has a source term.
@@ -284,12 +284,11 @@ Table~\ref{tab:firstorder} compares the metric-only and first-order formulations
 The metric-only network is more accurate by three orders of magnitude (a factor 2600 in $h$ and 1300 in $\lambda$).
 The first-order network's error is a gauge mode: along it the compatibility residual is nearly flat, and an earlier, less converged first-order run found the same geometry in a different harmonic chart, with $h_{rr}$ off by a third.
 Deriving $\Gamma$ from $h$ removes the mode.
-With the homogeneous Robin conditions (no source), the metric-only network reaches a loss of $2.4\times10^{-11}$ and maximum errors of $7.0\times10^{-6}$ in $h$, $6.0\times10^{-6}$ in $\Gamma$ and $6.3\times10^{-7}$ in $\lambda$ against the exact solution, and its mass $M_0 = 0.999997$ (Sec.~\ref{sec:moments}) against $R_0=1$; each run takes 9--11 minutes on one GPU. (The center-of-mass condition plays no role here: a spherically symmetric network has no dipole, and the first-order network's error is a radial chart mode.)
+With the homogeneous Robin conditions (no source), the metric-only network reaches a loss of $2.4\times10^{-11}$ and maximum errors of $7.0\times10^{-6}$ in $h$, $6.0\times10^{-6}$ in $\Gamma$ and $6.3\times10^{-7}$ in $\lambda$ against the exact solution, and its ADM mass $M_{\rm ADM} = 0.999997$ (Sec.~\ref{sec:moments}) against $M_0=R_0=1$; each run takes 9--11 minutes on one GPU. (The center-of-mass condition plays no role here: a spherically symmetric network has no dipole, and the first-order network's error is a radial chart mode.)
 
 \begin{table}
 \caption{First-order against metric-only network on the same Schwarzschild problem (manufactured
-Robin source, $\rho_{\rm out}=100$, 20000 Adam + 2000 SSBroyden iterations;
-\texttt{Paper/commands\_schwarzschild.sh}).}\claude{This notes on commands are not needed in the paper}
+Robin source, $\rho_{\rm out}=100$, 20000 Adam + 2000 SSBroyden iterations).}
 \label{tab:firstorder}
 \begin{ruledtabular}
 \begin{tabular}{lcc}
@@ -349,95 +348,50 @@ $\log_{10}R_{ab}R^{ab}$ of the exact solution. \todo{regenerate without the inte
 
 \subsection{A rotated Weyl configuration}
 
-The above approximations were obtained with a scheme adapted to the axis symmetry. In order to test the 3D setting we rotate the closest configuration by $45^\circ$ about the $y$ axis, so that the symmetry is not apparent, and use the generic 3D setting.
+The above approximations were obtained with a scheme adapted to the axis symmetry.
+In order to test the 3D setting we rotate the closest configuration by $45^\circ$ about the $y$ axis, so that the symmetry is not apparent, and use the generic 3D setting.
 The equations are covariant, so $h\to R\,h\,R^{T}$ and $\lambda\to\lambda$, evaluated at $R^{T}x$, is again a solution, and the inner data are taken from the rotated fields.
 The gauge, however, is a statement about a chart, and the source~\eqref{eq:cylsource} must be taken about the rotated axis $n = R\hat z$: with that source the exact rotated solution satisfies the gauge condition to $2\times10^{-15}$, while it violates the harmonic one ($S=0$) by $|\Gamma^i|\approx2.6\times10^{-2}$.
 The general three-dimensional metric-only network, with 8192 collocation points and SSBroyden from a random initialization, reaches a loss of $5.1\times10^{-9}$ in 7000 iterations (17 minutes), with maximum errors $1.6\times10^{-4}$ in $h$ and $1.7\times10^{-5}$ in $\lambda$, against $7.3\times10^{-5}$ and $1.8\times10^{-6}$ for the axisymmetric network on the same shell.
 
 The general network is about two times less accurate than the axis-symmetric one in $h$ and ten times in $\lambda$ for the same problem; it has to represent functions of three variables instead of two.
 In three dimensions number of collocation points matters more: the loss is a mean over the sampled points, and with too few of them the optimizer can lower the mean while the residual grows at points it does not sample.
-That is why in this case we use more points, 8192 ; an earlier run of the first-order network on 2048 points showed exactly this, its loss falling while every error grew. \claude{we can not compare with a first-order network, do we have a run with the metric-only network, didn't we make any run with more points, say twice more? Does this improves the errors?}
+For the metric-only network on the rotated quadrupolar data of Sec.~\ref{sec:quadrupole} (an earlier formulation of the boundary conditions, width 20), four times more points, 65536 instead of 16384, lower the loss five times ($1.3\times10^{-6}$ to $2.6\times10^{-7}$) and the rms error in $h$ 1.6 times ($1.2\times10^{-3}$ to $7.2\times10^{-4}$), the one in $\lambda$ 1.2 times; with up to 262144 points the loss falls eleven times below the 16384-point value, but the error in $h$ stays between $7\times10^{-4}$ and $1\times10^{-3}$.
+That is why we use 8192 points here, rather than the 2048 of the axisymmetric tests.
 % =====================================================================================
 \section{Quadrupolar data}\label{sec:quadrupole}
 % =====================================================================================
 Having tested the solver on exact solutions, we now apply it to a problem without one: spherical data with a quadrupolar term.
 \subsection{The problem}
 
-We take $R_0 = 1/\sqrt3$, \claude{Is that M=1 in Scharzschild?}the inner sphere $\rho_{\rm in}=1$ with $r_{\rm in}=1$ (so $\lambda_0 = 1/3$), $\rho_{\rm out}=100$, and
+We take the inner sphere at $\rho_{\rm in}=1$, with $h$-areal radius $r_{\rm in}=1$ and $\lambda_0=1/3$, and $\rho_{\rm out}=100$.
+The datum is
 \begin{equation}
   \lambda|_{\rho_{\rm in}} = \tfrac13 - \tfrac1{12}\,P_2(\cos\theta) ,
 \end{equation}
 a 25\% perturbation of the spherical value, with no known closed-form solution.
-The constants $\lambda_0$, $S_1$, $S_2$ and $r_{\rm in}$ of Eq.~\eqref{eq:innerbc} are free data.
-The equations~\eqref{eq:ricci}--\eqref{eq:lam} are invariant under $\lambda\to k\lambda$ with $k$ constant, and this scale is fixed by the outer condition $\lambda\to1$ (Sec.~\ref{sec:bcs}).
-For spherical data ($S_1=S_2=0$) $\lambda_0$ and $r_{\rm in}$ then fix the mass: with $r_S$ the Schwarzschild areal radius of the inner sphere, $\lambda_0 = 1-2M/r_S$ and $r_{\rm in} = \sqrt{\lambda_0}\,r_S$ (since $h=\lambda\gamma$), so $M = r_{\rm in}(1-\lambda_0)/(2\sqrt{\lambda_0})$, which for the values above is $M=R_0=1/\sqrt3$.
-\claude{The above paragraph is very complicated for something simple... also, it can not be that $r_in = \rho_in$ unless M=0}
+The constants $\lambda_0$, $S_2$ and $r_{\rm in}$ are free data, and the scale of $\lambda$ is fixed by the outer condition $\lambda\to1$.
+For $S_2=0$ the data describe a Schwarzschild solution whose sphere has Schwarzschild radius $r_S=r_{\rm in}/\sqrt{\lambda_0}$ (the areal radius in $h=\lambda\gamma$ is $\sqrt\lambda\,r_S$) and $\lambda_0=1-2M_0/r_S$, so that $M_0=r_{\rm in}(1-\lambda_0)/(2\sqrt{\lambda_0})=R_0=1/\sqrt3$; this is the spherical (Schwarzschild) reference used below.
+That $\rho_{\rm in}$ and $r_{\rm in}$ are equal is not a contradiction: the harmonic gauge leaves the radial map $\rho\to\rho+c_2F_2(\rho)$ free (Sec.~\ref{sec:equations}), and the inner datum fixes $c_2$.
 
 Linear theory predicts a pure $l=2$ response decaying like $\rho^{-3}$, no $l=1$ part and an $l=0$ back-reaction of order $S_2^2$.
 Against the spherical solution the perturbation has an rms size of $2.0\times10^{-2}$ in $\lambda$ and $2.2\times10^{-2}$ in $h$ near the inner sphere, and $2.6\times10^{-4}$ and $3.5\times10^{-6}$ for $30<\rho<100$.
 
 We grade against a spectral approximation~\eqref{eq:spectral} (Sec.~\ref{sec:specref}) with $L = 10$ and $J = 36$, 1008 unknowns, computed on 2500 points with the weights of the networks in 37 minutes.
 Its loss is $2.8\times10^{-11}$ on its own points and also on those of a network run.
-Its $l=2$ part decays as $\rho^{-3.00}$ from $\rho=20$ to 100, as linear theory predicts. 
-Its mass (Sec.~\ref{sec:moments}) is $M_0 = 0.583847$, 1.1\% above the $R_0 = 0.577350$ of the spherical solution with the same $\lambda_0$.
-\claude{We haven't say what $M_0$ is. Perhaps we could move this discussion to the Multipole section, I think we should reserve $M=M_0$ for the inner mass $M_0=R_0$ and use $M_{ADM}$ or $M_{\infty}$ for the other.}
-The mass shift is the $l=0$ back-reaction of the quadrupole, second order in $S_2$ according to linear theory.
-To check this we trained networks and solved the spectral reference for seven amplitudes (Table~\ref{tab:mass}, Fig.~\ref{fig:mass}).
-For $|S_2|\leq1/6$ the mass shift is positive for both signs of $S_2$ and doubling $S_2$ multiplies it by 4.2 and 4.7 \claude{Why two figures? Does it changes so much depending on the sign?}; the fit $M_0-R_0 = aS_2^2+bS_2^3+cS_2^4$ to the five spectral references with $a=0.83$, $b=-0.77$, $c=5.2$ reproduces them to $4\times10^{-5}$, and no term linear in $S_2$ is needed (the even part of the two values at $S_2=\pm1/12$ alone gives $a = 0.87$).
-The quadrupole moment is linear to leading order, with $M_2/S_2$ going from $-2.00$ at $S_2=-1/24$ to $-2.43$ at $-1/6$.
-The masses of the networks (width 20, Appendix~\ref{app:repro}) agree with those of their spectral references to $2\times10^{-9}$ at $-1/24$, $4\times10^{-8}$ at $-1/12$ and $4\times10^{-7}$ at $-1/6$, far below the shifts, and their errors scale with the data: loss $3.2\times10^{-12}$ and rms errors $2.7\times10^{-9}$ in $\lambda$, $1.0\times10^{-7}$ in $h$ at $-1/24$; $2.5\times10^{-10}$, $2.2\times10^{-7}$ and $1.9\times10^{-6}$ at $-1/6$, where $\lambda$ ranges from $1/6$ to $5/12$ on the sphere.
-
-Beyond that the shift stops being quadratic: $(M_0-R_0)/S_2^2$ rises from 1.10 at $-1/6$ to 1.48 at $-1/4$ and 2.10 at $-0.30$, where $\lambda$ falls to $1/12$ and $1/30$ at the poles of the sphere, and the fit of the small amplitudes underestimates the shift by 9\% and 27\% there.
-The hard end also asks more of both methods.
-At $S_2=-1/4$ the spectral reference needs angular modes up to $l=14$ and 48 radial modes (its residual is $4.6\times10^{-5}$), and the width-20 network then reaches a loss of $2.5\times10^{-8}$ with rms errors $3.9\times10^{-7}$ in $\lambda$ and $7.0\times10^{-6}$ in $h$ and a mass $6\times10^{-7}$ from that of the reference.
-A width-40 network lowers the loss on its training points to $2.3\times10^{-10}$ and the errors to $1.9\times10^{-7}$ and $3.4\times10^{-6}$ (mass $7\times10^{-7}$ away), but on fresh samples its loss is eleven times its training loss.
-At $S_2=-0.30$ the spectral reference needs $l\leq20$: with $l\leq14$ it stalls at a loss of $1.3\times10^{-6}$, and the corrected one (residual $7\times10^{-5}$) moves its mass by $5\times10^{-4}$.
-The networks do not converge there.
-The width-20 one stops at a loss of $1.6\times10^{-6}$, errors $4.7\times10^{-5}$ and $8.1\times10^{-5}$ and a mass $7\times10^{-5}$ from the reference's; the width-40 one reaches $4\times10^{-8}$ on its training points but 170 times that on fresh samples, errors $1.2\times10^{-5}$ and $1.5\times10^{-5}$ and a mass $1.1\times10^{-3}$ away, within the $4\times10^{-3}$ spread of the extraction of the mass.
-
-\begin{table*}
-\caption{Mass and quadrupole moment of the network (the best one for each amplitude; width in
-the third column, empty where none was trained) and of the spectral reference, with
-$R_0 = 1/\sqrt3 = 0.577350$. The spectral references use $l\leq10$ and 36 radial modes for
-$|S_2|\leq1/6$, $l\leq14$ and 48 radial modes at $-1/4$ and $l\leq20$ and 48 at $-0.30$. The spread
-of the mass over the fit windows of Sec.~\ref{sec:moments} is below $10^{-4}$ in $M_0$ up to
-$S_2=-1/6$, and $1.1\times10^{-3}$ and $4.2\times10^{-3}$ at $-1/4$ and $-0.30$.}
-\label{tab:mass}
-\begin{ruledtabular}
-\begin{tabular}{cccccccc}
- & & & \multicolumn{2}{c}{$M_0$} & & \multicolumn{2}{c}{$M_2$} \\
-$S_2$ & $\lambda_{\min}$ & width & network & spectral ref. & $(M_0^{\rm spec}-R_0)/S_2^2$ & network & spectral ref. \\
-\hline
-$-0.30$ & 0.033 & 40 & 0.765429 & 0.766484 & 2.101 & 1.4696 & 1.4072 \\
-$-1/4$ & 0.083 & 40 & 0.669611 & 0.669610 & 1.476 & 0.8067 & 0.8067 \\
-$-1/6$ & 0.167 & 20 & 0.607969 & 0.607970 & 1.102 & 0.4052 & 0.4052 \\
-$-1/8$ & 0.208 & -- & -- & 0.593055 & 1.005 & -- & 0.2793 \\
-$-1/12$ & 0.250 & 20 & 0.583847 & 0.583847 & 0.936 & 0.1747 & 0.1747 \\
-$-1/24$ & 0.292 & 20 & 0.578886 & 0.578886 & 0.885 & 0.0833 & 0.0833 \\
-$+1/12$ & 0.417 & -- & -- & 0.582915 & 0.801 & -- & $-0.1540$ \\
-\end{tabular}
-\end{ruledtabular}
-\end{table*}
-
-\begin{figure}
-\includegraphics[width=\columnwidth]{figs/mass_s2.png}
-\caption{The mass shift (a) and the quadrupole moment (b) against the amplitude $S_2$ of the datum
-(Table~\ref{tab:mass}): the masses of the networks (points) and of the spectral references (open
-squares, with the spread of the extraction). Solid: the fit
-$0.83S_2^2-0.77S_2^3+5.2S_2^4$ of the five spectral references with $|S_2|\leq1/6$, dashed beyond
-them; dotted: its quadratic term, and $-2S_2$.}
-\label{fig:mass}
-\end{figure}
+Its $l=2$ part decays as $\rho^{-3.00}$ from $\rho=20$ to 100, as linear theory predicts.
+The best networks below reach a lower loss ($1.3\times10^{-11}$) with 2285 parameters, so the errors we quote are differences between two approximations of comparable quality, obtained by unrelated methods.
+Its mass, and how the mass depends on the datum, are in Sec.~\ref{sec:moments}.
 
 \paragraph{The geometry of the network solution.} To see how strongly the datum $S_2=-1/4$ ($\lambda$ from 0.083 at the poles of the sphere to 0.458 at the equator) deforms the geometry, we evaluate the gauge-invariant curvature of the width-20 network in the cylindrical chart about the axis, for the static vacuum spacetime $g=-\lambda\,\dd t^2+h/\lambda$ (Fig.~\ref{fig:geometry}).
 The Kretschmann scalar $K$ is of order one at the sphere ($7.9$ on the axis and $2.2$ at the equator, for $\rho=1$) and falls as $\rho^{-6}$, by twelve orders of magnitude between $\rho=1$ and $\rho=100$.
-Against the spherical (Schwarzschild) reference with the same $\lambda_0$ it is 13 times larger on the axis at the sphere (a maximum of 14.6 at $\rho\simeq1.3$), but at the equator it goes from 3.6 times larger at the sphere to $0.14$ at $\rho\simeq1.8$, a change by a factor 25 within 0.8 in $\rho$; beyond $\rho\simeq10$ the ratio tends to $(M_0/R_0)^2=1.35$, the mass shift.
+Against the spherical (Schwarzschild) reference with the same $\lambda_0$ it is 13 times larger on the axis at the sphere (a maximum of 14.6 at $\rho\simeq1.3$), but at the equator it goes from 3.6 times larger at the sphere to $0.14$ at $\rho\simeq1.8$, a change by a factor 25 within 0.8 in $\rho$; beyond $\rho\simeq10$ the ratio tends to $(M_{\rm ADM}/M_0)^2=1.35$, the mass shift.
 The algebraic speciality $|S-1|$ ($S=1$ for type D, which the spherical reference is) is of order one at the equator of the sphere (1.0 at $\rho=1$, $0.29$ at $3$, $1.3\times10^{-3}$ at 10), so near the sphere the solution is far from type D, and it decays as a power of $\rho$.
 The network's four-dimensional Ricci tensor, which vanishes for an exact solution, has the norm $|R^{(4)}_{ab}|/\sqrt{K}=3.5\times10^{-5}$ (median) for $1\le\rho<3$, $6\times10^{-6}$ for $3\le\rho<10$ and $7\times10^{-7}$ beyond, and its curvature differs from that of the spectral reference by $7.6\times10^{-5}$, $5.0\times10^{-6}$ and $1.3\times10^{-6}$ in the same ranges (the largest value, $5\times10^{-2}$, is on the axis at the sphere).
 
 The Hawking mass of the coordinate spheres (Fig.~\ref{fig:hawking}) rises from $0.500$ at the sphere to $0.668$ at $\rho=3.5$ and stays there, and the lapse mass $r_a(1-\lambda)/2$ approaches the same value from above ($0.687$ at $\rho=1$).
-Both are within $1.1\times10^{-4}$ of the mass $M_0=0.66961$ of the multipole extraction for $\rho\gtrsim8$, well inside the $1.1\times10^{-3}$ spread of that extraction, while the spherical reference has the constant $0.577$.
-The Hawking mass of the network differs from that of the spectral reference by $6\times10^{-6}$ (relative to $M_0$) at the sphere and by $3\times10^{-7}$ beyond $\rho\simeq5$.
+Both are within $1.1\times10^{-4}$ of the mass $M_{\rm ADM}=0.66961$ of the multipole extraction for $\rho\gtrsim8$, well inside the $1.1\times10^{-3}$ spread of that extraction, while the spherical reference has the constant $0.577$.
+The Hawking mass of the network differs from that of the spectral reference by $6\times10^{-6}$ (relative to $M_{\rm ADM}$) at the sphere and by $3\times10^{-7}$ beyond $\rho\simeq5$.
 
 \begin{figure*}
 \includegraphics[width=\textwidth]{figs/geometry_s2_025_slice_zoom.png}
@@ -452,12 +406,11 @@ spectral reference; and $|1-\lambda|$. Logarithmic color scales.}
 \begin{figure*}
 \includegraphics[width=0.8\textwidth]{figs/geometry_s2_025_hawking.png}
 \caption{Hawking mass and lapse mass of the network at $S_2=-1/4$ on coordinate spheres, with its mass
-$M_0$; the gray curves are the Hawking mass of the spectral reference and of the spherical
-(Schwarzschild) reference (left), and the deviations of the network from $M_0$ and from the
+$M_{\rm ADM}$; the gray curves are the Hawking mass of the spectral reference and of the spherical
+(Schwarzschild) reference (left), and the deviations of the network from $M_{\rm ADM}$ and from the
 spectral reference (right).}
 \label{fig:hawking}
-\end{figure*} The best networks below reach
-a lower loss ($1.3\times10^{-11}$) with 2285 parameters, so the errors we quote are differences between two approximations of comparable quality, obtained by unrelated methods.
+\end{figure*}
 
 \subsection{Without and with the center-of-mass condition}
 
@@ -501,7 +454,7 @@ spherical solution).}
 The same datum about the axis $(1,0,1)/\sqrt2$ is a fully three-dimensional problem whose solution is the rotated axisymmetric one.
 We solve it with the general metric-only network in the formulation of Sec.~\ref{sec:bcs}, Adam and four SSBroyden stages.
 At width 20 (2347 parameters, 16384 points) the loss levels off at $1.2\times10^{-6}$, five orders above the axisymmetric one, decreasing by only 10--25\% per stage, which points to the network and not to the formulation as the limit.
-At width 40 (32768 points) the loss falls to $4.3\times10^{-9}$ within two stages and stays there (fresh/training ratio 1.00), and the error against the rotated reference is $3.4\times10^{-6}$ in $\lambda$ and $2.6\times10^{-4}$ in $h$ (rms over the shell), i.e.\ 2800 and 40 times below the perturbation (width 20: $9.1\times10^{-6}$ and $1.2\times10^{-3}$).
+At width 40 (32768 points) the loss falls to $4.3\times10^{-9}$ within two stages and stays there (fresh/training ratio 1.00), and the error against the rotated spectral reference is $3.4\times10^{-6}$ in $\lambda$ and $2.6\times10^{-4}$ in $h$ (rms over the shell), i.e.\ 2800 and 40 times below the perturbation (width 20: $9.1\times10^{-6}$ and $1.2\times10^{-3}$).
 The error concentrates in $h$ near the inner sphere ($5.3\times10^{-4}$ for $1\le\rho\le3$, against a perturbation of $2.3\times10^{-2}$) and falls to $3\times10^{-8}$ beyond $\rho=30$; $|d|\le7.5\times10^{-7}$ on every sphere.
 The rotated Weyl test of Sec.~\ref{sec:tests} reached $5\times10^{-9}$ already at width 20, but in a much weaker field.
 Each stage takes 30 minutes at width 40 (10 at width 20).
@@ -517,31 +470,31 @@ In three dimensions the term therefore costs more than it gains, and we do not i
 \section{Multipole moments}\label{sec:moments}
 % =====================================================================================
 
-\paragraph{Extraction from the axis.} For a static axisymmetric vacuum solution the Geroch--Hansen moments~\cite{Geroch1970,Hansen1974,Beig2000} follow from the potential on the symmetry axis in canonical Weyl coordinates, $g = -e^{2U}\dd t^2+e^{-2U}[e^{2k}(\dd W^2+\dd Z^2)+W^2\dd\phi^2]$: with the static Ernst potential $\xi = -\tanh U$ on the axis, $\xi(0,Z) = \sum_j m_j/|Z|^{j+1}$, the moments are $M_j = m_j$ for $j\le3$ and $M_4 = m_4 - \tfrac17 m_0(m_0m_2-m_1^2)$~\cite{SotiriouApostolatos2004}; equivalently, from $U(0,Z) = \sum_r U^{(r)}/|Z|^{r+1}$, $M_0=-U^{(0)}$, $M_1=-U^{(1)}$, $M_2 = \tfrac13(U^{(0)})^3-U^{(2)}$, $M_3=(U^{(0)})^2U^{(1)}-U^{(3)}$~\cite{FHP1989}.
+\paragraph{Extraction from the axis.} For a static axisymmetric vacuum solution the Geroch--Hansen moments~\cite{Geroch1970,Hansen1974,Beig2000} follow from the potential on the symmetry axis in canonical Weyl coordinates, $g = -e^{2U}\dd t^2+e^{-2U}[e^{2k}(\dd W^2+\dd Z^2)+W^2\dd\phi^2]$: with the static Ernst potential $\xi = -\tanh U$ on the axis, $\xi(0,Z) = \sum_j m_j/|Z|^{j+1}$, the moments are $M_{\rm ADM}=m_0$ (the ADM mass), $M_j = m_j$ for $1\le j\le3$ and $M_4 = m_4 - \tfrac17 m_0(m_0m_2-m_1^2)$~\cite{SotiriouApostolatos2004}; equivalently, from $U(0,Z) = \sum_r U^{(r)}/|Z|^{r+1}$, $M_{\rm ADM}=-U^{(0)}$, $M_1=-U^{(1)}$, $M_2 = \tfrac13(U^{(0)})^3-U^{(2)}$, $M_3=(U^{(0)})^2U^{(1)}-U^{(3)}$~\cite{FHP1989}.
 Weyl coordinates need not be built, because only the axis is used: in our variables $U = \tfrac12\ln\lambda$ and $W = |\partial_\phi|_h$; on the part of the axis that reaches infinity $k=0$, so there $\dd Z$ is the proper $h$-length along the axis; the inner ball cuts the axis in two, and the offset between the branches is the change of $Z$ along a meridian semicircle, $\dd Z = \star\dd W$ in the meridian metric.
 We fit $\xi$ on both branches and fix the origin of $Z$ by mass centring ($M_1=0$); the error bar is the spread over fit windows starting at $1$--$1.5\,\rho_{\rm in}$ and fit orders 6 and 8.
-On exact solutions this returns: Schwarzschild in harmonic coordinates, $M_0=R_0$ to $10^{-12}$ and $M_l$ below $10^{-11}$ for $1\le l\le4$; the equal Weyl rods, $M_0 = 2$ and $M_2 = 2.500000$; the unequal rods, the closed-form moments to $10^{-5}$ relative and the center of mass $z=1.309091$; Curzon, $M_2 = -M^3/3$ and $M_4 = 19M^5/105$, although $U$ itself has no quadrupole.
+On exact solutions this returns: Schwarzschild in harmonic coordinates, $M_{\rm ADM}=M_0=R_0$ to $10^{-12}$ and $M_l$ below $10^{-11}$ for $1\le l\le4$; the equal Weyl rods, $M_{\rm ADM} = 2$ and $M_2 = 2.500000$; the unequal rods, the closed-form moments to $10^{-5}$ relative and the center of mass $z=1.309091$; Curzon, $M_2 = -M^3/3$ and $M_4 = 19M^5/105$, although $U$ itself has no quadrupole.
 
-\paragraph{The Weyl networks.} The trained solutions give $M_0 = 2.000001$ and $M_2 = 2.49950$ for the equal rods (exact 2 and 2.5), and $M_0 = 1.100000$, $M_2 = 0.29105$, $M_3 = -0.5016$ with the center of mass at $z = 1.3091$ for the unequal rods (exact 1.1, 0.290909, $-0.49983$, 1.309091).
-For the rotated rods, extracted about the rotated axis, the three-dimensional network gives (in the chart of the run) $M_0 = 0.0314289$, $M_2 = 6.792\times10^{-6}$, $M_3 = -3.26\times10^{-7}$ and the center of mass at $0.03740$, against $0.0314286$, $6.785\times10^{-6}$, $-3.33\times10^{-7}$ and $0.03740$.
+\paragraph{The Weyl networks.} The trained solutions give $M_{\rm ADM} = 2.000001$ and $M_2 = 2.49950$ for the equal rods (exact 2 and 2.5), and $M_{\rm ADM} = 1.100000$, $M_2 = 0.29105$, $M_3 = -0.5016$ with the center of mass at $z = 1.3091$ for the unequal rods (exact 1.1, 0.290909, $-0.49983$, 1.309091).
+For the rotated rods, extracted about the rotated axis, the three-dimensional network gives (in the chart of the run) $M_{\rm ADM} = 0.0314289$, $M_2 = 6.792\times10^{-6}$, $M_3 = -3.26\times10^{-7}$ and the center of mass at $0.03740$, against $0.0314286$, $6.785\times10^{-6}$, $-3.33\times10^{-7}$ and $0.03740$.
 
 \paragraph{The quadrupolar solution.} Table~\ref{tab:moments} lists the moments.
-The data raise the mass from the background value $R_0 = 0.57735$ to $M_0 = 0.583847$, a nonlinear back-reaction of 1.1\% in the monopole, and the quadrupole moment is $M_2 = 0.1747$.
-The run without the center-of-mass condition, whose pointwise error is 3900 times larger, has moments as close to the reference as the run with it (within $2\times10^{-7}$ in $M_2$ and $4\times10^{-7}$ in $M_4$): moments are geometric, and the translation mode moves the chart, not the geometry.
-The extraction shows the mode directly: the center of mass of that run, measured from the center of the coordinate sphere of radius $\rho$, is $-8\times10^{-7}$ at $\rho=1$, $-8.1\times10^{-4}$ at $\rho=2$, $-1.63\times10^{-3}$ at 10 and $-1.79\times10^{-3}$ at 70: it vanishes at the inner sphere, as the mode must, and tends to the translation $a = d_z/M_0 = -1.82\times10^{-3}$.
+The data raise the mass from the value $M_0=R_0 = 0.57735$ of the spherical reference to $M_{\rm ADM} = 0.583847$, a nonlinear back-reaction of 1.1\% in the monopole, and the quadrupole moment is $M_2 = 0.1747$.
+The run without the center-of-mass condition, whose pointwise error is 3900 times larger, has moments as close to the spectral reference as the run with it (within $2\times10^{-7}$ in $M_2$ and $4\times10^{-7}$ in $M_4$): moments are geometric, and the translation mode moves the chart, not the geometry.
+The extraction shows the mode directly: the center of mass of that run, measured from the center of the coordinate sphere of radius $\rho$, is $-8\times10^{-7}$ at $\rho=1$, $-8.1\times10^{-4}$ at $\rho=2$, $-1.63\times10^{-3}$ at 10 and $-1.79\times10^{-3}$ at 70: it vanishes at the inner sphere, as the mode must, and tends to the translation $a = d_z/M_{\rm ADM} = -1.82\times10^{-3}$.
 With the condition it is below $6\times10^{-8}$ at every radius.
 
 \begin{table}
 \caption{Geroch--Hansen moments of the quadrupolar solution: the spectral reference, and the
-differences network $-$ reference with the same fit windows (the reference's window spread,
+differences network $-$ spectral reference with the same fit windows (the spectral reference's window spread,
 $1.2\times10^{-4}$ in $M_2$ and $7\times10^{-4}$ in $M_4$, largely cancels in the differences).
 For the rotated data the moments are taken about the data axis.}
 \label{tab:moments}
 \begin{ruledtabular}
 \begin{tabular}{lccc}
- & $M_0$ & $M_2$ & $M_4$ \\
+ & $M_{\rm ADM}$ & $M_2$ & $M_4$ \\
 \hline
-reference & $0.583847$ & $0.17471$ & $0.0220$ \\
+spectral reference & $0.583847$ & $0.17471$ & $0.0220$ \\
 with center of mass & $-6.3\times10^{-8}$ & $+7.3\times10^{-7}$ & $-3.2\times10^{-6}$ \\
 without center of mass & $-2.5\times10^{-8}$ & $+1.8\times10^{-7}$ & $-4.1\times10^{-7}$ \\
 3-D network (width 20), rotated data & $-5.9\times10^{-6}$ & $+2.5\times10^{-5}$ & $-1.2\times10^{-3}$ \\
@@ -550,10 +503,60 @@ without center of mass & $-2.5\times10^{-8}$ & $+1.8\times10^{-7}$ & $-4.1\times
 \end{ruledtabular}
 \end{table}
 
-\paragraph{Decay of the multipoles.} Expanding $\mathcal P$ in Legendre modes $c_l(\rho)$ about the solution's own axis, the local power $\dd\ln|c_l|/\dd\ln\rho$ of the reference is $-1.00$, $-3.00$ and $-5.0$ for $l=0,2,4$ (the last out to $\rho\approx30$, where $c_4\sim10^{-10}$), and its odd modes are at $10^{-16}$.
+\paragraph{The mass as a function of the datum.} The mass shift $M_{\rm ADM}-M_0$ is the $l=0$ back-reaction of the quadrupole, second order in $S_2$ according to linear theory.
+To check this we trained networks and solved the spectral reference for seven amplitudes (Table~\ref{tab:mass}, Fig.~\ref{fig:mass}).
+For $|S_2|\leq1/6$ the mass shift is positive for both signs of $S_2$, and it depends little on the sign (at $S_2=\pm1/12$ it is $6.50\times10^{-3}$ and $5.57\times10^{-3}$).
+Doubling $S_2$ multiplies it by 4.2 (from $-1/24$ to $-1/12$) and by 4.7 (from $-1/12$ to $-1/6$), approaching the factor 4 of a quadratic law for small $S_2$.
+The fit $M_{\rm ADM}-M_0 = aS_2^2+bS_2^3+cS_2^4$ to the five spectral references with $a=0.83$, $b=-0.77$, $c=5.2$ reproduces them to $4\times10^{-5}$, and no term linear in $S_2$ is needed (the even part of the two values at $S_2=\pm1/12$ alone gives $a = 0.87$).
+The quadrupole moment is linear to leading order, with $M_2/S_2$ going from $-2.00$ at $S_2=-1/24$ to $-2.43$ at $-1/6$.
+The masses of the networks (width 20, Appendix~\ref{app:repro}) agree with those of their spectral references to $2\times10^{-9}$ at $-1/24$, $4\times10^{-8}$ at $-1/12$ and $4\times10^{-7}$ at $-1/6$, far below the shifts, and their errors scale with the data: loss $3.2\times10^{-12}$ and rms errors $2.7\times10^{-9}$ in $\lambda$, $1.0\times10^{-7}$ in $h$ at $-1/24$; $2.5\times10^{-10}$, $2.2\times10^{-7}$ and $1.9\times10^{-6}$ at $-1/6$, where $\lambda$ ranges from $1/6$ to $5/12$ on the sphere.
+
+Beyond that the shift stops being quadratic: $(M_{\rm ADM}-M_0)/S_2^2$ rises from 1.10 at $-1/6$ to 1.48 at $-1/4$ and 2.10 at $-0.30$, where $\lambda$ falls to $1/12$ and $1/30$ at the poles of the sphere, and the fit of the small amplitudes underestimates the shift by 9\% and 27\% there.
+The hard end also asks more of both methods.
+At $S_2=-1/4$ the spectral reference needs angular modes up to $l=14$ and 48 radial modes (its residual is $4.6\times10^{-5}$), and the width-20 network then reaches a loss of $2.5\times10^{-8}$ with rms errors $3.9\times10^{-7}$ in $\lambda$ and $7.0\times10^{-6}$ in $h$ and a mass $6\times10^{-7}$ from that of the spectral reference.
+A width-40 network lowers the loss on its training points to $2.3\times10^{-10}$ and the errors to $1.9\times10^{-7}$ and $3.4\times10^{-6}$ (mass $7\times10^{-7}$ away), but on fresh samples its loss is eleven times its training loss.
+At $S_2=-0.30$ the spectral reference needs $l\leq20$: with $l\leq14$ it stalls at a loss of $1.3\times10^{-6}$, and the corrected one (residual $7\times10^{-5}$) moves its mass by $5\times10^{-4}$.
+The networks do not converge there.
+The width-20 one stops at a loss of $1.6\times10^{-6}$, errors $4.7\times10^{-5}$ and $8.1\times10^{-5}$ and a mass $7\times10^{-5}$ from that of the spectral reference; the width-40 one reaches $4\times10^{-8}$ on its training points but 170 times that on fresh samples, errors $1.2\times10^{-5}$ and $1.5\times10^{-5}$ and a mass $1.1\times10^{-3}$ away, within the $4\times10^{-3}$ spread of the extraction of the mass.
+
+\begin{table*}
+\caption{Mass and quadrupole moment of the network (the best one for each amplitude; width in
+the third column, empty where none was trained) and of the spectral reference, with
+$M_0=R_0 = 1/\sqrt3 = 0.577350$. The spectral references use $l\leq10$ and 36 radial modes for
+$|S_2|\leq1/6$, $l\leq14$ and 48 radial modes at $-1/4$ and $l\leq20$ and 48 at $-0.30$. The spread
+of the mass over the fit windows of Sec.~\ref{sec:moments} is below $10^{-4}$ in $M_{\rm ADM}$ up to
+$S_2=-1/6$, and $1.1\times10^{-3}$ and $4.2\times10^{-3}$ at $-1/4$ and $-0.30$.}
+\label{tab:mass}
+\begin{ruledtabular}
+\begin{tabular}{cccccccc}
+ & & & \multicolumn{2}{c}{$M_{\rm ADM}$} & & \multicolumn{2}{c}{$M_2$} \\
+$S_2$ & $\lambda_{\min}$ & width & network & spectral ref. & $(M_{\rm ADM}^{\rm spec}-M_0)/S_2^2$ & network & spectral ref. \\
+\hline
+$-0.30$ & 0.033 & 40 & 0.765429 & 0.766484 & 2.101 & 1.4696 & 1.4072 \\
+$-1/4$ & 0.083 & 40 & 0.669611 & 0.669610 & 1.476 & 0.8067 & 0.8067 \\
+$-1/6$ & 0.167 & 20 & 0.607969 & 0.607970 & 1.102 & 0.4052 & 0.4052 \\
+$-1/8$ & 0.208 & -- & -- & 0.593055 & 1.005 & -- & 0.2793 \\
+$-1/12$ & 0.250 & 20 & 0.583847 & 0.583847 & 0.936 & 0.1747 & 0.1747 \\
+$-1/24$ & 0.292 & 20 & 0.578886 & 0.578886 & 0.885 & 0.0833 & 0.0833 \\
+$+1/12$ & 0.417 & -- & -- & 0.582915 & 0.801 & -- & $-0.1540$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table*}
+
+\begin{figure}
+\includegraphics[width=\columnwidth]{figs/mass_s2.png}
+\caption{The mass shift (a) and the quadrupole moment (b) against the amplitude $S_2$ of the datum
+(Table~\ref{tab:mass}): the masses of the networks (points) and of the spectral references (open
+squares, with the spread of the extraction). Solid: the fit
+$0.83S_2^2-0.77S_2^3+5.2S_2^4$ of the five spectral references with $|S_2|\leq1/6$, dashed beyond
+them; dotted: its quadratic term, and $-2S_2$.}
+\label{fig:mass}
+\end{figure}
+
+\paragraph{Decay of the multipoles.} Expanding $\mathcal P$ in Legendre modes $c_l(\rho)$ about the solution's own axis, the local power $\dd\ln|c_l|/\dd\ln\rho$ of the spectral reference is $-1.00$, $-3.00$ and $-5.0$ for $l=0,2,4$ (the last out to $\rho\approx30$, where $c_4\sim10^{-10}$), and its odd modes are at $10^{-16}$.
 The network with the center-of-mass condition gives the same powers, with its odd modes below $10^{-8}$.
-The three-dimensional network on the rotated data, expanded about the data axis, has odd modes of $1.3\times10^{-6}$ at width 20, with its $l=2$ tail holding out to $\rho\approx30$ and its $l=4$ tail only to $\rho\approx5$ ($M_4$ good to 5\%); at width 40 the odd modes are below $5\times10^{-8}$, the $l=2$ tail holds to $\rho_{\rm out}$ and the $l=4$ tail to $\rho\approx20$, and $M_0$, $M_2$, $M_4$ are good to $10^{-6}$, $2\times10^{-5}$ and $2\times10^{-3}$ relative.
-In the mass-centered harmonic chart $c_l\rho^{l+1}$ tends to $0.58387$, $0.1747$ and $0.0220$, i.e.\ to $M_0$, $M_2$ and $M_4$, consistently with harmonic coordinates being asymptotically Cartesian and mass centered~\cite{Thorne1980,Gursel1983}: a second, independent route to the same numbers.
+The three-dimensional network on the rotated data, expanded about the data axis, has odd modes of $1.3\times10^{-6}$ at width 20, with its $l=2$ tail holding out to $\rho\approx30$ and its $l=4$ tail only to $\rho\approx5$ ($M_4$ good to 5\%); at width 40 the odd modes are below $5\times10^{-8}$, the $l=2$ tail holds to $\rho_{\rm out}$ and the $l=4$ tail to $\rho\approx20$, and $M_{\rm ADM}$, $M_2$, $M_4$ are good to $10^{-6}$, $2\times10^{-5}$ and $2\times10^{-3}$ relative.
+In the mass-centered harmonic chart $c_l\rho^{l+1}$ tends to $0.58387$, $0.1747$ and $0.0220$, i.e.\ to $M_{\rm ADM}$, $M_2$ and $M_4$, consistently with harmonic coordinates being asymptotically Cartesian and mass centered~\cite{Thorne1980,Gursel1983}: a second, independent route to the same numbers.
 
 % =====================================================================================
 \section{Conclusions}\label{sec:conclusions}
