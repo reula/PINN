@@ -1530,6 +1530,19 @@ plateau rule ended window 6 after the minimum 2000 iterations at 4.6e-5: maybe s
 a real change at t ~ 1.5 - the lapse front, the trumpet transition at the puncture that the BL offset
 cannot follow). Total GPU time for windows 1-7: 3 h.
 
+**`sing_w0_radial_notpl`, 3D, the radial network alone (hub, 2026-11-02 00:50-02:36 UTC; early stop at 4000
+iterations, 40 min).** Held-out 3.2e-5 / 4.7e-8 at 1000 / 4000 (template run 8.8e-7 / 5.6e-8: slower start,
+same floor); at t = 0.25 core rms alpha 2.1e-5, chi 9.6e-6, Khat 1.7e-5, gt 1.3e-5 (template run 2.2e-5 /
+4.9e-6 / 1.4e-5 / 8.3e-6); by band 0.05-0.2 / 0.2-0.6 / 0.6-1 / 1-3 / 3-10: alpha 3e-5 / 2e-6 / 1e-6 / 2e-6 /
+1e-6 (3e-5 / 6e-6 / 8e-7 / 1e-6 / 9e-7), Khat 2e-5 / 9e-6 / 5e-6 / 3e-6 / 4e-6 (7e-6 / 2e-5 / 4e-6 / 4e-6 / 3e-6),
+chi 9e-6 / 1e-5 / 3e-6 / 5e-6 / 6e-6 (6e-6 / 2e-6 / 2e-6 / 7e-7 / 1e-6); mass +3.4e-5 / +1.9e-6 / +2.3e-5 /
++1.0e-4 at r = 0.3 / 1 / 3 / 10 (-1.6e-5 / -2.9e-5 / -2.3e-5 / +9.9e-5). Confirmed in 3D: in window 0 the
+template is redundant once the network is radial and the exact data enter as the fixed offset. Next:
+the same over 8 windows (`sing_radial_notpl`, continuing from this window 0), against sing_radial, where
+the r^4 puncture zero frozen into the offset may start to matter; and sing_radial's windows 6-7 rerun from
+window_005.pkl with 8000 fixed iterations (`sing_radial_w67`) to tell an early-stop artefact from a real
+change at t ~ 1.5.
+
 **Two at once does not fit (2026-10-29).** `sing_bl_ic` and `sing_bl_ic_t05`, launched together on the hub
 A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXHAUSTED (8.06 GiB in one
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
