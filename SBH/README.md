@@ -1547,7 +1547,13 @@ Held-out loss at the window ends (iterations : loss), windows 0-7: 11250 : 1.2e-
 24000 : 4.2e-8, 6000 : 3.1e-7, 2500 : 2.2e-7, 3000 : 6.5e-7, 3500 : 1.1e-6, 2250 : 4.1e-6, 2000 : 4.6e-5,
 3250 : 4.0e-5): without the template the loss is 2-5x LOWER in every window and grows smoothly (~3x per
 window) with no step at window 6, while the field errors near the puncture are 2-3x larger: the loss
-floor and the error are not tied one to one at this level. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+floor and the error are not tied one to one at this level. (The windows 6-7 rerun finished 2026-11-02
+23:19 UTC: at t = 2 with 8000 fixed iterations per window, core rms alpha 5.0e-4, chi 1.7e-4, Khat 1.1e-3, gt
+3.1e-4 against the early-stopped 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4: 4x the iterations buy 1.3-1.6x.)
+**To T = 8:** `sing_radial_notpl` continues from window 7 with `--tfinal 8 --N_window 32` (same 0.25
+windows, resumed; launched 2026-11-02 23:19 UTC, ~1 h per window), to see whether the radial ansatz keeps
+its advantage once the puncture is a trumpet and whether the far-field mass drift saturates; the
+baseline's sphere file for 32 windows is `eval_data/long_con10_w32.npz`. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
