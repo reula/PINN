@@ -1530,6 +1530,41 @@ plateau rule ended window 6 after the minimum 2000 iterations at 4.6e-5: maybe s
 a real change at t ~ 1.5 - the lapse front, the trumpet transition at the puncture that the BL offset
 cannot follow). Total GPU time for windows 1-7: 3 h.
 
+**`sing_radial_w67` (windows 6-7 rerun from window_005.pkl with 8000 fixed iterations; 2026-11-02).**
+Window 6 ends at held-out 4.7e-5 (best 4.1e-5) after 8000 iterations, the early-stopped one at 4.6e-5
+after 2000: the 10x step into window 6 is a real floor, not the plateau rule. The field errors at the same
+loss differ, though: the 8000-iteration window 6 has core rms alpha 1.8e-3, chi 3.4e-4, Khat 9.8e-4, gt
+5.7e-4 against 2.2e-4 / 4.4e-5 / 1.1e-3 / 1.6e-4 for the 2000-iteration one, i.e. at this loss level the
+solution is no longer pinned down by the loss (a 4.6e-5 floor admits alpha errors from 2e-4 to 2e-3).
+What raises the floor at t >= 1.5 is still open (both ansatze, with and without template, show it; the
+3D MLP's end term jumped there too). Window 7 of the rerun was at 7000 of 8000 iterations when the hub
+stopped (2026-11-02 ~23:10 UTC); its partial.pkl is there.
+
+**`sing_radial_notpl`, the radial network alone over 8 windows (hub, 2026-11-02 07:46-21:05 UTC with two
+hub stops; `plots/2026-11-03/sing_mass_time.png`, `sing_sphere_errors_rt.png`, `error_by_radius.png`).**
+Held-out loss at the window ends (iterations:loss) and sing_radial's for comparison are in the line
+below; core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
+9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
+3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
+1.8e-3). By band at t = 2 (0.05-0.2 / 0.2-1 / 1-3 / 3-10; alone | with template | baseline): alpha 2e-4 /
+4e-4 / 5e-4 / 7e-5 | 5e-4 / 6e-4 / 3e-4 / 9e-5 | 1e-3 / 5e-4 / 3e-4 / 8e-4; Khat 4e-3 / 2e-3 / 5e-4 / 1e-4 |
+2e-3 / 4e-4 / 5e-4 / 2e-4 | 1e-2 / 2e-3 / 4e-4 / 2e-4; chi 5e-5 / 2e-4 / 1e-4 / 5e-5 | 1e-4 / 3e-4 / 1e-4 / 6e-5 |
+1e-4 / 4e-4 / 3e-4 / 3e-4. Mass at r = 0.3 / 1 / 3 / 10 (alone | with template | baseline): t = 1: -1.9e-4 /
++8.9e-6 / +8.1e-5 / +1.4e-3 | -1.4e-4 / +9.3e-6 / -3.5e-4 / +1.6e-4 | -5.3e-4 / -3.3e-4 / -6.4e-4 / -1.3e-3;
+t = 1.5: -6.4e-4 / -9.9e-5 / +1.2e-3 / +4.0e-3 | +4.6e-4 / +1.4e-4 / -2.6e-4 / +1.9e-4 | -1.3e-3 / -6.4e-4 /
+-2.5e-3 / -3.3e-3; t = 2: +1.2e-4 / +1.0e-3 / +2.5e-4 / +5.5e-3 | +3.6e-3 / +1.4e-3 / +3.2e-3 / +2.1e-3 |
+-3.6e-3 / -2.1e-3 / -3.9e-3 / -4.9e-3.
+Reading: the two ansatze are in the same league through t = 2, both at or below the baseline in the
+fields; the template buys 2-5x in Khat inside r = 1 (the puncture region, where chi's r^4 -> r^2 change
+is what the frozen BL offset lacks) and keeps the far-field mass (r = 3-10) 5-20x smaller until t = 1.75
+(the no-template run's mass drifts to +5.5e-3 at r = 10 from t = 1 on, steadily); without the template
+the mass inside r = 1 is better at t = 2. Verdict for the design: the template is not needed for the
+accuracy level reached; a lifted radial network per puncture with the exact data as the fixed offset
+carries the puncture, and a third network can take the rest. Keeping the template remains a 2-5x option
+near the puncture. Evaluation data now live in `SBH/eval_data/` (git-ignored; the macOS temp cleaner
+removed the scratch copies after three days).
+
 **`sing_w0_radial_notpl`, 3D, the radial network alone (hub, 2026-11-02 00:50-02:36 UTC; early stop at 4000
 iterations, 40 min).** Held-out 3.2e-5 / 4.7e-8 at 1000 / 4000 (template run 8.8e-7 / 5.6e-8: slower start,
 same floor); at t = 0.25 core rms alpha 2.1e-5, chi 9.6e-6, Khat 1.7e-5, gt 1.3e-5 (template run 2.2e-5 /
