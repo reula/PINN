@@ -1581,7 +1581,28 @@ the trumpet forms; alpha 1.5x worse in 0.2-1 at t = 8); the mass inside r = 3 si
 offset from t = 2.5 on (the baseline +1.5-3e-3), and the far-field mass drifts negative in BOTH runs,
 the radial one half as fast (-7e-2 vs -1.4e-1 at r = 10 by t = 8; the far field has only the network and
 the Sommerfeld condition, and the baseline's drift shows the problem is the far field itself, not the
-ansatz). Total GPU time for windows 8-31: 13.5 h (35 min per window with the plateau rule). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+ansatz). Total GPU time for windows 8-31: 13.5 h (35 min per window with the plateau rule).
+**The 1D twin to T = 8, `1d_T8` (hub, 2026-11-03, ~10 h; sing_1d.py `--hard_ic --no_template --N_window 32
+--tfinal 8`, 4000 iterations per window; `plots/2026-11-03/T8_compare.png`, `tools/plot_T8_compare.py`).**
+Same ansatz, scheme, loss and shell weighting as sing_radial_notpl, in spherical symmetry. Band rms
+0.05-0.2 / 0.2-1 / 1-3 / 3-10 (1D | 3D radial | baseline) at t = 4: alpha 3e-4 / 3e-4 / 6e-5 / 3e-4 | 7e-4 /
+3e-3 / 2e-3 / 6e-4 | 2e-3 / 4e-4 / 8e-4 / 2e-3, chi 7e-5 / 2e-4 / 9e-5 / 1e-4 | 3e-4 / 8e-4 / 4e-4 / 4e-4 | 2e-4 /
+4e-4 / 4e-4 / 8e-4; at t = 8: alpha 2e-4 / 5e-4 / 3e-4 / 4e-4 | 1e-3 / 3e-3 / 3e-3 / 1e-3 | 4e-3 / 2e-3 / 3e-3 /
+4e-3, Khat 7e-4 / 3e-4 / 2e-4 / 2e-4 | 1e-3 / 2e-3 / 6e-4 / 2e-4 | 8e-3 / 4e-3 / 1e-3 / 8e-4, chi 1e-4 / 5e-4 /
+2e-4 / 3e-4 | 3e-4 / 1e-3 / 9e-4 / 1e-3 | 1e-3 / 2e-3 / 2e-3 / 2e-3. Mass at r = 0.3 / 1 / 3 / 10 at t = 8:
++2.5e-3 / +2.7e-3 / +1.9e-3 / +2.5e-2 | +6.0e-3 / +6.9e-3 / +7.1e-3 / -6.9e-2 | +1.4e-3 / +2.7e-3 / +2.5e-3 / -1.4e-1.
+Readings: (1) the windowed scheme itself has a ceiling: the 1D twin, with losses of 1e-8 to 1e-6, also
+stops improving and saturates at 1e-4 to 6e-4 in the fields from t ~ 2; the 3D radial run sits 3-10x
+above it in alpha and chi in 0.2-3 at the same loss (realisation-to-realisation spread at fixed loss, seen
+already in the windows 6-7 rerun, and/or 3D effects), the baseline 5-10x above. (2) The far-field mass
+drifts in all three runs, the 1D one included (+2.5e-2 at r = 10 by t = 8, after a sign change at t ~ 3.3;
+the 3D radial run changes sign at t ~ 3.6): the drift belongs to the scheme (windows, boundary, far-field
+sampling), not to the ansatz or to 3D. The mass at radius r magnifies the field-level error by r / 2M
+(10x at r = 10): 2M |m/M - 1| / r is 1e-3 to 1e-2 there in all runs. (3) The 1D held-out loss spikes at a
+few window ends (5 at t = 2.5, 0.1 at t = 4.25, 1e-4 at t = 4.75 and 7.25) without any trace in the band
+errors (r >= 0.05): outliers among the held-out points of the sigma = 0.05 inner cloud, r << 0.05; the
+plateau rule keeps the LAST state of a window, so a window can end on such an excursion (to fix: keep the
+best held-out state). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
