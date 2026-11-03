@@ -1553,7 +1553,18 @@ floor and the error are not tied one to one at this level. (The windows 6-7 reru
 **To T = 8:** `sing_radial_notpl` continues from window 7 with `--tfinal 8 --N_window 32` (same 0.25
 windows, resumed; launched 2026-11-02 23:19 UTC, ~1 h per window), to see whether the radial ansatz keeps
 its advantage once the puncture is a trumpet and whether the far-field mass drift saturates; the
-baseline's sphere file for 32 windows is `eval_data/long_con10_w32.npz`. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+baseline's sphere file for 32 windows is `eval_data/long_con10_w32.npz`. At t = 4 (window 15, reached
+2026-11-03 03:51 UTC, ~35 min per window): core rms alpha 1.7e-3, chi 5.1e-4, Khat 6.2e-4, gt 1.2e-4 (Khat
+peaked at 4.3e-3 at t = 2.25 and fell as the solution settles; alpha grows slowly, 3e-4 -> 1.7e-3 over
+t = 2-4); by band 0.05-0.2 / 0.2-1 / 1-3 / 3-10 (alone | baseline): alpha 7e-4 / 3e-3 / 2e-3 / 6e-4 | 2e-3 /
+4e-4 / 8e-4 / 2e-3; Khat 7e-4 / 6e-4 / 2e-4 / 3e-4 | 9e-3 / 2e-3 / 1e-3 / 4e-4; chi 3e-4 / 8e-4 / 4e-4 / 4e-4 |
+2e-4 / 4e-4 / 4e-4 / 8e-4. Mass at r = 0.3 / 1 / 3 / 10: t = 2.5: +5.8e-3 / +4.6e-3 / -3.6e-4 / +4.3e-3 |
+-2.5e-3 / -2.1e-3 / -6.1e-3 / -8.5e-3; t = 3: +4.4e-3 / +4.8e-3 / +2.1e-3 / +4.5e-3 | +7e-5 / +8e-5 / -5.6e-3 /
+-1.0e-2; t = 4: +4.8e-3 / +4.6e-3 / +6.1e-3 / -5.6e-3 | +3.6e-3 / +3.4e-3 / -1.1e-2 / -1.9e-2; min over r at
+t = 4: -1.5e-2 | -3.9e-2. So by t = 3-4 the radial ansatz without a template is at parity with the
+baseline overall: still 3-10x better in Khat everywhere and 2-3x in the mass beyond r = 3, but 2-5x
+worse in alpha in 0.2-3; the 10x advantage of t <= 1.5 is gone by t ~ 3 (a step of +5e-3 in the mass
+inside r = 1 between t = 2 and 2.5). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
