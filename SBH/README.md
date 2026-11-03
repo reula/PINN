@@ -1650,7 +1650,13 @@ constraints.npz. On the trained 1d_T8 windows under the run's own point distribu
 the penalty inside r = 1, p = 2 puts 85-95 % at r = 1-24 (mostly 3-8, and 10-35 % at 8-24 at late times),
 where the deficit is: p = 2 is the choice (the colleagues' r^2, without the 1/chi noise). Laptop smoke
 test (W = 30): same cost per iteration; the adm part falls 4.7e-5 -> 3.0e-5 in window 0. Hub runs:
-`1d_T8_adm30`, `1d_T8_adm100` (their lambda and their next value), one change each against 1d_T8. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+`1d_T8_adm30`, `1d_T8_adm100` (their lambda and their next value), one change each against 1d_T8.
+**The first parallel 1D batch ran out of memory (2026-11-03 18:44 UTC).** All seven runs, capped at
+XLA_PYTHON_CLIENT_MEM_FRACTION 0.12 (2.9 GB) each, died in their first iterations allocating 581 MiB: that is
+8730^2 x 8 bytes, the SSBroyden dense inverse Hessian, kept in several copies. A 1D run is small in points
+but needs a few GB because of the optimiser. `jobs/hub/sing1d_batch.sh` now runs NPAR at a time (default 3,
+MEM_FRACTION 0.9/NPAR each), starting the next as one ends, resumable item by item; sing_1d.py prints the
+peak device memory on each progress line (as sing_pinn.py) so NPAR can be raised if there is room. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /

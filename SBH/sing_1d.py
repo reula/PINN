@@ -366,8 +366,11 @@ for k in range(k0, a.N_window):
             if new:
                 wr.writeheader()
             wr.writerow(row)
+        st = jax.devices()[0].memory_stats()                     # None on the CPU
         print(f"  it {it:6d} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
-              + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ")", flush=True)
+              + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ")"
+              + (f"  peak mem {st['peak_bytes_in_use'] / 1e9:.2f} GB" if st and "peak_bytes_in_use" in st else ""),
+              flush=True)
     P = unr(w)
     err, m = report(P, win, t1)
     rep["t"].append(t1)
