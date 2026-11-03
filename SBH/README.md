@@ -1582,7 +1582,7 @@ offset from t = 2.5 on (the baseline +1.5-3e-3), and the far-field mass drifts n
 the radial one half as fast (-7e-2 vs -1.4e-1 at r = 10 by t = 8; the far field has only the network and
 the Sommerfeld condition, and the baseline's drift shows the problem is the far field itself, not the
 ansatz). Total GPU time for windows 8-31: 13.5 h (35 min per window with the plateau rule).
-**The 1D twin to T = 8, `1d_T8` (hub, 2026-11-03, ~10 h; sing_1d.py `--hard_ic --no_template --N_window 32
+**The 1D twin to T = 8, `1d_T8` (hub, 2026-11-03 16:11-18:02 UTC, 3.5 min per window; sing_1d.py `--hard_ic --no_template --N_window 32
 --tfinal 8`, 4000 iterations per window; `plots/2026-11-03/T8_compare.png`, `tools/plot_T8_compare.py`).**
 Same ansatz, scheme, loss and shell weighting as sing_radial_notpl, in spherical symmetry. Band rms
 0.05-0.2 / 0.2-1 / 1-3 / 3-10 (1D | 3D radial | baseline) at t = 4: alpha 3e-4 / 3e-4 / 6e-5 / 3e-4 | 7e-4 /
@@ -1602,7 +1602,15 @@ sampling), not to the ansatz or to 3D. The mass at radius r magnifies the field-
 few window ends (5 at t = 2.5, 0.1 at t = 4.25, 1e-4 at t = 4.75 and 7.25) without any trace in the band
 errors (r >= 0.05): outliers among the held-out points of the sigma = 0.05 inner cloud, r << 0.05; the
 plateau rule keeps the LAST state of a window, so a window can end on such an excursion (to fix: keep the
-best held-out state). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+best held-out state).
+**Next: a parallel 1D batch to T = 8 (2026-11-03), one change each against 1d_T8**, five runs at once on the
+A30 (XLA_PYTHON_CLIENT_MEM_FRACTION 0.17 each; a 1D run has ~2700 points per draw): `1d_T8_seed8` (`--seed 8`:
+the spread between realisations at fixed loss), `1d_T8_ic100` (`-- --lamg0 100`: the hand-off weight, since
+each window starts from the previous one's end as soft data), `1d_T8_R48` (`-- --R_domain 48`: the outer
+boundary twice as far; the reference is free-space and exact to r = 30 for t <= 20), `1d_T8_far`
+(`--focus_sigma 5`: the 25% focus cloud at sigma 5 instead of 2, more points in r = 3-10), `1d_T8_w05`
+(`--N_window 16 --iters 8000`: windows of 0.5, half the hand-offs, the same iteration budget). All five
+flags checked with zero-iteration runs on the laptop. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
