@@ -1564,7 +1564,24 @@ t = 2-4); by band 0.05-0.2 / 0.2-1 / 1-3 / 3-10 (alone | baseline): alpha 7e-4 /
 t = 4: -1.5e-2 | -3.9e-2. So by t = 3-4 the radial ansatz without a template is at parity with the
 baseline overall: still 3-10x better in Khat everywhere and 2-3x in the mass beyond r = 3, but 2-5x
 worse in alpha in 0.2-3; the 10x advantage of t <= 1.5 is gone by t ~ 3 (a step of +5e-3 in the mass
-inside r = 1 between t = 2 and 2.5). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+inside r = 1 between t = 2 and 2.5).
+**T = 8 reached (2026-11-03 12:54 UTC; 32 windows; `plots/2026-11-03/sing_T8_summary.png`,
+`sing_sphere_errors_rt_T8.png`).** Core rms vs the 1D reference saturates from t ~ 4: alpha 6e-4 to 2.0e-3
+(slowly rising again from t = 6), chi 6.4-7.1e-4, Khat 1.1-1.9e-3, gt 0.8-1.7e-4; alpha(0.03) tracks the
+reference to 1e-4 throughout (0.0236 at t = 8). By band 0.05-0.2 / 0.2-1 / 1-3 / 3-10 (alone | baseline) at
+t = 6: alpha 3e-4 / 1e-3 / 2e-3 / 1e-3 | 3e-3 / 2e-3 / 2e-3 / 3e-3, Khat 2e-3 / 1e-3 / 6e-4 / 2e-4 | 9e-3 / 3e-3 /
+6e-4 / 5e-4, chi 3e-4 / 1e-3 / 9e-4 / 8e-4 | 8e-4 / 1e-3 / 1e-3 / 1e-3; at t = 8: alpha 1e-3 / 3e-3 / 3e-3 / 1e-3 |
+4e-3 / 2e-3 / 3e-3 / 4e-3, Khat 1e-3 / 2e-3 / 6e-4 / 2e-4 | 8e-3 / 4e-3 / 1e-3 / 8e-4, chi 3e-4 / 1e-3 / 9e-4 /
+1e-3 | 1e-3 / 2e-3 / 2e-3 / 2e-3. Mass at r = 0.3 / 1 / 3 / 10 (min over r): t = 5: +5.6e-3 / +5.8e-3 / +6.0e-3 /
+-2.0e-2 (-2.3e-2) | +2.6e-3 / +2.6e-3 / -2.3e-3 / -3.3e-2 (-6.1e-2); t = 6: +5.8e-3 / +6.4e-3 / +7.1e-3 /
+-3.1e-2 (-3.4e-2) | +1.9e-3 / +2.8e-3 / -1.7e-4 / -5.9e-2 (-8.1e-2); t = 8: +6.0e-3 / +6.9e-3 / +7.1e-3 /
+-6.9e-2 (-8.1e-2) | +1.4e-3 / +2.7e-3 / +2.5e-3 / -1.4e-1 (-1.4e-1). Reading at late times: the fields are
+at the baseline's level or 2-5x better (Khat 4-8x better inside r = 1, where the baseline falls apart as
+the trumpet forms; alpha 1.5x worse in 0.2-1 at t = 8); the mass inside r = 3 sits at a constant +6e-3
+offset from t = 2.5 on (the baseline +1.5-3e-3), and the far-field mass drifts negative in BOTH runs,
+the radial one half as fast (-7e-2 vs -1.4e-1 at r = 10 by t = 8; the far field has only the network and
+the Sommerfeld condition, and the baseline's drift shows the problem is the far field itself, not the
+ansatz). Total GPU time for windows 8-31: 13.5 h (35 min per window with the plateau rule). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
