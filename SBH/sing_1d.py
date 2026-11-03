@@ -12,6 +12,8 @@ The Cartesian fields at (t, r, 0, 0) are lift(f) (sing_template.lift), their der
 (jvp in t, jacfwd in x, y, z: spherical symmetry gives the y, z derivatives), and the residual is the main
 script's _ccz4_residual_one. Loss = Einstein + gauge means on interior points, lam_tapa (end) at t1, Sommerfeld
 on the radial functions at r = R, lamg0 IC, w_constraint mean(Theta^2 + |Z|^2): the weights of sing_pinn.py.
+With --ic_d1 / --ic_d2 the IC (window hand-off) term also matches r f' and r^2 f'' to the previous window's end
+(a Sobolev hand-off; r d/dr keeps the terms scale-free near the puncture; 2026-11-03).
 Points: the RADII of sing_pinn.py's 3D clouds (inner/core/focus Gaussians + uniform ball), so the loss weights
 each shell as the 3D run does. SSBroyden, fresh points every --n_change, warm start across windows.
 Report per window end (REPORT.npz, appended): signed f - f_ref for the 10 radial functions on a log grid of r
@@ -57,6 +59,10 @@ ap.add_argument("--focus_frac", type=float, default=0.25)
 ap.add_argument("--focus_sigma", type=float, default=2.0)
 ap.add_argument("--iters", type=int, default=4000)
 ap.add_argument("--n_change", type=int, default=250)
+ap.add_argument("--ic_d1", type=float, default=0.0,
+                help="weight of the first radial derivative in the IC / window hand-off term: lamg0 [mean|f - U|^2 "
+                     "+ ic_d1 mean|r f' - r U'|^2 + ic_d2 mean|r^2 f'' - r^2 U''|^2] (r d/dr is scale-free; 2026-11-03)")
+ap.add_argument("--ic_d2", type=float, default=0.0, help="weight of the second radial derivative (see --ic_d1)")
 ap.add_argument("--w_constraint", type=float, default=10.0)
 ap.add_argument("--w_gauge", type=float, default=1.0)
 ap.add_argument("--seed", type=int, default=7)
@@ -183,15 +189,31 @@ def ein_gauge(res):
     return (ns["lam_einstein"] * jnp.mean(res[:, :18] ** 2), ns["lam_gauge"] * a.w_gauge * jnp.mean(res[:, 18:22] ** 2))
 
 
+IC_ORDER = 2 if a.ic_d2 > 0 else (1 if a.ic_d1 > 0 else 0)
+IC_W = (1.0, a.ic_d1, a.ic_d2)[:IC_ORDER + 1]
+
+
+def taylor_r(g, r):
+    """(g, r g', r^2 g'') (up to IC_ORDER) of a radial function g(r) -> (10,) at one r: (IC_ORDER + 1, 10)."""
+    if IC_ORDER == 0:
+        return g(r)[None]
+    v, d1 = jax.jvp(g, (r,), (1.0,))
+    out = [v, r * d1]
+    if IC_ORDER == 2:
+        out.append(r * r * jax.jvp(lambda rr: jax.jvp(g, (rr,), (1.0,))[1], (r,), (1.0,))[1])
+    return jnp.stack(out)
+
+
 def parts(P, win, batch):
-    Qi, Qe, tb, ric, Uic = batch
+    Qi, Qe, tb, ric, Uic = batch                     # Uic (n, IC_ORDER + 1, 10): the target and its r-derivatives
     e_i, g_i = ein_gauge(residual(stacks(P, win, Qi)))
     e_e, g_e = ein_gauge(residual(stacks(P, win, Qe)))
     f = lambda t, r: rad_fn(P, win, t, r)
     fb, ft = jax.vmap(lambda t: jax.jvp(lambda tt: f(tt, R), (t,), (1.0,)))(tb)
     fr = jax.vmap(lambda t: jax.jvp(lambda rr: f(t, rr), (R,), (1.0,))[1])(tb)
     som = ft + ns["c"] * fr + ns["c"] * (fb - FLAT_RAD[None]) / R
-    ic = jnp.mean((jax.vmap(lambda r: f(win[0], r))(ric) - Uic) ** 2)
+    d = jax.vmap(lambda r: taylor_r(lambda rr: f(win[0], rr), r))(ric) - Uic
+    ic = sum(wk * jnp.mean(d[:, k] ** 2) for k, wk in enumerate(IC_W))
     con = zeta(stacks(P, win, Qi)) if a.w_constraint > 0 else jnp.zeros(())
     return dict(einstein=e_i, gauge=g_i, end=ns["lam_tapa"] * (e_e + g_e), bc=ns["lam_bc"] * jnp.mean(som ** 2),
                 ic=ns["lamg0"] * ic, constraint=a.w_constraint * con)
@@ -277,10 +299,10 @@ for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1))
     if prev is None:
-        Uic_fn = jax.jit(jax.vmap(U0_rad))
+        Uic_fn = jax.jit(jax.vmap(lambda r: taylor_r(U0_rad, r)))
     else:
         Pp, wp = prev
-        Uic_fn = jax.jit(jax.vmap(lambda r, Pp=Pp, wp=wp: rad_fn(Pp, wp, wp[1], r)))
+        Uic_fn = jax.jit(jax.vmap(lambda r, Pp=Pp, wp=wp: taylor_r(lambda rr: rad_fn(Pp, wp, wp[1], rr), r)))
     w, unr = ns["flatten_util"].ravel_pytree(P)
     key, kh = jax.random.split(key)
     held = draw(kh, win, a.n_held, a.n_held // 8, a.n_held // 4, Uic_fn)

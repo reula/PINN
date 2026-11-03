@@ -1610,7 +1610,19 @@ each window starts from the previous one's end as soft data), `1d_T8_R48` (`-- -
 boundary twice as far; the reference is free-space and exact to r = 30 for t <= 20), `1d_T8_far`
 (`--focus_sigma 5`: the 25% focus cloud at sigma 5 instead of 2, more points in r = 3-10), `1d_T8_w05`
 (`--N_window 16 --iters 8000`: windows of 0.5, half the hand-offs, the same iteration budget). All five
-flags checked with zero-iteration runs on the laptop. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+flags checked with zero-iteration runs on the laptop.
+**Derivative (Sobolev) hand-off, `--ic_d1 W1 --ic_d2 W2` (sing_1d.py, 2026-11-03; the author's idea).** The
+IC term of a window matches not only the previous window's end values but also their radial derivatives:
+lamg0 [mean|f - U|^2 + W1 mean|r f' - r U'|^2 + W2 mean|r^2 f'' - r^2 U''|^2] on the IC points, the targets
+(U, r U', r^2 U'') computed by nested jvp of the frozen previous window (of U0 in window 0, where the hard IC
+makes them exact anyway). r d/dr is scale-free: near the puncture it tames chi's and alpha's steep slopes,
+far out it decays like the field, so W = 1 weighs the derivative mismatch like the value mismatch. Why it
+should help: the soft hand-off fixes the values at t0 but leaves the slopes free, and the next window's
+residual is driven by the slopes (the spatial derivatives in the RHS); a slope error at t0 is a source of
+error for the whole window. Laptop smoke test (2 windows, 500 points, both orders on): the window-1 IC term
+(values + both orders) goes 1.4e-5 -> 4.3e-6 in 500 iterations, same cost per iteration. Added to the
+parallel batch: `1d_T8_icd1` (`--ic_d1 1`) and `1d_T8_icd12` (`--ic_d1 1 --ic_d2 1`); if it helps in 1D it
+goes into sing_pinn.py (the 3D IC points then need the d_xyz stacks of the previous window, as u_derivs gives). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
