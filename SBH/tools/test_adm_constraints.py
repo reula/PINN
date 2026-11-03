@@ -69,6 +69,35 @@ for name, fn in (("isotropic", isotropic), ("Kerr-Schild", kerr_schild)):
         print(f"{name:12s} r = {rq:4.1f}: max|H| = {float(jnp.abs(H).max()):.1e}, max|M| = {float(jnp.abs(M).max()):.1e}"
               f"   (curvature scale m/r^3 = {m / rq ** 3:.1e})")
 
+# 4. (2026-11-03) The division-free form adm.conformal_constraints_one: (chi H, chi M) must equal chi times
+#    (H, M) of the direct form on generic fields (At not trace-free, det gt != 1, Theta != 0), vanish on the exact
+#    solutions, and stay at round-off near the puncture where the direct form divides by chi ~ r^4.
+def generic(params, t, x, y, z, ws, we):
+    X = jnp.concatenate([x, y, z], axis=1)
+    s = lambda k, c: jnp.sin(X @ jnp.asarray(k) + c)
+    n = X.shape[0]
+    P = jnp.stack([s([0.7, -0.3, 0.5], 0.1), s([0.2, 0.9, -0.4], 1.3), s([-0.5, 0.4, 0.8], 2.1),
+                   s([0.6, 0.6, -0.2], 0.4), s([-0.1, 0.3, 0.9], 1.9), s([0.8, -0.7, 0.1], 2.7)], axis=1)
+    gt = jnp.eye(3)[None] + 0.15 * ns["unpack_sym3"](P)
+    At = 0.2 * ns["unpack_sym3"](jnp.roll(P, 2, axis=1))
+    out = jnp.zeros((n, 22)).at[:, ns["GT_SLICE"]].set(pack(gt)).at[:, ns["AT_SLICE"]].set(pack(At))
+    out = out.at[:, ns["CHI_IDX"]].set(0.6 + 0.3 * s([0.4, -0.6, 0.3], 0.7)).at[:, ns["KHAT_IDX"]].set(0.3 * s([0.5, 0.2, 0.6], 0.2))
+    return out.at[:, ns["THETA_IDX"]].set(0.1 * s([-0.3, 0.8, 0.2], 1.1)).at[:, ns["ALPHA_IDX"]].set(1.0)
+
+
+for name, fn, radii in (("generic", generic, (0.5, 2.0)), ("isotropic", isotropic, (1e-3, 1e-2, 0.1, 1.0)),
+                        ("Kerr-Schild", kerr_schild, (0.4, 1.0, 3.0))):
+    for rq in radii:
+        d = jax.random.normal(jax.random.PRNGKey(3), (16, 3))
+        X = rq * d / jnp.linalg.norm(d, axis=1, keepdims=True) + (jnp.asarray([0.3, -0.2, 0.1]) if name == "generic" else 0.0)
+        st = adm.derivative_stack(ns, fn, None, jnp.zeros((16, 1)), X[:, :1], X[:, 1:2], X[:, 2:3], 0.0, 0.25)
+        H, M = adm.constraints_from_derivs(ns, *st)
+        cH, cM = adm.conformal_constraints_from_derivs(ns, *st)
+        chi = st[0][:, ns["CHI_IDX"]]
+        print(f"{name:12s} r = {rq:6.0e}: max|chi H - (chi H)_conf| = {float(jnp.abs(chi * H - cH).max()):.1e}, "
+              f"max|chi M - (chi M)_conf| = {float(jnp.abs(chi[:, None] * M - cM).max()):.1e};  max|(chi H)_conf| = "
+              f"{float(jnp.abs(cH).max()):.1e}, max|H| direct = {float(jnp.abs(H).max()):.1e}, chi ~ {float(chi.mean()):.0e}")
+
 if len(sys.argv) > 1:
     import pickle
     run = sys.argv[1]

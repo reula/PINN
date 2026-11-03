@@ -32,6 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 from load_defs import load
 import sing_template as stpl
+import adm_constraints as admc
 
 REF = os.path.join(HERE, "reference_1d")
 ap = argparse.ArgumentParser()
@@ -64,6 +65,14 @@ ap.add_argument("--ic_d1", type=float, default=0.0,
                      "+ ic_d1 mean|r f' - r U'|^2 + ic_d2 mean|r^2 f'' - r^2 U''|^2] (r d/dr is scale-free; 2026-11-03)")
 ap.add_argument("--ic_d2", type=float, default=0.0, help="weight of the second radial derivative (see --ic_d1)")
 ap.add_argument("--w_constraint", type=float, default=10.0)
+ap.add_argument("--w_adm", type=float, default=0.0,
+                help="weight of the ADM Hamiltonian/momentum penalty mean(r^p [(chi H)^2 + |chi M_i|^2]) on the interior "
+                     "points, chi H and chi M in the division-free form (adm_constraints.conformal_constraints_one: every "
+                     "1/chi cancelled by hand, regular at the puncture); 0 = off (2026-11-03)")
+ap.add_argument("--adm_r_power", type=float, default=2.0, help="p in the --w_adm weight r^p (the colleagues: r^2)")
+ap.add_argument("--eval_constraints", action="store_true",
+                help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
+                     "end in --out, write constraints.npz there, and exit")
 ap.add_argument("--w_gauge", type=float, default=1.0)
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true")
@@ -206,7 +215,8 @@ def taylor_r(g, r):
 
 def parts(P, win, batch):
     Qi, Qe, tb, ric, Uic = batch                     # Uic (n, IC_ORDER + 1, 10): the target and its r-derivatives
-    e_i, g_i = ein_gauge(residual(stacks(P, win, Qi)))
+    Di = stacks(P, win, Qi)
+    e_i, g_i = ein_gauge(residual(Di))
     e_e, g_e = ein_gauge(residual(stacks(P, win, Qe)))
     f = lambda t, r: rad_fn(P, win, t, r)
     fb, ft = jax.vmap(lambda t: jax.jvp(lambda tt: f(tt, R), (t,), (1.0,)))(tb)
@@ -214,9 +224,18 @@ def parts(P, win, batch):
     som = ft + ns["c"] * fr + ns["c"] * (fb - FLAT_RAD[None]) / R
     d = jax.vmap(lambda r: taylor_r(lambda rr: f(win[0], rr), r))(ric) - Uic
     ic = sum(wk * jnp.mean(d[:, k] ** 2) for k, wk in enumerate(IC_W))
-    con = zeta(stacks(P, win, Qi)) if a.w_constraint > 0 else jnp.zeros(())
-    return dict(einstein=e_i, gauge=g_i, end=ns["lam_tapa"] * (e_e + g_e), bc=ns["lam_bc"] * jnp.mean(som ** 2),
-                ic=ns["lamg0"] * ic, constraint=a.w_constraint * con)
+    con = zeta(Di) if a.w_constraint > 0 else jnp.zeros(())
+    out = dict(einstein=e_i, gauge=g_i, end=ns["lam_tapa"] * (e_e + g_e), bc=ns["lam_bc"] * jnp.mean(som ** 2),
+               ic=ns["lamg0"] * ic, constraint=a.w_constraint * con)
+    if a.w_adm > 0:
+        out["adm"] = a.w_adm * jnp.mean(adm_density(Di, Qi[:, 1]))
+    return out
+
+
+def adm_density(D, r):
+    """r^p [(chi H)^2 + |chi M_i|^2] per point, division-free, from a derivative stack D at radii r (the --w_adm integrand)."""
+    cH, cM = admc.conformal_constraints_from_derivs(ns, *D)
+    return r ** a.adm_r_power * (cH ** 2 + jnp.sum(cM ** 2, axis=1))
 
 
 def total(p):
@@ -271,6 +290,28 @@ def report(P, win, t):
     return f - ref, m
 
 
+if a.eval_constraints:
+    out = {"t": [], "H": [], "Mr": [], "cH": [], "cMr": [], "dens": [], "chi": []}
+    for f in sorted(x for x in os.listdir(a.out) if x.startswith("window_") and x.endswith(".pkl")):
+        S = pickle.load(open(os.path.join(a.out, f), "rb"))
+        Pk, wk = jax.tree_util.tree_map(jnp.asarray, S["params"]), tuple(jnp.asarray(v) for v in S["win"])
+        rr = jnp.asarray(REP_R)
+        D = stacks(Pk, wk, jnp.stack([jnp.full_like(rr, wk[1]), rr, jnp.zeros_like(rr), jnp.zeros_like(rr)], axis=1))
+        H, Mv = admc.constraints_from_derivs(ns, *D)
+        cH, cM = admc.conformal_constraints_from_derivs(ns, *D)
+        out["t"].append(float(wk[1]))
+        out["H"].append(np.asarray(H))
+        out["Mr"].append(np.asarray(Mv[:, 0]))                  # on the x-axis M_i = M_r n_i
+        out["cH"].append(np.asarray(cH))
+        out["cMr"].append(np.asarray(cM[:, 0]))
+        out["dens"].append(np.asarray(adm_density(D, rr)))
+        out["chi"].append(np.asarray(D[0][:, CHI]))
+    np.savez(os.path.join(a.out, "constraints.npz"), r=REP_R, **{k: np.array(v) for k, v in out.items()},
+             adm_r_power=a.adm_r_power)
+    print("wrote", os.path.join(a.out, "constraints.npz"), len(out["t"]), "windows")
+    sys.exit(0)
+
+
 # ---- training ----------------------------------------------------------------------------------------
 edges = np.linspace(0.0, a.tfinal, a.N_window + 1)
 mb = ns["_minimize_mod"]
@@ -294,7 +335,7 @@ loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), s
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 parts_jit = jax.jit(parts)
 hist = os.path.join(a.out, "history.csv")
-PART_NAMES = ("einstein", "gauge", "end", "bc", "ic", "constraint")
+PART_NAMES = ("einstein", "gauge", "end", "bc", "ic", "constraint") + (("adm",) if a.w_adm > 0 else ())
 for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1))

@@ -65,6 +65,50 @@ def constraints_one(ns, val, d, dd):
     return H, M
 
 
+def conformal_constraints_one(ns, val, d, dd):
+    """(chi H, chi M_i) at one point with every 1/chi cancelled by hand: no division by chi anywhere (2026-11-03).
+
+    With A_ij = At_ij + gt_ij K / 3 (so K_ij = A_ij / chi), indices raised with gt^-1, D~ the covariant derivative
+    of gt, R~ its Ricci scalar and gamma = gt / chi:
+        chi H   = chi^2 R~ + 2 chi D~^2 chi - (5/2) |d chi|~^2 + chi [(tr A)^2 - A_ij A^ij]
+        chi M_i = chi (gt^jk D~_j A_ki - d_i tr A) + (1/2) (d_i chi tr A - 3 A_il gt^lm d_m chi)
+    (R = chi R~ + 2 D~^2 chi - (5/2) |d chi|^2 / chi; K_ij K^ij = A_ij A^ij and tr K = tr A, the chi's cancel; for
+    traceless At the second is the BSSN D~^k At_ki - (2/3) d_i K - (3 / 2 chi) At_il d^l chi, times chi). Regular at
+    the puncture, where H itself is O(1/chi) noise; as a penalty, (chi H)^2 = chi^2 H^2."""
+    GT, AT = ns["GT_SLICE"], ns["AT_SLICE"]
+    CHI, KH, TH = ns["CHI_IDX"], ns["KHAT_IDX"], ns["THETA_IDX"]
+    dd_idx = list(np.asarray(ns["_DD_OUTPUT_IDXS"]))
+    i_gt = [dd_idx.index(k) for k in range(GT.start, GT.stop)]
+    i_chi = dd_idx.index(CHI)
+    gt = ns["unpack_sym3"](val[GT])
+    At = ns["unpack_sym3"](val[AT])
+    chi = val[CHI]
+    dgt = _unpack_last(ns, d[GT])                                   # [a,b,c] = d_c gt_ab
+    ddgt = _unpack_last(ns, dd[jnp.asarray(i_gt)])
+    dchi, ddchi = d[CHI], dd[i_chi]
+    dAt = _unpack_last(ns, d[AT])
+    _, gi, Gam, _, Ric = _zb.geometry_from_derivs(gt, dgt, ddgt)    # of the conformal metric: no chi
+    Kc = val[KH] + 2.0 * val[TH]
+    dKc = d[KH] + 2.0 * d[TH]
+    A = At + gt * Kc / 3.0
+    dA = dAt + dgt * Kc / 3.0 + gt[:, :, None] * dKc[None, None, :] / 3.0      # [a,b,c] = d_c A_ab
+    trA = jnp.einsum("ij,ij->", gi, A)
+    AA = jnp.einsum("ia,jb,ij,ab->", gi, gi, A, A)
+    chi_up = gi @ dchi
+    lap = jnp.einsum("ij,ij->", gi, ddchi) - jnp.einsum("ij,kij,k->", gi, Gam, dchi)
+    cH = chi ** 2 * jnp.einsum("ij,ij->", gi, Ric) + 2.0 * chi * lap - 2.5 * dchi @ chi_up + chi * (trA ** 2 - AA)
+    DA = jnp.einsum("kij->jki", dA) - jnp.einsum("ljk,li->jki", Gam, A) - jnp.einsum("lji,kl->jki", Gam, A)  # D~_j A_ki
+    dgi = -jnp.einsum("ia,abc,bj->ijc", gi, dgt, gi)
+    dtrA = jnp.einsum("ijc,ij->c", dgi, A) + jnp.einsum("ij,ijc->c", gi, dA)
+    cM = chi * (jnp.einsum("jk,jki->i", gi, DA) - dtrA) + 0.5 * (dchi * trA - 3.0 * A @ chi_up)
+    return cH, cM
+
+
+def conformal_constraints_from_derivs(ns, val, dt, d, dd):
+    """(chi H (N,), chi M (N,3)) from a batched derivative stack, division-free (conformal_constraints_one)."""
+    return jax.vmap(lambda v, a, b: conformal_constraints_one(ns, v, a, b))(val, d, dd)
+
+
 def constraints_from_derivs(ns, val, dt, d, dd):
     """(H (N,), M (N,3)) from a batched derivative stack."""
     return jax.vmap(lambda v, a, b: constraints_one(ns, v, a, b))(val, d, dd)

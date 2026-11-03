@@ -1622,7 +1622,35 @@ residual is driven by the slopes (the spatial derivatives in the RHS); a slope e
 error for the whole window. Laptop smoke test (2 windows, 500 points, both orders on): the window-1 IC term
 (values + both orders) goes 1.4e-5 -> 4.3e-6 in 500 iterations, same cost per iteration. Added to the
 parallel batch: `1d_T8_icd1` (`--ic_d1 1`) and `1d_T8_icd12` (`--ic_d1 1 --ic_d2 1`); if it helps in 1D it
-goes into sing_pinn.py (the 3D IC points then need the d_xyz stacks of the previous window, as u_derivs gives). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+goes into sing_pinn.py (the 3D IC points then need the d_xyz stacks of the previous window, as u_derivs gives).
+**The colleagues' 3 Nov update (`docs/BH_PINN_progress_2026-11-03.pdf`, J. Masso).** New reference run to
+t = 10: 6x80 network, 8k core points, Theta/Z penalty, soft excision (At, Khat, Theta, Ghat residuals x chi),
+r^2-weighted Hamiltonian/momentum penalty (lambda = 30), 12k QN steps per window. Hole mass +0.03 %, mass at r =
+12 / 15 / 23.5 -0.35 / -0.72 / -1.38 %, chi and alpha at r = 1 4e-4, but the lapse peak at t ~ 2 is 20 % low
+(0.067; they suspect the reduced core cloud). Against ours (t = 8): their far-field mass is 10-20x better
+than the 3D radial run's (-6.9 % at r = 10) and their r = 1 errors match the 1D twin's; our runs track the
+lapse at r = 0.03 to <= 1e-3 throughout (peak 4e-4), with ~12000 points inside r = 0.1. Their error bound
+is two thirds hand-over jumps. Their remaining far-field deficit is a one-signed <H> ~ -1e-4 at r = 8-14;
+the finished 1d_T8 run shows the same (sphere-mean H -4e-5 to -6e-5 at r = 8-14 for t >= 4).
+**The ADM constraint penalty, division-free (2026-11-03).** Our runs had only the Theta/Z penalty
+(--w_constraint, the CCZ4 constraint VARIABLES); the true H and M_i penalty existed only in the main script
+(--w_adm, chi^p-weighted, f8016b1; off in the baseline) and was never in sing_pinn.py / sing_1d.py. H
+carries 1/chi factors (R = chi R~ + 2 D~^2 chi - (5/2) |d chi|^2 / chi), so near the puncture it is
+O(1/chi) noise: in 1d_T8, H ~ -0.1 to -0.2 and M_r ~ 0.5 at r < 0.05, and an r^2-weighted H^2 penalty would
+spend most of its weight there. Following the author's suggestion, `adm_constraints.conformal_constraints_one`
+computes chi H and chi M_i with every 1/chi cancelled by hand:
+chi H = chi^2 R~ + 2 chi D~^2 chi - (5/2) gt^ij d_i chi d_j chi + chi [(tr A)^2 - A_ij A^ij],
+chi M_i = chi (gt^jk D~_j A_ki - d_i tr A) + (1/2) (d_i chi tr A - 3 A_il gt^lm d_m chi),
+A_ij = At_ij + gt_ij K / 3, K = Khat + 2 Theta, indices with gt^-1, D~ and R~ of gt: polynomial in chi, no
+division. `tools/test_adm_constraints.py` (check 4): equal to chi times the direct H, M to 3e-16 on generic
+fields (At not trace-free, det gt != 1, Theta != 0); zero to round-off on exact Schwarzschild (isotropic, Kerr-
+Schild) down to r = 1e-3. sing_1d.py: `--w_adm W --adm_r_power p` adds W mean(r^p [(chi H)^2 + |chi M|^2]) on
+the interior points; `--eval_constraints` writes H, M_r, chi H, chi M_r and the density per window end to
+constraints.npz. On the trained 1d_T8 windows under the run's own point distribution, p = 0 puts 65-80 % of
+the penalty inside r = 1, p = 2 puts 85-95 % at r = 1-24 (mostly 3-8, and 10-35 % at 8-24 at late times),
+where the deficit is: p = 2 is the choice (the colleagues' r^2, without the 1/chi noise). Laptop smoke
+test (W = 30): same cost per iteration; the adm part falls 4.7e-5 -> 3.0e-5 in window 0. Hub runs:
+`1d_T8_adm30`, `1d_T8_adm100` (their lambda and their next value), one change each against 1d_T8. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
