@@ -1656,7 +1656,23 @@ XLA_PYTHON_CLIENT_MEM_FRACTION 0.12 (2.9 GB) each, died in their first iteration
 8730^2 x 8 bytes, the SSBroyden dense inverse Hessian, kept in several copies. A 1D run is small in points
 but needs a few GB because of the optimiser. `jobs/hub/sing1d_batch.sh` now runs NPAR at a time (default 3,
 MEM_FRACTION 0.9/NPAR each), starting the next as one ends, resumable item by item; sing_1d.py prints the
-peak device memory on each progress line (as sing_pinn.py) so NPAR can be raised if there is room. Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+peak device memory on each progress line (as sing_pinn.py) so NPAR can be raised if there is room.
+Peak per 1D run: 3.13 GB. A second batch launched while the first ran (my suggestion) failed at start-up:
+each run's memory pool grows to its cap and keeps it (reserved > peak in use), so the first three at 0.30
+held most of the card. Rule: never two batches at once; NPAR within one batch sets the caps.
+**First results, 1D to t ~ 7 (2026-11-04; the hub stopped at 04:42 UTC with adm30 at 28 / 32 windows,
+adm100 and icd1 at 27, w05 at 13 / 16; `plots/2026-11-04/sing_1d_adm.png`, `tools/plot_1d_runs_t.py`).**
+At t = 6.75, band rms 0.05-0.2 / 0.2-1 / 1-3 / 3-10 for alpha | chi | Khat, and m/M - 1 at r = 1 / 3 / 10:
+1d_T8 (control) 2e-4 6e-4 2e-4 2e-4 | 1e-4 4e-4 2e-4 3e-4 | 8e-4 3e-4 2e-4 2e-4 | +1.9e-3 +2.2e-3 +2.1e-2;
+adm30 3e-4 7e-4 7e-4 7e-4 | 4e-5 1e-4 3e-4 3e-4 | 1e-3 5e-4 2e-4 3e-4 | +3.3e-4 +2.7e-4 -2.0e-4;
+adm100 1e-4 3e-4 4e-4 2e-3 | 1e-5 1e-4 1e-4 2e-4 | 2e-3 6e-4 3e-4 4e-4 | -4.3e-4 -4.2e-4 -9.0e-4;
+icd1 7e-5 5e-4 8e-4 3e-3 | 4e-5 2e-4 4e-4 1e-3 | 9e-4 3e-4 4e-4 8e-4 | +4.2e-4 +2.9e-3 +2.1e-2.
+The constraint penalty (division-free, r^2) removes the mass drift: at lambda = 30 the mass stays within
++-5e-4 at r = 1, 3, 10 for all t (the control drifts to +2.5e-3 at r = 1 and +2e-2 at r = 10: 6-100x), the
+fields at parity except alpha in r = 3-10, 2-3x worse at t > 5. lambda = 100 overshoots: a steady -5e-4 at
+r = 1, 3 and -1e-3 at r = 10, alpha in 3-10 5x worse. The slope hand-off (ic_d1 1) helps in the first
+windows (Khat 2x at t <= 2) but not later: alpha and chi in 3-10 grow to 3e-3 and 1e-3, the far mass
+drifts as the control's. Windows of 0.5: worse (mass +3.5e-2 at r = 10 by t = 6). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
