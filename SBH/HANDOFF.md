@@ -63,26 +63,26 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    unhelpful: slope (Sobolev) hand-off `--ic_d1/--ic_d2` (helps t <= 2, worse later), windows of 0.5 (worse),
    R = 48 (colleagues: a larger domain only spreads the deficit). **The user rejected hard hand-overs.**
 
-## 3. Runs in flight on the hub (as of 2026-11-04 20:00 UTC)
+## 3. Runs on the hub (as of 2026-11-04 22:00 UTC)
 
 1. `jobs/hub/sing1d_batch.sh` runs 1D runs NPAR at a time. One 1D run needs 3.1 GB (the dense SSBroyden matrix,
    8730^2 doubles) and saturates the A30: parallel runs gain nothing, so NPAR 1-2, priority order, and never
    two batches at once (each memory pool keeps what it grows to).
-2. A batch started 2026-11-04 19:54 UTC (NPAR = 1, two items, `1d_T8_seed8` first). State then:
-   `1d_T8_seed8` 30 / 32 windows, `1d_T8_adm30_seed8` 20 / 32, `1d_T8_adm10` not started. Check with
-   `ssh -o BatchMode=yes serafin.ccad.unc.edu.ar 'cd ~/Julia/PINN/SBH && tail -n 5 logs/hub_sing1d_batch.log;
-   ls runs/1d_T8_adm30_seed8 | grep -c window_'`. Anything not finished: give the user
-   `cd ~/serafin/Julia/PINN/SBH && setsid nohup env NPAR=1 bash jobs/hub/sing1d_batch.sh "1d_T8_adm30_seed8:--w_adm 30 --seed 8" "1d_T8_seed8:--seed 8" "1d_T8_adm10:--w_adm 10" >> logs/hub_sing1d_batch.log 2>&1 < /dev/null &`
-   (finished items exit at once). One window takes ~3.5 min alone.
+2. The seed batch (started 19:54 UTC) finished 2026-11-04 20:52 UTC: `1d_T8_seed8` and `1d_T8_adm30_seed8` both at
+   32 / 32, graded (README, "Seed pair to t = 8"). `1d_T8_adm10` not started; the hub GPU is idle. Launch it with
+   `cd ~/serafin/Julia/PINN/SBH && setsid nohup env NPAR=1 bash jobs/hub/sing1d_batch.sh "1d_T8_adm10:--w_adm 10" >> logs/hub_sing1d_batch.log 2>&1 < /dev/null &`
+   Check with `ssh -o BatchMode=yes serafin.ccad.unc.edu.ar 'cd ~/Julia/PINN/SBH && tail -n 5 logs/hub_sing1d_batch.log'`.
+   One window takes ~3.5 min alone.
 3. Stopped on purpose, not to be finished unless asked: `1d_T8_icd12`, `1d_T8_ic100`, `1d_T8_R48`, `1d_T8_far`
    (8-9 windows), `1d_T8_icd1` (27), `1d_T8_w05` (13 / 16).
 
 ## 4. Next steps
 
-1. Grade the seed pair when it lands: is the alpha cost of lambda = 30 larger than the spread between
-   `1d_T8` / `1d_T8_seed8` and `1d_T8_adm30` / `1d_T8_adm30_seed8`? Then `1d_T8_adm10` (does a gentler penalty
-   keep the mass and give back alpha?). Grading: scp `runs/<name>/report.npz` and `history.csv` from serafin into
-   `SBH/eval_data/<name>/`, then
+1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs
+   3.7e-2 / 4.4e-2); inside r = 3 the fields are within the controls' seed spread (2-3x) or better; in r = 3-10
+   both lambda = 30 runs are ~3x worse than both controls from t ~ 5 (alpha 1e-3 / 3e-3 vs 4e-4 / 8e-4 at t = 8).
+   Next `1d_T8_adm10` (gentler penalty: keeps the mass, gives back the outer fields?). Grading: scp
+   `runs/<name>/report.npz` and `history.csv` from serafin into `SBH/eval_data/<name>/`, then
    `python tools/plot_1d_runs_t.py OUT.png "control=eval_data/1d_T8" "name=eval_data/<name>" ...`
    and band rms from `report.npz` (`err` (n_t, n_r, 10): radial functions a, b, c, d, chi, Khat, Theta, g, alpha, B;
    `mass` m/M - 1).

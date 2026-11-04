@@ -14,6 +14,19 @@ and 10.164.8-15.x), so they cannot see each other directly. They are joined by *
 Key login is installed (`ssh-copy-id`), so scripted `ssh -o BatchMode=yes` works. Anything
 that needs `sudo` has to be run with `ssh -t` by the user, because a password is required.
 
+**From the mini to CCAD (serafin, Mendieta; 2026-11-04).** There is no CCAD password to type, so the
+keys were installed from the laptop, which already logs in. The mini's own `id_ed25519` has a
+passphrase and no agent holds it in a headless session, so it cannot be used unattended. A
+dedicated key without a passphrase, `~/.ssh/id_ccad`, is used for those two hosts only
+(`~/.ssh/config`: `IdentityFile ~/.ssh/id_ccad`, `IdentitiesOnly yes`). Its public key was appended
+to `~/.ssh/authorized_keys` on serafin and on Mendieta (separate homes) by running, on the laptop,
+`ssh HOST "echo 'KEY' >> ~/.ssh/authorized_keys"`. The host keys were copied over from the
+laptop's `known_hosts` (`ssh-keygen -F HOST`), so the mini did not have to trust them on first use.
+Anyone with access to the mini's disk can log in to CCAD as reula. Revoke by deleting the
+`reula@macmini-ccad` line on both hosts. Check:
+
+    ssh -o BatchMode=yes serafin.ccad.unc.edu.ar true && ssh -o BatchMode=yes mendieta.ccad.unc.edu.ar true
+
 ## What is on it
 
 | Item | Where |

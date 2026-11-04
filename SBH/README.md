@@ -1683,7 +1683,28 @@ adm100 1e-4 4e-4 1e-3 2e-3 | 2e-5 3e-4 4e-4 2e-4 | 1e-3 6e-4 7e-4 3e-4 | -3.9e-4
 lambda = 30: the mass is flat at +3e-4 inside r = 3 and -1e-4 at r = 10 (control 8x / 230x larger), the worst
 mass error anywhere 30x smaller; chi 5-10x better inside r = 1; alpha 2.5x worse in r = 1-10 (8e-4 - 1e-3 vs
 3-4e-4), Khat 2.5x worse in 3-10. lambda = 100 trades a uniform -4e-4 mass bias for alpha 5x worse in 3-10.
-Whether the alpha differences exceed the run-to-run spread is for the seed runs (adm30_seed8, seed8, running). Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
+Whether the alpha differences exceed the run-to-run spread is for the seed runs (adm30_seed8, seed8).
+
+**Seed pair to t = 8 (2026-11-04; batch finished 20:52 UTC; `plots/2026-11-04/sing_1d_seeds.png`, `tools/plot_1d_runs_t.py`).**
+`1d_T8_seed8` and `1d_T8_adm30_seed8`: the same flags with `--seed 8`. Columns as above (band rms 0.05-0.2 /
+0.2-1 / 1-3 / 3-10 for alpha | chi | Khat at t = 8 against the 1D reference; m/M - 1 at r = 0.3 / 1 / 3 / 10;
+max |m/M - 1| over r >= 0.2 and all t):
+1d_T8_seed8 5e-4 1e-3 1e-3 8e-4 | 7e-5 3e-4 7e-4 4e-4 | 2e-3 1e-3 4e-4 3e-4 | +1.6e-3 +1.5e-3 +3.4e-3 +3.3e-2 | 4.4e-2;
+adm30_seed8 1e-4 2e-4 1e-3 3e-3 | 6e-6 1e-4 7e-4 1e-3 | 6e-4 6e-4 5e-4 6e-4 | -1.2e-5 +8.7e-6 +2.9e-5 -2.5e-4 | 1.4e-3.
+1. The mass gain does not depend on the seed: with lambda = 30 the worst mass error is 1.2e-3 / 1.4e-3 against
+   3.7e-2 / 4.4e-2 for the two controls (30x), and at r = 10 it ends at -1e-4 / -2.5e-4 against +2.5e-2 / +3.3e-2.
+2. Seed-to-seed spread in the fields is large: the two controls differ by 2-3x in alpha everywhere (seed 8 is
+   1e-3 in r = 0.2-3 by t = 6).
+3. Inside r = 1 lambda = 30 is at least as good as the control (adm30_seed8: alpha 2e-4, chi 1e-4 in 0.2-1 at
+   t = 8, both controls 5e-4 - 1e-3 / 3e-4 - 5e-4). In r = 1-3 the two lambda = 30 runs lie inside the
+   controls' spread.
+4. In r = 3-10 the cost is real: both lambda = 30 runs are above both controls from t ~ 5 on, alpha 1e-3 / 3e-3
+   against 4e-4 / 8e-4 at t = 8 (~3x), chi 5e-4 / 1e-3 against 3e-4 / 4e-4, Khat 5e-4 / 6e-4 against 2e-4 /
+   3e-4. adm30_seed8's outer alpha grows steadily from t = 4 (3e-4 -> 3e-3). That is where the r^2 weight puts
+   the penalty (85-95 % of it in r = 1-24, mostly 3-8). Next: `1d_T8_adm10` (does a gentler penalty keep the
+   mass and give back the outer fields?).
+
+Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
 3.8e-3 / 3.0e-4 (sing_radial at t = 2: 6.3e-4 / 2.8e-4 / 1.5e-3 / 4.4e-4; baseline 7.1e-4 / - / 8.7e-3 /
