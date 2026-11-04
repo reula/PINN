@@ -46,3 +46,29 @@ update that restarts is therefore safe, but check `tailscale status` afterwards.
 - Never run `softwareupdate -i` for macOS itself without being able to reach the mini
   afterwards; the Command Line Tools update is separate and was installed with
   `sudo softwareupdate -i "Command Line Tools for Xcode 27.2-27.2"`.
+
+## Moving it to another network
+
+Do this **before** moving it, while it is still reachable through Tailscale; macOS then joins any
+saved network on its own whenever it is in range, with no screen or keyboard. The mini's Wi-Fi
+is device `en1`; it already has `uib@events` and `Leco` saved.
+
+    # join and save a WPA2 network (asks for the mini's password for sudo)
+    ssh -t reula@100.98.22.2 'sudo networksetup -setairportnetwork en1 "NETWORK_NAME" "PASSWORD"'
+
+    # or only save it, first in the preference order (0); use a higher index to put it later
+    ssh -t reula@100.98.22.2 'sudo networksetup -addpreferredwirelessnetworkatindex en1 "NETWORK_NAME" 0 WPA2 "PASSWORD"'
+
+    # check it is still reachable and which network it is on
+    /Applications/Tailscale.app/Contents/MacOS/Tailscale status
+    ssh reula@100.98.22.2 'networksetup -getairportnetwork en1'
+
+Keep the quotes as shown; backslash-escape `"`, `$` and backticks inside the password. The
+connection drops for a few seconds while it switches, then Tailscale reconnects if the new network
+has internet.
+
+- **Ethernet is the most reliable**: plug the cable in and it needs no setup.
+- **Save the phone hotspot as a fallback**, so that if the new Wi-Fi fails the mini joins the
+  hotspot and stays reachable.
+- Not possible without a screen: networks with a login page (captive portals), and enterprise
+  Wi-Fi such as eduroam (needs a profile or certificate). A wrong password leaves it offline.
