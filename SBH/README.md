@@ -1659,7 +1659,9 @@ MEM_FRACTION 0.9/NPAR each), starting the next as one ends, resumable item by it
 peak device memory on each progress line (as sing_pinn.py) so NPAR can be raised if there is room.
 Peak per 1D run: 3.13 GB. A second batch launched while the first ran (my suggestion) failed at start-up:
 each run's memory pool grows to its cap and keeps it (reserved > peak in use), so the first three at 0.30
-held most of the card. Rule: never two batches at once; NPAR within one batch sets the caps.
+held most of the card. Rule: never two batches at once; NPAR within one batch sets the caps. Throughput (2026-11-04):
+four 1D runs at once take 880 s per window each, one alone 210 s: one run saturates the A30 (the dense
+SSBroyden matrix), parallel runs gain nothing; run them in priority order, NPAR 1-2.
 **First results, 1D to t ~ 7 (2026-11-04; the hub stopped at 04:42 UTC with adm30 at 28 / 32 windows,
 adm100 and icd1 at 27, w05 at 13 / 16; `plots/2026-11-04/sing_1d_adm.png`, `tools/plot_1d_runs_t.py`).**
 At t = 6.75, band rms 0.05-0.2 / 0.2-1 / 1-3 / 3-10 for alpha | chi | Khat, and m/M - 1 at r = 1 / 3 / 10:

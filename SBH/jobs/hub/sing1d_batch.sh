@@ -10,6 +10,8 @@
 # inverse Hessian is a dense n^2 matrix (8730 parameters: 0.58 GiB per copy, several copies), so each run gets
 # XLA_PYTHON_CLIENT_MEM_FRACTION = 0.8 / NPAR (seven at 0.12 each ran out of memory, 2026-11-03; at 0.9 / NPAR one
 # of five failed loading compiled code, which needs memory outside the pools, 2026-11-04). Never two batches at once.
+# Throughput: one 1D run already saturates the A30 (four at once: 880 s per window each, one alone 210 s), so
+# NPAR > 1 gains nothing in total time and only delays every result; use NPAR=1 or 2 with the list in priority order.
 # Resumable item by item (sing.sh passes --resume): relaunching the same list continues where it stopped.
 # ---------------------------------------------------------------------------
 set -uo pipefail
