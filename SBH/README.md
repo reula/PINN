@@ -1704,6 +1704,17 @@ adm30_seed8 1e-4 2e-4 1e-3 3e-3 | 6e-6 1e-4 7e-4 1e-3 | 6e-4 6e-4 5e-4 6e-4 | -1
    the penalty (85-95 % of it in r = 1-24, mostly 3-8). Next: `1d_T8_adm10` (does a gentler penalty keep the
    mass and give back the outer fields?).
 
+**Constraint penalty on the hand-off slice, `--w_adm_ic W` (sing_1d.py, 2026-11-04; the user's choice over a
+slope hand-off).** W mean(r^p [(chi H)^2 + |chi M|^2]) at the IC points on t = t0, the same division-free density
+as `--w_adm`, independent of it. Why: H and M_i on a slice involve only the fields and their spatial (tangential)
+derivatives there, so a soft value-only hand-off that leaves the slopes free injects constraint violation at
+the start of every window. `--ic_d1/--ic_d2` attacked this by matching the previous window's slopes (and so
+its slope errors); this asks instead that each window start on a constraint-satisfying slice. In window 0 the
+hard IC makes the term vanish (5.5e-32). Mini CPU smoke test (2 windows, 500 interior / 200 IC points, 500
+iterations, `--w_adm 10 --w_adm_ic 10`): window 1's adm_ic part falls 2.4e-6 -> 1.1e-6, same time per
+iteration (42 s per 250). Fallback if it does not help: the first-derivative hand-off alone (`--ic_d1`, no
+`--ic_d2`) together with the interior penalty.
+
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /

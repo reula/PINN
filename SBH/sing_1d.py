@@ -14,6 +14,10 @@ script's _ccz4_residual_one. Loss = Einstein + gauge means on interior points, l
 on the radial functions at r = R, lamg0 IC, w_constraint mean(Theta^2 + |Z|^2): the weights of sing_pinn.py.
 With --ic_d1 / --ic_d2 the IC (window hand-off) term also matches r f' and r^2 f'' to the previous window's end
 (a Sobolev hand-off; r d/dr keeps the terms scale-free near the puncture; 2026-11-03).
+With --w_adm the division-free ADM penalty r^p [(chi H)^2 + |chi M|^2] is added on the interior points; with
+--w_adm_ic the same density on the hand-off slice t = t0 at the IC points (H, M involve only the fields and their
+spatial derivatives on that slice, so this asks each window to start on a constraint-satisfying slice instead of
+matching the previous window's slopes; 2026-11-04).
 Points: the RADII of sing_pinn.py's 3D clouds (inner/core/focus Gaussians + uniform ball), so the loss weights
 each shell as the 3D run does. SSBroyden, fresh points every --n_change, warm start across windows.
 Report per window end (REPORT.npz, appended): signed f - f_ref for the 10 radial functions on a log grid of r
@@ -69,6 +73,9 @@ ap.add_argument("--w_adm", type=float, default=0.0,
                 help="weight of the ADM Hamiltonian/momentum penalty mean(r^p [(chi H)^2 + |chi M_i|^2]) on the interior "
                      "points, chi H and chi M in the division-free form (adm_constraints.conformal_constraints_one: every "
                      "1/chi cancelled by hand, regular at the puncture); 0 = off (2026-11-03)")
+ap.add_argument("--w_adm_ic", type=float, default=0.0,
+                help="weight of the same r^p [(chi H)^2 + |chi M_i|^2] penalty on the window's hand-off slice t = t0, at the IC "
+                     "points (the constraints of the starting slice; independent of --w_adm); 0 = off (2026-11-04)")
 ap.add_argument("--adm_r_power", type=float, default=2.0, help="p in the --w_adm weight r^p (the colleagues: r^2)")
 ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
@@ -229,6 +236,8 @@ def parts(P, win, batch):
                ic=ns["lamg0"] * ic, constraint=a.w_constraint * con)
     if a.w_adm > 0:
         out["adm"] = a.w_adm * jnp.mean(adm_density(Di, Qi[:, 1]))
+    if a.w_adm_ic > 0:
+        out["adm_ic"] = a.w_adm_ic * jnp.mean(adm_density(stacks(P, win, axis(jnp.full_like(ric, win[0]), ric)), ric))
     return out
 
 
@@ -335,7 +344,8 @@ loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), s
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 parts_jit = jax.jit(parts)
 hist = os.path.join(a.out, "history.csv")
-PART_NAMES = ("einstein", "gauge", "end", "bc", "ic", "constraint") + (("adm",) if a.w_adm > 0 else ())
+PART_NAMES = (("einstein", "gauge", "end", "bc", "ic", "constraint") + (("adm",) if a.w_adm > 0 else ())
+              + (("adm_ic",) if a.w_adm_ic > 0 else ()))
 for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1))
