@@ -13,13 +13,15 @@
 # 1D: sing_1d.py with the hub runs' settings (2000 points, 4000 iterations), the constraint parts reported at
 # weight 30 (as 1d_T8_adm30_ic; they do not enter the fit). 3D: sing_pinn.py, plain 3D MLP (no --radial_net),
 # 32000 fit points per draw (the baseline's 128000 is too slow on the CPU), 8000 iterations.
+# Sobolev variants (runs/fit_ref_*_sob, --fit_d1 1 --fit_d2 1): also r f' and r^2 f'' (1D) / r grad u and r^2 grad grad u
+# (3D) against the reference's 4th-order grid derivatives (accurate to 1e-8 for r >= 0.02 on the exact t = 0 data).
 # ---------------------------------------------------------------------------
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 PY=${PY:-../Stationary/.venv/bin/python}
 REFN=reference_1d/ref_single_m0.5_dr0.005_t8_snap0025.npz
 export JAX_ENABLE_X64=1
-mkdir -p runs/fit_ref_1d runs/fit_ref_3d logs
+mkdir -p runs/fit_ref_1d runs/fit_ref_3d runs/fit_ref_1d_sob runs/fit_ref_3d_sob logs
 for k in 0 16 31; do
     f=$(printf "runs/fit_ref_1d/fit_ref_w%03d.npz" "$k")
     [ -e "$f" ] && { echo "skip 1D window $k"; continue; }
@@ -33,5 +35,19 @@ for k in 16 31; do
     echo "--- 3D window $k  $(date -u '+%F %T UTC')"
     "$PY" -u sing_pinn.py --out runs/fit_ref_3d --template bl --hard_ic --no_template --tfinal 8 --N_window 32 \
         --fit_ref "$REFN" --fit_window "$k" --n_int 32000 --n_held 8000 --iters 8000 >> logs/mini_fit_ref_3d.log 2>&1
+done
+for k in 0 16 31; do
+    f=$(printf "runs/fit_ref_1d_sob/fit_ref_w%03d.npz" "$k")
+    [ -e "$f" ] && { echo "skip 1D Sobolev window $k"; continue; }
+    echo "--- 1D Sobolev window $k  $(date -u '+%F %T UTC')"
+    "$PY" -u sing_1d.py --out runs/fit_ref_1d_sob --hard_ic --no_template --tfinal 8 --N_window 32 \
+        --fit_ref "$REFN" --fit_window "$k" --iters 4000 --w_adm 30 --w_adm_ic 30 --fit_d1 1 --fit_d2 1 >> logs/mini_fit_ref_1d_sob.log 2>&1
+done
+for k in 16 31; do
+    f=$(printf "runs/fit_ref_3d_sob/fit_ref_w%03d.npz" "$k")
+    [ -e "$f" ] && { echo "skip 3D Sobolev window $k"; continue; }
+    echo "--- 3D Sobolev window $k  $(date -u '+%F %T UTC')"
+    "$PY" -u sing_pinn.py --out runs/fit_ref_3d_sob --template bl --hard_ic --no_template --tfinal 8 --N_window 32 \
+        --fit_ref "$REFN" --fit_window "$k" --n_int 32000 --n_held 8000 --iters 8000 --fit_d1 1 --fit_d2 1 >> logs/mini_fit_ref_3d_sob.log 2>&1
 done
 echo "=== fit_ref done $(date -u '+%F %T UTC')"

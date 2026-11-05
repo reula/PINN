@@ -1790,6 +1790,34 @@ saved every 0.025, `reference_1d/ref_single_m0.5_dr0.005_t8_snap0025.npz` (`sph_
 the shared snapshots). Windows: 1D 0, 16, 31 (hub-run settings, 4000 iterations, constraint parts at weight 30
 reported, not fitted); 3D 16, 31 (plain 3D MLP, 32000 fit points per draw, 8000 iterations).
 
+**Value-only fits, results (2026-11-05 10:47 - 12:14 UTC; 1D ~10 min per window, 3D ~28 min).** Fit error = held
+mean|f - f_ref|^2; errors at t1 as the run reports (band rms 0.05-0.2 / 0.2-1 / 1-3 / 3-10 for alpha | chi | Khat);
+PINN loss = held total of the run's loss parts (constraint parts at weight 30), against `1d_T8_adm30_ic`'s held
+loss at the end of the same window.
+- 1D window 0 (t = 0-0.25): fit 4.5e-10; alpha 3e-5 4e-6 2e-6 4e-6 | chi 2e-5 9e-6 3e-6 4e-6 | Khat 1e-5 6e-6 4e-6 2e-6
+  (adm30_ic: alpha 5e-5 2e-5 3e-6 5e-6, chi 4e-6 5e-6 7e-6 7e-6, Khat 6e-5 2e-5 8e-6 7e-6); PINN loss 3.4e-4
+  (Einstein 2.8e-4) against the trained run's 8.2e-8: 4000x higher with errors 1-5x smaller.
+- 1D window 16 (t = 4-4.25): fit 4.3e-7; alpha 3e-4 2e-4 2e-4 2e-4 | chi 5e-5 2e-4 1e-4 2e-4 | Khat 6e-4 4e-4 4e-4 3e-4,
+  m/M - 1 +7.6e-4 / +6.7e-4 / +7.0e-3 / +1.1e-3 at r = 0.3 / 1 / 3 / 10 (adm30_ic at t = 4.25: alpha 3e-4 3e-4 4e-4
+  5e-4, chi 4e-6 2e-4 4e-4 2e-4, Khat 7e-4 4e-4 3e-4 1e-4, mass within 4e-4); PINN loss 3.9 (Einstein 2.3, end 1.6).
+  (The trained run's held loss at that window is 0.25, almost all of it the end term: one of the held-out spikes
+  from points at r << 0.05 noted in HANDOFF; its training loss is ~1e-7.)
+- 1D window 31 (t = 7.75-8): fit 8.2e-8; alpha 5e-4 3e-4 8e-5 2e-4 | chi 8e-4 4e-4 2e-4 2e-4 | Khat 4e-4 3e-4 8e-5 1e-4,
+  mass +5.0e-3 / +2.3e-3 / -4.0e-3 / +5.7e-3 (adm30_ic at t = 8: alpha 3e-4 7e-4 5e-4 4e-4, chi 1e-5 1e-4 2e-4 3e-4,
+  mass within 1.1e-3); PINN loss 2.5 (Einstein 2.3) against the trained run's 3.0e-8.
+- 3D window 16 / 31 (plain MLP, from scratch): fit 1.4e-4 / 1.6e-4 after 8000 iterations, still falling slowly;
+  rms errors 1e-3 - 3e-2 (alpha 3e-2 1e-2 2e-2 2e-3 in r = 0-0.05 / 0.05-0.5 / 0.5-5 / 5-20 at t = 4.25); PINN loss
+  3.3e3 / 1.0e4.
+Reading. (1) In 1D a network fitted to the answer over one window, from scratch, has about the same field error as
+the PINN after 16 - 31 windows of time marching (t = 4, 8), and a worse mass (it is not asked for it); at t = 0 it
+is 1-5x better. So 1e-4 is where this network and optimiser get on these fields in one window either way;
+the PINN's error level is not far above what the representation gives. (2) The PINN loss is no proxy for the
+error: networks with the PINN's error level or better have PINN losses 1e3 - 1e8 times the trained runs'. A
+pointwise fit leaves the derivatives free, and the residual is made of derivatives (and 1/chi near the
+puncture). The Sobolev fits (next) test that directly. (3) In 3D the plain MLP fitted from scratch on one window
+with 32000 points and 8000 iterations stays at 1e-2: this says nothing yet about its representation limit (the
+3D PINN runs warm-start window after window and reach 1e-4 - 1e-3), only that a cold single-window fit is slow.
+
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /

@@ -92,6 +92,9 @@ ap.add_argument("--fit_ref", default=None, metavar="NPZ",
                      "nodes; print the PINN loss parts of the fitted network as it trains; write fit_ref_wNNN.npz/.pkl "
                      "in --out and exit (2026-11-05)")
 ap.add_argument("--fit_window", type=int, default=0, help="window index for --fit_ref (edges from --tfinal, --N_window)")
+ap.add_argument("--fit_d1", type=float, default=0.0,
+                help="--fit_ref: also fit r f' to r f_ref' with this weight (f_ref' by 4th-order differences on the grid)")
+ap.add_argument("--fit_d2", type=float, default=0.0, help="--fit_ref: also fit r^2 f'' to r^2 f_ref'' with this weight")
 ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
                      "end in --out, write constraints.npz there, and exit")
@@ -356,17 +359,41 @@ if a.fit_ref:
     TJ, UJ = jnp.asarray(FR_T[J]), jnp.asarray(FR_U[J])
     j0 = int(np.argmin(np.abs(FR_T - t0)))
 
+    def fd_r(U, h, order):
+        """4th-order central d/dr (order 1) or d^2/dr^2 (order 2) along axis 1; 2nd-order one-sided at the ends."""
+        D = np.gradient(U, h, axis=1, edge_order=2) if order == 1 else \
+            np.gradient(np.gradient(U, h, axis=1, edge_order=2), h, axis=1, edge_order=2)
+        c = U
+        if order == 1:
+            D[:, 2:-2] = (-c[:, 4:] + 8 * c[:, 3:-1] - 8 * c[:, 1:-3] + c[:, :-4]) / (12 * h)
+        else:
+            D[:, 2:-2] = (-c[:, 4:] + 16 * c[:, 3:-1] - 30 * c[:, 2:-2] + 16 * c[:, 1:-3] - c[:, :-4]) / (12 * h * h)
+        return D
+
+    SOB = a.fit_d1 > 0 or a.fit_d2 > 0
+    D1J = jnp.asarray(fd_r(FR_U[J], float(FR_R[1] - FR_R[0]), 1))
+    D2J = jnp.asarray(fd_r(FR_U[J], float(FR_R[1] - FR_R[0]), 2))
+
     def fit_batch(key, n):
         """n points on the reference's own (t, r) nodes: snapshot in the window, radius = the run's cloud snapped to the grid."""
         k1, k2 = jax.random.split(key)
         it = jax.random.randint(k1, (n,), 0, len(J))
         ir = jnp.clip(jnp.round((radii(k2, n) - FR_R[0]) / dr_ref).astype(int), 0, len(FR_R) - 1)
-        return TJ[it], jnp.asarray(FR_R)[ir], UJ[it, ir]
+        return TJ[it], jnp.asarray(FR_R)[ir], UJ[it, ir], D1J[it, ir], D2J[it, ir]
+
+    def taylor2(g, r):
+        v, d1 = jax.jvp(g, (r,), (1.0,))
+        d2 = jax.jvp(lambda rr: jax.jvp(g, (rr,), (1.0,))[1], (r,), (1.0,))[1]
+        return v, d1, d2
 
     def fit_loss(P, b):
-        t, r, U = b
-        f = jax.vmap(lambda tt, rr: rad_fn(P, win, tt, rr))(t, r)
-        return jnp.mean((f - U) ** 2)
+        t, r, U, D1, D2 = b
+        if not SOB:
+            f = jax.vmap(lambda tt, rr: rad_fn(P, win, tt, rr))(t, r)
+            return jnp.mean((f - U) ** 2)
+        f, f1, f2 = jax.vmap(lambda tt, rr: taylor2(lambda q: rad_fn(P, win, tt, q), rr))(t, r)
+        return (jnp.mean((f - U) ** 2) + a.fit_d1 * jnp.mean((r[:, None] * (f1 - D1)) ** 2)
+                + a.fit_d2 * jnp.mean((r[:, None] ** 2 * (f2 - D2)) ** 2))
 
     Uic_fn = jax.jit(jax.vmap(lambda r: jnp.stack([jnp.interp(r, jnp.asarray(FR_R), jnp.asarray(FR_U[j0, :, i]))
                                                     for i in range(10)])[None]))
@@ -377,6 +404,7 @@ if a.fit_ref:
     P = {"net": init_net(jax.random.PRNGKey(a.seed + 1))}
     w, unr = ns["flatten_util"].ravel_pytree(P)
     fl = jax.jit(lambda v, b: fit_loss(unr(v), b))
+    fval = jax.jit(lambda v, b: jnp.mean((jax.vmap(lambda tt, rr: rad_fn(unr(v), win, tt, rr))(b[0], b[1]) - b[2]) ** 2))
     fvg = jax.jit(jax.value_and_grad(lambda v, b: fit_loss(unr(v), b)))
     parts_jit = jax.jit(parts)
     key, kh, kf = jax.random.split(key, 3)
@@ -385,23 +413,23 @@ if a.fit_ref:
     names = ("einstein", "gauge", "end", "bc", "ic", "constraint") + (("adm",) if a.w_adm > 0 else ()) \
         + (("adm_ic",) if a.w_adm_ic > 0 else ())
     rows, t_start, it = [], time.time(), 0
-    print(f"fit to {a.fit_ref}, window {a.fit_window}: t in [{t0:g}, {t1:g}], {len(J)} snapshots, {w.size} parameters",
-          flush=True)
+    print(f"fit to {a.fit_ref}, window {a.fit_window}: t in [{t0:g}, {t1:g}], {len(J)} snapshots, {w.size} parameters"
+          + (f", Sobolev weights r f' {a.fit_d1:g}, r^2 f'' {a.fit_d2:g}" if SOB else ""), flush=True)
     while it < a.iters:
         key, kd = jax.random.split(key)
         b = fit_batch(kd, a.n_int)
         w = mb.minimize(lambda v: fl(v, b), lambda v: fvg(v, b), w, opts).x
         it += a.n_change
         hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
-        rows.append(dict(iteration=it, seconds=round(time.time() - t_start, 1), fit=float(fl(w, fheld)),
+        rows.append(dict(iteration=it, seconds=round(time.time() - t_start, 1), fit=float(fl(w, fheld)), fit_val=float(fval(w, fheld)),
                          pinn=sum(hp.values()), **hp))
-        print(f"  it {it:6d} {rows[-1]['seconds']:7.0f} s  fit mse (held) {rows[-1]['fit']:.3e}  PINN loss (held) "
+        print(f"  it {it:6d} {rows[-1]['seconds']:7.0f} s  fit loss (held) {rows[-1]['fit']:.3e} (values {rows[-1]['fit_val']:.3e})  PINN loss (held) "
               f"{rows[-1]['pinn']:.3e} (" + " ".join(f"{n} {hp[n]:.1e}" for n in names) + ")", flush=True)
     P = unr(w)
     err, m = report(P, win, t1)
     np.savez(os.path.join(a.out, f"fit_ref_w{a.fit_window:03d}.npz"), r=REP_R, t1=t1, err=err, mass=m,
-             history=np.array([[r_[k] for k in ["iteration", "seconds", "fit", "pinn"] + list(names)] for r_ in rows]),
-             history_cols=np.array(["iteration", "seconds", "fit", "pinn"] + list(names)), config=np.array(str(vars(a))))
+             history=np.array([[r_[k] for k in ["iteration", "seconds", "fit", "fit_val", "pinn"] + list(names)] for r_ in rows]),
+             history_cols=np.array(["iteration", "seconds", "fit", "fit_val", "pinn"] + list(names)), config=np.array(str(vars(a))))
     pickle.dump({"params": jax.tree_util.tree_map(np.asarray, P), "win": [t0, t1], "config": vars(a)},
                 open(os.path.join(a.out, f"fit_ref_w{a.fit_window:03d}.pkl"), "wb"))
     bands = ((0.05, 0.2), (0.2, 1.0), (1.0, 3.0), (3.0, 10.0))

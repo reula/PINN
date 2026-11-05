@@ -153,6 +153,11 @@ ap.add_argument("--fit_ref", default=None, metavar="NPZ",
                      "run's clouds; print the PINN loss parts (and the division-free r^2 constraint density) of the fitted "
                      "network as it trains; write fit_ref_wNNN.npz/.pkl in --out and exit (2026-11-05)")
 ap.add_argument("--fit_window", type=int, default=0, help="window index for --fit_ref (edges from --tfinal, --N_window)")
+ap.add_argument("--fit_d1", type=float, default=0.0,
+                help="--fit_ref: also fit r grad u to r grad u_ref with this weight (u_ref from the radial functions and their "
+                     "4th-order grid differences, lifted exactly)")
+ap.add_argument("--fit_d2", type=float, default=0.0,
+                help="--fit_ref: also fit r^2 grad grad u to r^2 grad grad u_ref (the second-derivative fields) with this weight")
 ap.add_argument("--eval_pre", action="store_true", help="--eval_spheres on pre_000.pkl (after the IC phase) instead")
 argv = sys.argv[1:]
 rest = argv[argv.index("--") + 1:] if "--" in argv else []
@@ -769,6 +774,27 @@ if a.fit_ref:
     assert len(J) >= 3, f"--fit_ref has only {len(J)} snapshots in [{t0}, {t1}]"
     dr_ref = float(FR_R[1] - FR_R[0])
     TJ, UJ, RG = jnp.asarray(FR_T[J]), jnp.asarray(FR_U[J]), jnp.asarray(FR_R)
+
+    def fd_r(U, h, order):
+        """4th-order central d/dr (order 1) or d^2/dr^2 (order 2) along axis 1; 2nd-order one-sided at the ends."""
+        D = np.gradient(U, h, axis=1, edge_order=2) if order == 1 else \
+            np.gradient(np.gradient(U, h, axis=1, edge_order=2), h, axis=1, edge_order=2)
+        c = U
+        if order == 1:
+            D[:, 2:-2] = (-c[:, 4:] + 8 * c[:, 3:-1] - 8 * c[:, 1:-3] + c[:, :-4]) / (12 * h)
+        else:
+            D[:, 2:-2] = (-c[:, 4:] + 16 * c[:, 3:-1] - 30 * c[:, 2:-2] + 16 * c[:, 1:-3] - c[:, :-4]) / (12 * h * h)
+        return D
+
+    SOB = a.fit_d1 > 0 or a.fit_d2 > 0
+    D1J = jnp.asarray(fd_r(FR_U[J], dr_ref, 1))
+    D2J = jnp.asarray(fd_r(FR_U[J], dr_ref, 2))
+
+    def lifted_jets(U, D1, D2, r0, x):
+        """Value, gradient (22,3) and Hessian of the second-derivative fields (11,3,3) of the lifted reference at x
+        (|x| = r0), from the quadratic Taylor polynomial of the radial functions at r0 (exact to second order)."""
+        F = lambda y: stpl.lift(jnp, pack, U + D1 * (jnp.linalg.norm(y) - r0) + 0.5 * D2 * (jnp.linalg.norm(y) - r0) ** 2, y)
+        return F(x), jax.jacfwd(F)(x), jax.jacfwd(jax.jacfwd(F))(x)[DD]
     j0 = int(np.argmin(np.abs(FR_T - t0)))
     hard = a.hard_ic
     lift_v = jax.vmap(lambda rv, x: stpl.lift(jnp, pack, rv, x))
@@ -783,11 +809,23 @@ if a.fit_ref:
         rr = jnp.linalg.norm(X, axis=1)
         ir = jnp.clip(jnp.round((rr - FR_R[0]) / dr_ref).astype(int), 0, len(FR_R) - 1)
         X = X * (RG[ir] / jnp.maximum(rr, 1e-12))[:, None]
-        return jnp.concatenate([TJ[it][:, None], X], axis=1), lift_v(UJ[it, ir], X)
+        Q = jnp.concatenate([TJ[it][:, None], X], axis=1)
+        if not SOB:
+            return Q, lift_v(UJ[it, ir], X), None, None, None
+        U, G, Hs = jax.vmap(lifted_jets)(UJ[it, ir], D1J[it, ir], D2J[it, ir], RG[ir], X)
+        return Q, U, G, Hs, (hard_stacks(X) if hard else None)
+
+    def fit_val(netp, b):
+        return jnp.mean((u_value({"net": netp, "acc": jnp.zeros((NP, 2, 3))}, win, b[0], hard) - b[1]) ** 2)
 
     def fit_loss(netp, b):
-        Q, U = b
-        return jnp.mean((u_value({"net": netp, "acc": jnp.zeros((NP, 2, 3))}, win, Q, hard) - U) ** 2)
+        if not SOB:
+            return fit_val(netp, b)
+        Q, U, G, Hs, H = b
+        val, _, d, dd = u_derivs({"net": netp, "acc": jnp.zeros((NP, 2, 3))}, win, Q, H)
+        r2 = jnp.sum(Q[:, 1:4] ** 2, axis=1)
+        return (jnp.mean((val - U) ** 2) + a.fit_d1 * jnp.mean(r2[:, None, None] * (d - G) ** 2)
+                + a.fit_d2 * jnp.mean(r2[:, None, None, None] ** 2 * (dd - Hs) ** 2))
 
     def Uic_fn(X):
         rr = jnp.linalg.norm(X, axis=1)
@@ -807,6 +845,7 @@ if a.fit_ref:
         else _init_net(jax, jnp, jax.random.PRNGKey(a.seed + 1), a.hidden, a.layers)
     w, unr = ns["flatten_util"].ravel_pytree(net)
     fl = jax.jit(lambda v, b: fit_loss(unr(v), b))
+    fv = jax.jit(lambda v, b: fit_val(unr(v), b))
     fvg = jax.jit(jax.value_and_grad(lambda v, b: fit_loss(unr(v), b)))
     parts_jit = jax.jit(parts)
     adm_jit = jax.jit(adm_mean)
@@ -817,7 +856,8 @@ if a.fit_ref:
     names = ("einstein", "gauge", "end", "bc", "ic", "constraint")
     rows, t_start, it = [], time.time(), 0
     print(f"fit to {a.fit_ref}, window {a.fit_window}: t in [{t0:g}, {t1:g}], {len(J)} snapshots, {w.size} parameters, "
-          f"{a.n_int} fit points per draw", flush=True)
+          f"{a.n_int} fit points per draw"
+          + (f", Sobolev weights r grad {a.fit_d1:g}, r^2 grad grad {a.fit_d2:g}" if SOB else ""), flush=True)
     while it < a.iters:
         key, kd = jax.random.split(key)
         b = fit_batch(kd, a.n_int)
@@ -826,13 +866,13 @@ if a.fit_ref:
         P = {"net": unr(w), "acc": jnp.zeros((NP, 2, 3))}
         hp = {n: float(v) for n, v in parts_jit(P, win, held).items()}
         adm = float(adm_jit(P, held[0], held[5]))
-        rows.append(dict(iteration=it, seconds=round(time.time() - t_start, 1), fit=float(fl(w, fheld)),
+        rows.append(dict(iteration=it, seconds=round(time.time() - t_start, 1), fit=float(fl(w, fheld)), fit_val=float(fv(w, fheld)),
                          pinn=sum(hp.values()), adm_r2=adm, **hp))
-        print(f"  it {it:6d} {rows[-1]['seconds']:7.0f} s  fit mse (held) {rows[-1]['fit']:.3e}  PINN loss (held) "
+        print(f"  it {it:6d} {rows[-1]['seconds']:7.0f} s  fit loss (held) {rows[-1]['fit']:.3e} (values {rows[-1]['fit_val']:.3e})  PINN loss (held) "
               f"{rows[-1]['pinn']:.3e} (" + " ".join(f"{n} {hp[n]:.1e}" for n in names) + f")  mean r^2 [(chi H)^2 + "
               f"|chi M|^2] {adm:.1e}", flush=True)
     row = report(P, win, t1, hard)
-    cols = ["iteration", "seconds", "fit", "pinn", "adm_r2"] + list(names)
+    cols = ["iteration", "seconds", "fit", "fit_val", "pinn", "adm_r2"] + list(names)
     np.savez(os.path.join(a.out, f"fit_ref_w{a.fit_window:03d}.npz"), history=np.array([[r_[c] for c in cols] for r_ in rows]),
              history_cols=np.array(cols), report_keys=np.array(list(row)), report_vals=np.array(list(row.values())),
              config=np.array(str(vars(a))))
