@@ -63,16 +63,16 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    unhelpful: slope (Sobolev) hand-off `--ic_d1/--ic_d2` (helps t <= 2, worse later), windows of 0.5 (worse),
    R = 48 (colleagues: a larger domain only spreads the deficit). **The user rejected hard hand-overs.**
 
-## 3. Runs on the hub (as of 2026-11-05 07:30 UTC)
+## 3. Runs on the hub (as of 2026-11-05 09:45 UTC)
 
 1. `jobs/hub/sing1d_batch.sh` runs 1D runs NPAR at a time. One 1D run needs 3.1 GB (the dense SSBroyden matrix,
    8730^2 doubles) and saturates the A30: parallel runs gain nothing, so NPAR 1-2, priority order, and never
    two batches at once (each memory pool keeps what it grows to).
-2. `1d_T8_adm10` reached 31 / 32 windows (stopped by a hub restart 2026-11-04 23:50 UTC), graded to t = 7.75
-   (README: lambda = 10 keeps 10x on the mass, not the outer fields; lambda = 30 stays). Queued as one batch, in
-   order: `1d_T8_adm10` (last window), `1d_T8_adm30_ic` (`--w_adm 30 --w_adm_ic 30`), `1d_T8_adm30_icd1`
-   (`--w_adm 30 --ic_d1 1`), both single changes against `1d_T8_adm30`. Launch / relaunch (finished items exit at once):
-   `cd ~/serafin/Julia/PINN/SBH && setsid nohup env NPAR=1 bash jobs/hub/sing1d_batch.sh "1d_T8_adm10:--w_adm 10" "1d_T8_adm30_ic:--w_adm 30 --w_adm_ic 30" "1d_T8_adm30_icd1:--w_adm 30 --ic_d1 1" >> logs/hub_sing1d_batch.log 2>&1 < /dev/null &`
+2. Batch of 2026-11-05 07:25 UTC (one batch, NPAR 1): `1d_T8_adm10` completed (32), `1d_T8_adm30_ic` completed
+   09:30 UTC and graded (README: outer fields back to the controls' level, mass 2x worse than adm30, drifting
+   negative after t = 5), `1d_T8_adm30_icd1` (`--w_adm 30 --ic_d1 1`) running, ~2 h. Relaunch if the hub stops
+   (finished items exit at once):
+   `cd ~/serafin/Julia/PINN && git pull && cd ~/serafin/Julia/PINN/SBH && setsid nohup env NPAR=1 bash jobs/hub/sing1d_batch.sh "1d_T8_adm30_icd1:--w_adm 30 --ic_d1 1" >> logs/hub_sing1d_batch.log 2>&1 < /dev/null & sleep 5; tail -F logs/hub_1d_T8_adm30_icd1.log`
    Grade with `tools/table_1d_runs.py` and `tools/plot_1d_runs_t.py` after copying report.npz to eval_data/.
 3. Stopped on purpose, not to be finished unless asked: `1d_T8_icd12`, `1d_T8_ic100`, `1d_T8_R48`, `1d_T8_far`
    (8-9 windows), `1d_T8_icd1` (27), `1d_T8_w05` (13 / 16).

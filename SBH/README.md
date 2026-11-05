@@ -1732,6 +1732,27 @@ adm30 seed 8 8e-5 1e-4 8e-4 2e-3 | 7e-6 7e-5 6e-4 1e-3 | 6e-4 4e-4 4e-4 6e-4 | -
 3. So the outer-alpha cost does not scale with lambda between 10 and 30, while the mass does: lambda = 30 stays
    the choice. The outer error has to be attacked another way (the hand-off-slice penalty `--w_adm_ic`, or the
    first-derivative hand-off, both queued as single changes against `1d_T8_adm30`).
+   (The last window, run 2026-11-05: at t = 8 adm10 is alpha 7e-5 2e-4 4e-4 1e-3, mass -9.9e-4 / -9.5e-4 / -9.9e-4 /
+   -2.2e-3, worst 3.7e-3: the reading stands.)
+
+**`1d_T8_adm30_ic`: lambda = 30 inside plus lambda = 30 on the hand-off slice (`--w_adm 30 --w_adm_ic 30`; hub
+2026-11-05 07:31 - 09:30 UTC, 32 windows, same time per window as adm30; `plots/2026-11-05/sing_1d_adm30_ic.png`,
+adm30 drawn black there).** One change against `1d_T8_adm30`. At t = 8 (columns as above):
+adm30 4e-4 7e-4 8e-4 1e-3 | 2e-5 5e-5 3e-4 5e-4 | 7e-4 6e-4 2e-4 5e-4 | +2.9e-4 +3.3e-4 +2.9e-4 -1.1e-4 | 1.2e-3;
+adm30 seed 8 1e-4 2e-4 1e-3 3e-3 | 6e-6 1e-4 7e-4 1e-3 | 6e-4 6e-4 5e-4 6e-4 | -1.2e-5 +8.7e-6 +2.9e-5 -2.5e-4 | 1.4e-3;
+adm30_ic 3e-4 7e-4 5e-4 4e-4 | 1e-5 1e-4 2e-4 3e-4 | 2e-3 7e-4 2e-4 3e-4 | -4.8e-4 -4.0e-4 -4.4e-4 -1.1e-3 | 2.5e-3.
+1. The outer fields come back: alpha in r = 3-10 stays at 4-5e-4 from t = 4 to 8 (flat, even falling at the end)
+   while both adm30 seeds grow to 1e-3 / 3e-3; that is the controls' level (4e-4 / 8e-4). chi 3e-4 and Khat 3e-4
+   in 3-10 are also back at the controls' level (adm30: 5e-4 - 1e-3, 5e-4 - 6e-4). Below both adm30 seeds, so
+   more than the seed spread, though one seed only.
+2. The mass gets worse than adm30: flat near zero to t = 5 (-1e-5 inside r = 3 at t = 4), then a negative
+   drift, -4.4e-4 inside r = 3 and -1.1e-3 at r = 10 by t = 8; worst 2.5e-3 (adm30 1.2e-3 / 1.4e-3, controls
+   3.7e-2 / 4.4e-2: still 15x better than the controls).
+3. Inner fields (r < 1) at the adm30 level; Khat in 0.05-0.2 2e-3 (adm30 7e-4 / 6e-4, controls 7e-4 / 2e-3).
+4. Reading: the slice penalty removes the outer-field cost of the interior penalty, which supports the picture
+   that unconstrained hand-off slices feed the outer error; the mass then drifts slowly negative, as with
+   lambda = 10. Open: whether the slice weight (30, untested otherwise) sets that drift; the first-derivative
+   hand-off (`1d_T8_adm30_icd1`) is the competing fix, running.
 
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
