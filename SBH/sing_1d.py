@@ -95,6 +95,11 @@ ap.add_argument("--fit_window", type=int, default=0, help="window index for --fi
 ap.add_argument("--fit_d1", type=float, default=0.0,
                 help="--fit_ref: also fit r f' to r f_ref' with this weight (f_ref' by 4th-order differences on the grid)")
 ap.add_argument("--fit_d2", type=float, default=0.0, help="--fit_ref: also fit r^2 f'' to r^2 f_ref'' with this weight")
+ap.add_argument("--eval_tr", default=None, metavar="PKL",
+                help="evaluate the residual of the network in PKL (a window_KKK.pkl or fit_ref_wKKK.pkl) on a (t, r) grid "
+                     "over its window: per point the Einstein and gauge parts as the loss weights them (lam x mean of the "
+                     "squared rows) and the r^p constraint density; write --eval_tr_out and exit (2026-11-05)")
+ap.add_argument("--eval_tr_out", default=None, metavar="NPZ")
 ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
                      "end in --out, write constraints.npz there, and exit")
@@ -343,6 +348,29 @@ if a.eval_constraints:
     np.savez(os.path.join(a.out, "constraints.npz"), r=REP_R, **{k: np.array(v) for k, v in out.items()},
              adm_r_power=a.adm_r_power)
     print("wrote", os.path.join(a.out, "constraints.npz"), len(out["t"]), "windows")
+    sys.exit(0)
+
+
+if a.eval_tr:
+    S = pickle.load(open(a.eval_tr, "rb"))
+    Pk = jax.tree_util.tree_map(jnp.asarray, S["params"])
+    wk = tuple(jnp.asarray(float(v)) for v in S["win"][:2])
+    tg = np.linspace(float(wk[0]), float(wk[1]), 41)
+    rg = np.geomspace(1e-3, R, 240)
+    T_, R_ = np.meshgrid(tg, rg, indexing="ij")
+    Q = jnp.asarray(np.stack([T_.ravel(), R_.ravel(), 0 * T_.ravel(), 0 * T_.ravel()], axis=1))
+    out = {k: [] for k in ("einstein", "gauge", "adm")}
+    st = jax.jit(lambda Q: stacks(Pk, wk, Q))
+    for i in range(0, Q.shape[0], 2048):
+        D = st(Q[i:i + 2048])
+        res = residual(D)
+        out["einstein"].append(np.asarray(ns["lam_einstein"] * jnp.mean(res[:, :18] ** 2, axis=1)))
+        out["gauge"].append(np.asarray(ns["lam_gauge"] * a.w_gauge * jnp.mean(res[:, 18:22] ** 2, axis=1)))
+        out["adm"].append(np.asarray(adm_density(D, Q[i:i + 2048, 1])))
+    shape = T_.shape
+    np.savez(a.eval_tr_out, t=tg, r=rg, **{k: np.concatenate(v).reshape(shape) for k, v in out.items()},
+             src=np.array(a.eval_tr))
+    print("wrote", a.eval_tr_out)
     sys.exit(0)
 
 

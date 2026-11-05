@@ -1818,6 +1818,28 @@ puncture). The Sobolev fits (next) test that directly. (3) In 3D the plain MLP f
 with 32000 points and 8000 iterations stays at 1e-2: this says nothing yet about its representation limit (the
 3D PINN runs warm-start window after window and reach 1e-4 - 1e-3), only that a cold single-window fit is slow.
 
+**Where the residual sits: (t, r) maps (`sing_1d.py --eval_tr PKL --eval_tr_out NPZ`, `tools/plot_tr_loss.py`;
+`plots/2026-11-05/tr_loss_1d.png`; data in `eval_data/tr_loss/`).** Per point, lam_einstein x mean of the 18
+Einstein rows squared + the gauge part, on 41 t x 240 log-spaced r in [1e-3, 24] over the window, for the trained
+`1d_T8_adm30_ic` window networks and the value-only fits. Band averages (over t and the log-r grid):
+
+| window | network | r = 0.001-0.01 | 0.01-0.05 | 0.05-1 | 1-24 |
+|---|---|---|---|---|---|
+| 0 | PINN | 1.9e-2 | 4.3e-6 | 2.2e-7 | 4.9e-9 |
+| 0 | value fit | 6.4e2 | 3.0e-2 | 1.1e-5 | 4.5e-9 |
+| 16 | PINN | 3.5e2 | 7.5e-4 | 3.6e-8 | 1.7e-8 |
+| 16 | value fit | 4.7e7 | 2.9e2 | 1.2e-2 | 2.2e-6 |
+| 31 | PINN | 6.6e1 | 1.7e-6 | 1.5e-8 | 8.6e-9 |
+| 31 | value fit | 7.8e6 | 4.2e2 | 7.6e-2 | 1.5e-6 |
+
+1. In every network the residual falls steeply with r: it is concentrated inside r = 0.01, where the 3D clouds put
+   almost no points (the inner Gaussian has sigma 0.05 in 3D, so its radial density goes like r^2). The trained
+   runs' loss of ~1e-7 is the r >~ 0.01 part; at r = 1e-3 their residual is 1e1 - 1e3, unconstrained.
+2. With about the same field errors (1e-4), the value fit's residual is 100 - 10^6 times the PINN's at every r
+   below 1, and 100x at r = 1-24 in the late windows: the PINN has found a network that solves the equations
+   far better than the pointwise-closest one, at the same distance from the solution. The error level is set
+   elsewhere (time marching, hand-offs, the representation), not by the residual the PINN reaches.
+
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
