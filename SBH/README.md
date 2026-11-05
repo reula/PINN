@@ -1763,6 +1763,20 @@ R = 24. Off by default (R0 = 0). Mini CPU smoke test (2 windows, 500 points, 250
 same time per iteration (42 s per 250). Hub: `1d_T8_adm30_ic_aw` (`--adm_r0 5 --adm_q 2`) and `1d_T8_adm30_ic_rw`
 (`--res_r0 5 --res_q 2`), each one change against `1d_T8_adm30_ic`.
 
+**Fit to the reference, then the PINN loss (`--fit_ref NPZ --fit_window K` in sing_1d.py and sing_pinn.py,
+`jobs/mini/fit_ref.sh`, Mac mini CPU, 2026-11-05; the user's experiment).** The network (same ansatz, `--hard_ic
+--no_template`) is trained on one window with the pointwise loss mean|f - f_ref|^2 against the 1D reference (1D:
+the 10 radial functions on the reference's own (t, r) nodes; 3D: the 22 fields of the reference lifted to 3D,
+on the run's clouds with radii snapped to the reference grid). Every 250 iterations the PINN loss parts of the
+fitted network are evaluated on held-out points (the IC term against the reference at t0); at the end, the
+run's usual error report at t1. Questions: (1) how far the representation goes when the optimiser is given the
+answer (representation vs optimisation), (2) what PINN loss a network that close to the exact solution has,
+the yardstick for the PINN runs' loss floors. It needs the reference inside the windows: the same 1D evolution
+saved every 0.025, `reference_1d/ref_single_m0.5_dr0.005_t8_snap0025.npz` (`sph_reference.py --dr 0.005
+--tfinal 8 --snap_dt 0.025 --r_save 24.5`, 4 min on the mini; identical to ref_single_m0.5_dr0.005_t20.npz at
+the shared snapshots). Windows: 1D 0, 16, 31 (hub-run settings, 4000 iterations, constraint parts at weight 30
+reported, not fitted); 3D 16, 31 (plain 3D MLP, 32000 fit points per draw, 8000 iterations).
+
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /

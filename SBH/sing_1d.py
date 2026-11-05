@@ -86,6 +86,12 @@ ap.add_argument("--res_r0", type=float, default=0.0,
                 help="with --res_q: the Einstein and gauge residual means on the interior and t1 points are weighted by "
                      "(1 + (r/res_r0)^res_q); 0 = plain means (2026-11-05)")
 ap.add_argument("--res_q", type=float, default=2.0, help="q of the residual's outer boost (see --res_r0)")
+ap.add_argument("--fit_ref", default=None, metavar="NPZ",
+                help="supervised fit: train the network on window --fit_window to the 1D reference NPZ (sph_reference.py "
+                     "output with several snapshots per window), loss mean|f - f_ref|^2 on the reference's own (t, r) "
+                     "nodes; print the PINN loss parts of the fitted network as it trains; write fit_ref_wNNN.npz/.pkl "
+                     "in --out and exit (2026-11-05)")
+ap.add_argument("--fit_window", type=int, default=0, help="window index for --fit_ref (edges from --tfinal, --N_window)")
 ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
                      "end in --out, write constraints.npz there, and exit")
@@ -334,6 +340,77 @@ if a.eval_constraints:
     np.savez(os.path.join(a.out, "constraints.npz"), r=REP_R, **{k: np.array(v) for k, v in out.items()},
              adm_r_power=a.adm_r_power)
     print("wrote", os.path.join(a.out, "constraints.npz"), len(out["t"]), "windows")
+    sys.exit(0)
+
+
+if a.fit_ref:
+    # Supervised fit to the 1D reference over one window, then the PINN loss of the fitted network (2026-11-05).
+    FR = np.load(a.fit_ref)
+    FR_T, FR_R, FR_U = FR["t"], FR["r"], np.transpose(FR["U"], (0, 2, 1))     # FR_U (n_t, n_r, 10)
+    edges = np.linspace(0.0, a.tfinal, a.N_window + 1)
+    t0, t1 = float(edges[a.fit_window]), float(edges[a.fit_window + 1])
+    win = (jnp.asarray(t0), jnp.asarray(t1))
+    J = np.where((FR_T >= t0 - 1e-9) & (FR_T <= t1 + 1e-9))[0]
+    assert len(J) >= 3, f"--fit_ref has only {len(J)} snapshots in [{t0}, {t1}]"
+    dr_ref = float(FR_R[1] - FR_R[0])
+    TJ, UJ = jnp.asarray(FR_T[J]), jnp.asarray(FR_U[J])
+    j0 = int(np.argmin(np.abs(FR_T - t0)))
+
+    def fit_batch(key, n):
+        """n points on the reference's own (t, r) nodes: snapshot in the window, radius = the run's cloud snapped to the grid."""
+        k1, k2 = jax.random.split(key)
+        it = jax.random.randint(k1, (n,), 0, len(J))
+        ir = jnp.clip(jnp.round((radii(k2, n) - FR_R[0]) / dr_ref).astype(int), 0, len(FR_R) - 1)
+        return TJ[it], jnp.asarray(FR_R)[ir], UJ[it, ir]
+
+    def fit_loss(P, b):
+        t, r, U = b
+        f = jax.vmap(lambda tt, rr: rad_fn(P, win, tt, rr))(t, r)
+        return jnp.mean((f - U) ** 2)
+
+    Uic_fn = jax.jit(jax.vmap(lambda r: jnp.stack([jnp.interp(r, jnp.asarray(FR_R), jnp.asarray(FR_U[j0, :, i]))
+                                                    for i in range(10)])[None]))
+    mb = ns["_minimize_mod"]
+    opts = {"maxiter": a.n_change, "gtol": 0.0, "update_method": "ssbroyden2", "initial_scale": True,
+            "line_search": "wolfe", "c2": 0.9, "scale_invariant": True, "max_iter": 100, "alphamin": 1e-15}
+    key = jax.random.PRNGKey(a.seed)
+    P = {"net": init_net(jax.random.PRNGKey(a.seed + 1))}
+    w, unr = ns["flatten_util"].ravel_pytree(P)
+    fl = jax.jit(lambda v, b: fit_loss(unr(v), b))
+    fvg = jax.jit(jax.value_and_grad(lambda v, b: fit_loss(unr(v), b)))
+    parts_jit = jax.jit(parts)
+    key, kh, kf = jax.random.split(key, 3)
+    held = draw(kh, win, a.n_held, a.n_held // 8, a.n_held // 4, Uic_fn)
+    fheld = fit_batch(kf, a.n_held)
+    names = ("einstein", "gauge", "end", "bc", "ic", "constraint") + (("adm",) if a.w_adm > 0 else ()) \
+        + (("adm_ic",) if a.w_adm_ic > 0 else ())
+    rows, t_start, it = [], time.time(), 0
+    print(f"fit to {a.fit_ref}, window {a.fit_window}: t in [{t0:g}, {t1:g}], {len(J)} snapshots, {w.size} parameters",
+          flush=True)
+    while it < a.iters:
+        key, kd = jax.random.split(key)
+        b = fit_batch(kd, a.n_int)
+        w = mb.minimize(lambda v: fl(v, b), lambda v: fvg(v, b), w, opts).x
+        it += a.n_change
+        hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
+        rows.append(dict(iteration=it, seconds=round(time.time() - t_start, 1), fit=float(fl(w, fheld)),
+                         pinn=sum(hp.values()), **hp))
+        print(f"  it {it:6d} {rows[-1]['seconds']:7.0f} s  fit mse (held) {rows[-1]['fit']:.3e}  PINN loss (held) "
+              f"{rows[-1]['pinn']:.3e} (" + " ".join(f"{n} {hp[n]:.1e}" for n in names) + ")", flush=True)
+    P = unr(w)
+    err, m = report(P, win, t1)
+    np.savez(os.path.join(a.out, f"fit_ref_w{a.fit_window:03d}.npz"), r=REP_R, t1=t1, err=err, mass=m,
+             history=np.array([[r_[k] for k in ["iteration", "seconds", "fit", "pinn"] + list(names)] for r_ in rows]),
+             history_cols=np.array(["iteration", "seconds", "fit", "pinn"] + list(names)), config=np.array(str(vars(a))))
+    pickle.dump({"params": jax.tree_util.tree_map(np.asarray, P), "win": [t0, t1], "config": vars(a)},
+                open(os.path.join(a.out, f"fit_ref_w{a.fit_window:03d}.pkl"), "wb"))
+    bands = ((0.05, 0.2), (0.2, 1.0), (1.0, 3.0), (3.0, 10.0))
+    print(f"  t = {t1:g}: " + " | ".join(lab + " " + " ".join(f"{np.sqrt((err[(REP_R >= lo) & (REP_R < hi), i] ** 2).mean()):.0e}"
+                                                             for lo, hi in bands)
+                                         for i, lab in ((8, "alpha"), (4, "chi"), (5, "Khat")))
+          + "; m/M - 1 at r = 0.3 / 1 / 3 / 10: " + " ".join(f"{np.interp(x, REP_R, m):+.1e}" for x in (0.3, 1, 3, 10)),
+          flush=True)
+    print("done:", a.out)
     sys.exit(0)
 
 

@@ -147,6 +147,12 @@ ap.add_argument("--eval_spheres", default=None, metavar="NPZ",
 ap.add_argument("--mem_report", action="store_true",
                 help="compile window 0's training step (value and gradient, full batch) soft and --hard_ic, print "
                      "XLA's memory analysis of each, and exit")
+ap.add_argument("--fit_ref", default=None, metavar="NPZ",
+                help="supervised fit: train the network on window --fit_window to the 1D reference NPZ lifted to 3D (several "
+                     "snapshots per window; radii snapped to its grid), loss mean|u - u_ref|^2 over the 22 fields on the "
+                     "run's clouds; print the PINN loss parts (and the division-free r^2 constraint density) of the fitted "
+                     "network as it trains; write fit_ref_wNNN.npz/.pkl in --out and exit (2026-11-05)")
+ap.add_argument("--fit_window", type=int, default=0, help="window index for --fit_ref (edges from --tfinal, --N_window)")
 ap.add_argument("--eval_pre", action="store_true", help="--eval_spheres on pre_000.pkl (after the IC phase) instead")
 argv = sys.argv[1:]
 rest = argv[argv.index("--") + 1:] if "--" in argv else []
@@ -746,6 +752,96 @@ if a.eval_spheres:
                   f"  centre {pos.round(5).tolist()}", flush=True)
     np.savez(a.eval_spheres, r=rs, M=MASS, T_OFF=T_OFF, **{q: np.asarray(v) for q, v in acc_.items()})   # ic_rms: (groups, r)
     print("wrote", a.eval_spheres)
+    sys.exit(0)
+
+
+if a.fit_ref:
+    # Supervised fit to the 1D reference lifted to 3D over one window, then the PINN loss of the fitted network.
+    import adm_constraints as admc
+    if NP > 1 or a.template == "trumpet" or a.r_in > 0:
+        raise SystemExit("--fit_ref: one puncture at the origin, bl, no --r_in")
+    FR = np.load(a.fit_ref)
+    FR_T, FR_R, FR_U = FR["t"], FR["r"], np.transpose(FR["U"], (0, 2, 1))     # FR_U (n_t, n_r, 10)
+    edges = np.linspace(0.0, a.tfinal, a.N_window + 1)
+    t0, t1 = float(edges[a.fit_window]), float(edges[a.fit_window + 1])
+    win = (jnp.asarray(t0), jnp.asarray(t1), jnp.asarray(C0), jnp.zeros((NP, 3)))
+    J = np.where((FR_T >= t0 - 1e-9) & (FR_T <= t1 + 1e-9))[0]
+    assert len(J) >= 3, f"--fit_ref has only {len(J)} snapshots in [{t0}, {t1}]"
+    dr_ref = float(FR_R[1] - FR_R[0])
+    TJ, UJ, RG = jnp.asarray(FR_T[J]), jnp.asarray(FR_U[J]), jnp.asarray(FR_R)
+    j0 = int(np.argmin(np.abs(FR_T - t0)))
+    hard = a.hard_ic
+    lift_v = jax.vmap(lambda rv, x: stpl.lift(jnp, pack, rv, x))
+    pos0 = jax.jit(jax.vmap(lambda tt: jnp.asarray(C0)))
+
+    def fit_batch(key, n):
+        """n points: the run's clouds at reference snapshot times in the window, radii snapped to the reference grid
+        (direction kept), targets the reference lifted to the 22 fields."""
+        k1, k2 = jax.random.split(key)
+        it = jax.random.randint(k1, (n,), 0, len(J))
+        X = clouds(k2, TJ[it], pos0)
+        rr = jnp.linalg.norm(X, axis=1)
+        ir = jnp.clip(jnp.round((rr - FR_R[0]) / dr_ref).astype(int), 0, len(FR_R) - 1)
+        X = X * (RG[ir] / jnp.maximum(rr, 1e-12))[:, None]
+        return jnp.concatenate([TJ[it][:, None], X], axis=1), lift_v(UJ[it, ir], X)
+
+    def fit_loss(netp, b):
+        Q, U = b
+        return jnp.mean((u_value({"net": netp, "acc": jnp.zeros((NP, 2, 3))}, win, Q, hard) - U) ** 2)
+
+    def Uic_fn(X):
+        rr = jnp.linalg.norm(X, axis=1)
+        rad = jnp.stack([jnp.interp(rr, RG, jnp.asarray(FR_U[j0, :, i])) for i in range(10)], axis=1)
+        return lift_v(rad, X)
+
+    def adm_mean(P, Q, H):
+        D = u_derivs(P, win, Q, H)
+        cH, cM = admc.conformal_constraints_from_derivs(ns, *D)
+        return jnp.mean(jnp.sum(Q[:, 1:4] ** 2, axis=1) * (cH ** 2 + jnp.sum(cM ** 2, axis=1)))
+
+    mb = ns["_minimize_mod"]
+    opts = {"maxiter": a.n_change, "gtol": 0.0, "update_method": "ssbroyden2", "initial_scale": True,
+            "line_search": "wolfe", "c2": 0.9, "scale_invariant": True, "max_iter": 100, "alphamin": 1e-15}
+    key = jax.random.PRNGKey(a.seed)
+    net = _init_radial(jax.random.PRNGKey(a.seed + 1)) if a.radial_net \
+        else _init_net(jax, jnp, jax.random.PRNGKey(a.seed + 1), a.hidden, a.layers)
+    w, unr = ns["flatten_util"].ravel_pytree(net)
+    fl = jax.jit(lambda v, b: fit_loss(unr(v), b))
+    fvg = jax.jit(jax.value_and_grad(lambda v, b: fit_loss(unr(v), b)))
+    parts_jit = jax.jit(parts)
+    adm_jit = jax.jit(adm_mean)
+    key, kh, kf = jax.random.split(key, 3)
+    Pz = {"net": net, "acc": jnp.zeros((NP, 2, 3))}
+    held = draw(kh, Pz, win, a.n_held, a.n_held // 8, a.n_held // 4, a.n_held // 8, Uic_fn, hard)
+    fheld = fit_batch(kf, a.n_held)
+    names = ("einstein", "gauge", "end", "bc", "ic", "constraint")
+    rows, t_start, it = [], time.time(), 0
+    print(f"fit to {a.fit_ref}, window {a.fit_window}: t in [{t0:g}, {t1:g}], {len(J)} snapshots, {w.size} parameters, "
+          f"{a.n_int} fit points per draw", flush=True)
+    while it < a.iters:
+        key, kd = jax.random.split(key)
+        b = fit_batch(kd, a.n_int)
+        w = mb.minimize(lambda v: fl(v, b), lambda v: fvg(v, b), w, opts).x
+        it += a.n_change
+        P = {"net": unr(w), "acc": jnp.zeros((NP, 2, 3))}
+        hp = {n: float(v) for n, v in parts_jit(P, win, held).items()}
+        adm = float(adm_jit(P, held[0], held[5]))
+        rows.append(dict(iteration=it, seconds=round(time.time() - t_start, 1), fit=float(fl(w, fheld)),
+                         pinn=sum(hp.values()), adm_r2=adm, **hp))
+        print(f"  it {it:6d} {rows[-1]['seconds']:7.0f} s  fit mse (held) {rows[-1]['fit']:.3e}  PINN loss (held) "
+              f"{rows[-1]['pinn']:.3e} (" + " ".join(f"{n} {hp[n]:.1e}" for n in names) + f")  mean r^2 [(chi H)^2 + "
+              f"|chi M|^2] {adm:.1e}", flush=True)
+    row = report(P, win, t1, hard)
+    cols = ["iteration", "seconds", "fit", "pinn", "adm_r2"] + list(names)
+    np.savez(os.path.join(a.out, f"fit_ref_w{a.fit_window:03d}.npz"), history=np.array([[r_[c] for c in cols] for r_ in rows]),
+             history_cols=np.array(cols), report_keys=np.array(list(row)), report_vals=np.array(list(row.values())),
+             config=np.array(str(vars(a))))
+    pickle.dump({"params": jax.tree_util.tree_map(np.asarray, P), "win": [t0, t1], "config": vars(a)},
+                open(os.path.join(a.out, f"fit_ref_w{a.fit_window:03d}.pkl"), "wb"))
+    print(f"  t = {t1:g} rms vs reference (rays): " + "  ".join(
+        f"{g} " + " ".join(f"{row[f'{g}_{bn}']:.0e}" for bn, _, _ in REP_BANDS) for g in ("alpha", "chi", "Khat", "gt"))
+        + "  (bands " + " / ".join(f"{lo:g}-{hi:g}" for _, lo, hi in REP_BANDS) + ")", flush=True)
+    print("done:", a.out)
     sys.exit(0)
 
 # ---- training -------------------------------------------------------------------------------------
