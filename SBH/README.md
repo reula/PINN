@@ -1754,6 +1754,19 @@ adm30_ic 3e-4 7e-4 5e-4 4e-4 | 1e-5 1e-4 2e-4 3e-4 | 2e-3 7e-4 2e-4 3e-4 | -4.8e
    lambda = 10. Open: whether the slice weight (30, untested otherwise) sets that drift; the first-derivative
    hand-off (`1d_T8_adm30_icd1`) is the competing fix, running.
 
+**`1d_T8_adm30_icd1`: lambda = 30 plus the first-derivative hand-off (`--w_adm 30 --ic_d1 1`; hub 2026-11-05
+09:30 - 11:22 UTC, 32 windows; `plots/2026-11-05/sing_1d_adm30_icd1.png`, adm30 black).** One change against
+`1d_T8_adm30`. At t = 8 (columns as above):
+adm30_icd1 6e-4 2e-3 2e-3 7e-4 | 8e-6 1e-5 2e-4 4e-4 | 2e-3 3e-4 3e-4 3e-4 | +2.6e-4 +3.6e-4 +3.4e-4 -1.4e-4 | 9.9e-4.
+1. Mass: the best of all runs: flat at +2 - 6e-4 inside r = 3 at every t, -1.4e-4 at r = 10, worst 9.9e-4 (adm30
+   1.2e-3 / 1.4e-3, adm30_ic 2.5e-3). No late drift.
+2. chi: the best inside r = 1 (8e-6 / 1e-5 in 0.05-0.2 / 0.2-1 at t = 8; adm30 2e-5 / 5e-5).
+3. alpha: in r = 3-10 7e-4 at t = 8, between adm30 (1e-3 / 3e-3) and adm30_ic (4e-4), after a bump to 1e-3 at
+   t = 5-6; but in r = 0.2-3 it grows after t = 5 to 2e-3 / 2e-3 at t = 8 (adm30 7e-4 / 8e-4, adm30_ic 7e-4 / 5e-4).
+4. Reading: the two hand-off fixes trade differently. The slope hand-off keeps the mass best and chi best but
+   moves the alpha error inwards (r = 0.2-3); the slice constraint penalty gives the best outer fields with a
+   late negative mass drift. One seed each.
+
 **Outer-boosted weights, `--adm_r0 R0 --adm_q Q` and `--res_r0 R0 --res_q Q` (sing_1d.py, 2026-11-05; the user's
 weight from another study, where penalising the outer region more heavily helped).** The constraint density
 (interior and hand-off slice) becomes r^p (1 + (r/R0)^Q) [(chi H)^2 + |chi M|^2]; the Einstein and gauge
