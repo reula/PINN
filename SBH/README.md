@@ -15,7 +15,7 @@ jobs/hub/stage2.sh        stage2.py on the CCAD JupyterHub GPU (detached, resuma
 sing_pinn.py, sing_template.py   template + correction ansatz (section 7; 2026-10-28); jobs/hub/sing.sh runs it on the hub
 jobs/mn5/*.psubmit        the collaborators' MareNostrum 5 jobs, pointed at the merged script
 dsgnar.py                 DSGNAR optimiser (vendored from Stationary/, section 4)
-tools/                    plot_losses_stages.py (both stages' losses), load_defs.py, bench_loss.py, check_taylor.py, taylor_proto.py, smoke_local.sh, test_dsgnar_bh.py
+tools/                    plot_losses_stages.py (both stages' losses), load_defs.py, bench_loss.py, check_taylor.py, taylor_proto.py, smoke_local.sh, test_dsgnar_bh.py, plot_1d_runs_t.py and table_1d_runs.py (sing_1d.py runs against time: plot, band-rms table)
 originals/                the files as received (git-ignored), plus make_ancestor.py
 runs/                     outputs (git-ignored)
 ```
@@ -1714,6 +1714,24 @@ hard IC makes the term vanish (5.5e-32). Mini CPU smoke test (2 windows, 500 int
 iterations, `--w_adm 10 --w_adm_ic 10`): window 1's adm_ic part falls 2.4e-6 -> 1.1e-6, same time per
 iteration (42 s per 250). Fallback if it does not help: the first-derivative hand-off alone (`--ic_d1`, no
 `--ic_d2`) together with the interior penalty.
+
+**`1d_T8_adm10`, the gentler penalty (lambda = 10; hub 2026-11-04 21:58 - 23:50 UTC, stopped by a hub restart at
+31 / 32 windows, t = 7.75; `plots/2026-11-05/sing_1d_adm10.png`; table by the new `tools/table_1d_runs.py`).**
+At t = 7.75 (band rms 0.05-0.2 / 0.2-1 / 1-3 / 3-10 for alpha | chi | Khat; m/M - 1 at r = 0.3 / 1 / 3 / 10;
+max |m/M - 1| over r >= 0.2 and t' <= t):
+control 2e-4 5e-4 2e-4 3e-4 | 1e-4 4e-4 2e-4 3e-4 | 6e-4 2e-4 2e-4 2e-4 | +2.4e-3 +2.5e-3 +2.0e-3 +2.5e-2 | 3.6e-2;
+control seed 8 5e-4 1e-3 2e-3 9e-4 | 7e-5 3e-4 7e-4 4e-4 | 1e-3 1e-3 4e-4 3e-4 | +1.5e-3 +1.5e-3 +3.0e-3 +3.3e-2 | 4.3e-2;
+adm10 9e-5 2e-4 4e-4 1e-3 | 4e-5 1e-4 5e-5 3e-4 | 2e-3 7e-4 2e-4 3e-4 | -9.5e-4 -9.4e-4 -9.7e-4 -2.2e-3 | 3.7e-3;
+adm30 4e-4 7e-4 7e-4 1e-3 | 2e-5 5e-5 3e-4 4e-4 | 9e-4 4e-4 2e-4 5e-4 | +2.8e-4 +3.1e-4 +2.7e-4 -1.3e-4 | 1.2e-3;
+adm30 seed 8 8e-5 1e-4 8e-4 2e-3 | 7e-6 7e-5 6e-4 1e-3 | 6e-4 4e-4 4e-4 6e-4 | -2.3e-5 -9.4e-6 +1.3e-5 -3.5e-4 | 1.4e-3.
+1. Mass: lambda = 10 is 10x better than the controls on the worst value (3.7e-3 vs 3.6e-2 / 4.3e-2) but 3x worse
+   than lambda = 30, and it drifts: a uniform negative offset growing from -3e-4 (t = 4) to -9.5e-4 inside r = 3
+   and -2.2e-3 at r = 10 by t = 7.75 (lambda = 30 stays flat at +3e-4).
+2. Fields: inside r = 3 at or below the controls (alpha 2e-4 / 4e-4 in 0.2-1 / 1-3, chi 1e-4 / 5e-5). In r = 3-10
+   it does NOT give the outer fields back: alpha 1e-3 as lambda = 30 (controls 3e-4 / 9e-4), chi 3e-4, Khat 3e-4.
+3. So the outer-alpha cost does not scale with lambda between 10 and 30, while the mass does: lambda = 30 stays
+   the choice. The outer error has to be attacked another way (the hand-off-slice penalty `--w_adm_ic`, or the
+   first-derivative hand-off, both queued as single changes against `1d_T8_adm30`).
 
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
