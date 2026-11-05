@@ -69,9 +69,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    8730^2 doubles) and saturates the A30: parallel runs gain nothing, so NPAR 1-2, priority order, and never
    two batches at once (each memory pool keeps what it grows to).
 2. Batch of 2026-11-05 07:25 UTC: `1d_T8_adm10`, `1d_T8_adm30_ic`, `1d_T8_adm30_icd1` completed and graded (README).
-   Batch of 2026-11-05 11:23 UTC (started by a wait-for-icd1 loop): `1d_T8_adm30_ic_aw` (`--adm_r0 5 --adm_q 2`), then
-   `1d_T8_adm30_ic_rw` (`--res_r0 5 --res_q 2`), both single changes against `1d_T8_adm30_ic`; ~2 h each. Relaunch:
-   `cd ~/serafin/Julia/PINN && git pull && cd ~/serafin/Julia/PINN/SBH && setsid nohup env NPAR=1 bash jobs/hub/sing1d_batch.sh "1d_T8_adm30_ic_aw:--w_adm 30 --w_adm_ic 30 --adm_r0 5 --adm_q 2" "1d_T8_adm30_ic_rw:--w_adm 30 --w_adm_ic 30 --res_r0 5 --res_q 2" >> logs/hub_sing1d_batch.log 2>&1 < /dev/null & sleep 5; tail -F logs/hub_1d_T8_adm30_ic_aw.log logs/hub_1d_T8_adm30_ic_rw.log`
+   Done 2026-11-05 15:20 UTC: `1d_T8_adm30_ic_aw` (`--adm_r0 5 --adm_q 2`) and `1d_T8_adm30_ic_rw` (`--res_r0 5
+   --res_q 2`), the outer-boosted weights, single changes against `1d_T8_adm30_ic`. Neither helps the outer fields:
+   aw worse everywhere (alpha 3-10 2e-3, larger negative mass drift); rw stops the mass drift (+5e-4, flat) but
+   the outer alpha is back at adm30's 1e-3. README. Nothing running on the hub now.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

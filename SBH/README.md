@@ -1776,6 +1776,21 @@ R = 24. Off by default (R0 = 0). Mini CPU smoke test (2 windows, 500 points, 250
 same time per iteration (42 s per 250). Hub: `1d_T8_adm30_ic_aw` (`--adm_r0 5 --adm_q 2`) and `1d_T8_adm30_ic_rw`
 (`--res_r0 5 --res_q 2`), each one change against `1d_T8_adm30_ic`.
 
+**`1d_T8_adm30_ic_aw` / `_rw`, results (hub 2026-11-05 11:23 - 15:20 UTC, 32 windows each;
+`plots/2026-11-05/sing_1d_outer_boost.png`, adm30_ic black).** At t = 8 (columns as above):
+adm30_ic 3e-4 7e-4 5e-4 4e-4 | 1e-5 1e-4 2e-4 3e-4 | 2e-3 7e-4 2e-4 3e-4 | -4.8e-4 -4.0e-4 -4.4e-4 -1.1e-3 | 2.5e-3;
+aw 1e-3 2e-3 3e-3 2e-3 | 4e-5 1e-4 3e-4 6e-4 | 2e-3 2e-3 5e-4 3e-4 | -1.1e-3 -1.1e-3 -1.1e-3 -1.6e-3 | 2.1e-3;
+rw 2e-4 8e-4 1e-3 1e-3 | 2e-5 2e-4 3e-4 3e-4 | 6e-4 1e-3 6e-4 2e-4 | +4.8e-4 +5.3e-4 +5.3e-4 -2.5e-4 | 1.5e-3.
+1. Boosting the constraint penalty outwards (aw) makes things worse: alpha grows steadily from t = 4 in every
+   band, 2e-3 in r = 3-10 at t = 8 (adm30_ic 4e-4), chi 6e-4 there (3e-4), and the negative mass drift starts
+   earlier (t = 3.5) and is 2x larger (-1.1e-3 inside r = 3).
+2. Boosting the residual outwards (rw) removes the late negative mass drift: the mass stays at +5e-4 from t = 4 to
+   8 inside r = 3, like adm30 (+3e-4), worst 1.5e-3. But the outer alpha goes back to the adm30 level (1e-3 in
+   r = 1-3 and 3-10 at t = 8): it undoes what the slice penalty bought. Khat 3-10 at 2e-4, the best of the three.
+3. Neither is a step forward for the outer fields, the error the boost was aimed at. In this problem the outer
+   region is not under-weighted in the residual: the trained runs' residual is already ~1e-8 at r = 1-24 (see the
+   (t, r) maps below); the outer error comes from elsewhere. One seed each; not pursued further.
+
 **Fit to the reference, then the PINN loss (`--fit_ref NPZ --fit_window K` in sing_1d.py and sing_pinn.py,
 `jobs/mini/fit_ref.sh`, Mac mini CPU, 2026-11-05; the user's experiment).** The network (same ansatz, `--hard_ic
 --no_template`) is trained on one window with the pointwise loss mean|f - f_ref|^2 against the 1D reference (1D:
