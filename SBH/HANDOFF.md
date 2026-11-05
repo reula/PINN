@@ -72,7 +72,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Batch of 2026-11-05 11:23 UTC (started by a wait-for-icd1 loop): `1d_T8_adm30_ic_aw` (`--adm_r0 5 --adm_q 2`), then
    `1d_T8_adm30_ic_rw` (`--res_r0 5 --res_q 2`), both single changes against `1d_T8_adm30_ic`; ~2 h each. Relaunch:
    `cd ~/serafin/Julia/PINN && git pull && cd ~/serafin/Julia/PINN/SBH && setsid nohup env NPAR=1 bash jobs/hub/sing1d_batch.sh "1d_T8_adm30_ic_aw:--w_adm 30 --w_adm_ic 30 --adm_r0 5 --adm_q 2" "1d_T8_adm30_ic_rw:--w_adm 30 --w_adm_ic 30 --res_r0 5 --res_q 2" >> logs/hub_sing1d_batch.log 2>&1 < /dev/null & sleep 5; tail -F logs/hub_1d_T8_adm30_ic_aw.log logs/hub_1d_T8_adm30_ic_rw.log`
-   On the mini: `jobs/mini/fit_ref.sh` (supervised fit to the reference, 1D and 3D; README) running from 10:47 UTC.
+   On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
+   README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
+   trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):
+   `plots/2026-11-05/tr_loss_1d.png`, the residual sits at r < 0.01 where the clouds have no points.
 3. Stopped on purpose, not to be finished unless asked: `1d_T8_icd12`, `1d_T8_ic100`, `1d_T8_R48`, `1d_T8_far`
    (8-9 windows), `1d_T8_icd1` (27), `1d_T8_w05` (13 / 16).
 

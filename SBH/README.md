@@ -1814,7 +1814,7 @@ is 1-5x better. So 1e-4 is where this network and optimiser get on these fields 
 the PINN's error level is not far above what the representation gives. (2) The PINN loss is no proxy for the
 error: networks with the PINN's error level or better have PINN losses 1e3 - 1e8 times the trained runs'. A
 pointwise fit leaves the derivatives free, and the residual is made of derivatives (and 1/chi near the
-puncture). The Sobolev fits (next) test that directly. (3) In 3D the plain MLP fitted from scratch on one window
+puncture). The Sobolev fits (below) test that directly. (3) In 3D the plain MLP fitted from scratch on one window
 with 32000 points and 8000 iterations stays at 1e-2: this says nothing yet about its representation limit (the
 3D PINN runs warm-start window after window and reach 1e-4 - 1e-3), only that a cold single-window fit is slow.
 
@@ -1839,6 +1839,33 @@ Einstein rows squared + the gauge part, on 41 t x 240 log-spaced r in [1e-3, 24]
    below 1, and 100x at r = 1-24 in the late windows: the PINN has found a network that solves the equations
    far better than the pointwise-closest one, at the same distance from the solution. The error level is set
    elsewhere (time marching, hand-offs, the representation), not by the residual the PINN reaches.
+
+**Sobolev fits, results (`--fit_d1 1 --fit_d2 1`, 2026-11-05 12:15 - 15:38 UTC on the mini; 1D ~10 min per window,
+3D ~85 min).** Loss = mean|f - f_ref|^2 + mean|r (f' - f'_ref)|^2 + mean|r^2 (f'' - f''_ref)|^2 (3D: r grad u and
+r^2 grad grad u of all fields): a discrete, scale-free H^2 norm of the error in r at fixed t; no time derivatives.
+Columns as for the value-only fits (fit = held Sobolev loss, "values" its value part):
+- 1D window 0: fit 1.4e-7 (values 4.8e-10); alpha 2e-4 2e-5 5e-6 4e-6 | chi 2e-5 3e-6 5e-7 7e-7 | Khat 6e-5 2e-5 1e-5 7e-6;
+  PINN loss 5.2e-4 (Einstein 2.8e-4, end 2.4e-4); value-only fit 3.4e-4.
+- 1D window 16: fit 5.4e-4 (values 5.5e-6), not converged; alpha 3e-3 6e-3 4e-3 8e-4 | chi 3e-3 1e-3 6e-4 3e-4 |
+  Khat 1e-2 6e-3 1e-3 5e-4, mass +2.3e-2 at r = 0.3; PINN loss 6.4e2 (Einstein 1.2e2, end 5.2e2); value-only 3.9.
+- 1D window 31: fit 8.3e-6 (values 1.1e-7); alpha 2e-3 2e-3 1e-3 3e-4 | chi 7e-4 4e-5 2e-4 2e-4 | Khat 2e-3 8e-4 7e-5 1e-4;
+  PINN loss 3.0 (Einstein 2.5); value-only 2.5.
+- 3D window 16 / 31: fit 5.6e-4 / 6.6e-4 (values 3.1e-5 / 4.0e-5, 4x below the value-only 3D fits' 1.4e-4 /
+  1.6e-4); rms errors 1e-3 - 1e-2 (Khat 1e-1 in r < 0.05); PINN loss 5.2 / 1.3e2 against the value-only 3.3e3 / 1.0e4.
+(t, r) residual, band averages as in the table above (r = 0.001-0.01 / 0.01-0.05 / 0.05-1 / 1-24), Sobolev fit:
+window 0 3.8e2 / 2.5e-2 / 2.4e-5 / 3.2e-8; window 16 2.1e8 / 2.4e4 / 2.1e-1 / 2.0e-4; window 31 6.4e7 / 5.8e2 /
+9.9e-3 / 1.2e-5 (third column of `plots/2026-11-05/tr_loss_1d.png`).
+Reading. (1) In 1D matching r f' and r^2 f'' does not bring the residual down: it is at the value-only fit's level
+in windows 0 and 31 and 10-100x above it in window 16 (where the fit did not converge and the field errors are
+10x worse), so 10^3 - 10^6 x the PINN's at every r. Where the 1D values fit to 1e-7 - 1e-10, spatial derivatives
+that agree with the reference's grid derivatives still leave the Einstein residual large; the missing piece is
+the time derivative (the residual is d_t u - RHS(u, u', u''), and the fit never constrains d_t u) plus the
+reference's own finite-difference error in f'' near the puncture. A d_t term from the reference's RHS would test
+that. (2) In 3D the derivative terms help the cold single-window fit (values 4x better, PINN loss 1e2 - 1e3 x
+lower) but it stays at 1e-2 errors and PINN loss >= 5: the plain 3D MLP fitted cold is far from the PINN runs.
+(3) Taken together: a network close to the solution, in values or in values and spatial derivatives, does not
+have a small PINN loss; the trained PINN reaches residuals 3-6 orders lower at the same 1e-4 field error, so its
+error level is not set by how small it drives the residual.
 
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
