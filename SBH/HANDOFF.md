@@ -73,6 +73,8 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    --res_q 2`), the outer-boosted weights, single changes against `1d_T8_adm30_ic`. Neither helps the outer fields:
    aw worse everywhere (alpha 3-10 2e-3, larger negative mass drift); rw stops the mass drift (+5e-4, flat) but
    the outer alpha is back at adm30's 1e-3. README. Nothing running on the hub now.
+   Next on the hub: `1d_T8_adm30_ic_log25` (`--log_frac 0.25`: a quarter of the points log-uniform in r on
+   [1e-3, R], so the puncture region is sampled; README), one change against `1d_T8_adm30_ic`.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

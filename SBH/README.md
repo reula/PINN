@@ -1791,6 +1791,18 @@ rw 2e-4 8e-4 1e-3 1e-3 | 2e-5 2e-4 3e-4 3e-4 | 6e-4 1e-3 6e-4 2e-4 | +4.8e-4 +5.
    region is not under-weighted in the residual: the trained runs' residual is already ~1e-8 at r = 1-24 (see the
    (t, r) maps below); the outer error comes from elsewhere. One seed each; not pursued further.
 
+**Points down to the puncture: `--log_frac F --log_rmin RMIN` (sing_1d.py, 2026-11-05; the user's proposal after the
+(t, r) maps).** A share F of every point set (interior, t1, IC, held) is drawn log-uniform in r on [RMIN, R], the
+same number of points per decade; the cloud shares are scaled by (1 - F). Why: the 3D clouds' radial density
+goes like r^2 near zero, so with the defaults only 2.7e-7 of the points lie below r = 1e-3, 2.6e-4 below 0.01 and
+2.5e-2 below 0.05, and the residual there is unconstrained (1e1 - 1e3 at r = 1e-3). With F = 0.25, RMIN = 1e-3:
+5.7e-2 of the points below 0.01, 1.2e-1 below 0.05. (The inner sigma 0.05 is the narrowest the code has used;
+before 2026-10-28 there was an exclusion zone and no inner cloud.) Note: the held loss is then measured on a
+different point set and is not comparable with the earlier runs' held loss; the errors against the 1D reference
+are. Mini CPU smoke test (1 window, 1000 points, 500 iterations, `--w_adm 30`): with F = 0.25 held 4.5e-3,
+without 1.5e-3, errors at t = 0.25 alike (alpha 1.9e-3 / 1.8e-3, chi 9e-3 / 3e-3): runs; too short to judge.
+Hub: `1d_T8_adm30_ic_log25` (`--log_frac 0.25`), one change against `1d_T8_adm30_ic`.
+
 **Fit to the reference, then the PINN loss (`--fit_ref NPZ --fit_window K` in sing_1d.py and sing_pinn.py,
 `jobs/mini/fit_ref.sh`, Mac mini CPU, 2026-11-05; the user's experiment).** The network (same ansatz, `--hard_ic
 --no_template`) is trained on one window with the pointwise loss mean|f - f_ref|^2 against the 1D reference (1D:

@@ -21,7 +21,8 @@ matching the previous window's slopes; 2026-11-04). --adm_r0/--adm_q multiply th
 (1 + (r/r0)^q), and --res_r0/--res_q weight the Einstein/gauge residual by (1 + (r/r0)^q) (interior and t1
 points): heavier penalties on the outer points (the user's weight from another study; 2026-11-05).
 Points: the RADII of sing_pinn.py's 3D clouds (inner/core/focus Gaussians + uniform ball), so the loss weights
-each shell as the 3D run does. SSBroyden, fresh points every --n_change, warm start across windows.
+each shell as the 3D run does; --log_frac F draws a share F log-uniform in r on [--log_rmin, R] instead (equal
+points per decade, down to the puncture; 2026-11-05). SSBroyden, fresh points every --n_change, warm start across windows.
 Report per window end (REPORT.npz, appended): signed f - f_ref for the 10 radial functions on a log grid of r
 against the fine 1D reference (reference_1d/ref_single_m0.5_dr0.005_t20.npz), and the Misner-Sharp mass m/M - 1.
 The exact solution of this problem IS the 1D reference, so the error is the error.
@@ -64,6 +65,10 @@ ap.add_argument("--core_frac", type=float, default=0.375)
 ap.add_argument("--core_sigma", type=float, default=0.5)
 ap.add_argument("--focus_frac", type=float, default=0.25)
 ap.add_argument("--focus_sigma", type=float, default=2.0)
+ap.add_argument("--log_frac", type=float, default=0.0,
+                help="share of every point set (interior, t1, IC, held) drawn log-uniform in r on [--log_rmin, R], "
+                     "the same number of points per decade; the cloud shares are scaled by (1 - log_frac) (2026-11-05)")
+ap.add_argument("--log_rmin", type=float, default=1e-3)
 ap.add_argument("--iters", type=int, default=4000)
 ap.add_argument("--n_change", type=int, default=250)
 ap.add_argument("--ic_d1", type=float, default=0.0,
@@ -283,11 +288,14 @@ def total(p):
 
 # ---- points: the radii of sing_pinn.py's clouds --------------------------------------------------
 def radii(key, n):
-    sizes = [2 * int(f * n / 2) for f in (a.inner_frac, a.core_frac, a.focus_frac)]
-    keys = jax.random.split(key, 4)
+    n_log = int(a.log_frac * n)
+    sizes = [2 * int(f * (n - n_log) / 2) for f in (a.inner_frac, a.core_frac, a.focus_frac)]
+    keys = jax.random.split(key, 5)
     rs = [s * jnp.linalg.norm(jax.random.normal(k, (m, 3)), axis=1)
           for k, m, s in zip(keys[:3], sizes, (a.inner_sigma, a.core_sigma, a.focus_sigma))]
-    rs.append(R * jax.random.uniform(keys[3], (n - sum(sizes),)) ** (1 / 3))
+    rs.append(R * jax.random.uniform(keys[3], (n - n_log - sum(sizes),)) ** (1 / 3))
+    if n_log > 0:
+        rs.append(a.log_rmin * (R / a.log_rmin) ** jax.random.uniform(keys[4], (n_log,)))
     return jnp.minimum(jnp.concatenate(rs), R)
 
 
