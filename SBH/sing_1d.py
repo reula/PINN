@@ -17,7 +17,9 @@ With --ic_d1 / --ic_d2 the IC (window hand-off) term also matches r f' and r^2 f
 With --w_adm the division-free ADM penalty r^p [(chi H)^2 + |chi M|^2] is added on the interior points; with
 --w_adm_ic the same density on the hand-off slice t = t0 at the IC points (H, M involve only the fields and their
 spatial derivatives on that slice, so this asks each window to start on a constraint-satisfying slice instead of
-matching the previous window's slopes; 2026-11-04).
+matching the previous window's slopes; 2026-11-04). --adm_r0/--adm_q multiply the r^p weight of both by
+(1 + (r/r0)^q), and --res_r0/--res_q weight the Einstein/gauge residual by (1 + (r/r0)^q) (interior and t1
+points): heavier penalties on the outer points (the user's weight from another study; 2026-11-05).
 Points: the RADII of sing_pinn.py's 3D clouds (inner/core/focus Gaussians + uniform ball), so the loss weights
 each shell as the 3D run does. SSBroyden, fresh points every --n_change, warm start across windows.
 Report per window end (REPORT.npz, appended): signed f - f_ref for the 10 radial functions on a log grid of r
@@ -77,6 +79,13 @@ ap.add_argument("--w_adm_ic", type=float, default=0.0,
                 help="weight of the same r^p [(chi H)^2 + |chi M_i|^2] penalty on the window's hand-off slice t = t0, at the IC "
                      "points (the constraints of the starting slice; independent of --w_adm); 0 = off (2026-11-04)")
 ap.add_argument("--adm_r_power", type=float, default=2.0, help="p in the --w_adm weight r^p (the colleagues: r^2)")
+ap.add_argument("--adm_r0", type=float, default=0.0,
+                help="with --adm_q: the --w_adm / --w_adm_ic weight becomes r^p (1 + (r/adm_r0)^adm_q); 0 = plain r^p (2026-11-05)")
+ap.add_argument("--adm_q", type=float, default=2.0, help="q of the outer boost (see --adm_r0)")
+ap.add_argument("--res_r0", type=float, default=0.0,
+                help="with --res_q: the Einstein and gauge residual means on the interior and t1 points are weighted by "
+                     "(1 + (r/res_r0)^res_q); 0 = plain means (2026-11-05)")
+ap.add_argument("--res_q", type=float, default=2.0, help="q of the residual's outer boost (see --res_r0)")
 ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
                      "end in --out, write constraints.npz there, and exit")
@@ -201,8 +210,15 @@ def zeta(D):
     return jnp.mean(val[:, TH] ** 2 + jnp.sum(zv ** 2, axis=1))
 
 
-def ein_gauge(res):
-    return (ns["lam_einstein"] * jnp.mean(res[:, :18] ** 2), ns["lam_gauge"] * a.w_gauge * jnp.mean(res[:, 18:22] ** 2))
+def outer_boost(r, r0, q):
+    """(1 + (r/r0)^q), or 1 when r0 = 0 (off)."""
+    return 1.0 + (r / r0) ** q if r0 > 0 else jnp.ones_like(r)
+
+
+def ein_gauge(res, r):
+    wr = outer_boost(r, a.res_r0, a.res_q)[:, None]
+    return (ns["lam_einstein"] * jnp.mean(wr * res[:, :18] ** 2),
+            ns["lam_gauge"] * a.w_gauge * jnp.mean(wr * res[:, 18:22] ** 2))
 
 
 IC_ORDER = 2 if a.ic_d2 > 0 else (1 if a.ic_d1 > 0 else 0)
@@ -223,8 +239,8 @@ def taylor_r(g, r):
 def parts(P, win, batch):
     Qi, Qe, tb, ric, Uic = batch                     # Uic (n, IC_ORDER + 1, 10): the target and its r-derivatives
     Di = stacks(P, win, Qi)
-    e_i, g_i = ein_gauge(residual(Di))
-    e_e, g_e = ein_gauge(residual(stacks(P, win, Qe)))
+    e_i, g_i = ein_gauge(residual(Di), Qi[:, 1])
+    e_e, g_e = ein_gauge(residual(stacks(P, win, Qe)), Qe[:, 1])
     f = lambda t, r: rad_fn(P, win, t, r)
     fb, ft = jax.vmap(lambda t: jax.jvp(lambda tt: f(tt, R), (t,), (1.0,)))(tb)
     fr = jax.vmap(lambda t: jax.jvp(lambda rr: f(t, rr), (R,), (1.0,))[1])(tb)
@@ -244,7 +260,7 @@ def parts(P, win, batch):
 def adm_density(D, r):
     """r^p [(chi H)^2 + |chi M_i|^2] per point, division-free, from a derivative stack D at radii r (the --w_adm integrand)."""
     cH, cM = admc.conformal_constraints_from_derivs(ns, *D)
-    return r ** a.adm_r_power * (cH ** 2 + jnp.sum(cM ** 2, axis=1))
+    return r ** a.adm_r_power * outer_boost(r, a.adm_r0, a.adm_q) * (cH ** 2 + jnp.sum(cM ** 2, axis=1))
 
 
 def total(p):

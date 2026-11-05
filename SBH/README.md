@@ -1754,6 +1754,15 @@ adm30_ic 3e-4 7e-4 5e-4 4e-4 | 1e-5 1e-4 2e-4 3e-4 | 2e-3 7e-4 2e-4 3e-4 | -4.8e
    lambda = 10. Open: whether the slice weight (30, untested otherwise) sets that drift; the first-derivative
    hand-off (`1d_T8_adm30_icd1`) is the competing fix, running.
 
+**Outer-boosted weights, `--adm_r0 R0 --adm_q Q` and `--res_r0 R0 --res_q Q` (sing_1d.py, 2026-11-05; the user's
+weight from another study, where penalising the outer region more heavily helped).** The constraint density
+(interior and hand-off slice) becomes r^p (1 + (r/R0)^Q) [(chi H)^2 + |chi M|^2]; the Einstein and gauge
+residual means on the interior and t1 points get the factor (1 + (r/R0)^Q). r^p keeps the term scale-free, the
+second factor tilts the penalty outwards. Chosen R0 = 5, Q = 2: 1x at r = 0, 2x at r = 5, 5x at r = 10, 24x at
+R = 24. Off by default (R0 = 0). Mini CPU smoke test (2 windows, 500 points, 250 iterations, both on): runs,
+same time per iteration (42 s per 250). Hub: `1d_T8_adm30_ic_aw` (`--adm_r0 5 --adm_q 2`) and `1d_T8_adm30_ic_rw`
+(`--res_r0 5 --res_q 2`), each one change against `1d_T8_adm30_ic`.
+
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
