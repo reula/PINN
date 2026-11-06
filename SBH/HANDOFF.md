@@ -92,6 +92,11 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    1185909-11, `jobs/mendieta/sing1d.sbatch`, submitted from the mini; outputs in Mendieta's own
    ~/Julia/PINN/SBH/runs/, rsync them back). The hub batch skips them through runs/NAME/ELSEWHERE markers on
    serafin (`jobs/hub/sing.sh`). Mendieta needed the two git-ignored reference files and runs/1d_T8's windows.
+   Status 14:20 UTC 2026-11-06: logonly05 finished (32 / 32, report.npz on serafin). `s2_adm30_ic` died at once
+   out of GPU memory (eager SSBroyden update, 5-7 copies of the 2.9 GB inverse Hessian); fixed by jitting the
+   update in Crunch (README, same losses, 6 x 60 stage 2 now 9.3 GB). It needs relaunching on the hub (the server
+   was stopped at 14:20). Mendieta: `1d_T8_adm30_ic_vol` running (window 24 / 32), `s2_1d_T8` and log25_it0
+   pending; pull the fix on Mendieta before s2_1d_T8 starts (the job runs the checkout as it is).
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

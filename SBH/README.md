@@ -1976,6 +1976,18 @@ over the control), then `1d_T8_adm30_ic_log25_it0`. Split the same day: the last
 instead (`jobs/mendieta/sing1d.sbatch`, one job each, jobs 1185909-11); the hub batch skips a run whose
 `runs/NAME/ELSEWHERE` exists (`jobs/hub/sing.sh`).
 
+**`s2_adm30_ic` ran out of GPU memory (hub, 2026-11-06 11:21 UTC), and the fix.** It died in its first
+SSBroyden call: RESOURCE_EXHAUSTED allocating 2.71 GiB (one copy of the 19090 x 19090 inverse Hessian) under
+MEM_FRACTION 0.8 (19.6 GB). Cause: `_ssbroyden_update` / `_bfgs_update` in `Crunch/Optimizers/
+minimize_backtracking.py` ran eagerly, so every N x N term (each outer product, quotient and sum, and the
+scale-invariant `H * sc` and `c * ...`) was its own array and several were alive at once. Fix: jitted wrappers
+(`_ssbroyden_update_jit`, `_ssbroyden_update_scaled` with the scaling inside the jit; same for BFGS), so XLA fuses
+the update. Same arithmetic: a stage-2 test on the mini (CPU, 6 x 40, 20 iterations) gives the same losses to
+every printed digit and runs 20 % faster. Peak resident memory on the CPU (stage 2, 8000 points): 6 x 20 3.1 GB,
+6 x 30 4.3 GB, 6 x 40 6.4 GB before (about 5-7 copies of H beyond a 2.8 GB base); with the fix 6 x 40 5.5 GB and
+the full 6 x 60 9.3 GB (unfixed, 6 x 60 extrapolates to 17-23 GB). Applies to every run that uses SSBroyden;
+the window runs (9.3k parameters, 3.1 GB peak) were never near the limit.
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs

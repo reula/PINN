@@ -116,6 +116,27 @@ def _bfgs_update(H, s, y):
     return jnp.where(ys > eps, H_new, H)
 
 
+# Jitted wrappers (2026-11-06, SBH): called eagerly, the updates above build every N x N term (each outer
+# product, quotient and sum, and the scale-invariant H * sc and c * ...) as its own array, and several are alive
+# at once: about 5-7 copies of H at the peak, which put a 19k-parameter network out of the A30's memory
+# (2.9 GB per copy). Under jit XLA fuses the update into one output. Same arithmetic; the
+# scale-invariant form is H_new = c U(H/c, s, c y, c g) with c = 1 / sc.
+_ssbroyden_update_jit = jax.jit(_ssbroyden_update)
+_bfgs_update_jit = jax.jit(_bfgs_update)
+
+
+@jax.jit
+def _ssbroyden_update_scaled(H, s, y, g_prev, alpha, sc):
+    c = 1.0 / sc
+    return c * _ssbroyden_update(H * sc, s, c * y, c * g_prev, alpha)
+
+
+@jax.jit
+def _bfgs_update_scaled(H, s, y, sc):
+    c = 1.0 / sc
+    return c * _bfgs_update(H * sc, s, c * y)
+
+
 # ---------------------------------------------------------------------------
 # Strong-Wolfe line search  (Nocedal & Wright, Algorithms 3.5 + 3.6)
 # ---------------------------------------------------------------------------
@@ -674,13 +695,13 @@ def minimize(fun_val, fun_val_grad, x0, options=None):
                 if ys_upd > thr:
                     c = 1.0 / sc
                     if update_method in ('ssbroyden2', 'ssbroyden', 'score'):
-                        H = c * _ssbroyden_update(H * sc, s, c * y_upd, c * g, alpha)
+                        H = _ssbroyden_update_scaled(H, s, y_upd, g, alpha, sc)
                     else:
-                        H = c * _bfgs_update(H * sc, s, c * y_upd)
+                        H = _bfgs_update_scaled(H, s, y_upd, sc)
             elif update_method in ('ssbroyden2', 'ssbroyden', 'score'):
-                H = _ssbroyden_update(H, s, y_upd, g, alpha)
+                H = _ssbroyden_update_jit(H, s, y_upd, g, alpha)
             else:
-                H = _bfgs_update(H, s, y_upd)
+                H = _bfgs_update_jit(H, s, y_upd)
         x, g, f = x_new, g_new, f_new
         nit += 1
 
