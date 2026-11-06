@@ -1933,6 +1933,27 @@ fitted networks' large losses came from the fits' derivative errors, not from th
 1e-4 outer error matches its outer rms residual (loss 1e-8 = rms 1e-4). To get 1e-6 errors the outer loss
 would have to reach ~1e-12. Write-up of the three weeks: `SUMMARY_2026-11-06.md`.
 
+**The colleagues' H diagnostic on our 1D runs (`sing_1d.py --eval_H RUN_DIR --eval_H_out NPZ`, `tools/plot_H_mass.py`;
+2026-11-06, mini; `plots/2026-11-06/H_mass_t6.png`; data `eval_data/H_diag/`).** Their note (J. Masso, the r^2-weighted
+H/M penalty, lambda = 30): a coherent sphere-mean bias <H> ~ -1e-4 at r ~ 8-14 makes the far mass deficit through
+dm/dR_areal = R^2 <H> / 4 (-4.3 % rebuilt vs -5.0 % measured at r = 20); their pointwise penalty (H^2 + |M|^2) r^2,
+only r >= 1, points uniform in volume (so shells weighted like the integral of (r^2 H)^2 dr), cut it 2x / 4-5x /
+5-7x at lambda = 10 / 30 / 100; penalising <H> on fixed spheres made it worse. In 1D H is its own sphere mean;
+the mode evaluates the signed H, M_r, the areal R and m/M - 1 at every saved window end on 400 radii in [0.05, 24]
+(also for the reference, with --eval_tr_ref). Measured m/M - 1 against m(r = 1) + integral from r = 1 of R^2 H / 4 dR / M:
+1. The relation holds in every run: rebuilt and measured agree to <~10 % (control) and <~2 % (penalised runs) at
+   r = 3, 10, 20; e.g. adm30_ic at t = 8: -4.4e-4 / -1.1e-3 / -2.3e-3 measured, -4.4e-4 / -1.1e-3 / -2.3e-3 rebuilt.
+2. Control `1d_T8`: <H> of either sign, 1e-5 - 4e-4 in every band; mass at r = 10 / 20 +2.5e-2 / -3.8e-2 at t = 8
+   (the r = 20 value was not in the earlier tables, which stop at r = 10).
+3. `adm30_ic`: <H> 100x smaller and of one sign outside r = 3 (-4e-7 to -2e-6 in r = 3-24 at all t): the
+   colleagues' coherent bias, 100x weaker than theirs; it makes the outward-growing deficit -1.1e-3 at r = 10 and
+   -2.3e-3 (0.23 %) at r = 20 at t = 8 (theirs after lambda = 30: ~-1 %). On top sits a radius-independent offset
+   (-4.8e-4 at r = 0.3 at t = 8): the hole's own mass, set inside r ~ 1 where |<H>| is 1e-5 - 3e-4.
+4. `logonly05` (to t = 6): alike adm30_ic (<H> -1e-6 to -6e-6 outside r = 1; -2.1e-3 at r = 20).
+5. The reference: <H> 1e-9 - 1e-12, mass within 5e-8.
+So their recipe's target, the outer coherent bias, is what is left in our penalised runs too; their weighting puts
+more weight on the outer shells than ours (our clouds put 3/4 of the points inside r ~ 5).
+
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /

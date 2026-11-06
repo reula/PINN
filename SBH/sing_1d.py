@@ -113,6 +113,12 @@ ap.add_argument("--eval_tr_ref", default=None, metavar="NPZ",
                      "as a function: degree-5 Lagrange interpolation in r (dr) and in t (snapshots) of the reference's "
                      "nodes, derivatives by autodiff of the interpolant; write --eval_tr_out and exit (2026-11-06)")
 ap.add_argument("--eval_tr_window", type=int, default=0)
+ap.add_argument("--eval_H", default=None, metavar="RUN_DIR",
+                help="the colleagues' diagnostic (2026-11-06): at the end time of every saved window_*.pkl in RUN_DIR "
+                     "(or, with --eval_tr_ref, of every window of the reference) the signed Hamiltonian constraint H "
+                     "(= sphere mean in 1D), M_r, the areal radius and m/M - 1 on 400 radii in [0.05, R]; "
+                     "write --eval_H_out NPZ and exit. dm/dR_areal = R^2 H / 4 ties H to the mass.")
+ap.add_argument("--eval_H_out", default=None, metavar="NPZ")
 ap.add_argument("--eval_tr_tdeg", type=int, default=5, help="degree of the time interpolation for --eval_tr_ref")
 ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
@@ -393,6 +399,32 @@ if a.eval_tr_ref:
     a.eval_tr = a.eval_tr_ref
     S = {"params": None,
          "win": [edges_r[a.eval_tr_window], edges_r[a.eval_tr_window + 1]]}
+if a.eval_H:
+    import glob
+    rg = np.geomspace(0.05, R * 0.995, 400)
+    edges_h = np.linspace(0.0, a.tfinal, a.N_window + 1)
+    if a.eval_tr_ref:
+        items = [(None, (edges_h[k], edges_h[k + 1])) for k in range(a.N_window)]
+    else:
+        items = []
+        for f in sorted(glob.glob(os.path.join(a.eval_H, "window_*.pkl"))):
+            S = pickle.load(open(f, "rb"))
+            items.append((jax.tree_util.tree_map(jnp.asarray, S["params"]), tuple(float(v) for v in S["win"][:2])))
+    out = {k: [] for k in ("t", "H", "Mr", "Rareal", "mass")}
+    for Pk, (w0, w1) in items:
+        wk = (jnp.asarray(w0), jnp.asarray(w1))
+        Q = jnp.asarray(np.stack([np.full_like(rg, w1), rg, 0 * rg, 0 * rg], axis=1))
+        D = stacks(Pk, wk, Q)
+        H, M = admc.constraints_from_derivs(ns, *D)
+        f = jax.vmap(lambda r: rad_fn(Pk, wk, w1, r))(jnp.asarray(rg))
+        out["t"].append(w1)
+        out["H"].append(np.asarray(H))
+        out["Mr"].append(np.asarray(M[:, 0]))
+        out["Rareal"].append(np.asarray(rg * jnp.sqrt(f[:, 0] / f[:, I_CHI])))
+        out["mass"].append(np.asarray(jax.vmap(lambda r: mass_rad(Pk, wk, w1, r))(jnp.asarray(rg))))
+    np.savez(a.eval_H_out, r=rg, **{k: np.array(v) for k, v in out.items()})
+    print("wrote", a.eval_H_out, len(items), "windows")
+    sys.exit(0)
 if a.eval_tr:
     if not a.eval_tr_ref:
         S = pickle.load(open(a.eval_tr, "rb"))
