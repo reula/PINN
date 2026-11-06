@@ -2037,6 +2037,20 @@ chi in r = 0.05-0.2 / 0.2-1 / 1-3 / 3-10; m/M - 1 at r = 10; worst |m/M - 1|):
 Pattern across today's runs (stage 2 twice, adm_vol, logonly05 late): every change that lowers the mass error
 or the loss raises the outer alpha error 2-8x; none improves both.
 
+**Per-window second stage, `--s2_window_iters N` (sing_1d.py, 2026-11-06, the user's request).** After each
+window's usual training its network is frozen and a correction network N2 (`--s2_layers x --s2_hidden`, default
+6 x 60) is trained inside the window for N more iterations, on the same loss and the same point draws (baseline
+counts, redrawn every --n_change): u = u1 + s N2 with s = eps ((t - t0)/(t1 - t0)) (1 - r^2/R^2)(1 - exp(-r^2/rc^2))
+(`--s2_eps` 1e-2, `--s2_rc` 1), so the window's start (the hand-off) is untouched. The next window starts from
+u1 + s N2 at t1; its first stage trains the base network only (warm start as before), and N2 is warm-started from
+the previous window's. The window files hold both networks (`params = {net, net2}`); `rad_fn` adds the correction
+whenever `net2` is present, so the report, the mass, `--eval_H` and `--stage2` see the corrected solution.
+history.csv: the second stage's rows continue the window's iteration count. Smoke test on the mini (3 windows,
+400 points, 250 + 250 iterations, 6 x 20): runs; resume after window 1 reproduces window 2 exactly. Difference from
+`--stage2`: that one corrects a finished run with one network over t = 0-8 and leaves the hand-offs as they were;
+here each window is corrected before the next starts from it. First run: `1d_T8_adm30_ic_s2w` (Mendieta), one
+change against `1d_T8_adm30_ic`: `--s2_window_iters 2000`.
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs

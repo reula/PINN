@@ -104,6 +104,9 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Mendieta runs done and graded (README): adm30_ic_vol (trade: mass at r = 10 5x better, outer alpha 4-5x
    worse), s2_1d_T8 (mass 7x better than the control, outer alpha 5-8x worse), log25_it0 (dropped). Nothing
    running. Pattern: whatever lowers the mass error or the loss raises outer alpha.
+   Per-window second stage built (`--s2_window_iters`, README); `1d_T8_adm30_ic_s2w` (`--w_adm 30 --w_adm_ic 30
+   --s2_window_iters 2000`) sent to Mendieta (hub left free for the Stationary recipe, which the hub stop cut at
+   wr_prod_w1 iteration 7500; to be resumed from the Stationary session 7692b0d6).
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

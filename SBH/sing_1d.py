@@ -107,6 +107,12 @@ ap.add_argument("--s2_layers", type=int, default=6)
 ap.add_argument("--s2_eps", type=float, default=1e-2)
 ap.add_argument("--s2_rc", type=float, default=1.0, help="core taper radius of s (keeps the hole); 0 = no taper")
 ap.add_argument("--s2_n", type=int, default=8000, help="points per draw")
+ap.add_argument("--s2_window_iters", type=int, default=0,
+                help="per-window second stage (2026-11-06): after each window's training, freeze its network and train "
+                     "a correction network (--s2_layers x --s2_hidden) inside the window for this many iterations on the "
+                     "same loss and points; u = u1 + s N2 with s = eps ((t - t0)/(t1 - t0)) (1 - r^2/R^2)(1 - exp(-r^2/rc^2)) "
+                     "(--s2_eps, --s2_rc), so the window's start is untouched; the next window starts from u1 + s N2. "
+                     "N2 is warm-started from the previous window's. 0 = off")
 ap.add_argument("--s2_rmin", type=float, default=0.02, help="no stage-2 point closer than this to the puncture")
 ap.add_argument("--adm_r_power", type=float, default=2.0, help="p in the --w_adm weight r^p (the colleagues: r^2)")
 ap.add_argument("--adm_r0", type=float, default=0.0,
@@ -200,6 +206,18 @@ def init_net(key):
     return {"params": {"MLP": mlp}}
 
 
+def init_net2(key):
+    """Correction network of the second stage: --s2_layers x --s2_hidden, last layer zero (starts at u1)."""
+    sizes = [2] + [a.s2_hidden] * a.s2_layers + [10]
+    mlp = {}
+    for i in range(len(sizes) - 1):
+        key, k = jax.random.split(key)
+        kern = jax.nn.initializers.glorot_normal()(k, (sizes[i], sizes[i + 1]), jnp.float64)
+        mlp[f"Dense_{i}"] = {"kernel": jnp.zeros_like(kern) if i == len(sizes) - 2 else kern,
+                             "bias": jnp.zeros((sizes[i + 1],), jnp.float64)}
+    return {"params": {"MLP": mlp}}
+
+
 def U0_rad(r):
     psi = 1.0 + MASS / (2.0 * r)
     return FLAT_RAD.at[I_CHI].set(psi ** -4).at[I_AL].set(1.0 / psi)
@@ -234,6 +252,9 @@ def rad_fn(P, win, t, r):
     if a.hard_ic:
         h = hard_h(r)
         f = (f + h).at[I_CHI].set(f[I_CHI] * jnp.exp(h[I_CHI])).at[I_AL].set(f[I_AL] * jnp.exp(h[I_AL]))
+    if "net2" in P:                                      # per-window second stage (--s2_window_iters)
+        taper = (1.0 - jnp.exp(-(r / a.s2_rc) ** 2)) if a.s2_rc > 0 else 1.0
+        f = f + a.s2_eps * ((t - t0) / (t1 - t0)) * (1.0 - (r / R) ** 2) * taper * mlp_value(P["net2"], t, r, t0, t1)
     return f
 
 
@@ -686,6 +707,7 @@ opts = {"maxiter": a.n_change, "gtol": 0.0, "update_method": "ssbroyden2", "init
 key = jax.random.PRNGKey(a.seed)
 P = {"net": init_net(jax.random.PRNGKey(a.seed + 1))}
 prev, k0 = None, 0
+N2_prev = None                                            # last window's correction network (--s2_window_iters)
 REP = os.path.join(a.out, "report.npz")
 rep = {"t": [], "err": [], "mass": []}
 if a.resume:
@@ -694,6 +716,8 @@ if a.resume:
         S = pickle.load(open(os.path.join(a.out, done[-1]), "rb"))
         P = jax.tree_util.tree_map(jnp.asarray, S["params"])
         prev, k0, key = (P, tuple(jnp.asarray(v) for v in S["win"])), S["window"] + 1, jnp.asarray(S["key"])
+        N2_prev = P.get("net2")
+        P = {"net": P["net"]}
         z = np.load(REP)
         rep = {k: list(z[k]) for k in rep}
         print(f"resumed after window {S['window']}")
@@ -764,6 +788,32 @@ for k in range(k0, a.N_window):
                       flush=True)
                 LO_next = o + 1
     P = unr(w)
+    if a.s2_window_iters > 0:                             # per-window second stage: freeze net, train net2
+        P1net = P["net"]
+        N2 = N2_prev if N2_prev is not None else init_net2(jax.random.PRNGKey(a.seed + 7))
+        w2, unr2 = ns["flatten_util"].ravel_pytree(N2)
+        full = lambda v, unr2=unr2: {"net": P1net, "net2": unr2(v)}       # noqa: E731
+        loss2 = jax.jit(lambda v, win, batch: total(parts(full(v), win, batch)))
+        vg2 = jax.jit(jax.value_and_grad(lambda v, win, batch: total(parts(full(v), win, batch))))
+        h1 = sum(float(v) for v in parts_jit(P, win, held).values())
+        print(f"  second stage: correction {a.s2_layers} x {a.s2_hidden} ({w2.size} parameters), eps {a.s2_eps}, "
+              f"rc {a.s2_rc}; held after the first stage {h1:.3e}", flush=True)
+        it2 = 0
+        while it2 < a.s2_window_iters:
+            key, kd = jax.random.split(key)
+            batch = draw(kd, win, a.n_int, a.n_end, a.n_ic, Uic_fn)
+            w2 = mb.minimize(lambda v: loss2(v, win, batch), lambda v: vg2(v, win, batch), w2, opts).x
+            it2 += a.n_change
+            hp = {n: float(v) for n, v in parts_jit(full(w2), win, held).items()}
+            row = dict(window=k, iteration=it + it2, seconds=round(time.time() - t_start, 1),
+                       train=float(loss2(w2, win, batch)), held=sum(hp.values()),
+                       **{f"held_{n}": hp[n] for n in PART_NAMES})
+            with open(hist, "a", newline="") as fh:
+                csv.DictWriter(fh, fieldnames=list(row)).writerow(row)
+            print(f"  s2 {it2:6d} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
+                  + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ")", flush=True)
+        P = full(w2)
+        N2_prev = P["net2"]
     err, m = report(P, win, t1)
     rep["t"].append(t1)
     rep["err"].append(err)
@@ -780,4 +830,5 @@ for k in range(k0, a.N_window):
          "key": np.asarray(key), "config": vars(a)}
     pickle.dump(S, open(os.path.join(a.out, f"window_{k:03d}.pkl"), "wb"))
     prev = (P, win)
+    P = {"net": P["net"]}                                  # the next window's first stage trains the base net only
 print("done:", a.out)
