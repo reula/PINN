@@ -73,6 +73,11 @@ ap.add_argument("--iters", type=int, default=4000)
 ap.add_argument("--iters0", type=int, default=0,
                 help="iterations of window 0 when > 0 (default: --iters); window 0 starts from scratch and can sit on a "
                      "plateau longer than the warm-started windows (2026-11-06)")
+ap.add_argument("--loss_orders", type=float, default=0,
+                help="loss-vs-error experiment (2026-11-06): once a window's held loss is below 10^-N of its value "
+                     "before training, and at each further order of magnitude, save the parameters and their errors "
+                     "at the window end (+ OUT/loss_order_wKKK_oNN.pkl); the errors at the window end are also recorded at every "
+                     "loss check (every --n_change), all in OUT/loss_orders.npz (snapshot = 1 for the saved ones); 0 = off")
 ap.add_argument("--n_change", type=int, default=250)
 ap.add_argument("--ic_d1", type=float, default=0.0,
                 help="weight of the first radial derivative in the IC / window hand-off term: lamg0 [mean|f - U|^2 "
@@ -715,6 +720,13 @@ for k in range(k0, a.N_window):
     print(f"window {k}: t in [{t0:g}, {t1:g}], {w.size} parameters", flush=True)
     t_start, it = time.time(), 0
     n_iters = a.iters0 if (k == 0 and a.iters0 > 0) else a.iters
+    if a.loss_orders > 0:                                      # held loss before training: the experiment's L0
+        LO_L0 = sum(float(v) for v in parts_jit(unr(w), win, held).values())
+        LO_next = a.loss_orders
+        LO_F = os.path.join(a.out, "loss_orders.npz")
+        LO = {k_: list(v) for k_, v in np.load(LO_F).items() if k_ not in ("r", "fields")} if os.path.exists(LO_F) else \
+            {"window": [], "iteration": [], "order": [], "snapshot": [], "held": [], "L0": [], "err": [], "mass": []}
+        print(f"  loss orders: held loss before training {LO_L0:.3e}", flush=True)
     while it < n_iters:
         key, kd = jax.random.split(key)
         batch = draw(kd, win, a.n_int, a.n_end, a.n_ic, Uic_fn)
@@ -734,6 +746,23 @@ for k in range(k0, a.N_window):
               + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ")"
               + (f"  peak mem {st['peak_bytes_in_use'] / 1e9:.2f} GB" if st and "peak_bytes_in_use" in st else ""),
               flush=True)
+        if a.loss_orders > 0:
+            o = int(np.floor(-np.log10(row["held"] / LO_L0)))     # whole orders below L0 reached
+            snap = row["held"] < LO_L0 * 10.0 ** (-LO_next)
+            Pk = unr(w)
+            err_o, m_o = report(Pk, win, t1)
+            for k_, v in (("window", k), ("iteration", it), ("order", o), ("snapshot", int(snap)),
+                          ("held", row["held"]), ("L0", LO_L0), ("err", err_o), ("mass", m_o)):
+                LO[k_].append(v)
+            np.savez(LO_F, r=REP_R, fields=np.array(stpl.FIELDS), **{k_: np.array(v) for k_, v in LO.items()})
+            if snap:
+                pickle.dump({"params": jax.tree_util.tree_map(np.asarray, Pk), "win": [np.asarray(v) for v in win],
+                             "window": k, "iteration": it, "held": row["held"], "L0": LO_L0},
+                            open(os.path.join(a.out, f"loss_order_w{k:03d}_o{o:02d}.pkl"), "wb"))
+                print(f"  loss orders: snapshot, held {row['held']:.3e} = L0 x 1e-{o} at it {it}; alpha rms "
+                      f"{np.sqrt((err_o[:, 8] ** 2).mean()):.2e}, chi {np.sqrt((err_o[:, 4] ** 2).mean()):.2e}",
+                      flush=True)
+                LO_next = o + 1
     P = unr(w)
     err, m = report(P, win, t1)
     rep["t"].append(t1)
