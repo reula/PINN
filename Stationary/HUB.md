@@ -1533,3 +1533,20 @@ snapshot, `ldc/setup_gpu_kernel.sh`, `ldc/update_notebook.py`, `ldc/diag.txt`, a
 4. Long runs: `setsid nohup` survives a disconnected browser but **not** a container recreation
    (§0) — prefer resumable/checkpointed drivers.
 5. `ls **/.ipynb_checkpoints` occasionally; they are ignored now but still accumulate on disk.
+
+## 19. Idle culling kills detached runs: keep the server alive (2026-11-06)
+
+The hub stops a server after about one hour without user activity, and a GPU process running under
+`setsid nohup` does not count as activity. `Paper/hub_recipe.sh` was launched at 16:30 UTC from the mini
+(SBH/tools/hub_run.py) with no browser open. The server was gone at about 17:32 UTC, one hour after the
+last terminal command, partway through `wr_prod_w1`. The batch resumes, so relaunching lost nothing but
+the time until the relaunch.
+
+When nobody keeps JupyterLab open, run the keepalive on the mini. It types a no-op into a fresh hub
+terminal every 20 minutes and stops by itself when the batch log says finished. It also stops, and sends
+an ntfy notice, if the server has gone; it never starts a server.
+
+    (nohup bash Stationary/Paper/hub_keepalive.sh > ~/hub_keepalive.log 2>&1 < /dev/null &)
+
+The optional arguments are the log on serafin and the finish pattern. The interval is set with INTERVAL
+(in seconds).
