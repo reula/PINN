@@ -1813,6 +1813,9 @@ answer have 4e2 - 2e8 there too, see the (t, r) maps); 5.7 % of the points there
 loss, and the optimiser trades the whole solution for it. So the unconstrained region at r < 0.01 is not what
 holds the error at 1e-4: sampling it costs 100x. The current clouds stay. (A milder version, a small share
 with --log_rmin 0.01, would only test the band 0.01 - 0.05; not run.)
+The point distributions, default and --log_frac 0.25: `tools/plot_1d_radii.py`, `plots/2026-11-06/radii_log25.png`
+(points per decade stacked by cloud, cumulative share) and `radii_log25_hist.png` (one draw of the 2000 interior
+points: default 1 below r = 0.01 and 52 below 0.05; log run 119 and 223).
 
 **Fit to the reference, then the PINN loss (`--fit_ref NPZ --fit_window K` in sing_1d.py and sing_pinn.py,
 `jobs/mini/fit_ref.sh`, Mac mini CPU, 2026-11-05; the user's experiment).** The network (same ansatz, `--hard_ic
