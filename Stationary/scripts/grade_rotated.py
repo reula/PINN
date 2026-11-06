@@ -50,6 +50,8 @@ def main(argv=None):
     ap.add_argument("run")
     ap.add_argument("--ref", required=True)
     ap.add_argument("--params", default="params.pkl")
+    ap.add_argument("--tag", default="",
+                    help="write grade_rotated_<tag>.json (grading one run against several references)")
     a = ap.parse_args(argv)
     cfg, model, state = load_run(a.run, a.params)[:3]
     pf = point_fields(model, state["net"])
@@ -76,8 +78,9 @@ def main(argv=None):
               f"   {b['rms_dh']:.2e} ({b['perturbation_rms_h']:.2e})")
     print("[grade] centre-of-mass flux d on spheres 1, 2, 10, 100: "
           + "  ".join("(" + ", ".join(f"{v:+.1e}" for v in row) + ")" for row in d))
-    with open(os.path.join(a.run, "grade_rotated.json"), "w") as fh:
-        json.dump({"compare": cm, "d": d.tolist()}, fh, indent=1, default=float)
+    out = f"grade_rotated_{a.tag}.json" if a.tag else "grade_rotated.json"
+    with open(os.path.join(a.run, out), "w") as fh:
+        json.dump({"compare": cm, "d": d.tolist(), "ref": a.ref}, fh, indent=1, default=float)
 
 
 if __name__ == "__main__":

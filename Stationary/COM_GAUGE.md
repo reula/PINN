@@ -291,3 +291,12 @@ still needs the numbers from the diagnostic in Sec. 3, which is the next thing t
   as `h_ij(-n) = h_ij(n)`, `pi_ij(-n) = -pi_ij(n)`.
 * Our own reduction: [FLAT_DIPOLE.md](FLAT_DIPOLE.md) — the flat problem with fixed spheres has no
   dipole, which is the consistency check for the whole picture.
+
+## 6. The target with exact data (2026-11-06)
+
+d = 0 is the gauge choice for problem data. With data taken from an exact solution (`inner_bc =
+"reference"`, the Weyl tests), the chart is that solution's, and it need not be mass-centred:
+unequal rods (masses 1 and 0.1) have d_z = M z_cm, 0.0256 in the rho_in = 1 chart of the unequal
+rods, the same on every sphere. `losses.com_target` therefore drives d to the exact solution's own
+flux, computed once on the same spheres and quadrature. For the problem data it is 0, which is
+the earlier behaviour. Test: tests/test_com_flux.py.

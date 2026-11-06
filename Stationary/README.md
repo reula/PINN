@@ -249,6 +249,13 @@ Useful flags: `--R0`, `--lam0`, `--rho-out`, `--n-coll`, `--width`, `--depth`,
 
 What the Stationary experiments of 2026-10 converged on (REPORT_PIN_COM.md, REPORT_OPTIMISERS.md):
 
+**Superseded for the paper (2026-11-06): the ONE recipe is in `Paper/hub_recipe.sh`** (header and NUM/AX/TD/QP
+arrays): induced metric + lambda on the inner sphere, order-3 Robin on h and P at rho_out only, no pins, no
+ladder, centre of mass on six spheres (target = the exact solution's flux for exact data,
+`losses.com_target`), rho^4 weights in a rho_in = 1 chart, Adam 5000 + SSBroyden-Wolfe stages of 10000,
+redraws every 500.  It reproduces `ab_none` field for field.  The list below is the history.
+
+
 1. **The objective** -- the problem recipe (`recipe_pq16k.sh`: `S_RECIPE`) plus `S_BEST`:
    `--scale-exps 3,4,3,4` (residuals weighted by rho^4: determines the far field),
    `--pin-lam-potential` (the outer averaged pin on P, which the exact solution satisfies; the lambda

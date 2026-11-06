@@ -625,6 +625,37 @@ def com_flux(point_fields, cfg, n_mu: int | None = None, n_phi: int | None = Non
     return jnp.concatenate(out)
 
 
+_COM_TARGET_CACHE: dict = {}
+
+
+def com_target(cfg, exact_fields=None):
+    """The value the centre-of-mass condition drives `com_flux` to: 0, or the exact solution's own.
+
+    With data from the problem statement (`inner_bc = "spherical"`) the condition is the gauge
+    choice d = 0 (centre of mass at the origin).  With data taken from an exact solution
+    (`inner_bc = "reference"`, the Weyl tests) the chart is the exact solution's, and that chart
+    need not be mass centred: unequal Weyl rods have d_z = M z_cm != 0.  Imposing d = 0 there
+    would ask for a different chart than the inner data and the Robin source describe, so the
+    target is the exact solution's flux on the same spheres and quadrature (zero for symmetric
+    configurations).  Computed once per (exact solution, spheres, quadrature) at trace time, as a
+    constant: nothing in it depends on the parameters.  Added 2026-11-06 for the Weyl reruns in
+    the final formulation (Paper/hub_recipe.sh).
+    """
+    if getattr(cfg, "inner_bc", "spherical") != "reference" or exact_fields is None:
+        return 0.0
+    key = (id(exact_fields), tuple(cfg.com_radii), com_quadrature(cfg))
+    if key not in _COM_TARGET_CACHE:
+        with jax.ensure_compile_time_eval():
+            _COM_TARGET_CACHE[key] = jnp.asarray(
+                _np_asarray(com_flux(exact_fields, cfg)))
+    return _COM_TARGET_CACHE[key]
+
+
+def _np_asarray(x):
+    import numpy as _np
+    return _np.asarray(x)
+
+
 def outer_pin_terms(point_fields, xs, cfg, exact_fields=None) -> dict:
     """Asymptotic-VALUE pins at rho_out (`cfg.pin_lam`, `cfg.pin_h_tan`, `cfg.pin_h_rr`).
 
@@ -806,7 +837,7 @@ def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
     for k, v in value.items():
         push(f"pin_{k}", jnp.sqrt(w_pin / v.size) * v.reshape(-1))
     if getattr(cfg, "com_radii", None):
-        push("com", jnp.sqrt(jnp.asarray(cfg.w_com)) * com_flux(pf, cfg))
+        push("com", jnp.sqrt(jnp.asarray(cfg.w_com)) * (com_flux(pf, cfg) - com_target(cfg, exact_fields)))
     return jnp.concatenate(rows)
 
 
@@ -849,7 +880,7 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
     for k, v in pin.items():
         parts[f"pin_{k}"] = v
     if getattr(cfg, "com_radii", None):
-        parts["com"] = jnp.sum(com_flux(pf, cfg) ** 2)
+        parts["com"] = jnp.sum((com_flux(pf, cfg) - com_target(cfg, exact_fields)) ** 2)
 
     loss = 0.0
     for k in equation_keys(model):

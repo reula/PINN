@@ -50,3 +50,21 @@ def test_residual_vector_still_squares_to_the_loss():
     L, parts = total_loss(state, batch, cfg, model, ex, lam_inf=jnp.asarray(1.0))
     assert "com" in parts
     np.testing.assert_allclose(float(jnp.sum(r ** 2)), float(L), rtol=1e-10)
+
+
+def test_target_is_the_exact_solutions_own_flux_for_reference_data():
+    """inner_bc = "reference" (the Weyl tests): the condition drives d to the exact solution's
+    flux, not to 0.  Unequal rods (masses 1 and 0.1, chart rho_in = 1) have d_z = M z_cm =
+    0.0256 on every sphere; with problem data (inner_bc = "spherical") the target stays 0."""
+    from stationary.losses import com_target
+    s = 1 / 7.5
+    cfg = Config(rho_in=1.0, rho_out=10.0, outer_bc="robin", robin_source=True, inner_bc="reference",
+                 gauge_source="cylindrical", weyl=True, weyl_half_length=s, weyl_half_length_b=0.1 * s,
+                 weyl_half_gap=0.5 * s, weyl_n_quad=64, lam_inf=1.0, arch="axisym_hybrid",
+                 com_radii=(1.0, 3.0, 10.0))
+    ex = exact_asset(cfg)
+    t = np.asarray(com_target(cfg, ex)).reshape(-1, 3)
+    assert np.allclose(t[:, 2], 0.0256, rtol=1e-6), t
+    assert np.max(np.abs(t[:, :2])) < 1e-12
+    assert np.allclose(t, np.asarray(com_flux(ex, cfg)).reshape(-1, 3))
+    assert com_target(Config(**{**cfg.__dict__, "inner_bc": "spherical"}), ex) == 0.0

@@ -334,3 +334,29 @@ fine spectral reference rotated; not rerun in the final formulation):
 | rot_coll256k_2g | 262144 | 1.18e-7 | 7.5e-4 | 1.6e-3 | 1.4e-5 |
 
 4x points: loss 5x, dh 1.6x, dlam 1.2x; 16x: loss 11x, dh 1.6x; the h error then wanders between 7e-4 and 1e-3.
+
+## One recipe for every result (Paper/hub_recipe.sh, 2026-11-06)
+
+Prompted by the evidence review in NOTES.md. The author asked that everything be done as close as
+possible to a single recipe. The recipe is ab_none's (final formulation + centre of mass). Its flags,
+built through train.parse_args, reproduce ab_none_w2's config.json field for field; the only
+differences are three fields added since then (inner_tangential, stage_base, stage_eps), at defaults
+that match the old behaviour.
+
+* **Weyl in the recipe.** The axisymmetric Weyl runs (2026-09-25..28) imposed the full exact h on the
+  inner sphere (`pack_sym(f.h - e.h)`, before 0773b6a), with 4096 points, order-2 Robin on h, Gamma
+  and lambda, w = 10, ρ² weights and SSBroyden-Armijo from cold. They are redone in the recipe in a
+  chart with ρ_in = 1, rods scaled by 1/ρ_in(physical): wr_prod, wr_unequal, wr_close4, wr_close35,
+  and the rotated wr_rot45 in the 3-D recipe. The Robin source and the inner data still come from the
+  exact solution. The full recipe loss on the exact unequal rods is 4e-27.
+* **Centre of mass for exact data** (losses.com_target, tests/test_com_flux.py). With
+  inner_bc = "reference" the condition drives d to the exact solution's own flux, not to 0. For the
+  unequal rods, d_z = M z_cm = 0.0256 on every sphere in the ρ_in = 1 chart (z_cm = 0.17455 chart =
+  1.3091 physical, the closed-form value). With d = 0 the term would have been 3.3e-3 on the exact
+  solution, i.e. a pull towards a chart that the data do not describe.
+* New tools: scripts/compare_refs.py (two spectral references of one problem against each other), and
+  `grade_rotated.py --tag` (several references per run).
+* The hard-end runs and their references (ms_s2_025_*, ms_s2_030_*) were copied from Mendieta to the
+  hub's runs/ for phase E.
+
+Results: filled in as the phases finish.
