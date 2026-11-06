@@ -26,6 +26,10 @@ if [ -n "$WAIT_FOR" ] && pgrep -f "$WAIT_FOR" > /dev/null; then
     echo "--- waiting for '$WAIT_FOR' to finish  $(date -u '+%F %T UTC')"
     while pgrep -f "$WAIT_FOR" > /dev/null; do sleep 60; done
 fi
+if [ -e "runs/$OUTDIR/ELSEWHERE" ]; then          # the run was moved to another machine (2026-11-06)
+    echo "=== skip $OUTDIR: runs/$OUTDIR/ELSEWHERE says $(cat "runs/$OUTDIR/ELSEWHERE")  $(date -u '+%F %T UTC')"
+    exit 0
+fi
 echo "=== hub sing $OUTDIR $(date -u '+%F %T UTC')  HEAD $(git rev-parse --short HEAD)"
 echo "SING_ARGS=${SING_ARGS:-}"
 SCRIPT=${SCRIPT:-sing_pinn.py}
