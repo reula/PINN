@@ -86,6 +86,23 @@ ap.add_argument("--w_adm", type=float, default=0.0,
 ap.add_argument("--w_adm_ic", type=float, default=0.0,
                 help="weight of the same r^p [(chi H)^2 + |chi M_i|^2] penalty on the window's hand-off slice t = t0, at the IC "
                      "points (the constraints of the starting slice; independent of --w_adm); 0 = off (2026-11-04)")
+ap.add_argument("--adm_vol", type=int, default=0,
+                help="the colleagues' weighting (2026-11-06): evaluate the --w_adm term on its own N points per draw, t "
+                     "uniform in the window, r uniform in VOLUME on [--adm_rmin, R] (shells weighted like the integral "
+                     "of (r^2 H)^2 dr, as dm/dR = R^2 H / 4 weights them), instead of on the interior clouds")
+ap.add_argument("--adm_rmin", type=float, default=0.0,
+                help="the --w_adm term counts only r >= this (the colleagues: 1; with the clouds, a mask)")
+ap.add_argument("--stage2", default=None, metavar="RUN_DIR",
+                help="correction network over a finished run (2026-11-06; the 1D twin of stage2.py): the run's windows "
+                     "(frozen) are u1, u = u1 + s N2 with s = eps (t/T)(1 - r^2/R^2)(1 - exp(-r^2/rc^2)); N2 is one "
+                     "MLP of (t, r) over [0, T]; loss = Einstein + gauge + w_constraint zeta + w_adm ADM (r >= "
+                     "--adm_rmin) on points uniform in t and in volume; writes report.npz, stage2.pkl, history.csv in --out")
+ap.add_argument("--s2_hidden", type=int, default=60)
+ap.add_argument("--s2_layers", type=int, default=6)
+ap.add_argument("--s2_eps", type=float, default=1e-2)
+ap.add_argument("--s2_rc", type=float, default=1.0, help="core taper radius of s (keeps the hole); 0 = no taper")
+ap.add_argument("--s2_n", type=int, default=8000, help="points per draw")
+ap.add_argument("--s2_rmin", type=float, default=0.02, help="no stage-2 point closer than this to the puncture")
 ap.add_argument("--adm_r_power", type=float, default=2.0, help="p in the --w_adm weight r^p (the colleagues: r^2)")
 ap.add_argument("--adm_r0", type=float, default=0.0,
                 help="with --adm_q: the --w_adm / --w_adm_ic weight becomes r^p (1 + (r/adm_r0)^adm_q); 0 = plain r^p (2026-11-05)")
@@ -271,7 +288,7 @@ def taylor_r(g, r):
 
 
 def parts(P, win, batch):
-    Qi, Qe, tb, ric, Uic = batch                     # Uic (n, IC_ORDER + 1, 10): the target and its r-derivatives
+    Qi, Qe, tb, ric, Uic = batch[:5]                 # Uic (n, IC_ORDER + 1, 10): the target and its r-derivatives
     Di = stacks(P, win, Qi)
     e_i, g_i = ein_gauge(residual(Di), Qi[:, 1])
     e_e, g_e = ein_gauge(residual(stacks(P, win, Qe)), Qe[:, 1])
@@ -285,7 +302,11 @@ def parts(P, win, batch):
     out = dict(einstein=e_i, gauge=g_i, end=ns["lam_tapa"] * (e_e + g_e), bc=ns["lam_bc"] * jnp.mean(som ** 2),
                ic=ns["lamg0"] * ic, constraint=a.w_constraint * con)
     if a.w_adm > 0:
-        out["adm"] = a.w_adm * jnp.mean(adm_density(Di, Qi[:, 1]))
+        if a.adm_vol > 0:
+            Qa = batch[5]
+            out["adm"] = a.w_adm * jnp.mean(adm_density(stacks(P, win, Qa), Qa[:, 1]))
+        else:
+            out["adm"] = a.w_adm * jnp.mean(adm_density(Di, Qi[:, 1]) * (Qi[:, 1] >= a.adm_rmin))
     if a.w_adm_ic > 0:
         out["adm_ic"] = a.w_adm_ic * jnp.mean(adm_density(stacks(P, win, axis(jnp.full_like(ric, win[0]), ric)), ric))
     return out
@@ -325,6 +346,12 @@ def draw(key, win, n_int, n_end, n_ic, Uic_fn):
     Qe = axis(jnp.full((n_end,), t1), radii(k[2], n_end))
     tb = t0 + (t1 - t0) * jax.random.uniform(k[3], (max(n_end // 2, 8),))
     ric = radii(k[4], n_ic)
+    if a.adm_vol > 0 and a.w_adm > 0:
+        ka, kb = jax.random.split(k[5])
+        n_a = a.adm_vol if n_int == a.n_int else max(n_int // 4, 64)
+        ra = (a.adm_rmin ** 3 + (R ** 3 - a.adm_rmin ** 3) * jax.random.uniform(ka, (n_a,))) ** (1 / 3)
+        Qa = axis(t0 + (t1 - t0) * jax.random.uniform(kb, (n_a,)), ra)
+        return (Qi, Qe, tb, ric, Uic_fn(ric), Qa)
     return (Qi, Qe, tb, ric, Uic_fn(ric))
 
 
@@ -542,6 +569,107 @@ if a.fit_ref:
           + "; m/M - 1 at r = 0.3 / 1 / 3 / 10: " + " ".join(f"{np.interp(x, REP_R, m):+.1e}" for x in (0.3, 1, 3, 10)),
           flush=True)
     print("done:", a.out)
+    sys.exit(0)
+
+
+# ---- stage 2: a correction network over a finished run (2026-11-06) -----------------------------------
+if a.stage2:
+    import glob
+    os.makedirs(a.out, exist_ok=True)
+    files = sorted(glob.glob(os.path.join(a.stage2, "window_*.pkl")))
+    assert len(files) == a.N_window, f"--stage2 needs {a.N_window} windows, found {len(files)}"
+    W1 = [pickle.load(open(f, "rb")) for f in files]
+    PST = jax.tree_util.tree_map(lambda *x: jnp.stack([jnp.asarray(v) for v in x]), *[S["params"] for S in W1])
+    E2 = jnp.asarray(np.linspace(0.0, a.tfinal, a.N_window + 1))
+    T2, dtw = float(a.tfinal), float(a.tfinal) / a.N_window
+    rad_fn1 = rad_fn
+
+    def u1_rad(t, r):
+        k = jnp.clip(jnp.floor(t / dtw).astype(int), 0, a.N_window - 1)
+        Pk = jax.tree_util.tree_map(lambda x: x[k], PST)
+        return rad_fn1(Pk, (E2[k], E2[k + 1]), t, r)
+
+    def s2_scale(t, r):
+        taper = (1.0 - jnp.exp(-(r / a.s2_rc) ** 2)) if a.s2_rc > 0 else 1.0
+        return a.s2_eps * (t / T2) * (1.0 - (r / R) ** 2) * taper
+
+    def rad_sum(P2, t, r):
+        return u1_rad(t, r) + s2_scale(t, r) * mlp_value(P2["net"], t, r, 0.0, T2)
+
+    rad_fn = lambda P, win, t, r: rad_sum(P, t, r)       # noqa: E731  (stacks/u_point/mass_rad look it up)
+    WIN0 = (jnp.asarray(0.0), jnp.asarray(T2))
+
+    def s2_draw(key, n):
+        k1, k2 = jax.random.split(key)
+        rr = (a.s2_rmin ** 3 + (R ** 3 - a.s2_rmin ** 3) * jax.random.uniform(k1, (n,))) ** (1 / 3)
+        return axis(T2 * jax.random.uniform(k2, (n,)), rr)
+
+    def s2_parts(P2, Q):
+        D = stacks(P2, WIN0, Q)
+        e, g = ein_gauge(residual(D), Q[:, 1])
+        out = dict(einstein=e, gauge=g, constraint=a.w_constraint * zeta(D))
+        if a.w_adm > 0:
+            out["adm"] = a.w_adm * jnp.mean(adm_density(D, Q[:, 1]) * (Q[:, 1] >= a.adm_rmin))
+        return out
+
+    sizes = [2] + [a.s2_hidden] * a.s2_layers + [10]
+    kk, mlp = jax.random.PRNGKey(a.seed + 7), {}
+    for i in range(len(sizes) - 1):
+        kk, k = jax.random.split(kk)
+        kern = jax.nn.initializers.glorot_normal()(k, (sizes[i], sizes[i + 1]), jnp.float64)
+        mlp[f"Dense_{i}"] = {"kernel": jnp.zeros_like(kern) if i == len(sizes) - 2 else kern,
+                             "bias": jnp.zeros((sizes[i + 1],), jnp.float64)}
+    P2 = {"net": {"params": {"MLP": mlp}}}
+    P2_zero = P2                                          # last layer zero: u = u1 exactly
+    w, unr = ns["flatten_util"].ravel_pytree(P2)
+    print(f"stage 2 over {a.stage2}: {a.N_window} frozen windows, correction {a.s2_layers} x {a.s2_hidden} "
+          f"({w.size} parameters), eps {a.s2_eps}, rc {a.s2_rc}, {a.s2_n} points per draw", flush=True)
+    CK, HIST2 = os.path.join(a.out, "stage2_ckpt.pkl"), os.path.join(a.out, "history.csv")
+    key = jax.random.PRNGKey(a.seed)
+    key, kh = jax.random.split(key)
+    held = s2_draw(kh, max(a.n_held, 2000))
+    it, t_start = 0, time.time()
+    if a.resume and os.path.exists(CK):
+        C = pickle.load(open(CK, "rb"))
+        w, it, key = jnp.asarray(C["w"]), C["it"], jnp.asarray(C["key"])
+        print(f"resumed at iteration {it}", flush=True)
+    s2_total = jax.jit(lambda v, Q: total(s2_parts(unr(v), Q)))
+    s2_vg = jax.jit(jax.value_and_grad(lambda v, Q: total(s2_parts(unr(v), Q))))
+    s2_pj = jax.jit(lambda P, Q: s2_parts(P, Q))
+    base = {k: float(v) for k, v in s2_pj(P2_zero, held).items()}
+    print("u1 on the held-out points: " + " ".join(f"{k} {v:.2e}" for k, v in base.items()), flush=True)
+    mb = ns["_minimize_mod"]
+    opts = {"maxiter": a.n_change, "gtol": 0.0, "update_method": "ssbroyden2", "initial_scale": True,
+            "line_search": "wolfe", "c2": 0.9, "scale_invariant": True, "max_iter": 100, "alphamin": 1e-15}
+    while it < a.iters:
+        key, kd = jax.random.split(key)
+        Q = s2_draw(kd, a.s2_n)
+        w = mb.minimize(lambda v: s2_total(v, Q), lambda v: s2_vg(v, Q), w, opts).x
+        it += a.n_change
+        hp = {k: float(v) for k, v in s2_pj(unr(w), held).items()}
+        row = dict(iteration=it, seconds=round(time.time() - t_start, 1), train=float(s2_total(w, Q)),
+                   held=sum(hp.values()), held_u1=sum(base.values()), **{f"held_{k}": v for k, v in hp.items()})
+        new_f = not os.path.exists(HIST2)
+        with open(HIST2, "a", newline="") as fh:
+            wr = csv.DictWriter(fh, fieldnames=list(row))
+            if new_f:
+                wr.writeheader()
+            wr.writerow(row)
+        pickle.dump({"w": np.asarray(w), "it": it, "key": np.asarray(key)}, open(CK, "wb"))
+        print(f"  it {it:6d} {row['seconds']:8.0f} s  train {row['train']:.3e}  held {row['held']:.3e} (u1 "
+              f"{row['held_u1']:.3e}; " + " ".join(f"{k} {v:.1e}" for k, v in hp.items()) + ")", flush=True)
+    P2 = unr(w)
+    pickle.dump({"params": jax.tree_util.tree_map(np.asarray, P2), "config": vars(a)},
+                open(os.path.join(a.out, "stage2.pkl"), "wb"))
+    rep = {"t": [], "err": [], "mass": []}
+    for k in range(a.N_window):
+        err, m = report(P2, WIN0, round(float(E2[k + 1]), 10) - 1e-12)
+        rep["t"].append(float(E2[k + 1]))
+        rep["err"].append(err)
+        rep["mass"].append(m)
+    np.savez(os.path.join(a.out, "report.npz"), r=REP_R, fields=np.array(stpl.FIELDS), t=np.array(rep["t"]),
+             err=np.array(rep["err"]), mass=np.array(rep["mass"]), config=np.array(str(vars(a))))
+    print("done:", a.out, flush=True)
     sys.exit(0)
 
 

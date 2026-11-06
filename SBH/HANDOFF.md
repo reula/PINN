@@ -85,6 +85,9 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    r < 0.01 slows the cold start: window 0 was still falling fast when its 4000 iterations ran out (not a
    plateau stop). Batch of 2026-11-06: `1d_T8_adm30_ic_logonly05` (`--log_frac 1 --log_rmin 0.05`, all points
    log-uniform on [0.05, 24]), then `1d_T8_adm30_ic_log25_it0` (`--log_frac 0.25 --iters0 12000`). README.
+   The hub server stopped ~09:50 UTC 2026-11-06 (logonly05 at 24 / 32). Relaunched by the mini (tools/hub_run.py)
+   as one batch: logonly05 (resume), s2_adm30_ic, 1d_T8_adm30_ic_vol, s2_1d_T8, 1d_T8_adm30_ic_log25_it0 (README:
+   the colleagues' recipe, --adm_vol and --stage2).
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):
