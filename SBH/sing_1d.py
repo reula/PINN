@@ -108,6 +108,12 @@ ap.add_argument("--eval_tr", default=None, metavar="PKL",
                      "over its window: per point the Einstein and gauge parts as the loss weights them (lam x mean of the "
                      "squared rows) and the r^p constraint density; write --eval_tr_out and exit (2026-11-05)")
 ap.add_argument("--eval_tr_out", default=None, metavar="NPZ")
+ap.add_argument("--eval_tr_ref", default=None, metavar="NPZ",
+                help="with --eval_tr_window K: evaluate the (t, r) residual maps of --eval_tr on the 1D reference ITSELF, "
+                     "as a function: degree-5 Lagrange interpolation in r (dr) and in t (snapshots) of the reference's "
+                     "nodes, derivatives by autodiff of the interpolant; write --eval_tr_out and exit (2026-11-06)")
+ap.add_argument("--eval_tr_window", type=int, default=0)
+ap.add_argument("--eval_tr_tdeg", type=int, default=5, help="degree of the time interpolation for --eval_tr_ref")
 ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
                      "end in --out, write constraints.npz there, and exit")
@@ -362,9 +368,35 @@ if a.eval_constraints:
     sys.exit(0)
 
 
+if a.eval_tr_ref:
+    # The reference as a smooth function of (t, r): local Lagrange interpolation of its nodes (2026-11-06).
+    ZR = np.load(a.eval_tr_ref)
+    ZT, ZRr, ZU = ZR["t"], ZR["r"], jnp.asarray(np.transpose(ZR["U"], (0, 2, 1)))   # ZU (n_t, n_r, 10)
+    hr, ht, nr, nt = float(ZRr[1] - ZRr[0]), float(ZT[1] - ZT[0]), len(ZRr), len(ZT)
+
+    def lag(x, x0, h, n, deg):
+        """first node index and the deg+1 Lagrange weights at x on the uniform grid x0 + k h."""
+        i0 = jnp.clip(jnp.floor((x - x0) / h).astype(int) - (deg - 1) // 2, 0, n - deg - 1)
+        xs = x0 + h * (i0 + jnp.arange(deg + 1))
+        w = jnp.stack([jnp.prod(jnp.where(jnp.arange(deg + 1) == j, 1.0, (x - xs) / jnp.where(
+            jnp.arange(deg + 1) == j, 1.0, xs[j] - xs))) for j in range(deg + 1)])
+        return i0, w
+
+    def ref_rad(t, r):
+        it0, wt = lag(t, float(ZT[0]), ht, nt, a.eval_tr_tdeg)
+        ir0, wr = lag(r, float(ZRr[0]), hr, nr, 5)
+        blk = jax.lax.dynamic_slice(ZU, (it0, ir0, 0), (a.eval_tr_tdeg + 1, 6, 10))
+        return jnp.einsum("i,j,ijk->k", wt, wr, blk)
+
+    rad_fn = lambda P, win, t, r: ref_rad(t, r)          # noqa: E731  (u_point looks rad_fn up at call time)
+    edges_r = np.linspace(0.0, a.tfinal, a.N_window + 1)
+    a.eval_tr = a.eval_tr_ref
+    S = {"params": None,
+         "win": [edges_r[a.eval_tr_window], edges_r[a.eval_tr_window + 1]]}
 if a.eval_tr:
-    S = pickle.load(open(a.eval_tr, "rb"))
-    Pk = jax.tree_util.tree_map(jnp.asarray, S["params"])
+    if not a.eval_tr_ref:
+        S = pickle.load(open(a.eval_tr, "rb"))
+    Pk = jax.tree_util.tree_map(jnp.asarray, S["params"]) if S["params"] is not None else None
     wk = tuple(jnp.asarray(float(v)) for v in S["win"][:2])
     tg = np.linspace(float(wk[0]), float(wk[1]), 41)
     rg = np.geomspace(1e-3, R, 240)

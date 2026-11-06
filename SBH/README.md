@@ -1916,6 +1916,23 @@ lower) but it stays at 1e-2 errors and PINN loss >= 5: the plain 3D MLP fitted c
 have a small PINN loss; the trained PINN reaches residuals 3-6 orders lower at the same 1e-4 field error, so its
 error level is not set by how small it drives the residual.
 
+**The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
+2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
+as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
+degree D, default 5), the residual of that interpolant by autodiff on the same (t, r) grid as the maps above.
+Band averages (r = 0.001-0.01 / 0.01-0.05 / 0.05-1 / 1-24), reference against `1d_T8_adm30_ic`:
+window 0 2.3e-3 / 1.7e-6 / 1.4e-8 / 4.6e-20 against 1.9e-2 / 4.3e-6 / 2.2e-7 / 4.8e-9;
+window 16 6.2e2 / 2.4e-3 / 1.4e-7 / 1.9e-13 against 3.5e2 / 7.5e-4 / 3.6e-8 / 1.7e-8;
+window 31 1.7e-3 / 2.3e-4 / 5.8e-9 / 6.9e-15 against 6.6e1 / 1.7e-6 / 1.5e-8 / 8.5e-9.
+Degree 3 in time (window 16) gives the same numbers. The r^2-weighted ADM density of the reference is 1e2 - 1e7
+below the PINN's outside r = 0.05.
+Reading. (1) The reference does minimise the loss where the outer fields are decided: for r >= 1 its residual is
+1e5 - 1e11 below the PINN's. (2) Inside r = 1 it is alike or above the PINN's (up to 4x in 0.05-1, 140x in
+0.01-0.05), yet it has no error there worth the name: that region is at or inside the horizon. (3) So the
+fitted networks' large losses came from the fits' derivative errors, not from the reference; and the PINN's
+1e-4 outer error matches its outer rms residual (loss 1e-8 = rms 1e-4). To get 1e-6 errors the outer loss
+would have to reach ~1e-12. Write-up of the three weeks: `SUMMARY_2026-11-06.md`.
+
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
