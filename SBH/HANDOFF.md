@@ -97,6 +97,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    update in Crunch (README, same losses, 6 x 60 stage 2 now 9.3 GB). It needs relaunching on the hub (the server
    was stopped at 14:20). Mendieta: `1d_T8_adm30_ic_vol` running (window 24 / 32), `s2_1d_T8` and log25_it0
    pending; pull the fix on Mendieta before s2_1d_T8 starts (the job runs the checkout as it is).
+   Later: `s2_adm30_ic` relaunched and done (loss 2.5x down, mass alike, outer alpha 2x worse; README).
+   `lo_adm30_ic_w0` (hub, `--loss_orders 3`, window 0 alone, 12000 iterations; the user's loss-vs-error
+   experiment): errors ~ sqrt(loss) down to held loss 1e-6, then decoupled; plot
+   plots/2026-11-06/loss_vs_error_w0.png, README.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

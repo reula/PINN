@@ -1995,6 +1995,32 @@ every printed digit and runs 20 % faster. Peak resident memory on the CPU (stage
 the full 6 x 60 9.3 GB (unfixed, 6 x 60 extrapolates to 17-23 GB). Applies to every run that uses SSBroyden;
 the window runs (9.3k parameters, 3.1 GB peak) were never near the limit.
 
+**`s2_adm30_ic` result (hub, relaunched with the fix 14:36 - 14:52 UTC 2026-11-06, 12000 iterations).** Held loss
+6.6e-9 (u1) -> 2.7e-9 (adm part 3.3e-9 -> 1.5e-9). Against its base `1d_T8_adm30_ic`: worst |m/M - 1| 2.5e-3 ->
+1.6e-3, m/M - 1 at r = 10, t = 8 -1.1e-3 -> -6.0e-4 (both alike by the factor-2 rule); outer alpha (r = 1-10)
+2-2.5x worse from t = 6 on; chi and Khat alike. Loss down 2.5x, errors not better. One seed.
+
+**Loss against error in one window (`--loss_orders`, the user's experiment, 2026-11-06).** `lo_adm30_ic_w0`:
+window 0 of `1d_T8_adm30_ic` (same settings: `--hard_ic --no_template --w_adm 30 --w_adm_ic 30`, window [0, 0.25])
+trained from scratch for 12000 iterations instead of 4000. `--loss_orders 3`: the held loss before training is L0
+(8.8e-3: with the exact initial data in the ansatz the untrained network is already close); once the held loss is
+below L0 x 1e-3, and at each further order, the parameters are saved (`loss_order_w000_oNN.pkl`); the errors at
+the window end against the 1D reference are recorded at every loss check (every 250 iterations) in
+`loss_orders.npz`. Plot `tools/plot_loss_vs_error.py` -> `plots/2026-11-06/loss_vs_error_w0.png` (errors against
+the held and the training loss, and the losses against the iteration). Results:
+1. Snapshots at L0 x 1e-3 (it 1250, held 3.2e-6), 1e-4 (it 2250, 5.8e-7), 1e-5 (it 3500, 8.5e-8); 1e-6 never
+   reached. After it 3500 the held loss stops falling and jumps between 3e-8 and 3e-7 (its Einstein part), while
+   the training loss keeps falling to ~1e-8: the gap is the residual at points the training draws missed.
+2. Down to a held loss of ~1e-6 the errors follow error ~ sqrt(loss): alpha rms 1.2e-3 -> 4e-5, chi 2.8e-3 ->
+   2.8e-5, max |m/M - 1| 3.7e-2 -> 9e-4.
+3. Below that the errors decouple from the loss. From it 3500 to 12000 (training loss 7.5e-8 -> 2e-8) alpha rms
+   stays at 2e-5 (1.2x), chi 8.8e-6 -> 4.8e-6, Khat 4.0e-5 -> 1.0e-5, mass 2.9e-4 -> 1.4e-4. Where alpha
+   stops: by band (r = 0.05-0.2 / 0.2-1 / 1-3 / 3-10 / 10-24) it 3500 4.1e-5 1.6e-5 5.5e-6 1.0e-5 9.2e-6, it
+   12000 2.9e-5 3.9e-6 6.3e-6 7.2e-6 3.6e-6, largest error at r = 0.03. The alpha rms is held up by r < 0.2,
+   inside the horizon, where the 1D reference has a residual as large as the PINN's (section on the puncture
+   residual above); outside r = 0.2 alpha still improves 1.5-4x.
+4. The run's own window 0 (4000 iterations) stopped at the point where the loss stops paying.
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs
