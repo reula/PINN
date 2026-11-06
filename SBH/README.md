@@ -1976,6 +1976,23 @@ over the control), then `1d_T8_adm30_ic_log25_it0`. Split the same day: the last
 instead (`jobs/mendieta/sing1d.sbatch`, one job each, jobs 1185909-11); the hub batch skips a run whose
 `runs/NAME/ELSEWHERE` exists (`jobs/hub/sing.sh`).
 
+**Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
+networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
+gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs
+(alpha, beta^r, chi, gt_rr) with alpha, chi, gt_rr = exp(network); loss = data (weight 1e3) + 4D Ricci = 0 on
+the equator (16 components) + 1+log and Gamma-driver residuals; derivatives by 4th-order finite differences
+(h = 0.01); AdamW then Levenberg-Marquardt; ~8 h on an A100. Domain starts at r = 0.505 (no points inside).
+Experiments: interpolating NR data (L-inf error 1e-3 - 1e-2, floored by the NR data's own Einstein violation);
+"Cauchy" forecast from data at t <= 10 AND at r >= 150 for all t (not a pure initial-value problem; Ricci
+residual ~1e-5 vs NR 1e-9; misses an outgoing gauge wave); exterior-only Kerr-Schild data with free gauge,
+interior r = 2-15 reconstructed to 8e-4 after a learned coordinate map. No mass or constraint diagnostic, no
+forward run from initial data alone. Against ours: we evolve from the initial data alone (plus a Sommerfeld
+condition), with errors 1e-4 - 1e-3 to t = 8 against the 1D reference and the Misner-Sharp mass to ~0.1 - 0.25 %.
+Useful from it: their horizon moves from r ~ 0.5 M to ~1 M by t ~ 7 M (isotropic-like puncture coordinates),
+i.e. for our m = 0.5 to r ~ 0.25 -> 0.5: the region where the 1D reference's own residual is as large as the
+PINN's (r < ~1) is largely inside or near the horizon; the separable t x r network and a Ricci = 0 loss (our
+on-hold "Ricci = 0 in the same gauge" idea) are the two techniques we have not tried.
+
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
 9.0e-5 / 1.4e-3 / 7.4e-5; 2.3e-4 / 4.0e-5 / 1.9e-3 / 8.7e-5; 3.6e-4 / 7.6e-5 / 2.2e-3 / 1.9e-4; 3.0e-4 / 1.1e-4 /
