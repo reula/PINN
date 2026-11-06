@@ -1825,6 +1825,13 @@ log-uniform on [0.05, 24], no clouds; `plots/2026-11-06/radii_logonly*.png`), on
 mini smoke test (1 window, 1000 points, 250 iterations) runs, held 4.0e-3. Then `1d_T8_adm30_ic_log25_it0`
 (`--log_frac 0.25 --iters0 12000`): the log25 run with window 0 allowed to finish its descent.
 
+**`1d_T8_adm30_ic_logonly05` finished (hub, 2026-11-06 11:20 UTC).** Against `1d_T8_adm30_ic` (rms alpha | chi |
+Khat in r = 0.05-0.2 / 0.2-1 / 1-3 / 3-10; worst |m/M - 1|): t = 4 alpha 1e-4 5e-5 2e-4 3e-4 vs 2e-4 4e-4 5e-4
+5e-4, chi 1e-5 3e-5 5e-5 1e-4 vs 6e-6 2e-4 4e-4 2e-4 (2-8x better in r >= 0.2); t = 6 alike; t = 8 alpha 4e-4
+1e-3 2e-3 1e-3 vs 3e-4 7e-4 5e-4 4e-4 (4x and 2.5x worse in r = 1-3 and 3-10), chi and Khat alike, mass alike
+(-5.5e-4 flat from r = 0.3 to 3, -8.1e-4 at r = 10; worst 2.2e-3 vs 2.5e-3). Verdict: log-uniform points help
+the early windows and lose the advantage by t = 6; late outer alpha worse. One seed.
+
 **Fit to the reference, then the PINN loss (`--fit_ref NPZ --fit_window K` in sing_1d.py and sing_pinn.py,
 `jobs/mini/fit_ref.sh`, Mac mini CPU, 2026-11-05; the user's experiment).** The network (same ansatz, `--hard_ic
 --no_template`) is trained on one window with the pointwise loss mean|f - f_ref|^2 against the 1D reference (1D:
