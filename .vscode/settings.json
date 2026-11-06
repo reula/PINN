@@ -13,7 +13,10 @@
   "latex-workshop.latex.tools": [
     {
       "name": "latexmk",
-      "command": "latexmk",
+      "command": "/Library/TeX/texbin/latexmk",
+      "env": {
+        "PATH": "/Library/TeX/texbin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+      },
       "args": [
         "-synctex=1",
         "-interaction=nonstopmode",
