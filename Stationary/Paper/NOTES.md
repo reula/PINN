@@ -220,3 +220,51 @@ Workshop: Clean up auxiliary files" and build again.
    2285 parameters ..." had been stranded after the Hawking figure by my earlier rewrite; it is back in the
    spectral-approximation paragraph of IV.A.  Bare "reference" in the multipole section and abstract
    became "spectral reference".
+
+## Evidence review (2026-11-06): which claims need more runs
+
+Paper read against VERIFICATION.md, the run configs on the hub and the code history.
+
+### Runs needed
+
+1. **The axisymmetric Weyl tests were trained under the old inner condition.** weyl_prod, weyl_unequal,
+   weyl_close4 and weyl_close35 (2026-09-25..28) used `--inner-bc reference` before 0773b6a (2026-10-15).
+   Until then that condition imposed the FULL h from the exact solution (`pack_sym(f.h - e.h)`), h_rr and
+   h_rA included. The paper (IV.C) says that only lambda and the induced metric are imposed. So the
+   Weyl figure, tab:weylclose, the Weyl moments and the comparison "3-D vs axisymmetric on the same shell"
+   (IV.D; weyl_rot45_hyb is in the new formulation) come from an easier problem than the one stated.
+   They also predate resampling and the fresh-sample check (4096 points, Armijo). Rerun all four in the
+   current code (induced metric only, resample 500, fresh/train, moments). This is cheap: minutes per run.
+2. **Off-axis, width or points?** qp_rot4 changed width 20 -> 40 AND points 16384 -> 32768 at the same
+   time, but V.C credits the gain to the width alone ("points to the network"). Two runs separate the two
+   effects: width 40 at 16384, and width 20 at 32768 (hub_qp4.sh settings otherwise). The same pair would
+   replace the point-count paragraph of IV.D, which rests on older-formulation runs (DSGNAR rounds 20-26).
+3. **The spectral reference's own error at -1/12.** The far-field lambda error (~7e-9) is about the size
+   of the change seen when swapping references: ab_none_w2 is 9.1e-9 against the old reference and 7.1e-9
+   against the final-formulation one. One reference with a larger basis (l <= 14, J = 48, as at -1/4) and a
+   regrade of ab_none_w2 / fn_nocom_w2 against it would bound how much of tab:com is the reference.
+   tab:com should also be graded against the final-formulation reference.
+4. **Seeds for the central claim.** Each claim in V.B rests on one run per arm: the 3900x factor, "the loss
+   does not see the difference", and "the size without the condition is not fixed". With 2 more seeds of
+   ab_none and fn_nocom (about 25 min each), the claim becomes: with the condition the error is
+   reproducible, without it d_z scatters. Optional: 2 seeds of fn_tan. The H^1 gain in axisymmetry is
+   only 1.3-1.5x, which may be within seed scatter.
+
+### Optional runs
+
+5. **The hard end.** tab:mass picks the width-40 networks at -1/4 (fresh/train 11) and -0.30 (fresh/train
+   170, M2 4% off) as "the best". Either retrain width 40 with more points and denser redraws (e.g.
+   65536, every 250), or quote ms_s2_025_w5 (fresh 1.17) at -1/4 and drop or flag the -0.30 network row.
+6. **Networks at -1/8 and +1/12**, so that the sign claim has networks as well as references (25 min each).
+
+### Text only (no runs)
+
+7. III "Every result is checked on five fresh samples ... within a few per cent": this is false for the
+   hard-end width-40 runs (11, 170) and for rotated Weyl (1.18). Restrict it to the runs that pass, and
+   give the ratio where they do not.
+8. II.D says Robin conditions are imposed "on h and on its connection". The quadrupolar runs have
+   robin_include_G = False, with orders h: 3, P: 3; the Weyl runs have include_G = True, order 2. Neither
+   the order n nor this difference is stated.
+9. IV.D "the 2048 of the axisymmetric tests": the Weyl runs used 4096, the quadrupole 16384.
+10. II.D: "|a| ~ 0.04 ... 2.5e-6" comes from COM_GAUGE.md (old-formulation runs, a = -0.0445). Fine as
+    an illustration; VERIFICATION.md does not list it yet.

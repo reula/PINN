@@ -3,7 +3,14 @@
 Read `COMMANDS.md` for the environment contract and the units convention.  This file is the
 handover: what is committed, what is in flight, and what to do first.
 
-## First action: post-process, do not retrain
+## (Closed 2026-11-06) post-processing of pq_c200_vac
+
+Done on the hub on 2026-10-05: logs/pq_c200_vac.post.log has all five steps (evaluate, profile, report,
+vtk, plane; exit 0). The run has since moved to runs/_old_inner_condition/ (it imposed h_rA = 0; see
+0773b6a). The paper does not use it. Current state of the paper: Paper/NOTES.md, Paper/VERIFICATION.md.
+The text below is the historical record.
+
+### (historical) First action: post-process, do not retrain
 
 `runs/pq_c200_vac` is finished (loss 2.0905e-14, params.pkl written).  Everything we want from it
 can be obtained by re-running the post-processing, which needs no training:
