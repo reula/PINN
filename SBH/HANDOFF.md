@@ -65,6 +65,13 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
 
 ## 3. Runs on the hub (as of 2026-11-05 11:30 UTC)
 
+0. **The mini can drive the hub (2026-11-06).** `tools/hub_run.py status` / `run "CMD" [--wait S] [--close]` /
+   `close "N ..."` (run with ../Stationary/.venv/bin/python from SBH/): opens a JupyterLab terminal in the user's
+   hub server through the Jupyter API and types the command, printing the terminal's output. The hub API lives at
+   https://research.labs.ccad.unc.edu.ar (not jupyterhub.ccad.unc.edu.ar, which only redirects); token in
+   ~/.config/ccad/hub_token on the mini (user-made, scopes servers!user access:servers!user read:users!user).
+   Unlike ssh to serafin, this sees the hub's own processes (ps, nvidia-smi). --start starts a stopped server
+   (a new container); never stop or restart a running one. Launch only what the user asked for, and tell them.
 1. `jobs/hub/sing1d_batch.sh` runs 1D runs NPAR at a time. One 1D run needs 3.1 GB (the dense SSBroyden matrix,
    8730^2 doubles) and saturates the A30: parallel runs gain nothing, so NPAR 1-2, priority order, and never
    two batches at once (each memory pool keeps what it grows to).
