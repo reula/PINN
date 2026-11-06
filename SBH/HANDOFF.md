@@ -101,6 +101,9 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    `lo_adm30_ic_w0` (hub, `--loss_orders 3`, window 0 alone, 12000 iterations; the user's loss-vs-error
    experiment): errors ~ sqrt(loss) down to held loss 1e-6, then decoupled; plot
    plots/2026-11-06/loss_vs_error_w0.png, README.
+   Mendieta runs done and graded (README): adm30_ic_vol (trade: mass at r = 10 5x better, outer alpha 4-5x
+   worse), s2_1d_T8 (mass 7x better than the control, outer alpha 5-8x worse), log25_it0 (dropped). Nothing
+   running. Pattern: whatever lowers the mass error or the loss raises outer alpha.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

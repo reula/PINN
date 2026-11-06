@@ -2021,6 +2021,22 @@ the held and the training loss, and the losses against the iteration). Results:
    residual above); outside r = 0.2 alpha still improves 1.5-4x.
 4. The run's own window 0 (4000 iterations) stopped at the point where the loss stops paying.
 
+**The three Mendieta runs (jobs 1185909-11, done 2026-11-06 14:53 / 16:29 / 17:45 UTC).** At t = 8 (rms alpha |
+chi in r = 0.05-0.2 / 0.2-1 / 1-3 / 3-10; m/M - 1 at r = 10; worst |m/M - 1|):
+1. `1d_T8_adm30_ic_vol` (`--adm_vol 2000 --adm_rmin 1`: the ADM penalty on its own points, uniform in volume,
+   r >= 1) against `1d_T8_adm30_ic`: alpha 9e-4 1e-3 2e-3 2e-3 vs 3e-4 7e-4 5e-4 4e-4 (4-5x worse outside r = 1),
+   chi 3-10 9e-4 vs 3e-4 (3x worse); mass at r = 10 -2.2e-4 vs -1.1e-3 (5x better), worst 1.9e-3 vs 2.5e-3
+   (alike). A trade: the outer mass deficit nearly gone, outer alpha worse.
+2. `s2_1d_T8` (the stage-2 correction, 6 x 60, `--w_adm 30 --adm_rmin 1`, 12000 iterations, over the control
+   `1d_T8`): held ADM part 1.0e-5 -> 5.2e-8. Against `1d_T8`: worst mass 3.7e-2 -> 5.2e-3 (7x better), r = 10
+   +2.5e-2 -> +5.2e-3 (5x); alpha 1-3 / 3-10 2e-3 / 3e-3 vs 3e-4 / 4e-4 (5-8x worse), chi 1-10 2-3x worse.
+   Still 2x above `adm30_ic` in mass, with worse fields: penalising during the run beats correcting afterwards.
+3. `1d_T8_adm30_ic_log25_it0` (`--log_frac 0.25 --iters0 12000`): window 0 still ends at held 4.9e-6 (the
+   cloud-only runs reach ~1e-7 in 4000), so the log points slow the cold start for good, not only within 4000
+   iterations. 4x better than log25 (worst mass 3.8e-2 vs 1.6e-1), 15x worse than adm30_ic. Dropped.
+Pattern across today's runs (stage 2 twice, adm_vol, logonly05 late): every change that lowers the mass error
+or the loss raises the outer alpha error 2-8x; none improves both.
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs
