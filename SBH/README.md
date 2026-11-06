@@ -1972,7 +1972,9 @@ more weight on the outer shells than ours (our clouds put 3/4 of the points insi
 Hub batch (2026-11-06): `1d_T8_adm30_ic_logonly05` (resume, 24 / 32 windows done when the hub server stopped at
 ~09:50 UTC), `s2_adm30_ic` (`--stage2 runs/1d_T8_adm30_ic --w_adm 30 --adm_rmin 1`, 12000 iterations, 8000 points),
 `1d_T8_adm30_ic_vol` (`--adm_vol 2000 --adm_rmin 1`, one change against adm30_ic), `s2_1d_T8` (the same correction
-over the control), then `1d_T8_adm30_ic_log25_it0`.
+over the control), then `1d_T8_adm30_ic_log25_it0`. Split the same day: the last three items run on Mendieta
+instead (`jobs/mendieta/sing1d.sbatch`, one job each, jobs 1185909-11); the hub batch skips a run whose
+`runs/NAME/ELSEWHERE` exists (`jobs/hub/sing.sh`).
 
 Core rms vs the 1D reference at t = 0.25 ... 2 (alpha / chi / Khat / gt): 2.1e-5 / 9.6e-6 / 1.7e-5 /
 1.3e-5; 8.1e-5 / 5.1e-6 / 8.4e-5 / 1.6e-5; 2.1e-4 / 6.9e-6 / 4.3e-4 / -; 2.3e-4 / 1.6e-5 / 9.5e-4 / -; 1.6e-4 /
