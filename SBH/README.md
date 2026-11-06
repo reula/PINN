@@ -1813,6 +1813,10 @@ Its loss sat at 4-5e-3 for ~3000 iterations and was falling fast at the end (3.5
 adm30_ic's window 0 was at 2e-5 by 1000). So the points near the puncture slow the cold start a lot; whether the
 network can get there with more iterations is open. The warm-started later windows trained to ~1e-4 but carried
 the bad start. Added `--iters0 N` (iterations of window 0 only; default --iters) to test it.
+Loss histories (`tools/plot_1d_loss.py`, `plots/2026-11-06/loss_log25.png`): adm30_ic's window 0 falls from 2.5e-3
+to 1e-7 in 3000 iterations; log25's stays at 4-6e-3 to iteration 3000 and only then turns down (Einstein and end
+parts alike). Over the run log25's loss keeps falling, window after window, from ~1e-3 to 6e-6 by t = 8 (adm30_ic
+~5e-8), so it is still converging at the end; the two losses are on different point sets and not strictly comparable.
 The point distributions, default and --log_frac 0.25: `tools/plot_1d_radii.py`, `plots/2026-11-06/radii_log25.png`
 (points per decade stacked by cloud, cumulative share) and `radii_log25_hist.png` (one draw of the 2000 interior
 points: default 1 below r = 0.01 and 52 below 0.05; log run 119 and 223).
