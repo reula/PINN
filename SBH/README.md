@@ -1803,6 +1803,17 @@ are. Mini CPU smoke test (1 window, 1000 points, 500 iterations, `--w_adm 30`): 
 without 1.5e-3, errors at t = 0.25 alike (alpha 1.9e-3 / 1.8e-3, chi 9e-3 / 3e-3): runs; too short to judge.
 Hub: `1d_T8_adm30_ic_log25` (`--log_frac 0.25`), one change against `1d_T8_adm30_ic`.
 
+**`1d_T8_adm30_ic_log25`, result (hub 2026-11-05 19:24 - 21:33 UTC, 32 windows; `plots/2026-11-06/sing_1d_log25.png`):
+it fails in window 0.** Window 0's loss stops at train 1.3e-3 after 4000 iterations (adm30_ic: ~1e-7), and the
+errors at t = 0.25 are already 1e-3 - 1e-2 in every band (alpha 2e-3 2e-3 9e-4 8e-4, chi 3e-3 1e-2 8e-3 2e-3) with
+m/M - 1 = +7e-2 at every r (adm30_ic: 1e-5 - 5e-5, mass 1e-5). Later windows train to ~1e-4 but carry the bad
+start: at t = 8 alpha 3e-2 4e-2 3e-2 2e-2, chi 5e-3 3e-2 3e-2 1e-2, mass +1.4e-1 (adm30_ic 3e-4 - 7e-4, -4e-4).
+Reading: the residual inside r = 0.01 is out of reach for this network (the value and Sobolev fits to the
+answer have 4e2 - 2e8 there too, see the (t, r) maps); 5.7 % of the points there make that part dominate the
+loss, and the optimiser trades the whole solution for it. So the unconstrained region at r < 0.01 is not what
+holds the error at 1e-4: sampling it costs 100x. The current clouds stay. (A milder version, a small share
+with --log_rmin 0.01, would only test the band 0.01 - 0.05; not run.)
+
 **Fit to the reference, then the PINN loss (`--fit_ref NPZ --fit_window K` in sing_1d.py and sing_pinn.py,
 `jobs/mini/fit_ref.sh`, Mac mini CPU, 2026-11-05; the user's experiment).** The network (same ansatz, `--hard_ic
 --no_template`) is trained on one window with the pointwise loss mean|f - f_ref|^2 against the 1D reference (1D:
