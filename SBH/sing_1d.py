@@ -70,6 +70,9 @@ ap.add_argument("--log_frac", type=float, default=0.0,
                      "the same number of points per decade; the cloud shares are scaled by (1 - log_frac) (2026-11-05)")
 ap.add_argument("--log_rmin", type=float, default=1e-3)
 ap.add_argument("--iters", type=int, default=4000)
+ap.add_argument("--iters0", type=int, default=0,
+                help="iterations of window 0 when > 0 (default: --iters); window 0 starts from scratch and can sit on a "
+                     "plateau longer than the warm-started windows (2026-11-06)")
 ap.add_argument("--n_change", type=int, default=250)
 ap.add_argument("--ic_d1", type=float, default=0.0,
                 help="weight of the first radial derivative in the IC / window hand-off term: lamg0 [mean|f - U|^2 "
@@ -519,7 +522,8 @@ for k in range(k0, a.N_window):
         print(f"window 0: max |u(0) - U0| over the radial functions {np.abs(e0).max():.2e}", flush=True)
     print(f"window {k}: t in [{t0:g}, {t1:g}], {w.size} parameters", flush=True)
     t_start, it = time.time(), 0
-    while it < a.iters:
+    n_iters = a.iters0 if (k == 0 and a.iters0 > 0) else a.iters
+    while it < n_iters:
         key, kd = jax.random.split(key)
         batch = draw(kd, win, a.n_int, a.n_end, a.n_ic, Uic_fn)
         w = mb.minimize(lambda v: loss_fn(v, unr, win, batch), lambda v: vg_fn(v, unr, win, batch), w, opts).x

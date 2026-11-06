@@ -75,7 +75,9 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    the outer alpha is back at adm30's 1e-3. README. Nothing running on the hub now.
    Done 2026-11-05 21:33 UTC: `1d_T8_adm30_ic_log25` (`--log_frac 0.25`, a quarter of the points log-uniform in r
    down to 1e-3): fails in window 0 (loss stuck at 1.3e-3, errors 1e-2, mass +7e-2, carried to t = 8). Sampling
-   r < 0.01, where the residual is out of the network's reach, costs 100x; keep the clouds. README. Nothing on the hub.
+   r < 0.01 slows the cold start: window 0 was still falling fast when its 4000 iterations ran out (not a
+   plateau stop). Batch of 2026-11-06: `1d_T8_adm30_ic_logonly05` (`--log_frac 1 --log_rmin 0.05`, all points
+   log-uniform on [0.05, 24]), then `1d_T8_adm30_ic_log25_it0` (`--log_frac 0.25 --iters0 12000`). README.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

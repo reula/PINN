@@ -1808,14 +1808,18 @@ it fails in window 0.** Window 0's loss stops at train 1.3e-3 after 4000 iterati
 errors at t = 0.25 are already 1e-3 - 1e-2 in every band (alpha 2e-3 2e-3 9e-4 8e-4, chi 3e-3 1e-2 8e-3 2e-3) with
 m/M - 1 = +7e-2 at every r (adm30_ic: 1e-5 - 5e-5, mass 1e-5). Later windows train to ~1e-4 but carry the bad
 start: at t = 8 alpha 3e-2 4e-2 3e-2 2e-2, chi 5e-3 3e-2 3e-2 1e-2, mass +1.4e-1 (adm30_ic 3e-4 - 7e-4, -4e-4).
-Reading: the residual inside r = 0.01 is out of reach for this network (the value and Sobolev fits to the
-answer have 4e2 - 2e8 there too, see the (t, r) maps); 5.7 % of the points there make that part dominate the
-loss, and the optimiser trades the whole solution for it. So the unconstrained region at r < 0.01 is not what
-holds the error at 1e-4: sampling it costs 100x. The current clouds stay. (A milder version, a small share
-with --log_rmin 0.01, would only test the band 0.01 - 0.05; not run.)
+Reading (corrected 2026-11-06): window 0 was NOT stopped by a plateau but by the fixed budget of 4000 iterations.
+Its loss sat at 4-5e-3 for ~3000 iterations and was falling fast at the end (3.5e-3 at 3000, 1.3e-3 at 4000;
+adm30_ic's window 0 was at 2e-5 by 1000). So the points near the puncture slow the cold start a lot; whether the
+network can get there with more iterations is open. The warm-started later windows trained to ~1e-4 but carried
+the bad start. Added `--iters0 N` (iterations of window 0 only; default --iters) to test it.
 The point distributions, default and --log_frac 0.25: `tools/plot_1d_radii.py`, `plots/2026-11-06/radii_log25.png`
 (points per decade stacked by cloud, cumulative share) and `radii_log25_hist.png` (one draw of the 2000 interior
 points: default 1 below r = 0.01 and 52 below 0.05; log run 119 and 223).
+Next (2026-11-06, the user's choice): `1d_T8_adm30_ic_logonly05` (`--log_frac 1 --log_rmin 0.05`: every point
+log-uniform on [0.05, 24], no clouds; `plots/2026-11-06/radii_logonly*.png`), one change against `1d_T8_adm30_ic`;
+mini smoke test (1 window, 1000 points, 250 iterations) runs, held 4.0e-3. Then `1d_T8_adm30_ic_log25_it0`
+(`--log_frac 0.25 --iters0 12000`): the log25 run with window 0 allowed to finish its descent.
 
 **Fit to the reference, then the PINN loss (`--fit_ref NPZ --fit_window K` in sing_1d.py and sing_pinn.py,
 `jobs/mini/fit_ref.sh`, Mac mini CPU, 2026-11-05; the user's experiment).** The network (same ansatz, `--hard_ic
