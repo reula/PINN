@@ -2111,6 +2111,19 @@ where the warm start begins; removing the ~1e-2 starting offset neither shrinks 
 Note for re-evaluating seams: `--eval_seams` must get the run's own flags (`--hard_ic --no_template --N_window 32
 --tfinal 8`, JAX_ENABLE_X64=1); with the defaults it evaluates a different ansatz and returns errors ~0.4.
 
+**2026-11-07, three runs on Mendieta (the user's go-ahead), each `adm30_ic` plus one change:**
+- `1d_T8_adm30_ic_s8` (job 1185961): `--seed 8`, a second seed of the base, to see how much of the factor-2
+  differences between runs is seed noise.
+- `1d_T8_adm30_ic_s2wb`: the per-window second stage, revised after `1d_T8_adm30_ic_s2w` blew up. In
+  `--s2_window_iters` the correction network N2 is now fresh in every window (no warm start from the previous
+  window), the iterate with the lowest held loss is kept (N2 = 0, the first stage alone, included), and a
+  non-finite held loss ends the window's second stage. Network 3 x 30 (2260 parameters, vs 19k for 6 x 60),
+  2000 iterations per window. Mini smoke test (2 windows, 400 points): window 0 kept iteration 500 (held 6.3e-4 ->
+  2.6e-4); window 1 overfitted (train down, held 3.4e-5 -> 9.5e-4) and fell back to N2 = 0, as intended.
+- `1d_T8_adm30_ic_cold`: `--cold_start` (the user's idea): every window k >= 1 starts from a fresh random network
+  (key seed + 1 + k) instead of the previous window's trained one, so only the IC term carries the hand-off.
+  Mini smoke test: runs; offset at the first seam 5e-2 before training.
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs

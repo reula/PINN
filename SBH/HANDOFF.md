@@ -114,6 +114,8 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    smaller errors. Warm-start offset ~100x the final jump (time rescaling per window); bias-shift fix
    `--warm_shift` built; `1d_T8_adm30_ic_ws` (adm30_ic + --warm_shift, Mendieta 1185943) done: alike adm30_ic in
    errors, mass and seam jumps (README). The warm-start offset does not matter; adm30_ic stays the base.
+   Launched on Mendieta (README): `1d_T8_adm30_ic_s8` (second seed), `1d_T8_adm30_ic_s2wb` (revised per-window
+   second stage: fresh N2, keep best held, 3 x 30), `1d_T8_adm30_ic_cold` (`--cold_start`). Grade all vs adm30_ic.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

@@ -79,6 +79,9 @@ ap.add_argument("--loss_orders", type=float, default=0,
                      "at the window end (+ OUT/loss_order_wKKK_oNN.pkl); the errors at the window end are also recorded at every "
                      "loss check (every --n_change), all in OUT/loss_orders.npz (snapshot = 1 for the saved ones); 0 = off")
 ap.add_argument("--n_change", type=int, default=250)
+ap.add_argument("--cold_start", action="store_true",
+                help="(2026-11-07, the user's idea) every window k >= 1 starts from a fresh random network (key seed + 1 "
+                     "+ k) instead of the previous window's trained one; the hand-off is then carried by the IC term only")
 ap.add_argument("--warm_shift", action="store_true",
                 help="continuous warm start (2026-11-07): each window's network sees t rescaled to [-1, 1] over its own window, "
                      "so the plain warm start reproduces the previous window at its START; shifting the first layer's bias "
@@ -116,7 +119,9 @@ ap.add_argument("--s2_window_iters", type=int, default=0,
                      "a correction network (--s2_layers x --s2_hidden) inside the window for this many iterations on the "
                      "same loss and points; u = u1 + s N2 with s = eps ((t - t0)/(t1 - t0)) (1 - r^2/R^2)(1 - exp(-r^2/rc^2)) "
                      "(--s2_eps, --s2_rc), so the window's start is untouched; the next window starts from u1 + s N2. "
-                     "N2 is warm-started from the previous window's. 0 = off")
+                     "2026-11-07 (after 1d_T8_adm30_ic_s2w blew up): N2 is fresh (zero last layer) in every window, "
+                     "and the iterate with the lowest held loss is kept, N2 = 0 (the first stage alone) included; a "
+                     "non-finite held loss ends the window's second stage. 0 = off")
 ap.add_argument("--s2_rmin", type=float, default=0.02, help="no stage-2 point closer than this to the puncture")
 ap.add_argument("--adm_r_power", type=float, default=2.0, help="p in the --w_adm weight r^p (the colleagues: r^2)")
 ap.add_argument("--adm_r0", type=float, default=0.0,
@@ -776,6 +781,8 @@ for k in range(k0, a.N_window):
     else:
         Pp, wp = prev
         Uic_fn = jax.jit(jax.vmap(lambda r, Pp=Pp, wp=wp: taylor_r(lambda rr: rad_fn(Pp, wp, wp[1], rr), r)))
+    if prev is not None and a.cold_start:              # fresh random network in every window
+        P = {"net": init_net(jax.random.PRNGKey(a.seed + 1 + k))}
     if prev is not None and a.warm_shift:              # continue the previous network across the seam
         d0 = P["net"]["params"]["MLP"]["Dense_0"]
         P = {"net": {"params": {"MLP": {**P["net"]["params"]["MLP"],
@@ -840,7 +847,7 @@ for k in range(k0, a.N_window):
     P = unr(w)
     if a.s2_window_iters > 0:                             # per-window second stage: freeze net, train net2
         P1net = P["net"]
-        N2 = N2_prev if N2_prev is not None else init_net2(jax.random.PRNGKey(a.seed + 7))
+        N2 = init_net2(jax.random.PRNGKey(a.seed + 7 + k))               # fresh in every window
         w2, unr2 = ns["flatten_util"].ravel_pytree(N2)
         full = lambda v, unr2=unr2: {"net": P1net, "net2": unr2(v)}       # noqa: E731
         loss2 = jax.jit(lambda v, win, batch: total(parts(full(v), win, batch)))
@@ -848,7 +855,7 @@ for k in range(k0, a.N_window):
         h1 = sum(float(v) for v in parts_jit(P, win, held).values())
         print(f"  second stage: correction {a.s2_layers} x {a.s2_hidden} ({w2.size} parameters), eps {a.s2_eps}, "
               f"rc {a.s2_rc}; held after the first stage {h1:.3e}", flush=True)
-        it2 = 0
+        it2, best_h, best_w, best_it = 0, h1, None, 0             # best_w None = keep N2 = 0
         while it2 < a.s2_window_iters:
             key, kd = jax.random.split(key)
             batch = draw(kd, win, a.n_int, a.n_end, a.n_ic, Uic_fn)
@@ -862,7 +869,15 @@ for k in range(k0, a.N_window):
                 csv.DictWriter(fh, fieldnames=list(row)).writerow(row)
             print(f"  s2 {it2:6d} {row['seconds']:7.0f} s  train {row['train']:.3e}  held {row['held']:.3e} ("
                   + " ".join(f"{n} {hp[n]:.1e}" for n in PART_NAMES) + ")", flush=True)
-        P = full(w2)
+            if not np.isfinite(row["held"]):
+                break
+            if row["held"] < best_h:
+                best_h, best_w, best_it = row["held"], w2, it2
+        if best_w is None:
+            best_w = jnp.zeros_like(w2)
+        P = full(best_w)
+        print(f"  second stage kept: held {best_h:.3e} (" + ("N2 = 0, the first stage alone" if best_it == 0
+              else f"iteration {best_it}") + f"; first stage {h1:.3e})", flush=True)
         N2_prev = P["net2"]
     err, m = report(P, win, t1)
     rep["t"].append(t1)
