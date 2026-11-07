@@ -147,6 +147,12 @@ ap.add_argument("--eval_H", default=None, metavar="RUN_DIR",
                      "(= sphere mean in 1D), M_r, the areal radius and m/M - 1 on 400 radii in [0.05, R]; "
                      "write --eval_H_out NPZ and exit. dm/dR_areal = R^2 H / 4 ties H to the mass.")
 ap.add_argument("--eval_H_out", default=None, metavar="NPZ")
+ap.add_argument("--eval_seams", default=None, metavar="RUN_DIR",
+                help="window hand-offs of a finished run (2026-11-07): at each seam t_k, on 400 radii in [0.03, R), the jumps "
+                     "f_new(t_k) - f_prev(t_k) of the 10 radial functions, of d_r f and of d_t f; the previous window's "
+                     "error against the 1D reference there; and the warm-start offset (the previous network evaluated "
+                     "with the new window's time scaling at t_k, minus f_prev(t_k)); to --eval_seams_out NPZ")
+ap.add_argument("--eval_seams_out", default=None, metavar="NPZ")
 ap.add_argument("--eval_tr_tdeg", type=int, default=5, help="degree of the time interpolation for --eval_tr_ref")
 ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
@@ -452,6 +458,37 @@ if a.eval_tr_ref:
     a.eval_tr = a.eval_tr_ref
     S = {"params": None,
          "win": [edges_r[a.eval_tr_window], edges_r[a.eval_tr_window + 1]]}
+if a.eval_seams:
+    import glob
+    rg = jnp.asarray(np.geomspace(0.03, R * 0.995, 400))
+    W = []
+    for f in sorted(glob.glob(os.path.join(a.eval_seams, "window_*.pkl"))):
+        S = pickle.load(open(f, "rb"))
+        W.append((jax.tree_util.tree_map(jnp.asarray, S["params"]), tuple(jnp.asarray(float(v)) for v in S["win"][:2])))
+    def fdr(P, win, t):                                   # (f, d_r f, d_t f) on rg at time t
+        g = lambda tt, rr: rad_fn(P, win, tt, rr)
+        f, fr = jax.vmap(lambda r: jax.jvp(lambda rr: g(t, rr), (r,), (1.0,)))(rg)
+        ft = jax.vmap(lambda r: jax.jvp(lambda tt: g(tt, r), (t,), (1.0,))[1])(rg)
+        return np.asarray(f), np.asarray(fr), np.asarray(ft)
+    out = {k: [] for k in ("t", "jump", "jump_r", "jump_t", "err_prev", "warm", "dt_prev")}
+    for k in range(1, len(W)):
+        (Pp, wp), (Pn, wn) = W[k - 1], W[k]
+        ts = wp[1]
+        fp, frp, ftp = fdr(Pp, wp, ts)
+        fn, frn, ftn = fdr(Pn, wn, ts)
+        fw = np.asarray(jax.vmap(lambda r: rad_fn(Pp, wn, ts, r))(rg))
+        j = int(np.argmin(np.abs(REF_T - float(ts))))
+        ref = np.stack([np.interp(np.asarray(rg), REF_R, REF_U[j, i]) for i in range(10)], axis=1)
+        out["t"].append(float(ts))
+        out["jump"].append(fn - fp)
+        out["jump_r"].append(frn - frp)
+        out["jump_t"].append(ftn - ftp)
+        out["dt_prev"].append(ftp)
+        out["err_prev"].append(fp - ref)
+        out["warm"].append(fw - fp)
+    np.savez(a.eval_seams_out, r=np.asarray(rg), fields=np.array(stpl.FIELDS), **{k: np.array(v) for k, v in out.items()})
+    print("wrote", a.eval_seams_out, len(out["t"]), "seams")
+    sys.exit(0)
 if a.eval_H:
     import glob
     rg = np.geomspace(0.05, R * 0.995, 400)

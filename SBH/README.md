@@ -2065,6 +2065,30 @@ in window 3 the previous window's N2, switched on at once, raised the held loss 
 Fixes not yet tried: keep the best held iterate (u1 itself, N2 = 0, counts), N2 fresh (zero last layer) in every
 window, a smaller N2 or more points.
 
+**Window hand-offs measured (`--eval_seams RUN_DIR --eval_seams_out NPZ` in sing_1d.py, `tools/plot_seams.py`,
+2026-11-07, the user's question).** At each of the 31 seams t_k, on 400 radii in [0.03, R): the jump
+f_new(t_k) - f_prev(t_k) of the radial functions, of d_r f and of d_t f; the previous window's error against the 1D
+reference there; and the warm-start offset (the previous network evaluated with the new window's time scaling at
+t_k: each window's network sees t rescaled to [-1, 1] over its own window, so the warm start reproduces the previous
+window at ITS start, t_k - 0.25, not at the seam). Plots `plots/2026-11-07/seams_adm30_ic.png`, `_icd1.png`.
+Median band rms over the seams (r = 0.05-0.2 / 0.2-1 / 1-3 / 3-10 / 10-24):
+- `adm30_ic`: alpha jump 4e-5 5e-5 2e-5 2e-5 9e-6, chi 5e-6 7e-6 9e-6 2e-5 2e-5, Khat 4e-5 4e-5 3e-5 2e-5
+  1e-5; i.e. 5-20x below the error the previous window carries. d_t jumps ~1 % of d_t f.
+- `adm30_icd1` (`--ic_d1 1`): jumps 2-4x smaller in value and in r d_r (alpha 2e-5 2e-5 1e-5 8e-6 4e-6).
+- Warm-start offset: alpha 9e-3 7e-3 5e-3 1e-3 1e-5, Khat up to 3e-2: ~100x the final jump, removed by training.
+Do the seams add up to the error? Signed jumps summed over all seams against the error at t = 7.75 (band rms;
+correlation over r in the band; a crude test: it ignores that later windows propagate an earlier jump):
+- `adm30_ic`: chi sum 2e-4 4e-4 4e-4 (r = 1-3 / 3-10 / 10-24) vs error 2e-4 2e-4 5e-4, correlation +0.96 in
+  1-3 and +0.97 in 10-24; alpha 1-3 sum 4.8e-4 vs error 5.5e-4, +0.82. The outer chi error looks like
+  accumulated hand-off jumps.
+- `adm30_icd1`: the sums are 5-20x below the error inside r = 10 (alpha 1-3 8.5e-5 vs 1.9e-3) and uncorrelated
+  there, yet its errors are no smaller than adm30_ic's. Only at r = 10-24 do sum and error agree (+0.93 to
+  +0.99) in both runs.
+Reading: smaller jumps (icd1) did not give smaller errors inside r = 10, so there the error comes from the
+evolution inside the windows; near the outer boundary (r >= 10) the error is the accumulated hand-offs in both
+runs. The warm start's offset is avoidable: shifting the first layer's bias by twice its time column makes the
+warm-started network continue the previous one exactly at the seam (not tried).
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs
