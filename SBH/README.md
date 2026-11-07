@@ -2097,6 +2097,20 @@ training each window. Mini test (3 windows, 400 points, 250 iterations): offset 
 / 1.8e-15 with. Inside the new window the shifted network extrapolates the previous one's time dependence (its
 rescaled time in [1, 3]). Run `1d_T8_adm30_ic_ws` (Mendieta): `adm30_ic` plus `--warm_shift`, nothing else.
 
+**Result, `1d_T8_adm30_ic_ws` (Mendieta job 1185943, 1 h, 2026-11-07): alike `adm30_ic` - the continuous warm start
+changes nothing.** `tools/table_1d_runs.py` against adm30_ic at t = 2, 4, 6, 8: every band within 2x except, at t = 8,
+alpha r = 3-10 (9e-4 vs 4e-4) and chi r = 3-10 (7e-4 vs 3e-4), both 2.2-2.3x, at the edge of the rule; worst
+|m/M - 1| 2.2e-3 vs 2.5e-3; inner alpha r = 0.05-0.2 and Khat r = 0.05-1 at t = 8 2-3x better. Training: median over
+windows 1-31 of the first held loss 2.9e-6 vs 4.8e-6, of the best held loss 2.7e-7 vs 1.7e-7 (alike).
+Seams (`--eval_seams`, eval_data/seams/adm30_ic_ws.npz, plots/2026-11-07/seams_adm30_ic_ws.png; band rms of the jump
+over the 31 seams): alpha 1.3e-4 / 5.8e-5 / 4.1e-5 / 1.5e-5 in r = 0.2-1 / 1-3 / 3-10 / 10-24 vs 7.6e-5 / 3.5e-5 /
+2.4e-5 / 9.8e-6 (1.5-1.8x larger), chi and Khat alike. The summed jumps still match the error at r >= 10 for chi
+(+0.99) and at r = 1-3 for chi (+0.98), as in adm30_ic. (The `warm` entry of the seams file is the unshifted warm
+start, so it is the same for all runs.) Reading: the final jump is set by training against the IC term, not by
+where the warm start begins; removing the ~1e-2 starting offset neither shrinks the jumps nor the errors.
+Note for re-evaluating seams: `--eval_seams` must get the run's own flags (`--hard_ic --no_template --N_window 32
+--tfinal 8`, JAX_ENABLE_X64=1); with the defaults it evaluates a different ansatz and returns errors ~0.4.
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs
