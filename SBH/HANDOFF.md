@@ -107,6 +107,8 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Per-window second stage built (`--s2_window_iters`, README); `1d_T8_adm30_ic_s2w` (`--w_adm 30 --w_adm_ic 30
    --s2_window_iters 2000`) sent to Mendieta (hub left free for the Stationary recipe, which the hub stop cut at
    wr_prod_w1 iteration 7500; to be resumed from the Stationary session 7692b0d6).
+   2026-11-07: `1d_T8_adm30_ic_s2w` FAILED (second stage raised the held loss, damage handed on, NaN from t = 3;
+   cancelled; README has the diagnosis and the fixes to try).
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

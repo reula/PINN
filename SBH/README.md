@@ -2051,6 +2051,20 @@ history.csv: the second stage's rows continue the window's iteration count. Smok
 here each window is corrected before the next starts from it. First run: `1d_T8_adm30_ic_s2w` (Mendieta), one
 change against `1d_T8_adm30_ic`: `--s2_window_iters 2000`.
 
+**`1d_T8_adm30_ic_s2w` failed (Mendieta job 1185936, 2026-11-06/07; cancelled at window 14 after 5.4 h).** The
+second stage made the held loss worse in most windows and its damage was handed on: held loss at the end of the
+first stage -> after the second, window 0 5.3e-8 -> 3.6e-6 (the end-slice term; it had reached 4.8e-8 at s2
+iteration 1000, then jumped), 1 1.1e-7 -> 2.7e-6, 3 1.7e-7 -> 2.3e-5 (the training loss itself jumped to 1.7e-5 in
+the last block), 5 6.4e-7 -> 9.9e-5; window 4 the only gain (alike). From window 6 the first stage no longer
+recovers (held 1.7e-4, 4e-3 at window 7); NaN from window 11's second stage on (t = 3). Errors: alpha rms at
+t = 1 / 2 1.7e-4 / 2.3e-3 against adm30_ic's band values 2e-5 - 4e-4 / 7e-5 - 3e-4, i.e. ~10x worse by t = 2.
+Causes seen in the log: (1) the stage keeps its LAST iterate, also when a block has just blown up; (2) 19k
+correction parameters on 2000 interior / 250 end points per draw: the held end-slice term rises while the training
+loss stays flat (overfitting the draw), and the end slice is what the next window inherits; (3) the warm start:
+in window 3 the previous window's N2, switched on at once, raised the held loss 45x before the first block ended.
+Fixes not yet tried: keep the best held iterate (u1 itself, N2 = 0, counts), N2 fresh (zero last layer) in every
+window, a smaller N2 or more points.
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs
