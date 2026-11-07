@@ -79,6 +79,10 @@ ap.add_argument("--loss_orders", type=float, default=0,
                      "at the window end (+ OUT/loss_order_wKKK_oNN.pkl); the errors at the window end are also recorded at every "
                      "loss check (every --n_change), all in OUT/loss_orders.npz (snapshot = 1 for the saved ones); 0 = off")
 ap.add_argument("--n_change", type=int, default=250)
+ap.add_argument("--warm_shift", action="store_true",
+                help="continuous warm start (2026-11-07): each window's network sees t rescaled to [-1, 1] over its own window, "
+                     "so the plain warm start reproduces the previous window at its START; shifting the first layer's bias "
+                     "by 2 x its time column (equal windows) makes the new network continue the previous one, exact at the seam")
 ap.add_argument("--ic_d1", type=float, default=0.0,
                 help="weight of the first radial derivative in the IC / window hand-off term: lamg0 [mean|f - U|^2 "
                      "+ ic_d1 mean|r f' - r U'|^2 + ic_d2 mean|r^2 f'' - r^2 U''|^2] (r d/dr is scale-free; 2026-11-03)")
@@ -772,6 +776,15 @@ for k in range(k0, a.N_window):
     else:
         Pp, wp = prev
         Uic_fn = jax.jit(jax.vmap(lambda r, Pp=Pp, wp=wp: taylor_r(lambda rr: rad_fn(Pp, wp, wp[1], rr), r)))
+    if prev is not None and a.warm_shift:              # continue the previous network across the seam
+        d0 = P["net"]["params"]["MLP"]["Dense_0"]
+        P = {"net": {"params": {"MLP": {**P["net"]["params"]["MLP"],
+                                        "Dense_0": {"kernel": d0["kernel"], "bias": d0["bias"] + 2.0 * d0["kernel"][0]}}}}}
+    if prev is not None:                                  # warm-start offset at the seam, before training
+        Pp, wp = prev
+        off = jax.vmap(lambda r: rad_fn(P, win, win[0], r) - rad_fn(Pp, wp, wp[1], r))(jnp.asarray(REP_R))
+        print(f"window {k}: warm-start offset at the seam, max |f_new - f_prev| = {float(jnp.abs(off).max()):.2e}"
+              f" (alpha {float(jnp.abs(off[:, 8]).max()):.2e})", flush=True)
     w, unr = ns["flatten_util"].ravel_pytree(P)
     key, kh = jax.random.split(key)
     held = draw(kh, win, a.n_held, a.n_held // 8, a.n_held // 4, Uic_fn)

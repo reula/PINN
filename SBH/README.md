@@ -2087,7 +2087,15 @@ correlation over r in the band; a crude test: it ignores that later windows prop
 Reading: smaller jumps (icd1) did not give smaller errors inside r = 10, so there the error comes from the
 evolution inside the windows; near the outer boundary (r >= 10) the error is the accumulated hand-offs in both
 runs. The warm start's offset is avoidable: shifting the first layer's bias by twice its time column makes the
-warm-started network continue the previous one exactly at the seam (not tried).
+warm-started network continue the previous one exactly at the seam (`--warm_shift`, below).
+
+**`--warm_shift` (sing_1d.py, 2026-11-07, the user's go-ahead).** At the start of each window k >= 1 the warm-started
+network's first-layer bias is shifted by 2 x the time column of its kernel (equal windows: the new window's
+rescaled time is the previous one's minus 2), so before training the new window is an exact continuation of the
+previous network. Every run now prints the warm-start offset at the seam, max |f_new(t_k) - f_prev(t_k)|, before
+training each window. Mini test (3 windows, 400 points, 250 iterations): offset 1.3e-2 / 8.1e-2 without, 1.3e-15
+/ 1.8e-15 with. Inside the new window the shifted network extrapolates the previous one's time dependence (its
+rescaled time in [1, 3]). Run `1d_T8_adm30_ic_ws` (Mendieta): `adm30_ic` plus `--warm_shift`, nothing else.
 
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
