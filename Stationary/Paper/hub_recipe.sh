@@ -170,5 +170,20 @@ if [[ $PHASES == *F* ]]; then
     moments $R/wr_rot45_w4
     note F "rotated Weyl in the 3-D recipe done (wr_rot45)"
 fi
+# ----------------------------------------------------------------- G, H: complete phase B's 2 x 2 (Mendieta)
+# width 20 / 40 x 16384 / 32768 points.  qp_rot3 (20, 16384) and qp_rot4_n32768 (40, 32768) have the
+# recipe's config exactly (config diff: only the later default fields), but were graded against an
+# older reference: G regrades them against REF_FINAL.  H retrains (40, 32768) in the recipe, a
+# reproduction check of qp_rot4.  Mendieta: sbatch ... --wrap "bash Paper/hub_recipe.sh --run G".
+if [[ $PHASES == *G* ]]; then
+    for r in qp_rot3_w4 qp_rot4_n32768_w4; do grade $R/$r $REF_FINAL final; moments $R/$r $REF_FINAL final; done
+    note G "qp_rot3, qp_rot4_n32768 regraded against the final reference"
+fi
+if [[ $PHASES == *H* ]]; then
+    ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
+    chain rp_w40_n32768 4 "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}"
+    grade $R/rp_w40_n32768_w4 $REF_FINAL final; moments $R/rp_w40_n32768_w4 $REF_FINAL final
+    note H "rp_w40_n32768 (width 40, 32768 points, recipe) done"
+fi
 echo "=== hub_recipe $PHASES finished $(date -u '+%F %T UTC')"
 note done "phases $PHASES finished"
