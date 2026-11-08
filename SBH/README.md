@@ -1970,6 +1970,20 @@ points, 500 iterations): constraint part 0, loss falls as usual. Run `1d_T8_zz` 
 `1d_T8` plus `--zero_z --w_constraint 0`, no ADM penalty, as the user specified; grade against `1d_T8` (fields)
 and `1d_T8_adm30_ic` (mass).
 
+**Three single changes against `adm30_ic` (sing_1d.py, 2026-11-08, the user's choices from TRIES_1D.md "how to follow"):**
+- `--keep_best`: each window keeps the iterate with the lowest held loss instead of the last one (a non-finite held
+  loss is skipped), as the revised per-window second stage does. Run `1d_T8_adm30_ic_kb`.
+- `--hidden 60` (6 x 60, 19090 parameters, the s2 correction network's size, vs 6 x 40, 8730): the first test of a
+  bigger main network in 1D; every T = 8 run so far used 6 x 40. Run `1d_T8_adm30_ic_6x60`.
+- `--n_mid N --mid_lo 0.2 --mid_hi 24`: N extra points per draw, log-uniform in r on [0.2, 24], i.e. around and
+  outside the horizon and not into the puncture (the user's instruction; the apparent horizon of the reference,
+  R_areal = 2M, sits at r = 0.25 at t = 0, 0.44-0.45 at t = 2-4 and ~0.41 at t = 6-8), added to the interior,
+  end-slice, IC and held draws in proportion. With N = 6000 the points per draw in r < 0.05 / 0.05-0.2 / 0.2-1 /
+  1-3 / 3-10 / 10-24 go from 44 / 221 / 547 / 408 / 319 / 461 to 44 / 221 / 2566 / 1797 / 1827 / 1545 (4x in total,
+  the inner clouds untouched). Run `1d_T8_adm30_ic_mid` (`--n_mid 6000`).
+Mini smoke tests (2 short windows each): keep_best reports the kept iterate; n_mid runs (2x the time per iteration
+at 1600 vs 400 points). Mendieta jobs 1185966-68 (`1d_T8_zz` was running since ~10:15 UTC).
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,

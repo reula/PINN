@@ -79,6 +79,15 @@ ap.add_argument("--loss_orders", type=float, default=0,
                      "at the window end (+ OUT/loss_order_wKKK_oNN.pkl); the errors at the window end are also recorded at every "
                      "loss check (every --n_change), all in OUT/loss_orders.npz (snapshot = 1 for the saved ones); 0 = off")
 ap.add_argument("--n_change", type=int, default=250)
+ap.add_argument("--keep_best", action="store_true",
+                help="(2026-11-08, the user's go-ahead) each window keeps the iterate with the lowest held loss instead of "
+                     "the last one (some windows end on a held-loss spike: adm30_ic window 9 at 1.6)")
+ap.add_argument("--n_mid", type=int, default=0,
+                help="(2026-11-08, the user's idea) extra points per draw, log-uniform in r on [--mid_lo, --mid_hi] (around "
+                     "and outside the horizon, r_h ~ 0.25-0.45, not into the puncture), added to the interior, end-slice, IC "
+                     "and held draws in proportion to their size; 0 = off")
+ap.add_argument("--mid_lo", type=float, default=0.2)
+ap.add_argument("--mid_hi", type=float, default=24.0)
 ap.add_argument("--zero_z", action="store_true",
                 help="(2026-11-08, the user's idea) Theta and Z^i identically zero: the network's Theta output is replaced "
                      "by 0 and its g output (Ghat^r) by the conformal metric's own Gt^r(a, b, a', b'), so the CCZ4 residual "
@@ -400,6 +409,10 @@ def radii(key, n):
     rs.append(R * jax.random.uniform(keys[3], (n - n_log - sum(sizes),)) ** (1 / 3))
     if n_log > 0:
         rs.append(a.log_rmin * (R / a.log_rmin) ** jax.random.uniform(keys[4], (n_log,)))
+    if a.n_mid > 0:                                       # extra points around and outside the horizon (--n_mid)
+        n_mid = max(int(round(a.n_mid * n / a.n_int)), 1)
+        km = jax.random.fold_in(keys[4], 1)
+        rs.append(a.mid_lo * (a.mid_hi / a.mid_lo) ** jax.random.uniform(km, (n_mid,)))
     return jnp.minimum(jnp.concatenate(rs), R)
 
 
@@ -410,8 +423,9 @@ def axis(t, r):
 def draw(key, win, n_int, n_end, n_ic, Uic_fn):
     t0, t1 = float(win[0]), float(win[1])
     k = jax.random.split(key, 6)
-    Qi = axis(t0 + (t1 - t0) * jax.random.uniform(k[0], (n_int,)), radii(k[1], n_int))
-    Qe = axis(jnp.full((n_end,), t1), radii(k[2], n_end))
+    ri, re = radii(k[1], n_int), radii(k[2], n_end)       # n_int + n_mid points with --n_mid
+    Qi = axis(t0 + (t1 - t0) * jax.random.uniform(k[0], ri.shape), ri)
+    Qe = axis(jnp.full(re.shape, t1), re)
     tb = t0 + (t1 - t0) * jax.random.uniform(k[3], (max(n_end // 2, 8),))
     ric = radii(k[4], n_ic)
     if a.adm_vol > 0 and a.w_adm > 0:
@@ -843,6 +857,7 @@ for k in range(k0, a.N_window):
         LO = {k_: list(v) for k_, v in np.load(LO_F).items() if k_ not in ("r", "fields")} if os.path.exists(LO_F) else \
             {"window": [], "iteration": [], "order": [], "snapshot": [], "held": [], "L0": [], "err": [], "mass": []}
         print(f"  loss orders: held loss before training {LO_L0:.3e}", flush=True)
+    kb_h, kb_w, kb_it = np.inf, None, 0                           # --keep_best: lowest held loss so far
     while it < n_iters:
         key, kd = jax.random.split(key)
         batch = draw(kd, win, a.n_int, a.n_end, a.n_ic, Uic_fn)
@@ -851,6 +866,8 @@ for k in range(k0, a.N_window):
         hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
         row = dict(window=k, iteration=it, seconds=round(time.time() - t_start, 1),
                    train=float(loss_fn(w, unr, win, batch)), held=sum(hp.values()), **{f"held_{n}": hp[n] for n in PART_NAMES})
+        if a.keep_best and np.isfinite(row["held"]) and row["held"] < kb_h:
+            kb_h, kb_w, kb_it = row["held"], w, it
         new = not os.path.exists(hist)
         with open(hist, "a", newline="") as fh:
             wr = csv.DictWriter(fh, fieldnames=list(row))
@@ -879,6 +896,9 @@ for k in range(k0, a.N_window):
                       f"{np.sqrt((err_o[:, 8] ** 2).mean()):.2e}, chi {np.sqrt((err_o[:, 4] ** 2).mean()):.2e}",
                       flush=True)
                 LO_next = o + 1
+    if a.keep_best and kb_w is not None:
+        print(f"  keep best: held {kb_h:.3e} at it {kb_it} (last it {it}: {row['held']:.3e})", flush=True)
+        w = kb_w
     P = unr(w)
     if a.s2_window_iters > 0:                             # per-window second stage: freeze net, train net2
         P1net = P["net"]

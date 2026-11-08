@@ -124,6 +124,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Sobolev+dt fits done (README): d_t was the missing constraint (fit converges, PINN loss 10-1e4x below the r-only
    fit), still 1e3-1e7x the trained windows'. `--zero_z` built (Theta = Z = 0); `1d_T8_zz` (Mendieta 1185965,
    `--zero_z --w_constraint 0`) queued: grade vs 1d_T8 (fields) and adm30_ic (mass).
+   Then three single changes vs adm30_ic on Mendieta (README): `1d_T8_adm30_ic_kb` (--keep_best), `_6x60` (--hidden 60),
+   `_mid` (--n_mid 6000: 4x the points, log-uniform on r = 0.2-24, inner clouds untouched). The user: grade on the mass
+   and t <= 4 (or two seeds) before judging outer alpha at t = 8; the outer-boundary test (item 4) explained, not run;
+   item 6 (3D) waits for a better scheme.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

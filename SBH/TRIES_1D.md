@@ -80,6 +80,9 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 38 | seams (`--eval_seams`, runs 17, 18, 29) | jump at each hand-off vs the error | jumps 5-20x below the error; they add up to the error only at r >= 10; inside r = 10 the error comes from the evolution within the windows |
 | 39 | Sobolev + d_t fits (`--fit_dt 1`, windows 0, 16, 31) | the same with d_t f matched to the reference's time differences | converges (errors 1e-5 - 1e-4, at or below the PINN's); PINN loss 7.5e-5 / 7.5e-2 / 1.1, 10 - 1e4 x below the r-only fit, still 1e3 - 1e7 x the trained windows' |
 | 40 | `1d_T8_zz` (`--zero_z --w_constraint 0`) | Theta = 0, Z^i = 0 (g from the conformal metric): the residual is the Einstein system, no zeta term, no ADM penalty | queued on Mendieta, 8 Nov | pending; vs `1d_T8` (fields) and `adm30_ic` (mass) |
+| 41 | `1d_T8_adm30_ic_kb` (`--keep_best`) | each window keeps its lowest-held-loss iterate | Mendieta, 8 Nov | pending; vs 17 |
+| 42 | `1d_T8_adm30_ic_6x60` (`--hidden 60`) | main network 6 x 60 (19k parameters) instead of 6 x 40 | Mendieta, 8 Nov | pending; vs 17 |
+| 43 | `1d_T8_adm30_ic_mid` (`--n_mid 6000`) | 4x the points, the extra ones log-uniform on r = 0.2-24 (around and outside the horizon, r_h ~ 0.25-0.45) | Mendieta, 8 Nov | pending; vs 17 |
 
 ## What it adds up to
 
@@ -95,16 +98,18 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
    has the same 1e-4 error and a loss 1e3 - 1e7 x the PINN's: the loss-error relation is many-to-one and the PINN's
    loss is already on the solution branch; the error floor is not a failure to lower the residual.
 
-## How to follow (candidates, cheapest first)
+## How to follow (candidates, cheapest first; the user's decisions of 8 Nov in brackets)
 
 1. Keep the best held-out iterate in the first stage, as 28 does in the second (adm30_ic window 9 ended on a
-   held loss of 1.6; two windows of 28 on 0.6 and 3.5). One line, one run.
-2. Grade every change on the mass and on t <= 4, or run two seeds, before calling outer alpha at t = 8 (item 3).
+   held loss of 1.6; two windows of 28 on 0.6 and 3.5). One line, one run. [ok: run 41]
+2. Grade every change on the mass and on t <= 4, or run two seeds, before calling outer alpha at t = 8 (item 3). [agreed]
 3. The in-window floor: the held loss floors at 3e-8 - 3e-7 because of points the draw misses (32). Untested
-   single changes against 17: 4x the interior points (`--n_int 8000`), and a wider network. Both cost time per
-   iteration, not new code.
-4. The outer boundary as an error source (untested; 12 was stopped): R = 48 to t = 8 against the free-space
-   reference, or the reference rerun with the PINN's Sommerfeld condition at r = 24.
+   single changes against 17: a wider network (6 x 60, run 42) and 4x the points, put around and outside the horizon,
+   not into the puncture (run 43). [both launched]
+4. The outer boundary as an error source (untested; 12 was stopped): we impose Sommerfeld at r = 24, which is only
+   approximately transparent (gauge speeds differ from c, 1/r tails), while the reference's boundary is at r = 60;
+   test with R = 48 to t = 8, or the reference rerun with the PINN's Sommerfeld condition at r = 24. [explained; not run]
 5. 39 says the loss as formulated does not see the remaining 1e-4: changes to the formulation (40: Theta = Z = 0;
    the ADM rows at the residual weight) are the kind of thing to try, not more optimisation.
-6. `--w_adm_ic 10`, and the penalty in 3D (`--w_adm` in sing_pinn.py): the step back to 3D once 1D settles.
+6. `--w_adm_ic 10`, and the penalty in 3D (`--w_adm` in sing_pinn.py): the step back to 3D once 1D settles. [waits for a
+   better scheme]
