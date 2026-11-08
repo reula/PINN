@@ -140,6 +140,9 @@ ap.add_argument("--fit_window", type=int, default=0, help="window index for --fi
 ap.add_argument("--fit_d1", type=float, default=0.0,
                 help="--fit_ref: also fit r f' to r f_ref' with this weight (f_ref' by 4th-order differences on the grid)")
 ap.add_argument("--fit_d2", type=float, default=0.0, help="--fit_ref: also fit r^2 f'' to r^2 f_ref'' with this weight")
+ap.add_argument("--fit_dt", type=float, default=0.0,
+                help="--fit_ref (2026-11-08, the user's idea): also fit d_t f to the reference's time derivative (4th-order "
+                     "central differences of its snapshots in t) with this weight, so the fit constrains the time dependence")
 ap.add_argument("--eval_tr", default=None, metavar="PKL",
                 help="evaluate the residual of the network in PKL (a window_KKK.pkl or fit_ref_wKKK.pkl) on a (t, r) grid "
                      "over its window: per point the Einstein and gauge parts as the loss weights them (lam x mean of the "
@@ -572,16 +575,19 @@ if a.fit_ref:
             D[:, 2:-2] = (-c[:, 4:] + 16 * c[:, 3:-1] - 30 * c[:, 2:-2] + 16 * c[:, 1:-3] - c[:, :-4]) / (12 * h * h)
         return D
 
-    SOB = a.fit_d1 > 0 or a.fit_d2 > 0
+    SOB = a.fit_d1 > 0 or a.fit_d2 > 0 or a.fit_dt > 0
     D1J = jnp.asarray(fd_r(FR_U[J], float(FR_R[1] - FR_R[0]), 1))
     D2J = jnp.asarray(fd_r(FR_U[J], float(FR_R[1] - FR_R[0]), 2))
+    dt_ref = float(FR_T[1] - FR_T[0])
+    assert np.allclose(np.diff(FR_T), dt_ref), "--fit_dt needs equally spaced snapshots"
+    DTJ = jnp.asarray(np.transpose(fd_r(np.transpose(FR_U, (1, 0, 2)), dt_ref, 1), (1, 0, 2))[J])   # d_t on all snapshots, then the window
 
     def fit_batch(key, n):
         """n points on the reference's own (t, r) nodes: snapshot in the window, radius = the run's cloud snapped to the grid."""
         k1, k2 = jax.random.split(key)
         it = jax.random.randint(k1, (n,), 0, len(J))
         ir = jnp.clip(jnp.round((radii(k2, n) - FR_R[0]) / dr_ref).astype(int), 0, len(FR_R) - 1)
-        return TJ[it], jnp.asarray(FR_R)[ir], UJ[it, ir], D1J[it, ir], D2J[it, ir]
+        return TJ[it], jnp.asarray(FR_R)[ir], UJ[it, ir], D1J[it, ir], D2J[it, ir], DTJ[it, ir]
 
     def taylor2(g, r):
         v, d1 = jax.jvp(g, (r,), (1.0,))
@@ -589,13 +595,17 @@ if a.fit_ref:
         return v, d1, d2
 
     def fit_loss(P, b):
-        t, r, U, D1, D2 = b
+        t, r, U, D1, D2, DT = b
         if not SOB:
             f = jax.vmap(lambda tt, rr: rad_fn(P, win, tt, rr))(t, r)
             return jnp.mean((f - U) ** 2)
         f, f1, f2 = jax.vmap(lambda tt, rr: taylor2(lambda q: rad_fn(P, win, tt, q), rr))(t, r)
-        return (jnp.mean((f - U) ** 2) + a.fit_d1 * jnp.mean((r[:, None] * (f1 - D1)) ** 2)
-                + a.fit_d2 * jnp.mean((r[:, None] ** 2 * (f2 - D2)) ** 2))
+        L = (jnp.mean((f - U) ** 2) + a.fit_d1 * jnp.mean((r[:, None] * (f1 - D1)) ** 2)
+             + a.fit_d2 * jnp.mean((r[:, None] ** 2 * (f2 - D2)) ** 2))
+        if a.fit_dt > 0:
+            ft = jax.vmap(lambda tt, rr: jax.jvp(lambda q: rad_fn(P, win, q, rr), (tt,), (1.0,))[1])(t, r)
+            L = L + a.fit_dt * jnp.mean((ft - DT) ** 2)
+        return L
 
     Uic_fn = jax.jit(jax.vmap(lambda r: jnp.stack([jnp.interp(r, jnp.asarray(FR_R), jnp.asarray(FR_U[j0, :, i]))
                                                     for i in range(10)])[None]))
@@ -616,7 +626,8 @@ if a.fit_ref:
         + (("adm_ic",) if a.w_adm_ic > 0 else ())
     rows, t_start, it = [], time.time(), 0
     print(f"fit to {a.fit_ref}, window {a.fit_window}: t in [{t0:g}, {t1:g}], {len(J)} snapshots, {w.size} parameters"
-          + (f", Sobolev weights r f' {a.fit_d1:g}, r^2 f'' {a.fit_d2:g}" if SOB else ""), flush=True)
+          + (f", Sobolev weights r f' {a.fit_d1:g}, r^2 f'' {a.fit_d2:g}, d_t f {a.fit_dt:g} (dt {dt_ref:g})" if SOB else ""),
+          flush=True)
     while it < a.iters:
         key, kd = jax.random.split(key)
         b = fit_batch(kd, a.n_int)

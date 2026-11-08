@@ -15,6 +15,8 @@
 # 32000 fit points per draw (the baseline's 128000 is too slow on the CPU), 8000 iterations.
 # Sobolev variants (runs/fit_ref_*_sob, --fit_d1 1 --fit_d2 1): also r f' and r^2 f'' (1D) / r grad u and r^2 grad grad u
 # (3D) against the reference's 4th-order grid derivatives (accurate to 1e-8 for r >= 0.02 on the exact t = 0 data).
+# Sobolev+dt (runs/fit_ref_1d_sobt, 2026-11-08, the user's idea): also d_t f against 4th-order time differences of the
+# snapshots (dt 0.025), so the fit constrains the time dependence the residual is made of.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -49,5 +51,12 @@ for k in 16 31; do
     echo "--- 3D Sobolev window $k  $(date -u '+%F %T UTC')"
     "$PY" -u sing_pinn.py --out runs/fit_ref_3d_sob --template bl --hard_ic --no_template --tfinal 8 --N_window 32 \
         --fit_ref "$REFN" --fit_window "$k" --n_int 32000 --n_held 8000 --iters 8000 --fit_d1 1 --fit_d2 1 >> logs/mini_fit_ref_3d_sob.log 2>&1
+done
+for k in 0 16 31; do
+    f=$(printf "runs/fit_ref_1d_sobt/fit_ref_w%03d.npz" "$k")
+    [ -e "$f" ] && { echo "skip 1D Sobolev+dt window $k"; continue; }
+    echo "--- 1D Sobolev+dt window $k  $(date -u '+%F %T UTC')"
+    "$PY" -u sing_1d.py --out runs/fit_ref_1d_sobt --hard_ic --no_template --tfinal 8 --N_window 32 \
+        --fit_ref "$REFN" --fit_window "$k" --iters 4000 --w_adm 30 --w_adm_ic 30 --fit_d1 1 --fit_d2 1 --fit_dt 1 >> logs/mini_fit_ref_1d_sobt.log 2>&1
 done
 echo "=== fit_ref done $(date -u '+%F %T UTC')"
