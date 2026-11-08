@@ -80,10 +80,10 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 37 | H diagnostic (colleagues' relation dm/dR = R^2 H / 4) | rebuilt vs measured mass | holds to 2-10%; adm30_ic leaves a one-sign <H> ~ -1e-6 outside r = 3 (the colleagues' bias, 100x weaker) |
 | 38 | seams (`--eval_seams`, runs 17, 18, 29) | jump at each hand-off vs the error | jumps 5-20x below the error; they add up to the error only at r >= 10; inside r = 10 the error comes from the evolution within the windows |
 | 39 | Sobolev + d_t fits (`--fit_dt 1`, windows 0, 16, 31) | the same with d_t f matched to the reference's time differences | converges (errors 1e-5 - 1e-4, at or below the PINN's); PINN loss 7.5e-5 / 7.5e-2 / 1.1, 10 - 1e4 x below the r-only fit, still 1e3 - 1e7 x the trained windows' |
-| 40 | `1d_T8_zz` (`--zero_z --w_constraint 0`) | Theta = 0, Z^i = 0 (g from the conformal metric): the residual is the Einstein system, no zeta term, no ADM penalty | queued on Mendieta, 8 Nov | pending; vs `1d_T8` (fields) and `adm30_ic` (mass) |
-| 41 | `1d_T8_adm30_ic_kb` (`--keep_best`) | each window keeps its lowest-held-loss iterate | Mendieta, 8 Nov | pending; vs 17 |
-| 42 | `1d_T8_adm30_ic_6x60` (`--hidden 60`) | main network 6 x 60 (19k parameters) instead of 6 x 40 | Mendieta, 8 Nov | pending; vs 17 |
-| 43 | `1d_T8_adm30_ic_mid` (`--n_mid 6000`) | 4x the points, the extra ones log-uniform on r = 0.2-24 (around and outside the horizon, r_h ~ 0.25-0.45) | Mendieta, 8 Nov | pending; vs 17 |
+| 40 | `1d_T8_zz` (`--zero_z --w_constraint 0`) | Theta = 0, Z^i = 0 (g from the conformal metric): the residual is the Einstein system, no zeta term, no ADM penalty | to t = 2.5 alike the control in fields and mass (worst 6.1e-3 vs 5.6e-3); held spikes 0.5-30 in window 9, NaN in window 10 (1/r, sqrt(a + b) near the puncture) | no mass gain from the constraints at the residual weight; blew up; not pursued |
+| 41 | `1d_T8_adm30_ic_kb` (`--keep_best`) | each window keeps its lowest-held-loss iterate | mass 1.7-2.2x better at every t (1.5e-3); t = 4 alpha 2-4x better; loss floor unchanged; last iterate was best in only 6 of 32 windows | **better, free: adopt into the base** |
+| 42 | `1d_T8_adm30_ic_6x60` (`--hidden 60`) | main network 6 x 60 (19k parameters) instead of 6 x 40 | mass 2.2x better (1.1e-3, best of the w_adm 30 runs); t = 4 alpha 2.5x worse, t = 8 alike; loss floor unchanged; 2x the time | mixed: mass yes, fields no |
+| 43 | `1d_T8_adm30_ic_mid` (`--n_mid 6000`) | 4x the points, the extra ones log-uniform on r = 0.2-24 (around and outside the horizon, r_h ~ 0.25-0.45) | held-loss floor 2-3x lower (8.6e-8); mass and fields alike at every t | alike: the loss moved, the error did not |
 
 ## What it adds up to
 
@@ -97,7 +97,9 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 5. The in-window error is where the gain must come from, but more iterations (32), a second network (28) and
    points nearer the puncture (21, 22) did not lower it. A network with the reference's values and derivatives (39)
    has the same 1e-4 error and a loss 1e3 - 1e7 x the PINN's: the loss-error relation is many-to-one and the PINN's
-   loss is already on the solution branch; the error floor is not a failure to lower the residual.
+   loss is already on the solution branch; the error floor is not a failure to lower the residual. 41-43 repeat it:
+   4x the points lowered the loss 2-3x and left the error alone; keep-best and 6 x 60 halved the mass error without
+   touching the loss.
 
 ## How to follow (candidates, cheapest first; the user's decisions of 8 Nov in brackets)
 

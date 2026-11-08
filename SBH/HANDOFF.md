@@ -128,6 +128,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    `_mid` (--n_mid 6000: 4x the points, log-uniform on r = 0.2-24, inner clouds untouched). The user: grade on the mass
    and t <= 4 (or two seeds) before judging outer alpha at t = 8; the outer boundary is ruled out as the error source
    (no incoming front; R = 48 was alike the control: README, TRIES_1D 4); item 6 (3D) waits for a better scheme.
+   Results (README, TRIES_1D 40-43): kb mass 2x better and t <= 4 fields 2-4x better at no cost (adopt: the base
+   should become adm30_ic + --keep_best); 6x60 mass 2.2x better, early alpha worse, loss floor unmoved; mid loss floor
+   2-3x lower, errors alike; zz alike the control to t = 2.5 (no mass gain) then NaN from window 10 (1/r, sqrt(a+b)
+   near the puncture). Nothing running.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):

@@ -1997,6 +1997,39 @@ ways), worst |m/M - 1| 9.2e-4 / 4.5e-3 / 3.7e-3 vs 3.7e-3 / 5.1e-3 / 7.9e-3; it 
 boundary changed nothing, not for lack of time. So the deficit is a coherent bias of the solution the loss selects
 (the <H> bias of the H diagnostic), not boundary scatter; TRIES_1D.md item 4 is struck out.
 
+**Results of the four Mendieta runs (done 2026-11-08 09:22 - 11:04 UTC; `tools/table_1d_runs.py` at t = 2, 4, 6, 8; worst
+|m/M - 1| over r >= 0.2 up to t = 2 / 4 / 6 / 8; alpha bands r = 0.05-0.2 / 0.2-1 / 1-3 / 3-10):**
+1. `1d_T8_adm30_ic_kb` (`--keep_best`), 59 min: worst mass 6.7e-4 / 1.1e-3 / 1.5e-3 / 1.5e-3 vs adm30_ic's 1.3e-3 /
+   2.4e-3 / 2.5e-3 / 2.5e-3 (1.7-2.2x better at every t); at t = 4 alpha 1e-4 1e-4 2e-4 1e-4 vs 2e-4 4e-4 5e-4 5e-4
+   (2-4x better), chi alike; at t = 8 inside r = 3 alike or better, outer alpha 3e-3 (seed scatter). The kept iterate
+   was the last one in only 6 of 32 windows (median kept iteration 3000 of 4000; windows 10, 16, 17 kept 750-1750):
+   the last iterate is usually not the best. Median best held 2.3e-7 (alike). **Better: mass 2x, early fields 2-4x,
+   at no cost. Adopt into the base.**
+2. `1d_T8_adm30_ic_6x60` (`--hidden 60`, 19090 parameters), 1 h 55 min (201 s per window vs 217: the dense SSBroyden
+   matrix is not the cost at this size): worst mass 8.0e-4 / 9.9e-4 / 1.1e-3 / 1.1e-3 (2.2x better than adm30_ic at
+   every t, the best to t = 8 of all runs with w_adm 30); at t = 8 alpha 4e-4 6e-4 1e-4 3e-4 (r = 1-3 5x better,
+   else alike), chi alike; at t = 4 alpha 0.2-1 and 1-3 1e-3 (2.5x worse). Median best held 2.1e-7, best Einstein
+   part 4.5e-8 vs 6.5e-8: the loss floor hardly moved with 2.2x the parameters. Mixed: mass better, early alpha
+   worse, late alpha alike.
+3. `1d_T8_adm30_ic_mid` (`--n_mid 6000`: 8000 points per draw, the extra ones on r = 0.2-24), 1 h 46 min (184 s per
+   window): median best held 8.6e-8 and Einstein part 2.1e-8, 2-3x below adm30_ic (the floor DID move with 4x the
+   points), yet the errors did not: worst mass 8.6e-4 / 1.6e-3 / 1.8e-3 / 2.3e-3 (alike, 1.1-1.5x), fields alike at
+   every t (t = 2: alpha 1e-4 4e-5 2e-4 8e-5 vs 3e-4 7e-5 7e-5 1e-4; t = 8: 2e-4 5e-4 9e-4 1e-3 vs 3e-4 7e-4 5e-4
+   4e-4). One more case of the loss going down and the error staying.
+4. `1d_T8_zz` (`--zero_z --w_constraint 0`, vs the control `1d_T8`), 4 h 52 min (738 s per window, 3.4x: the nested
+   derivative for g): to t = 2.5 alike the control in every band (t = 2: alpha 2e-4 7e-5 9e-5 5e-5 vs 2e-4 6e-5 2e-4
+   7e-5; chi alike) and in the mass (worst 6.1e-3 vs 5.6e-3; m/M - 1 at r = 10 -6.0e-3 vs -4.9e-3): the constraints
+   inside the residual at weight 1 do not fix the mass that the r^2-weighted penalty fixes. Then it blew up: in
+   window 9 (t = 2.25-2.5) the held loss was 0.5 - 30 (Einstein part) at every check while the training loss was
+   1e-7, and in window 10 the training itself went NaN at iteration 3750; every later window inherited NaN. The
+   Einstein rows with g = Gt^r(a, b) carry 1/r and 1/(a sqrt(a + b)) and the Theta/Ghat rows are now the
+   constraints with their 1/chi, 1/r^2 weights near the puncture: a held point at r << 0.05 (the inner cloud has them)
+   or a + b <= 0 at one point gives the spikes and the NaN. A guarded version (floor on a + b, `--keep_best`, or
+   `--adm_rmin`-like masking of the constraint rows inside r ~ 0.05) would survive, but the first 10 windows already
+   say it brings no mass gain. Not pursued unless asked.
+Across 1-3: the held-loss floor and the error are decoupled once more (mid: loss 2-3x down, error flat; 6x60: loss flat,
+mass 2x better; kb: loss flat, mass 2x better). What helped the mass (kb, 6x60) did so without lowering the loss.
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
