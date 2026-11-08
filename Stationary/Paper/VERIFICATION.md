@@ -432,3 +432,22 @@ stopped on stall).
 At -0.25 the overfitting is gone and the error unchanged: the width-40 result is now clean. At -0.30
 more points reduce the overfitting (170 -> 39) but not the error, and M2 is still 5% off: the limit
 of the method at this resolution, not a sampling artefact.
+
+### Moments and the translation illustration against the final reference (2026-11-08)
+
+tab:moments regraded (scripts/gh_moments_runs.py --ref runs/ab_none_w2/specref_nonlinear_fine.npz --tag
+final; reference M_ADM 0.583847, M2 0.174715, M4 0.021964, window spread 4.2e-6 / 1.16e-4 / 7.4e-4):
+
+| run | M_ADM net - spec | M2 | M4 |
+|---|---|---|---|
+| ab_none_w2 (with COM) | -3.6e-8 | +2.4e-7 | +2.4e-9 |
+| fn_nocom_w2 (without) | +2.1e-9 | -3.1e-7 | +2.8e-6 |
+| qp_rot3_w4 (3-D, width 20; phase G) | -5.9e-6 | +2.4e-5 | -1.2e-3 |
+| qp_rot4_n32768_w4 (3-D, width 40; phase G) | -4.0e-7 | +3.5e-6 | -3.6e-5 |
+| rp_w40_n32768_w4 (its rerun; phase H) | -8.4e-8 | -3.5e-8 | -3.0e-5 |
+
+II.D illustration (review item 10), replaced by the paper's own pair: the l = 1 coefficient of
+P = (1 - lambda^2)/(4 lambda) on the sphere rho = 100 (48-point Gauss-Legendre, meridian) is -1.104e-7 for
+fn_nocom_w2 and +3.9e-11 for ab_none_w2; d_z / rho^2 = M_ADM a_z / rho^2 = -1.063e-7.  At rho = 10:
+-9.60e-6 against -1.063e-5.  The old "|a| ~ 0.04 -> 2.5e-6" (COM_GAUGE.md, old formulation) is
+consistent with the same law (0.58 x 0.0445 / 1e4 = 2.6e-6).
