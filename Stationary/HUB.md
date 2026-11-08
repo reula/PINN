@@ -1546,7 +1546,7 @@ When nobody keeps JupyterLab open, run the keepalive on the mini. It types a no-
 terminal every 20 minutes and stops by itself when the batch log says finished. It also stops, and sends
 an ntfy notice, if the server has gone; it never starts a server.
 
-    (nohup bash Stationary/Paper/hub_keepalive.sh > ~/hub_keepalive.log 2>&1 < /dev/null &)
+    (nohup bash Stationary/hub_keepalive.sh > ~/hub_keepalive.log 2>&1 < /dev/null &)
 
 The optional arguments are the log on serafin and the finish pattern. The interval is set with INTERVAL
 (in seconds).
@@ -1562,7 +1562,7 @@ Plan batches to fit in 24 h, or split them between the hub and Mendieta.
 **Automatic relaunch (2026-11-08).** The keepalive now does that itself when given the command:
 
     (RELAUNCH="cd ~/serafin/Julia/PINN/Stationary && bash Paper/hub_recipe.sh ABCDEF" \
-     nohup bash Stationary/Paper/hub_keepalive.sh > ~/hub_keepalive.log 2>&1 < /dev/null &)
+     nohup bash Stationary/hub_keepalive.sh > ~/hub_keepalive.log 2>&1 < /dev/null &)
 
 When the server has gone it starts a new one, sends RELAUNCH (finished runs are skipped, the run in
 progress resumes from ckpt.pkl; grades and moments of finished phases are recomputed, which is cheap),

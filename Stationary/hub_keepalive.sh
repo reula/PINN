@@ -9,7 +9,7 @@
 # which is user activity.  It stops by itself when LOG (on serafin, the same filesystem as the hub)
 # contains DONE, and it stops if the server has gone (it never starts one).
 #
-#   (nohup bash Stationary/Paper/hub_keepalive.sh [LOG] [DONE] > ~/hub_keepalive.log 2>&1 < /dev/null &)   # macOS: no setsid
+#   (nohup bash Stationary/hub_keepalive.sh [LOG] [DONE] > ~/hub_keepalive.log 2>&1 < /dev/null &)   # macOS: no setsid
 #   defaults: LOG = Julia/PINN/Stationary/logs/hub_recipe.log, DONE = 'hub_recipe .* finished'
 #   RELAUNCH='<hub command>': when the server has gone, start a new one and send this command (e.g.
 #   "cd ~/serafin/Julia/PINN/Stationary && bash Paper/hub_recipe.sh F"; the batch skips finished runs and
@@ -17,7 +17,7 @@
 #   stops a server ~24 h after it started (HUB.md 19).  Without RELAUNCH it notifies and stops.
 # ---------------------------------------------------------------------------
 set -uo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"      # <repo>
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"      # <repo>
 LOG=${1:-Julia/PINN/Stationary/logs/hub_recipe.log}
 DONE=${2:-hub_recipe .* finished}
 INTERVAL=${INTERVAL:-1200}
