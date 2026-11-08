@@ -2124,6 +2124,30 @@ Note for re-evaluating seams: `--eval_seams` must get the run's own flags (`--ha
   (key seed + 1 + k) instead of the previous window's trained one, so only the IC term carries the hand-off.
   Mini smoke test: runs; offset at the first seam 5e-2 before training.
 
+**Results (graded 2026-11-08 with tools/table_1d_runs.py against adm30_ic at t = 4, 6, 8):**
+- **Second seed `adm30_ic_s8`: the seed scatter is as large as most of our verdicts.** At t = 8 alpha r = 0.2-1 /
+  1-3 / 3-10 is 2e-3 / 3e-3 / 3e-3 vs 7e-4 / 5e-4 / 4e-4 (3-7x worse); chi r = 3-10 1e-3 vs 3e-4 (3x); worst
+  |m/M - 1| 2.7e-3 vs 2.5e-3 (alike). At t = 4 alike, inner alpha 4x better. So differences of up to ~5x in
+  outer alpha at t = 8 between single runs are seed noise; mass and t <= 4 are steadier. Earlier one-seed
+  verdicts on outer alpha (adm30_ic_vol, s2_1d_T8, s2_adm30_ic, logonly05, adm30_ic_ws) are within this scatter.
+- **Revised per-window second stage `adm30_ic_s2wb` (2 h 36 min): no blow-up; the second stage helps little.** Kept
+  an improved iterate in 29 of 32 windows, but the held loss dropped by only 0.1-35% (median ~8%); fell back to
+  N2 = 0 in 3 windows (two of them windows whose first stage had ended on a held-loss spike, 0.60 and 3.5).
+  Errors: worst |m/M - 1| 2.0e-3 (best of the four); t = 4 and 6 alpha 2-8x better than adm30_ic in r = 0.05-3;
+  t = 8 alpha r = 3-10 3e-3 vs 4e-4 and chi r = 1-3 1e-3 vs 2e-4 (like s8). Within the seed scatter: alike.
+- **Cold start `adm30_ic_cold`: worse.** Worst |m/M - 1| 7.5e-3 (3x), mass at r = 0.3-3 -1.5e-3 to -1.9e-3 from
+  t = 4 on (4-80x adm30_ic's), Khat r = 0.05-0.2 9e-3 vs 2e-3 at t = 8, alpha 2-5x worse at t = 4 and 6. The warm
+  start carries information the IC term alone does not; it stays.
+- Side finding: the first stage keeps its last iterate, and some windows end on a held-loss spike (adm30_ic window
+  9: 1.6; s2wb windows 26, 28: 0.6, 3.5). Keeping the best held iterate in the first stage too is the next cheap fix.
+
+**Reference with dense time output (the user's link, 2026-11-08):** `reference_1d/ref_single_m0.5_dr0.005_dt0.0625.npz`
+(git-ignored, 68 MB): same code, grid and parameters as ref_single_m0.5_dr0.005_t20.npz (dr 0.005, R_out 60,
+KO 0.1), saved every 0.0625 to t = 10 (161 slices) instead of every 0.25. At the common times the two agree to
+2e-9 for r <= 24 (round-off), so it is not more accurate; it adds 3 slices inside each 0.25 window (useful to grade
+inside windows, not only at their ends). It also records initial_lapse = 'psi-1' (the old file has no such key; same
+alpha at t = 0).
+
 **Related work: Shukla, Suriyanarayanan, Radice, Maulik, Bernuzzi, "Puncture evolution with physics-informed neural
 networks", arXiv:2610.06776 (5 Oct 2026; read 2026-11-06).** Single puncture, spherical symmetry, 1+1D, moving-puncture
 gauge. Network: separable PINN (one t and one r subnetwork, 4 x 128, rank 64, modified MLP), outputs
