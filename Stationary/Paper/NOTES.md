@@ -268,3 +268,18 @@ Paper read against VERIFICATION.md, the run configs on the hub and the code hist
 9. IV.D "the 2048 of the axisymmetric tests": the Weyl runs used 4096, the quadrupole 16384.
 10. II.D: "|a| ~ 0.04 ... 2.5e-6" comes from COM_GAUGE.md (old-formulation runs, a = -0.0445). Fine as
     an illustration; VERIFICATION.md does not list it yet.
+
+### Outcome (2026-11-08): all runs done in the one recipe (VERIFICATION.md, "One recipe ... Results")
+
+1. Weyl: redone in the recipe with only λ and the induced metric on the inner sphere; losses 6e-15 to
+   7e-14 (axisymmetric), 1.3e-11 (rotated 45 deg); max dh 1.6e-7 to 4.7e-7 axisymmetric, 3.3e-6
+   rotated -- 30 to 300 times below the numbers in the paper (close rods, rotation). The Weyl tables
+   and text need the new numbers.
+2. Off-axis, width against points: only both together help (rms dh 1.2e-3 -> 3.3e-4); either alone
+   at most 1.6x. qp_rot4 reproduced in the recipe (rp_w40_n32768).
+3. Spectral reference at -1/12: the l <= 14 one agrees with the final one to 1.7e-8 in h, ten times
+   below the network errors; the regraded numbers change by < 20%.
+4. Seeds: with COM, rms dh 0.9e-7 to 3.1e-7 over three seeds; without, 4e-4 to 2.5e-3 and a different
+   axial translate per seed (d_z = 0, -6.6e-3, +1.7e-3). Supports the uniqueness claim directly.
+5. Hard end: -0.25 at 65536 points no longer overfits (fresh/train 0.95, errors unchanged, M2 within
+   2e-6); -0.30 still overfits (39) with M2 5% off: report it as the limit.

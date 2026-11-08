@@ -359,4 +359,76 @@ that match the old behaviour.
 * The hard-end runs and their references (ms_s2_025_*, ms_s2_030_*) were copied from Mendieta to the
   hub's runs/ for phase E.
 
-Results: filled in as the phases finish.
+### Results (hub 2026-11-06..08, phases A-F; Mendieta 2026-11-07, phases G-H)
+
+The hub batch ran twice into the hub's limits and resumed from its checkpoints each time: idle
+culling after 1 h (HUB.md 19), then a server lifetime of about 24 h. Errors are against the exact
+solution (Weyl) or against the final spectral reference, runs/ab_none_w2/specref_nonlinear_fine.npz
+(S2 = -1/12; the hard end uses its own spectral references). "fresh" is the mean loss on 5 fresh
+samples divided by the training loss.
+
+**A, F: Weyl in the recipe.** The chart is a homothety of the physical one (lengths and masses both
+scaled by 1/ρ_in), so dh and dλ are dimensionless and compare directly with the old runs. The old
+runs had the full exact h imposed on the inner sphere; the new ones only λ and the induced metric.
+
+| run | loss | fresh | max dh (old) | max dλ (old) | rms dh | rms dλ | M2 net - exact |
+|---|---|---|---|---|---|---|---|
+| wr_prod_w2 | 6.0e-15 (2.1e-13) | 0.96 | 1.6e-7 (6.7e-7) | 4.7e-9 (9.0e-8) | 5.7e-9 | 2.4e-10 | -8.8e-8 |
+| wr_unequal_w2 | 1.1e-14 (2.4e-14) | 1.00 | 2.7e-7 (3.4e-7) | 4.3e-9 | 1.2e-8 | 3.9e-10 | 2.1e-9 |
+| wr_close4_w2 | 1.7e-14 (7.1e-13) | 1.73 | 2.9e-7 (1.5e-5) | 7.3e-9 | 7.6e-9 | 4.4e-10 | 2.3e-6 |
+| wr_close35_w2 | 7.2e-14 (3.1e-12) | 11.7 | 4.7e-7 (7.3e-5) | 7.7e-9 (1.8e-6) | 3.6e-8 | 2.0e-9 | 5.4e-7 |
+| wr_rot45_w4 (3-D, 45 deg) | 1.3e-11 (6.9e-8, weyl_rot45_hub) | 1.18 | 3.3e-6 (1.1e-3) | 1.2e-7 (1.0e-4) | 5.3e-7 | 1.3e-8 | 5.2e-7 |
+
+* wr_close35's fresh ratio comes from one sample of five (3.9e-12; the other four 7.3e-14..8.1e-14).
+* The centre of mass sits at the exact flux on every inner sphere (d_z = 0.026, 0.090, 0.12 for
+  unequal, close4, close35); only ρ = 100 (outside the ρ_out = 10 domain) differs.
+* GH moments (FHP normalisation, about the fitted centre): M0 within 1.1e-7 of the exact rods for
+  all; M2 as in the table, M3 within 4.6e-5 (close rods) -- below the extraction spread (7.7e-5 in M2
+  for close35). The axisymmetric and the rotated close35 networks give the same moments to 1e-7.
+* wr_rot45 stages: 1.6e-11, 1.5e-11, 1.4e-11, 1.3e-11 (about 1 h 45 min each on the A30).
+
+**B, G, H: off-axis quadrupole, width against points** (rotated data about (1,0,1)/sqrt 2, 4 stages).
+
+| | 16384 points | 32768 points |
+|---|---|---|
+| width 20 | qp_rot3_w4: loss 1.2e-6, rms dh 1.19e-3, rms dλ 9.1e-6 | rp_w20_n32768_w4: 5.4e-7, 8.2e-4, 1.9e-5 |
+| width 40 | rp_w40_n16384_w4: 1.4e-8, 7.2e-4, 1.4e-5 | rp_w40_n32768_w4: 4.4e-9, 3.3e-4, 3.6e-6 |
+
+* qp_rot3 and qp_rot4_n32768 (hub_qp3.sh, hub_qp4.sh) have the recipe's config field for field;
+  regraded against the final reference (G) they give the same numbers as before (qp_rot4: 2.58e-4,
+  3.39e-6). H retrains qp_rot4 in the recipe on Mendieta: loss 4.37e-9 against 4.31e-9, rms dh
+  3.3e-4 against 2.6e-4: it reproduces.
+* Doubling only the width or only the points gains at most a factor 1.6 in h; both together give 3.6 in
+  h and 2.5 in λ. Max dh: 7.9e-3, 5.1e-3, 5.1e-3, 2.2e-3. All fresh ratios 0.98-1.06.
+* Stage losses (width 40, 16384): 2.5e-8, 1.6e-8, 1.5e-8, 1.4e-8; (width 20, 32768): 4.4e-6, 6.4e-7,
+  5.7e-7, 5.4e-7; (width 40, 32768): 3.6e-8, 4.5e-9, 4.5e-9, 4.4e-9. Flat after the second stage.
+
+**C: the yardstick at S2 = -1/12.** The l <= 14 reference (48 radial) against the final one (l <= 10,
+36 radial): rms dh 1.7e-8, max 3.3e-7; rms dλ 1.9e-9, max 2.4e-8 -- ten times below the network
+errors. Regrades (final / l14): ab_none_w2 rms dh 1.45e-7 / 1.44e-7, rms dλ 7.1e-9 / 5.8e-9;
+fn_tan_w2 1.15e-7 / 1.12e-7, 3.7e-9 / 3.0e-9; fn_nocom_w2 4.0e-4 / 4.0e-4, 3.5e-5 / 3.5e-5.
+
+**D: seeds** (seed 0 = the original run; all fresh ratios 1.01-1.17).
+
+| run | seed | loss | rms dh | rms dλ | d_z (all spheres) |
+|---|---|---|---|---|---|
+| ab_none (COM) | 0 / 1 / 2 | - / 2.3e-11 / 5.8e-11 | 1.45e-7 / 2.1e-7 / 3.1e-7 | 7.1e-9 / 1.7e-8 / 1.9e-8 | ~1e-8 |
+| fn_tan (COM, H^1 inner data) | 0 / 1 / 2 | - / 7.5e-12 / 6.9e-12 | 1.15e-7 / 1.6e-7 / 9.2e-8 | 3.7e-9 / 2.9e-9 / 3.5e-9 | ~1e-8 |
+| fn_nocom (no COM) | 0 / 1 / 2 | - / 6.4e-12 / 1.7e-11 | 4.0e-4 / 2.5e-3 / 6.4e-4 | 3.5e-5 / 2.2e-4 / 5.6e-5 | 0 / -6.6e-3 / +1.7e-3 |
+
+Without the centre of mass the loss is as low but the error 1e3-1e4 times larger and seed-dependent:
+each seed lands on a different translate along the axis. With it, three seeds agree within a factor 3.
+
+**E: the hard end at 65536 points, redrawn every 250** (width 40, Adam + 3 stages; the later stages
+stopped on stall).
+
+| S2 | run | loss | fresh | rms dh | rms dλ | M0, M2 net - spec |
+|---|---|---|---|---|---|---|
+| -0.25 | ms_s2_025_b40_w3 (32768) | 2.3e-10 | 11 | 3.4e-6 | 1.9e-7 | +6.5e-7, -6.2e-6 |
+| -0.25 | hs_025_n65k_w3 | 2.2e-10 | 0.95 | 3.3e-6 | 2.0e-7 | +6.1e-7, -1.9e-6 |
+| -0.30 | ms_s2_030_b40_w3 (32768) | 4.0e-8 | 170 | 1.5e-5 | 1.2e-5 | -1.1e-3, +6.2e-2 |
+| -0.30 | hs_030_n65k_w3 | 4.3e-9 | 39 | 1.6e-5 | 1.3e-5 | +8.7e-4, -5.1e-2 |
+
+At -0.25 the overfitting is gone and the error unchanged: the width-40 result is now clean. At -0.30
+more points reduce the overfitting (170 -> 39) but not the error, and M2 is still 5% off: the limit
+of the method at this resolution, not a sampling artefact.
