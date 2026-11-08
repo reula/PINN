@@ -2131,8 +2131,8 @@ Note for re-evaluating seams: `--eval_seams` must get the run's own flags (`--ha
   outer alpha at t = 8 between single runs are seed noise; mass and t <= 4 are steadier. Earlier one-seed
   verdicts on outer alpha (adm30_ic_vol, s2_1d_T8, s2_adm30_ic, logonly05, adm30_ic_ws) are within this scatter.
 - **Revised per-window second stage `adm30_ic_s2wb` (2 h 36 min): no blow-up; the second stage helps little.** Kept
-  an improved iterate in 29 of 32 windows, but the held loss dropped by only 0.1-35% (median ~8%); fell back to
-  N2 = 0 in 3 windows (two of them windows whose first stage had ended on a held-loss spike, 0.60 and 3.5).
+  an improved iterate in 28 of 32 windows, but the held loss dropped by only 0.1-37% (median 7%); fell back to
+  N2 = 0 (or a gain under 0.05%) in 4 windows (two of them windows whose first stage had ended on a held-loss spike, 0.60 and 3.5).
   Errors: worst |m/M - 1| 2.0e-3 (best of the four); t = 4 and 6 alpha 2-8x better than adm30_ic in r = 0.05-3;
   t = 8 alpha r = 3-10 3e-3 vs 4e-4 and chi r = 1-3 1e-3 vs 2e-4 (like s8). Within the seed scatter: alike.
 - **Cold start `adm30_ic_cold`: worse.** Worst |m/M - 1| 7.5e-3 (3x), mass at r = 0.3-3 -1.5e-3 to -1.9e-3 from
