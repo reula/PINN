@@ -115,7 +115,7 @@ def maps(pf, ref, pts, inside, shape, chunk: int = 2048, curv_fn=None):
     return out
 
 
-def figure(cfg, data, R, Z, out_png, factor=1.0):
+def figure(cfg, data, R, Z, out_png, factor=1.0, suptitle=True):
     """Four panels with the rods, the two spheres and equal aspect.
 
     `factor` converts the run's chart coordinates to the units the figure is drawn in:
@@ -178,10 +178,11 @@ def figure(cfg, data, R, Z, out_png, factor=1.0):
         a.set_xlim(0, rho_max)
         a.set_ylim(-rho_max, rho_max)
         fig.colorbar(im, ax=a, shrink=0.85)
-    fig.suptitle(f"{cfg.outdir}   arch {cfg.arch}   rho in "
-                 f"[{cfg.rho_in * factor:g}, {cfg.rho_out * factor:g}]"
-                 + ("" if factor == 1.0 else f"   (chart values x {factor:g})")
-                 + "   rods on the axis (black)", fontsize=13)
+    if suptitle:          # not `title`: the panel loop above rebinds that name
+        fig.suptitle(f"{cfg.outdir}   arch {cfg.arch}   rho in "
+                     f"[{cfg.rho_in * factor:g}, {cfg.rho_out * factor:g}]"
+                     + ("" if factor == 1.0 else f"   (chart values x {factor:g})")
+                     + "   rods on the axis (black)", fontsize=13)
     fig.tight_layout()
     fig.savefig(out_png, dpi=110)
     plt.close(fig)
@@ -214,6 +215,8 @@ def main(argv=None):
                         "invariant under the rescaling, so only the axes, the rods and the "
                         "spheres move -- which is how a run trained in a scaled chart is "
                         "presented in the standard sizes")
+    p.add_argument("--no-title", action="store_true",
+                   help="no run/arch title over the panels (the paper's figure)")
     a = p.parse_args(argv)
     run_dir = a.outdir or a.run_dir
     if run_dir is None:
@@ -252,7 +255,7 @@ def main(argv=None):
     out_dir = os.path.join(run_dir, "plane")
     os.makedirs(out_dir, exist_ok=True)
     png = os.path.join(out_dir, "plane.png")
-    figure(cfg, data, R, Z, png, factor=factor)
+    figure(cfg, data, R, Z, png, factor=factor, suptitle=not a.no_title)
 
     # a one-line summary of each panel, on the grid that was actually evaluated
     summary = {"n_rho": a.n_rho, "n_z": a.n_z, "n_points": int(inside.sum()),

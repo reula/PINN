@@ -15,9 +15,11 @@ import numpy as np
 
 out = sys.argv[1] if len(sys.argv) > 1 else "Paper/figs/mass_s2.png"
 # S2, run holding the spectral reference's moments, its file, run and file of the best NETWORK (or None)
+# (at -1/4 the reference moments come from the network run's file, graded against specref_nonlinear_damp:
+#  ms_s2_025_w2/gh_moments.json holds an older, uncorrected reference with M0 = 0.537)
 SRC = [
-    (-0.30,  "ms_s2_030_w2", "gh_moments_big_l20.json", "ms_s2_030_b40_w3", "gh_moments_vs_big_l20.json"),
-    (-0.25,  "ms_s2_025_w2", "gh_moments.json",         "ms_s2_025_b40_w3", "gh_moments_vs_damp.json"),
+    (-0.30,  "ms_s2_030_w2", "gh_moments_big_l20.json", "hs_030_n65k_w3",   "gh_moments_big_l20.json"),
+    (-0.25,  "hs_025_n65k_w3", "gh_moments_damp.json",  "hs_025_n65k_w3",   "gh_moments_damp.json"),
     (-1 / 6, "ms_s2d_w2",    "gh_moments.json",         "ms_s2d_w2",        "gh_moments.json"),
     (-1 / 8, "ms_s2t_cfg",   "gh_moments.json",         None,               None),
     (-1 / 12, "ab_none_w2",  "gh_moments.json",         "ab_none_w2",       "gh_moments.json"),

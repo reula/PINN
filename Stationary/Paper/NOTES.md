@@ -14,7 +14,7 @@ nothing was recomputed for the paper.
 | III networks, loss, optimisers, specref | README.md 6.1, 8.6; REPORT_OPTIMISERS.md; DSGNAR.md 1-9; HUB.md (timings); stationary/specref.py |
 | IV tests | README.md 8.1-8.12 (m2R3_symhybrid, m2R4_realrobin, weyl_prod, weyl_unequal, weyl_close4/35, weyl_rot45*) |
 | V quadrupole | REPORT_PIN_COM.md; PERTURBATION.md; COM_GAUGE.md; DSGNAR.md rounds 3-27; MULTIPOLES_GH_THORNE.md |
-| figures | figs/optimisers.png = plots/report_optimisers.png; figs/com_steps.png = plots/report_pin_com.png; figs/weyl_plane.png = runs/weyl_prod/plane/plane.png |
+| figures | figs/optimisers.png = plots/report_optimisers.png; figs/com_steps.png = plots/report_pin_com.png; figs/weyl_plane.png = runs/wr_prod_w2/plane/plane.png (`python -m stationary.plane runs/wr_prod_w2 --no-title --n-rho 240 --n-z 480`) |
 
 ## Open items (marked TODO in the text)
 
@@ -283,3 +283,18 @@ Paper read against VERIFICATION.md, the run configs on the hub and the code hist
    axial translate per seed (d_z = 0, -6.6e-3, +1.7e-3). Supports the uniqueness claim directly.
 5. Hard end: -0.25 at 65536 points no longer overfits (fresh/train 0.95, errors unchanged, M2 within
    2e-6); -0.30 still overfits (39) with M2 5% off: report it as the limit.
+
+### Paper updated from these results (2026-11-08)
+
+paper.tex: Robin order 3 on h and P, none on the connection (item 8); p = (4,3,4) and w = 100 also for
+Weyl; fresh-sample sentence restricted (item 7); Armijo only in the Schwarzschild tests; Weyl section,
+tab:weylclose (new max dlambda column), rotated Weyl and its comparison, the old point-count paragraph
+removed (item 9; superseded by the width x points result in V.C); spectral reference described as the
+final one (loss 1.6e-13, 6 min) with the l <= 14 check; tab:com graded against it, factors 5000 / 2800,
+seeds paragraph; off-axis width x points; H^1 gain with seeds; Weyl moments; hard end at 65536 points and
+the -0.30 row of tab:mass; appendix points to hub_recipe.sh. Figures regenerated: weyl_plane.png
+(wr_prod_w2, no title: stationary.plane --no-title), com_steps.png (paper_metrics.json recomputed against
+runs/ab_none_w2/specref_nonlinear_fine.npz), mass_s2.png (hs_* networks; the -1/4 reference moments
+now from hs_025_n65k_w3/gh_moments_damp.json, since ms_s2_025_w2/gh_moments.json holds an old,
+uncorrected reference with M0 = 0.537). Not changed: tab:moments (old reference; moments are geometric),
+item 10, the author's \claude{} note on a bigger network for H^1 off-axis.
