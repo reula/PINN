@@ -368,20 +368,20 @@ Both the size of the network and the number of points matter there (Sec.~\ref{se
 Having tested the solver on exact solutions, we now apply it to a problem without one: spherical data with a quadrupolar term.
 \subsection{The problem}
 
-We take the inner sphere at $\rho_{\rm in}=1$, with $h$-areal radius $r_{\rm in}=1$ and $\lambda_0=1/3$, and $\rho_{\rm out}=100$.
+We take the inner sphere at $\rho_{\rm in}=1$, with $h$-areal radius $r_{\rm in}=1$ and $\lambda_0=1/3$.
 The datum is
 \begin{equation}
   \lambda|_{\rho_{\rm in}} = \tfrac13 - \tfrac1{12}\,P_2(\cos\theta) ,
 \end{equation}
 a 25\% perturbation of the spherical value, with no known closed-form solution.
 The constants $\lambda_0$, $S_2$ and $r_{\rm in}$ are free data, and the scale of $\lambda$ is fixed by the outer condition $\lambda\to1$.
-For $S_2=0$ the data describe a Schwarzschild solution whose sphere has Schwarzschild radius $r_S=r_{\rm in}/\sqrt{\lambda_0}$ (the areal radius in $h=\lambda\gamma$ is $\sqrt\lambda\,r_S$) and $\lambda_0=1-2M_0/r_S$, so that $M_0=r_{\rm in}(1-\lambda_0)/(2\sqrt{\lambda_0})=R_0=1/\sqrt3$; this is the spherical (Schwarzschild) reference used below.
-That $\rho_{\rm in}$ and $r_{\rm in}$ are equal is not a contradiction: the harmonic gauge leaves the radial map $\rho\to\rho+c_2F_2(\rho)$ free (Sec.~\ref{sec:equations}), and the inner datum fixes $c_2$.
+For $S_2=0$ the data describe a Schwarzschild solution whose sphere has Schwarzschild radius $r_S=r_{\rm in}/\sqrt{\lambda_0}$ (the areal radius in $h=\lambda\gamma$ is $\sqrt\lambda\,r_S$) and $\lambda_0=1-2M_0/r_S$, so that $M_0=r_{\rm in}(1-\lambda_0)/(2\sqrt{\lambda_0})=R_0=1/\sqrt3$; this is the spherical (Schwarzschild) reference used below.~\footnote{That $\rho_{\rm in}$ and $r_{\rm in}$ are equal is not a contradiction: the harmonic gauge leaves the radial map $\rho\to\rho+c_2F_2(\rho)$ free (Sec.~\ref{sec:equations}), and the inner datum fixes $c_2$.}
 
+We fix the outer boundary at $\rho_{\rm out}=100$ so that the fields there are already at the asymptotic regime. 
 Linear theory predicts a pure $l=2$ response decaying like $\rho^{-3}$, no $l=1$ part and an $l=0$ back-reaction of order $S_2^2$.
 Against the spherical solution the perturbation has an rms size of $2.0\times10^{-2}$ in $\lambda$ and $2.2\times10^{-2}$ in $h$ near the inner sphere, and $2.6\times10^{-4}$ and $3.5\times10^{-6}$ for $30<\rho<100$.
 
-We grade against a spectral approximation~\eqref{eq:spectral} (Sec.~\ref{sec:specref}) with $L = 10$ and $J = 36$, 1008 unknowns, computed on 2500 points with the weights and boundary conditions of the networks in five Gauss--Newton steps (6 minutes).
+We grade against a spectral approximation~\eqref{eq:spectral} (Sec.~\ref{sec:specref}) with $L = 10$ and $J = 36$, 1008 unknowns, computed on 2500 points with the same losses, weights and boundary conditions of the networks, in five Gauss--Newton steps (6 minutes).
 Its loss is $1.6\times10^{-13}$.
 Its $l=2$ part decays as $\rho^{-3.00}$ from $\rho=20$ to 100, as linear theory predicts.
 A larger basis, $L=14$ and $J=48$, changes it by $1.7\times10^{-8}$ in $h$ and $1.9\times10^{-9}$ in $\lambda$ (rms over the shell), ten times less than the errors of the best networks below, and grading against it changes those errors by less than 20\%.
@@ -392,7 +392,7 @@ Its mass, and how the mass depends on the datum, are in Sec.~\ref{sec:moments}.
 The Kretschmann scalar $K$ is of order one at the sphere ($7.9$ on the axis and $2.2$ at the equator, for $\rho=1$) and falls as $\rho^{-6}$, by twelve orders of magnitude between $\rho=1$ and $\rho=100$.
 Against the spherical (Schwarzschild) reference with the same $\lambda_0$ it is 13 times larger on the axis at the sphere (a maximum of 14.6 at $\rho\simeq1.3$), but at the equator it goes from 3.6 times larger at the sphere to $0.14$ at $\rho\simeq1.8$, a change by a factor 25 within 0.8 in $\rho$; beyond $\rho\simeq10$ the ratio tends to $(M_{\rm ADM}/M_0)^2=1.35$, the mass shift.
 The algebraic speciality $|S-1|$ ($S=1$ for type D, which the spherical reference is) is of order one at the equator of the sphere (1.0 at $\rho=1$, $0.29$ at $3$, $1.3\times10^{-3}$ at 10), so near the sphere the solution is far from type D, and it decays as a power of $\rho$.
-The network's four-dimensional Ricci tensor, which vanishes for an exact solution, has the norm $|R^{(4)}_{ab}|/\sqrt{K}=3.5\times10^{-5}$ (median) for $1\le\rho<3$, $6\times10^{-6}$ for $3\le\rho<10$ and $7\times10^{-7}$ beyond, and its curvature differs from that of the spectral reference by $7.6\times10^{-5}$, $5.0\times10^{-6}$ and $1.3\times10^{-6}$ in the same ranges (the largest value, $5\times10^{-2}$, is on the axis at the sphere).
+The network's four-dimensional Ricci tensor, which vanishes for an exact solution since we are in vacuum, has the norm $|R^{(4)}_{ab}|/\sqrt{K}=3.5\times10^{-5}$ (median) for $1\le\rho<3$, $6\times10^{-6}$ for $3\le\rho<10$ and $7\times10^{-7}$ beyond, and its curvature differs from that of the spectral reference by $7.6\times10^{-5}$, $5.0\times10^{-6}$ and $1.3\times10^{-6}$ in the same ranges (the largest value, $5\times10^{-2}$, is on the axis at the sphere).
 
 The Hawking mass of the coordinate spheres (Fig.~\ref{fig:hawking}) rises from $0.500$ at the sphere to $0.668$ at $\rho=3.5$ and stays there, and the lapse mass $r_a(1-\lambda)/2$ approaches the same value from above ($0.687$ at $\rho=1$).
 Both are within $1.1\times10^{-4}$ of the mass $M_{\rm ADM}=0.66961$ of the multipole extraction for $\rho\gtrsim8$, well inside the $1.1\times10^{-3}$ spread of that extraction, while the spherical reference has the constant $0.577$.
