@@ -1949,6 +1949,16 @@ weights r^2 f'' lightly. (3) So the trained PINN is not stuck at a loss that a s
 reach from the other side: the fitted networks sit at 1e-4 errors with losses far above the PINN's, the PINN at
 1e-4 errors with a loss of 1e-7; the loss-error relation is many-to-one, and the PINN's 1e-7 is already on the
 "solution" branch. The error floor is not a failure to lower the residual.
+(t, r) residual maps of the three fits (`--eval_tr`, `eval_data/tr_loss/sobt_wKKK.npz`, `plots/2026-11-08/tr_loss_1d_sobt.png`),
+band averages r = 0.001-0.01 / 0.01-0.05 / 0.05-1 / 1-24, against the trained `adm30_ic` window:
+window 0 1.2e2 / 4.9e-3 / 8.4e-6 / 2.3e-9 vs 1.9e-2 / 4.3e-6 / 2.2e-7 / 4.9e-9;
+window 16 2.0e5 / 5.1 / 2.3e-3 / 3.0e-8 vs 3.5e2 / 7.5e-4 / 3.6e-8 / 1.7e-8;
+window 31 1.9e6 / 7.7e1 / 3.3e-2 / 2.8e-7 vs 6.6e1 / 1.7e-6 / 1.5e-8 / 8.6e-9.
+(4) So outside r = 1 the network that carries the reference has the PINN's residual (2e-9 - 3e-7 vs 5e-9 - 2e-8):
+the whole loss gap is inside r = 1 and mostly inside r = 0.05, where the reference's own grid derivatives are least
+accurate and the fit (which weights r^2 f'' and sees d_t only through the snapshots) does not resolve the puncture.
+The outer picture is therefore consistent: both the trained PINN and a network fitted to the solution have 1e-4
+outer errors with an outer residual of ~1e-8 (rms 1e-4), the level reading (3) of the loss puzzle names.
 
 **`--zero_z` (sing_1d.py, 2026-11-08, the user's idea): Theta and Z^i identically zero.** The network's Theta output
 is replaced by 0 and its g output (Ghat^r) by the conformal metric's own Gt^r = -(p' - q' - 2 q / r) / (a s) with
