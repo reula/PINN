@@ -185,5 +185,38 @@ if [[ $PHASES == *H* ]]; then
     grade $R/rp_w40_n32768_w4 $REF_FINAL final; moments $R/rp_w40_n32768_w4 $REF_FINAL final
     note H "rp_w40_n32768 (width 40, 32768 points, recipe) done"
 fi
+# ----------------------------------------------------------------- I, J: H^1 inner data off-axis, bigger network
+# The author's note: at width 40 (rot_tan) the H^1 inner term slowed training and cost more than it
+# gained.  Does a bigger network change that?  Width 60 at 65536 points (G/H: a wider network needs
+# more points), without (I) and with (J) --inner-tangential; nothing else differs.  One job each.
+W60=(--width 60 --n-coll 65536 --n-bnd 4096 --n-bnd-outer 4096)
+if [[ $PHASES == *I* ]]; then
+    ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
+    chain rp_w60_n65k 4 "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}"
+    grade $R/rp_w60_n65k_w4 $REF_FINAL final; moments $R/rp_w60_n65k_w4 $REF_FINAL final
+    note I "rp_w60_n65k done"
+fi
+if [[ $PHASES == *J* ]]; then
+    ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
+    chain rp_w60_n65k_tan 4 "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}" --inner-tangential
+    grade $R/rp_w60_n65k_tan_w4 $REF_FINAL final; moments $R/rp_w60_n65k_tan_w4 $REF_FINAL final
+    note J "rp_w60_n65k_tan done"
+fi
+# ----------------------------------------------------------------- K: Schwarzschild tests with Wolfe
+# Paper/commands_schwarzschild.sh (Armijo, order-2 Robin on h, Gamma and P for all three) redone with
+# the strong-Wolfe line search used everywhere else, and the outer conditions of the paper: order 3 on
+# h and P; the first-order network, which has Gamma as an output, also gets the order-3 condition on
+# Gamma.  Spherical ansatz, 20000 Adam + 2000 SSBroyden as before.
+SCHW=(--R0 1.0 --rho-in 2.0 --rho-out 100.0 --outer-bc robin --ref-solution --ref-asymptotic 1.0
+      --lam0 0.3819660112501051 --lam-inf 1.0 --width 64 --depth 4 --fourier 8 --decay-feature
+      --n-coll 4096 --n-bnd 256 --steps 20000 --pde-ramp-steps 1000 --reweight-every 2000
+      --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 2000 --plateau-min-iters -1
+      --no-pin-h-robin --resample-every 500 --ckpt-every 500 --no-figures)
+if [[ $PHASES == *K* ]]; then
+    train sw_first_order "${SCHW[@]}" --arch sym --robin-source --robin-orders h=3,G=3,lam=3
+    train sw_metric_manuf "${SCHW[@]}" --arch sym_hybrid --robin-source --robin-orders h=3,lam=3 --no-robin-G
+    train sw_metric_real "${SCHW[@]}" --arch sym_hybrid --robin-orders h=3,lam=3 --no-robin-G
+    note K "Schwarzschild tests with Wolfe done"
+fi
 echo "=== hub_recipe $PHASES finished $(date -u '+%F %T UTC')"
 note done "phases $PHASES finished"
