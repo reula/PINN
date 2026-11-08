@@ -78,7 +78,8 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 36 | (t, r) residual maps of trained windows | where the loss sits | inside r = 0.01 (no points there); outer part ~1e-8, i.e. rms residual 1e-4 = the outer error |
 | 37 | H diagnostic (colleagues' relation dm/dR = R^2 H / 4) | rebuilt vs measured mass | holds to 2-10%; adm30_ic leaves a one-sign <H> ~ -1e-6 outside r = 3 (the colleagues' bias, 100x weaker) |
 | 38 | seams (`--eval_seams`, runs 17, 18, 29) | jump at each hand-off vs the error | jumps 5-20x below the error; they add up to the error only at r >= 10; inside r = 10 the error comes from the evolution within the windows |
-| 39 | Sobolev + d_t fits (`--fit_dt 1`, windows 0, 16, 31) | running on the mini, 8 Nov | pending |
+| 39 | Sobolev + d_t fits (`--fit_dt 1`, windows 0, 16, 31) | the same with d_t f matched to the reference's time differences | converges (errors 1e-5 - 1e-4, at or below the PINN's); PINN loss 7.5e-5 / 7.5e-2 / 1.1, 10 - 1e4 x below the r-only fit, still 1e3 - 1e7 x the trained windows' |
+| 40 | `1d_T8_zz` (`--zero_z --w_constraint 0`) | Theta = 0, Z^i = 0 (g from the conformal metric): the residual is the Einstein system, no zeta term, no ADM penalty | queued on Mendieta, 8 Nov | pending; vs `1d_T8` (fields) and `adm30_ic` (mass) |
 
 ## What it adds up to
 
@@ -90,8 +91,9 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 4. The hand-off is not the bottleneck inside r = 10 (10, 29, 30, 38): the jumps are 5-20x below the error, making
    them smaller (18) or continuous (29) does not lower the error, and removing the warm start (30) raises it.
 5. The in-window error is where the gain must come from, but more iterations (32), a second network (28) and
-   points nearer the puncture (21, 22) did not lower it. Whether a network can have both the reference's values
-   and a small residual is what 39 tests.
+   points nearer the puncture (21, 22) did not lower it. A network with the reference's values and derivatives (39)
+   has the same 1e-4 error and a loss 1e3 - 1e7 x the PINN's: the loss-error relation is many-to-one and the PINN's
+   loss is already on the solution branch; the error floor is not a failure to lower the residual.
 
 ## How to follow (candidates, cheapest first)
 
@@ -103,7 +105,6 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
    iteration, not new code.
 4. The outer boundary as an error source (untested; 12 was stopped): R = 48 to t = 8 against the free-space
    reference, or the reference rerun with the PINN's Sommerfeld condition at r = 24.
-5. Depending on 39: if a network with the reference's values and derivatives reaches a PINN loss well below the
-   trained windows', the optimiser is the limit (then: longer training in the outer region only, or a two-step
-   fit-then-PINN warm start); if it does not, the loss as formulated cannot see the remaining error.
+5. 39 says the loss as formulated does not see the remaining 1e-4: changes to the formulation (40: Theta = Z = 0;
+   the ADM rows at the residual weight) are the kind of thing to try, not more optimisation.
 6. `--w_adm_ic 10`, and the penalty in 3D (`--w_adm` in sing_pinn.py): the step back to 3D once 1D settles.

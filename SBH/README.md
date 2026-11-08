@@ -1923,6 +1923,43 @@ lower) but it stays at 1e-2 errors and PINN loss >= 5: the plain 3D MLP fitted c
 have a small PINN loss; the trained PINN reaches residuals 3-6 orders lower at the same 1e-4 field error, so its
 error level is not set by how small it drives the residual.
 
+**Sobolev + d_t fits (`--fit_dt 1` added to `--fit_d1 1 --fit_d2 1`; 2026-11-08 08:56 - 09:06 UTC on the mini, 3 min per
+window; `runs/fit_ref_1d_sobt`, `logs/mini_fit_ref_1d_sobt.log`; the user's request after the dense-time reference).**
+The fit loss also matches d_t f (autodiff of the network in t) to 4th-order central time differences of the
+reference's snapshots (dt 0.025, `ref_single_m0.5_dr0.005_t8_snap0025.npz`; the user's dt 0.0625 file is the same
+solution, coarser in time). Same settings as the other fits (2000 points, 4000 iterations). Columns as above (held fit
+loss, its value part; band rms alpha | chi | Khat in r = 0.05-0.2 / 0.2-1 / 1-3 / 3-10 at the window end; m/M - 1 at
+r = 0.3 / 1 / 3 / 10; held PINN loss with the adm30_ic weights, Einstein part):
+- window 0: fit 2.9e-7 (values 3.6e-10); alpha 3e-5 6e-6 3e-6 7e-6 | chi 1e-5 2e-6 2e-6 2e-6 | Khat 1e-5 5e-6 7e-6 4e-6;
+  mass -1.9e-5 +1.4e-7 +2.2e-5 +4.0e-5; PINN loss 7.5e-5 (Einstein 2.2e-5, end 5.3e-5). r-only Sobolev: 5.2e-4;
+  value-only: 3.4e-4; the trained window: ~1e-7.
+- window 16: fit 4.1e-6 (values 8.9e-9); alpha 2e-4 5e-5 6e-5 8e-5 | chi 1e-4 1e-4 3e-5 3e-5 | Khat 1e-4 8e-5 3e-5 8e-5;
+  mass +9.6e-4 +4.4e-4 +3.2e-4 +2.7e-3; PINN loss 7.5e-2 (Einstein 5.9e-2, end 1.5e-2). r-only: 6.4e2 (unconverged,
+  errors 10x worse); value-only: 3.9; trained: ~1e-7.
+- window 31: fit 8.1e-6 (values 3.6e-8); alpha 3e-4 1e-4 2e-5 1e-4 | chi 1e-3 5e-4 2e-4 9e-5 | Khat 8e-5 2e-4 8e-5 2e-4;
+  mass +7.5e-3 +1.1e-3 +1.4e-3 +2.8e-3; PINN loss 1.1 (Einstein 7.1e-1, end 4.0e-1). r-only: 3.0; value-only: 2.5;
+  trained: 3.0e-8.
+Reading. (1) The time derivative was the missing constraint: with it the fit converges in every window (errors at
+or below the trained PINN's level, 1e-5 in window 0, 1e-4 in 16 and 31) and its PINN loss falls 10 - 10^4 x below
+the r-only Sobolev fit's. (2) It is still 10^3 - 10^7 x the trained windows' loss (7.5e-5 / 7.5e-2 / 1.1 vs ~1e-7),
+and the gap grows with t as the reference's own residual inside r = 1 does: a network that carries the reference's
+values and first derivatives to 1e-8 - 1e-10 does not have a small residual, because the residual holds second
+r-derivatives and 1/chi near the puncture, where the reference's grid derivatives are least accurate and the fit
+weights r^2 f'' lightly. (3) So the trained PINN is not stuck at a loss that a solution-like network could not
+reach from the other side: the fitted networks sit at 1e-4 errors with losses far above the PINN's, the PINN at
+1e-4 errors with a loss of 1e-7; the loss-error relation is many-to-one, and the PINN's 1e-7 is already on the
+"solution" branch. The error floor is not a failure to lower the residual.
+
+**`--zero_z` (sing_1d.py, 2026-11-08, the user's idea): Theta and Z^i identically zero.** The network's Theta output
+is replaced by 0 and its g output (Ghat^r) by the conformal metric's own Gt^r = -(p' - q' - 2 q / r) / (a s) with
+s = sqrt(a + b), p = s, q = b / s (gt_ij = a delta_ij + b n_i n_j; checked against the reference's g: 1e-14 at t = 0;
+at t = 4 and 8 the reference's own Theta and Z are 3e-6 and 6e-7). The CCZ4 residual is then the Einstein system:
+its Theta and Ghat rows are the Hamiltonian and momentum constraints at the plain residual weight; zeta is
+identically zero (`--w_constraint 0`). Costs one nested r-derivative in rad_fn. Mini smoke test (2 windows, 400
+points, 500 iterations): constraint part 0, loss falls as usual. Run `1d_T8_zz` (Mendieta job 1185965): the control
+`1d_T8` plus `--zero_z --w_constraint 0`, no ADM penalty, as the user specified; grade against `1d_T8` (fields)
+and `1d_T8_adm30_ic` (mass).
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
