@@ -119,6 +119,8 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    (README): seed scatter 3-7x in outer alpha at t = 8 (one-seed verdicts there are noise); s2wb alike (stage 2
    gains ~7% held loss); cold start worse (mass 3x). Next cheap fix: keep the best held iterate in stage 1 too.
    Dense-time reference from the user: reference_1d/ref_single_m0.5_dr0.005_dt0.0625.npz (same solution).
+   2026-11-08: all 1D tries in one table with lessons and next candidates: TRIES_1D.md (keep it current).
+   Sobolev+dt fits (`--fit_dt 1`, windows 0, 16, 31) running on the mini: runs/fit_ref_1d_sobt, logs/mini_fit_ref_1d_sobt.log.
    On the mini, done: `jobs/mini/fit_ref.sh` (supervised fit to the reference, value-only and Sobolev, 1D and 3D;
    README). A network fitted to the answer has the PINN's field error (1e-4, 1D) but residuals 10^3 - 10^6 x the
    trained runs'; adding r f', r^2 f'' does not lower it (no d_t term). Residual maps on (t, r):
