@@ -79,6 +79,11 @@ ap.add_argument("--loss_orders", type=float, default=0,
                      "at the window end (+ OUT/loss_order_wKKK_oNN.pkl); the errors at the window end are also recorded at every "
                      "loss check (every --n_change), all in OUT/loss_orders.npz (snapshot = 1 for the saved ones); 0 = off")
 ap.add_argument("--n_change", type=int, default=250)
+ap.add_argument("--zero_z", action="store_true",
+                help="(2026-11-08, the user's idea) Theta and Z^i identically zero: the network's Theta output is replaced "
+                     "by 0 and its g output (Ghat^r) by the conformal metric's own Gt^r(a, b, a', b'), so the CCZ4 residual "
+                     "is the Einstein system itself (its Theta and Ghat rows are the Hamiltonian and momentum constraints). "
+                     "Use with --w_constraint 0 (zeta is then identically zero); meant without --w_adm")
 ap.add_argument("--cold_start", action="store_true",
                 help="(2026-11-07, the user's idea) every window k >= 1 starts from a fresh random network (key seed + 1 "
                      "+ k) instead of the previous window's trained one; the hand-off is then carried by the IC term only")
@@ -257,8 +262,27 @@ def hard_h(r):
     return h.at[I_CHI].set(jnp.log(_pos(U0[I_CHI])) - jnp.log(B0[I_CHI])).at[I_AL].set(jnp.log(_pos(U0[I_AL])) - jnp.log(B0[I_AL]))
 
 
+I_TH, I_G = stpl.FIELDS.index("Theta"), stpl.FIELDS.index("g")
+
+
 def rad_fn(P, win, t, r):
-    """The 10 radial functions of u at (t, r)."""
+    """The 10 radial functions of u at (t, r); with --zero_z, Theta = 0 and g = Gt^r(a, b) (Z^i = 0)."""
+    if not a.zero_z:
+        return _rad_fn(P, win, t, r)
+    f, fr = jax.jvp(lambda rr: _rad_fn(P, win, t, rr), (r,), (1.0,))
+    A, Bb, Ar, Br = f[0], f[1], fr[0], fr[1]
+    # gt_ij = a delta_ij + b n_i n_j: Gt^i = -(1/sqrt(g)) d_j(sqrt(g) gt^ij) = -(p' - q' - 2 q / r) n^i / (a s),
+    # s = sqrt(a + b), p = s, q = b / s (verified against the reference's g at t = 0 to 1e-8).
+    s = jnp.sqrt(A + Bb)
+    p_r = (Ar + Br) / (2.0 * s)
+    q = Bb / s
+    q_r = Br / s - Bb * (Ar + Br) / (2.0 * s ** 3)
+    g = -(p_r - q_r - 2.0 * q / r) / (A * s)
+    return f.at[I_TH].set(0.0).at[I_G].set(g)
+
+
+def _rad_fn(P, win, t, r):
+    """The 10 radial functions of u at (t, r), all from the network."""
     t0, t1 = win
     B, rho = bg_rad(t, r)
     N = mlp_value(P["net"], t, r, t0, t1)
