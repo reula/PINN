@@ -80,10 +80,13 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 37 | H diagnostic (colleagues' relation dm/dR = R^2 H / 4) | rebuilt vs measured mass | holds to 2-10%; adm30_ic leaves a one-sign <H> ~ -1e-6 outside r = 3 (the colleagues' bias, 100x weaker) |
 | 38 | seams (`--eval_seams`, runs 17, 18, 29) | jump at each hand-off vs the error | jumps 5-20x below the error; they add up to the error only at r >= 10; inside r = 10 the error comes from the evolution within the windows |
 | 39 | Sobolev + d_t fits (`--fit_dt 1`, windows 0, 16, 31) | the same with d_t f matched to the reference's time differences | converges (errors 1e-5 - 1e-4, at or below the PINN's); PINN loss 7.5e-5 / 7.5e-2 / 1.1, 10 - 1e4 x below the r-only fit, still 1e3 - 1e7 x the trained windows' |
-| 40 | `1d_T8_zz` (`--zero_z --w_constraint 0`) | Theta = 0, Z^i = 0 (g from the conformal metric): the residual is the Einstein system, no zeta term, no ADM penalty | to t = 2.5 alike the control in fields and mass (worst 6.1e-3 vs 5.6e-3); held spikes 0.5-30 in window 9, NaN in window 10 (1/r, sqrt(a + b) near the puncture) | no mass gain from the constraints at the residual weight; blew up; not pursued |
+| 40 | `1d_T8_zz` (`--zero_z --w_constraint 0`) | Theta = 0, Z^i = 0 (g from the conformal metric): the residual is the Einstein system, no zeta term, no ADM penalty | to t = 2.5 alike the control in fields and mass (worst 6.1e-3 vs 5.6e-3); NaN in window 10 (1/r, sqrt(a + b) near the puncture). (Its window-9 held spike is the seed's held draw, present in every run: README) | no mass gain from the constraints at the residual weight; blew up; followed by 45, 46 |
 | 41 | `1d_T8_adm30_ic_kb` (`--keep_best`) | each window keeps its lowest-held-loss iterate | mass 1.7-2.2x better at every t (1.5e-3); t = 4 alpha 2-4x better; loss floor unchanged; last iterate was best in only 6 of 32 windows | **better, free: adopt into the base** |
 | 42 | `1d_T8_adm30_ic_6x60` (`--hidden 60`) | main network 6 x 60 (19k parameters) instead of 6 x 40 | mass 2.2x better (1.1e-3, best of the w_adm 30 runs); t = 4 alpha 2.5x worse, t = 8 alike; loss floor unchanged; 2x the time | mixed: mass yes, fields no |
 | 43 | `1d_T8_adm30_ic_mid` (`--n_mid 6000`) | 4x the points, the extra ones log-uniform on r = 0.2-24 (around and outside the horizon, r_h ~ 0.25-0.45) | held-loss floor 2-3x lower (8.6e-8); mass and fields alike at every t | alike: the loss moved, the error did not |
+| 44 | `1d_T8_adm30_ic_kb60` (`--keep_best --hidden 60`) | 41 + 42 together: the new base candidate | running (Mendieta, 8 Nov) | |
+| 45 | `1d_T8_zz_rin` (`--zero_z --w_constraint 0 --keep_best --res_rin 0.1`) | 40 with sqrt|a + b|, keep-best, and the residual weighted by r^2 / (0.1^2 + r^2) (the user's r-weight: damps the puncture rows) | running (Mendieta, 8 Nov) | |
+| 46 | `1d_T8_zz_chi` (`--zero_z --w_constraint 0 --keep_best --res_chi 1`) | 40 with sqrt|a + b|, keep-best, and the residual weighted by chi (the user's chi-weight) | running (Mendieta, 8 Nov) | |
 
 ## What it adds up to
 
@@ -104,17 +107,17 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 ## How to follow (candidates, cheapest first; the user's decisions of 8 Nov in brackets)
 
 1. Keep the best held-out iterate in the first stage, as 28 does in the second (adm30_ic window 9 ended on a
-   held loss of 1.6; two windows of 28 on 0.6 and 3.5). One line, one run. [ok: run 41]
+   held loss of 1.6; two windows of 28 on 0.6 and 3.5). One line, one run. [ok: run 41; adopted 8 Nov. Those held spikes are the seed's held draw (one point at r << 0.01), in every run of the seed: windows 9/16/27 for seed 7, 11/13 for seed 8; a held loss restricted to r >= 0.01 would make keep-best robust there: proposed]
 2. Grade every change on the mass and on t <= 4, or run two seeds, before calling outer alpha at t = 8 (item 3). [agreed]
 3. The in-window floor: the held loss floors at 3e-8 - 3e-7 because of points the draw misses (32). Untested
    single changes against 17: a wider network (6 x 60, run 42) and 4x the points, put around and outside the horizon,
-   not into the puncture (run 43). [both launched]
+   not into the puncture (run 43). [done: 42 mass 2.2x better, early alpha worse; 43 loss 2-3x lower, errors alike; the user: continue with 6 x 60 -> run 44 = 41 + 42]
 4. ~~The outer boundary~~ Ruled out (8 Nov, the user's point): the error does not come in from r = 24. In adm30_ic
    the alpha error grows first at r = 3-6 (3e-4 by t = 3) and reaches 6-10 and 10-14 only at t >= 5.5 / 6.5, moving
    outward; the bands 14-22 stay flat at 2e-4 from t = 2.5; the mass deficit at r = 18-22 is -1e-3 at all those radii
    at once by t = 2, with no front. And R = 48 (12) was alike the control. The deficit is a coherent bias of the
    solution the loss selects (the colleagues' <H> bias), not a reflection.
 5. 39 says the loss as formulated does not see the remaining 1e-4: changes to the formulation (40: Theta = Z = 0;
-   the ADM rows at the residual weight) are the kind of thing to try, not more optimisation.
+   the ADM rows at the residual weight) are the kind of thing to try, not more optimisation. [40 blew up at the puncture; the user (8 Nov): "a lot to try there": r-weight r^2/(r_0^2 + r^2) (run 45), chi-weight (run 46), |a + b|, keep-best; both running]
 6. `--w_adm_ic 10`, and the penalty in 3D (`--w_adm` in sing_pinn.py): the step back to 3D once 1D settles. [waits for a
    better scheme]

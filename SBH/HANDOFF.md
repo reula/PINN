@@ -139,6 +139,14 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
 3. Stopped on purpose, not to be finished unless asked: `1d_T8_icd12`, `1d_T8_ic100`, `1d_T8_R48`, `1d_T8_far`
    (8-9 windows), `1d_T8_icd1` (27), `1d_T8_w05` (13 / 16).
 
+13. 2026-11-08 ~11:30 UTC, Mendieta, three jobs (the user's decisions on the four results: "1. OK" = keep_best
+   adopted; "2. continue with 6x60"; "4. there is a lot to try there" = zero_z with r / chi weights and |a + b|):
+   `1d_T8_adm30_ic_kb60` (adm30_ic + `--keep_best --hidden 60`, the new base candidate), `1d_T8_zz_rin` (control +
+   `--zero_z --w_constraint 0 --keep_best --res_rin 0.1`), `1d_T8_zz_chi` (same with `--res_chi 1` instead). Grade
+   kb60 against adm30_ic, kb and 6x60; the zz runs against the control `1d_T8` and `1d_T8_zz` (which went NaN in
+   window 10). Loss plot of every grading: `tools/plot_1d_loss.py` (the user's standing request). Job ids in the
+   reply / `squeue`; logs `runs/slurm_NAME_JOBID.out` on Mendieta.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs
@@ -155,8 +163,12 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    `--radial_net`), `--template bl --hard_ic --no_template --w_adm <lambda>`, baseline settings, to t = 8 with
    `--stop_rel 0.02 --stop_patience 1000` (about 15-25 GPU hours with restarts). The 3D runs need the full A30
    (10-15 GB); one at a time.
-3. Known weaknesses: the plateau early stop in `sing_pinn.py` keeps a window's last state, not its best;
-   `sing_1d.py` windows can end on a held-out spike from points at r << 0.05 (no effect on graded errors).
+3. Known weaknesses: the plateau early stop in `sing_pinn.py` keeps a window's last state, not its best
+   (`sing_1d.py` has `--keep_best` since 2026-11-08, adopted). The held loss of `sing_1d.py` is one point's residual
+   in the windows where the seed's held draw lands a point at r << 0.01 (seed 7: windows 9, 16, 27; seed 8: 11, 13;
+   every run, README "Loss histories of the five runs"); `--keep_best` selects on that point there. Proposed, not
+   built: a held loss restricted to r >= 0.01. Never read a "held spike" as a property of a run before checking
+   the other runs of the same seed.
 
 ## 5. Data and environment
 

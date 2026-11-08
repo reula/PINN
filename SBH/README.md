@@ -2030,6 +2030,62 @@ boundary changed nothing, not for lack of time. So the deficit is a coherent bia
 Across 1-3: the held-loss floor and the error are decoupled once more (mid: loss 2-3x down, error flat; 6x60: loss flat,
 mass 2x better; kb: loss flat, mass 2x better). What helped the mass (kb, 6x60) did so without lowering the loss.
 
+**Loss histories of the five runs (`tools/plot_1d_loss.py`, now with a fourth panel: held loss and its best per window;
+`plots/2026-11-08/loss_ic_kb_6x60_mid_zz.png`; 2026-11-08, the user asks for this plot with every grading).** The held
+loss of EVERY run jumps to 1e-2 - 1 in window 9 (t = 2.25 - 2.5), to 1e-4 - 1e-2 in window 16 and to 1e-6 - 1e-4 in
+window 27 (ic 3.5e-1 / 5e-4 / 1e-4, kb 2.8e-3 / 3.7e-4 / 2.5e-5, 6x60 1.6e-2 / 9.8e-3 / 2.5e-6, mid 3.3e-2 / 3.4e-3 /
+9.5e-5, zz 5.0e-1 in window 9, the control 6.6e-1 / 1.5e-3 / 2.5e-6), while the train loss stays at 1e-7. The windows
+follow the seed, not the run: the seed-8 runs (`adm30_ic_s8`, `1d_T8_seed8`) are clean in 9/16/27 and jump in 11 and
+13 instead. So it is the held DRAW: `draw(kh, ...)` with the seed's key puts, in those windows, a point at r << 0.01
+where every network's residual is 1e1 - 1e3 (the (t, r) maps), and that one point is the whole held loss (ic window 9
+at its worst: held Einstein 56, every other part < 1e-4). Consequences: (1) the "held spikes in window 9" I reported
+for `1d_T8_zz` are this artefact, present in every seed-7 run, and not a symptom of --zero_z (its NaN in window 10 is);
+(2) `--keep_best` selects on that one point in 3 of 32 windows (kb kept it 4000, 1500, 2000 in 9, 16, 27; the graded
+errors do not show it); a held loss restricted to r >= 0.01 (or a held draw with that floor) would make the selection
+robust: not built, proposed. Otherwise the plot shows what the tables said: best held per window ic 3e-8 - 1.4e-6, mid
+2-3x lower everywhere, kb and 6x60 alike ic.
+
+**(t, r) residual maps of kb, 6x60 and mid against adm30_ic (windows 0, 16, 31; `--eval_tr` on the runs' window
+networks; `eval_data/tr_loss/{kb,6x60,mid}_wKKK.npz`; `plots/2026-11-08/tr_loss_ic_kb_6x60_mid.png`).** Band averages
+over t and the log-r grid of lam x mean(Einstein rows^2) + gauge:
+
+| window | network | r = 0.001-0.01 | 0.01-0.05 | 0.05-1 | 1-24 |
+|---|---|---|---|---|---|
+| 0 | ic | 1.9e-2 | 4.3e-6 | 2.2e-7 | 4.9e-9 |
+| 0 | kb | 9.2e-2 | 3.7e-6 | 1.1e-7 | 4.9e-9 |
+| 0 | 6x60 | 1.7e-1 | 9.7e-6 | 1.4e-7 | 6.0e-9 |
+| 0 | mid | 1.6e-2 | 4.2e-6 | 6.3e-8 | 2.5e-9 |
+| 16 | ic | 3.5e2 | 7.5e-4 | 3.6e-8 | 1.7e-8 |
+| 16 | kb | 5.0e2 | 5.5e-5 | 8.2e-8 | 2.5e-8 |
+| 16 | 6x60 | 1.5e2 | 5.5e-4 | 3.4e-8 | 1.5e-8 |
+| 16 | mid | 3.7e2 | 2.6e-3 | 2.8e-8 | 6.9e-9 |
+| 31 | ic | 6.6e1 | 1.7e-6 | 1.5e-8 | 8.6e-9 |
+| 31 | kb | 6.1e1 | 4.5e-6 | 4.0e-8 | 2.0e-8 |
+| 31 | 6x60 | 4.2e2 | 1.9e-6 | 1.7e-8 | 4.5e-9 |
+| 31 | mid | 2.8e1 | 9.5e-6 | 1.9e-8 | 3.3e-9 |
+
+The four maps have the same shape: a wall of residual inside r = 0.01 (1e1 - 1e3 in the late windows, where no run
+puts points), a steep fall across r = 0.01 - 0.05, a flat floor outside. `mid` lowers the floor outside r = 0.05 by
+2-3x in every window (its extra points sit there) and does nothing inside r = 0.01: its lower held loss is this. `kb`
+and `6x60` sit on ic's floor (kb 2x above it outside r = 1 in windows 16 and 31: the kept iterate is the best on the
+held set, not on this grid) and halve the mass error anyway. The residual map does not see what sets the mass.
+
+**New weights for `--zero_z` (sing_1d.py, 2026-11-08, the user's proposals after the zz blow-up: "a weight that depends
+on r, like r^2/(1 + r^2/r_0^2) or (1 + r^2/r_0^2), a chi at some weights, |a + b| in the square root").** (1) The
+Einstein and gauge residual rows are now weighted per point by `res_weight(r, chi) = (1 + (r/res_r0)^res_q) x
+[r^2 / (res_rin^2 + r^2)] x [chi^res_chi]`, the two new factors with `--res_rin r0` (1 outside r0, r^2/r0^2 inside:
+damps the 1/r rows at the puncture) and `--res_chi p` (the network's chi at the point, floored at 0; chi -> 0 at the
+puncture, 1 far out), on the interior and t1 points; the second factor is the user's first weight normalised to 1 at
+infinity, the (1 + r^2/r_0^2) form is the existing `--res_r0 r_0 --res_q 2` (tried as `adm30_ic_rw`, no gain outside).
+(2) In the Gt^r(a, b) of --zero_z, sqrt(a + b) is now sqrt|a + b| (a, b are the conformal metric's radial functions,
+gt_ij = a delta_ij + b n_i n_j, so a + b = gt_rr and a = gt_thth / r^2; a + b dipping below 0 at a point gave NaN).
+Smoke test (2 windows, tiny network, --zero_z --w_constraint 0 --res_rin 0.1 --res_chi 1 --keep_best) runs. Launched on
+Mendieta 2026-11-08 (each with `--keep_best`, adopted into the base at the user's "1. OK"):
+`1d_T8_adm30_ic_kb60` = adm30_ic + `--keep_best --hidden 60` (the new base candidate: both halved the mass error by
+different means); `1d_T8_zz_rin` = control + `--zero_z --w_constraint 0 --keep_best --res_rin 0.1` (r_0 = 0.1, inside
+the horizon r_h ~ 0.25 - 0.45 and above the r < 0.05 wall); `1d_T8_zz_chi` = control + `--zero_z --w_constraint 0
+--keep_best --res_chi 1`. zz runs are graded against the control `1d_T8` (w_constraint 10, no ADM penalty), as `1d_T8_zz`.
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,

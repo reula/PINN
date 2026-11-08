@@ -19,7 +19,9 @@ With --w_adm the division-free ADM penalty r^p [(chi H)^2 + |chi M|^2] is added 
 spatial derivatives on that slice, so this asks each window to start on a constraint-satisfying slice instead of
 matching the previous window's slopes; 2026-11-04). --adm_r0/--adm_q multiply the r^p weight of both by
 (1 + (r/r0)^q), and --res_r0/--res_q weight the Einstein/gauge residual by (1 + (r/r0)^q) (interior and t1
-points): heavier penalties on the outer points (the user's weight from another study; 2026-11-05).
+points): heavier penalties on the outer points (the user's weight from another study; 2026-11-05). --res_rin r0
+multiplies the same residual weight by r^2 / (r0^2 + r^2) (1 far out, r^2/r0^2 inside r0: the puncture's 1/r
+rows are damped) and --res_chi p by chi^p (chi -> 0 at the puncture): the user's weights for --zero_z (2026-11-08).
 Points: the RADII of sing_pinn.py's 3D clouds (inner/core/focus Gaussians + uniform ball), so the loss weights
 each shell as the 3D run does; --log_frac F draws a share F log-uniform in r on [--log_rmin, R] instead (equal
 points per decade, down to the puncture; 2026-11-05). SSBroyden, fresh points every --n_change, warm start across windows.
@@ -145,6 +147,12 @@ ap.add_argument("--res_r0", type=float, default=0.0,
                 help="with --res_q: the Einstein and gauge residual means on the interior and t1 points are weighted by "
                      "(1 + (r/res_r0)^res_q); 0 = plain means (2026-11-05)")
 ap.add_argument("--res_q", type=float, default=2.0, help="q of the residual's outer boost (see --res_r0)")
+ap.add_argument("--res_rin", type=float, default=0.0,
+                help="(2026-11-08, the user's weight for --zero_z) multiply the Einstein/gauge residual weight on the interior "
+                     "and t1 points by r^2 / (res_rin^2 + r^2): 1 outside res_rin, r^2 / res_rin^2 inside; 0 = off")
+ap.add_argument("--res_chi", type=float, default=0.0,
+                help="(2026-11-08) multiply the Einstein/gauge residual weight by chi^res_chi (the network's chi at the point, "
+                     "floored at 0; chi -> 0 at the puncture, 1 at infinity); 0 = off")
 ap.add_argument("--fit_ref", default=None, metavar="NPZ",
                 help="supervised fit: train the network on window --fit_window to the 1D reference NPZ (sph_reference.py "
                      "output with several snapshots per window), loss mean|f - f_ref|^2 on the reference's own (t, r) "
@@ -282,7 +290,7 @@ def rad_fn(P, win, t, r):
     A, Bb, Ar, Br = f[0], f[1], fr[0], fr[1]
     # gt_ij = a delta_ij + b n_i n_j: Gt^i = -(1/sqrt(g)) d_j(sqrt(g) gt^ij) = -(p' - q' - 2 q / r) n^i / (a s),
     # s = sqrt(a + b), p = s, q = b / s (verified against the reference's g at t = 0 to 1e-8).
-    s = jnp.sqrt(A + Bb)
+    s = jnp.sqrt(jnp.abs(A + Bb))                     # |a + b| (the user, 2026-11-08): no NaN if a + b dips below 0
     p_r = (Ar + Br) / (2.0 * s)
     q = Bb / s
     q_r = Br / s - Bb * (Ar + Br) / (2.0 * s ** 3)
@@ -343,8 +351,18 @@ def outer_boost(r, r0, q):
     return 1.0 + (r / r0) ** q if r0 > 0 else jnp.ones_like(r)
 
 
-def ein_gauge(res, r):
-    wr = outer_boost(r, a.res_r0, a.res_q)[:, None]
+def res_weight(r, chi):
+    """per-point weight of the Einstein/gauge residual: (1 + (r/res_r0)^res_q) [r^2/(res_rin^2 + r^2)] [chi^res_chi]."""
+    w = outer_boost(r, a.res_r0, a.res_q)
+    if a.res_rin > 0:
+        w = w * r ** 2 / (a.res_rin ** 2 + r ** 2)
+    if a.res_chi > 0:
+        w = w * jnp.maximum(chi, 0.0) ** a.res_chi
+    return w
+
+
+def ein_gauge(res, r, chi=None):
+    wr = res_weight(r, chi)[:, None]
     return (ns["lam_einstein"] * jnp.mean(wr * res[:, :18] ** 2),
             ns["lam_gauge"] * a.w_gauge * jnp.mean(wr * res[:, 18:22] ** 2))
 
@@ -367,8 +385,9 @@ def taylor_r(g, r):
 def parts(P, win, batch):
     Qi, Qe, tb, ric, Uic = batch[:5]                 # Uic (n, IC_ORDER + 1, 10): the target and its r-derivatives
     Di = stacks(P, win, Qi)
-    e_i, g_i = ein_gauge(residual(Di), Qi[:, 1])
-    e_e, g_e = ein_gauge(residual(stacks(P, win, Qe)), Qe[:, 1])
+    e_i, g_i = ein_gauge(residual(Di), Qi[:, 1], Di[0][:, CHI])
+    De = stacks(P, win, Qe)
+    e_e, g_e = ein_gauge(residual(De), Qe[:, 1], De[0][:, CHI])
     f = lambda t, r: rad_fn(P, win, t, r)
     fb, ft = jax.vmap(lambda t: jax.jvp(lambda tt: f(tt, R), (t,), (1.0,)))(tb)
     fr = jax.vmap(lambda t: jax.jvp(lambda rr: f(t, rr), (R,), (1.0,))[1])(tb)
@@ -727,7 +746,7 @@ if a.stage2:
 
     def s2_parts(P2, Q):
         D = stacks(P2, WIN0, Q)
-        e, g = ein_gauge(residual(D), Q[:, 1])
+        e, g = ein_gauge(residual(D), Q[:, 1], D[0][:, CHI])
         out = dict(einstein=e, gauge=g, constraint=a.w_constraint * zeta(D))
         if a.w_adm > 0:
             out["adm"] = a.w_adm * jnp.mean(adm_density(D, Q[:, 1]) * (Q[:, 1] >= a.adm_rmin))
