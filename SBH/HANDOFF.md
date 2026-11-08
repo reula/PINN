@@ -147,6 +147,15 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    window 10). Loss plot of every grading: `tools/plot_1d_loss.py` (the user's standing request). Job ids in the
    reply / `squeue`; logs `runs/slurm_NAME_JOBID.out` on Mendieta.
 
+14. 2026-11-08 ~13:00 UTC, Mendieta, the template again (the user's direction: "go back to the runs with a
+   spherically symmetric approximation near the origin, and only looking outside that area"): `1d_T8_tpl1`
+   (adm30_ic + `--keep_best --r_c 1.0 --w_power 2 --template_file reference_1d/sing_bl_m0.5_dense_r3_t8.npz`,
+   BASE `--hard_ic --N_window 32 --tfinal 8`, i.e. without --no_template) and `1d_T8_tpl1_rmin` (+ `--r_min 0.5`,
+   no loss points inside r = 0.5). The table `sing_bl_m0.5_dense_r3_t8.npz` (r <= 3, t <= 8, dt 0.02) is
+   git-ignored: made on the mini by `reference_1d/sph_reference.py --dr 0.005 --tfinal 8 --snap_dt 0.02 --r_save
+   3.0`, copied to Mendieta's reference_1d/. Grade at r >= 1 (bands 1-3, 3-10, mass at r = 1, 3, 10) against
+   adm30_ic_kb / kb60; inside r_c the fields are the template's. README "Back to the template".
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs

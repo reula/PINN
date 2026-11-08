@@ -23,7 +23,8 @@ points): heavier penalties on the outer points (the user's weight from another s
 multiplies the same residual weight by r^2 / (r0^2 + r^2) (1 far out, r^2/r0^2 inside r0: the puncture's 1/r
 rows are damped) and --res_chi p by chi^p (chi -> 0 at the puncture): the user's weights for --zero_z (2026-11-08).
 Points: the RADII of sing_pinn.py's 3D clouds (inner/core/focus Gaussians + uniform ball), so the loss weights
-each shell as the 3D run does; --log_frac F draws a share F log-uniform in r on [--log_rmin, R] instead (equal
+each shell as the 3D run does; --r_min redraws every radius below r_min log-uniform on [r_min, R] (no points inside;
+for the template runs, 2026-11-08); --log_frac F draws a share F log-uniform in r on [--log_rmin, R] instead (equal
 points per decade, down to the puncture; 2026-11-05). SSBroyden, fresh points every --n_change, warm start across windows.
 Report per window end (REPORT.npz, appended): signed f - f_ref for the 10 radial functions on a log grid of r
 against the fine 1D reference (reference_1d/ref_single_m0.5_dr0.005_t20.npz), and the Misner-Sharp mass m/M - 1.
@@ -71,6 +72,9 @@ ap.add_argument("--log_frac", type=float, default=0.0,
                 help="share of every point set (interior, t1, IC, held) drawn log-uniform in r on [--log_rmin, R], "
                      "the same number of points per decade; the cloud shares are scaled by (1 - log_frac) (2026-11-05)")
 ap.add_argument("--log_rmin", type=float, default=1e-3)
+ap.add_argument("--r_min", type=float, default=0.0,
+                help="(2026-11-08, the user: with a template, look only outside the inner region) every interior / end / IC "
+                     "radius below r_min is redrawn log-uniform on [r_min, R], so no loss point sits inside r_min; 0 = off")
 ap.add_argument("--iters", type=int, default=4000)
 ap.add_argument("--iters0", type=int, default=0,
                 help="iterations of window 0 when > 0 (default: --iters); window 0 starts from scratch and can sit on a "
@@ -432,7 +436,11 @@ def radii(key, n):
         n_mid = max(int(round(a.n_mid * n / a.n_int)), 1)
         km = jax.random.fold_in(keys[4], 1)
         rs.append(a.mid_lo * (a.mid_hi / a.mid_lo) ** jax.random.uniform(km, (n_mid,)))
-    return jnp.minimum(jnp.concatenate(rs), R)
+    r = jnp.minimum(jnp.concatenate(rs), R)
+    if a.r_min > 0:                                       # --r_min: nothing inside; redraw those points log-uniform outside
+        kr = jax.random.fold_in(keys[4], 2)
+        r = jnp.where(r < a.r_min, a.r_min * (R / a.r_min) ** jax.random.uniform(kr, r.shape), r)
+    return r
 
 
 def axis(t, r):

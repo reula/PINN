@@ -16,7 +16,7 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 4 | w_power 2 | gentler template blend | Khat and mass 3-7x better | adopted, then moot (no template) |
 | 5 | x_scale 1 | input scale | alike | irrelevant |
 | 6 | soft IC | vs hard IC | alpha/Khat 2x worse at t = 0.5, mass alike | hard IC kept |
-| 7 | `--no_template` | the exact initial data as a fixed offset, no template | same fields | the user's design decision: no templates |
+| 7 | `--no_template` | the exact initial data as a fixed offset, no template | same fields | the user's design decision: no templates (reversed 8 Nov: runs 47, 48) |
 
 ## B. To t = 8: the windowed scheme (3 - 4 Nov)
 
@@ -87,6 +87,8 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 44 | `1d_T8_adm30_ic_kb60` (`--keep_best --hidden 60`) | 41 + 42 together: the new base candidate | running (Mendieta, 8 Nov) | |
 | 45 | `1d_T8_zz_rin` (`--zero_z --w_constraint 0 --keep_best --res_rin 0.1`) | 40 with sqrt|a + b|, keep-best, and the residual weighted by r^2 / (0.1^2 + r^2) (the user's r-weight: damps the puncture rows) | running (Mendieta, 8 Nov) | |
 | 46 | `1d_T8_zz_chi` (`--zero_z --w_constraint 0 --keep_best --res_chi 1`) | 40 with sqrt|a + b|, keep-best, and the residual weighted by chi (the user's chi-weight) | running (Mendieta, 8 Nov) | |
+| 47 | `1d_T8_tpl1` (`--r_c 1.0 --w_power 2 --template_file ..._r3_t8.npz`, no --no_template; + adm30_ic + keep_best) | back to the template (tries 1-7): the 1D solution inside r_c = 1, blended to 3; the network corrects outside (rho = r^2/(r^2 + 1)) | running (Mendieta, 8 Nov) | grade at r >= 1 only |
+| 48 | `1d_T8_tpl1_rmin` (47 + `--r_min 0.5`) | no loss points inside r = 0.5: only the outer region is trained | running (Mendieta, 8 Nov) | |
 
 ## What it adds up to
 
@@ -121,3 +123,7 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
    the ADM rows at the residual weight) are the kind of thing to try, not more optimisation. [40 blew up at the puncture; the user (8 Nov): "a lot to try there": r-weight r^2/(r_0^2 + r^2) (run 45), chi-weight (run 46), |a + b|, keep-best; both running]
 6. `--w_adm_ic 10`, and the penalty in 3D (`--w_adm` in sing_pinn.py): the step back to 3D once 1D settles. [waits for a
    better scheme]
+7. The template again (the user, 8 Nov, after 41-46): the spherically symmetric solution inside r_c = 1 (the
+   sweep's best, try 2), the network only outside, graded only outside. Runs 47 (template) and 48 (template + no
+   points inside r = 0.5). In 1D this is the ceiling of the approach (the template is exact); in 3D it is the
+   single-hole approximation near each puncture.

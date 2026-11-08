@@ -2086,6 +2086,25 @@ different means); `1d_T8_zz_rin` = control + `--zero_z --w_constraint 0 --keep_b
 the horizon r_h ~ 0.25 - 0.45 and above the r < 0.05 wall); `1d_T8_zz_chi` = control + `--zero_z --w_constraint 0
 --keep_best --res_chi 1`. zz runs are graded against the control `1d_T8` (w_constraint 10, no ADM penalty), as `1d_T8_zz`.
 
+**Back to the template: a spherically symmetric approximation near the origin, the network only outside
+(2026-11-08, the user's direction after the four results).** The 1 Nov sweep (tries 1-7 of TRIES_1D.md, two windows to
+t = 0.5) had the template ansatz u = W(r) T(t, r) + rho(r) N (W = exp(-(r/r_c)^p), rho = r^2/(r^2 + r_c^2), T the 1D
+solution interpolated from a table) monotonically better with r_c, 1.0 being 10-40x better than 0.2 in the seam band
+and the mass, and w_power 2 helping Khat and the mass 3-7x; the T8 runs since have all been `--no_template` (the
+user's design decision then, try 7). In 1D the template is the solution itself, so a template run measures the
+scheme in its ideal case: the outer region alone, with the inner solution given. The table that reaches r = 3 r_c
+= 3 (`sing_bl_m0.5_dense_r3.npz`) stops at t = 2.5; a new one `reference_1d/sing_bl_m0.5_dense_r3_t8.npz`
+(sph_reference.py, dr 0.005, t <= 8, snapshots every 0.02, r <= 3; ~10 min on the loaded mini; git-ignored, copied to
+Mendieta) covers the 32 windows. New flag `--r_min r`: every interior / end / IC radius below r is redrawn
+log-uniform on [r, R], so no loss point sits inside (the user: "only looking outside that area"); the inner clouds
+then feed the outer region. Smoke test (2 windows, tiny network, r_c 1, w_power 2, r_min 0.5, the r3 table,
+--w_adm 30 --w_adm_ic 30 --keep_best) runs; window 0's max |alpha err| sits at r = 3.6, not at the puncture. Launched
+on Mendieta (BASE without --no_template): `1d_T8_tpl1` = adm30_ic + `--keep_best --r_c 1.0 --w_power 2
+--template_file reference_1d/sing_bl_m0.5_dense_r3_t8.npz` and `1d_T8_tpl1_rmin` = the same + `--r_min 0.5`. Grade
+against `adm30_ic_kb` (and kb60 when done) in the bands r >= 1 and the mass at r = 1, 3, 10: the inner bands are
+the template's. In 3D the template is the single-puncture solution, exact for one hole and an approximation near
+each hole of a binary; the 1D result is the ceiling of that approach.
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
