@@ -1558,3 +1558,13 @@ that has to be relaunched: `hub_run.py run "cd ~/serafin/Julia/PINN/Stationary &
 (the remaining phases only; finished runs are skipped and the stage in progress resumes from ckpt.pkl),
 then restart the keepalive with the matching pattern, e.g. `hub_keepalive.sh <log> 'hub_recipe F finished'`.
 Plan batches to fit in 24 h, or split them between the hub and Mendieta.
+
+**Automatic relaunch (2026-11-08).** The keepalive now does that itself when given the command:
+
+    (RELAUNCH="cd ~/serafin/Julia/PINN/Stationary && bash Paper/hub_recipe.sh ABCDEF" \
+     nohup bash Stationary/Paper/hub_keepalive.sh > ~/hub_keepalive.log 2>&1 < /dev/null &)
+
+When the server has gone it starts a new one, sends RELAUNCH (finished runs are skipped, the run in
+progress resumes from ckpt.pkl; grades and moments of finished phases are recomputed, which is cheap),
+posts an ntfy notice and keeps pinging; at most MAX_RELAUNCH (default 3) times, then it notifies and
+stops. A batch that crashes with the server alive is not detected: the keepalive keeps pinging until DONE.
