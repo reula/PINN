@@ -26,7 +26,8 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 9 | `1d_T8_seed8` | seed | alpha 2-3x worse everywhere, mass 4.4e-2 vs 3.7e-2 | seed spread of 2-3x in the fields |
 | 10 | `1d_T8_icd1` (27 windows) | first-derivative hand-off `--ic_d1 1` | Khat 2x better at t <= 2; alpha, chi in r = 3-10 3e-3 / 1e-3 later; mass drifts as the control | worse |
 | 11 | `1d_T8_w05` (13 / 16 windows) | windows of 0.5, 8000 iterations | mass +3.5e-2 at r = 10 by t = 6 | worse |
-| 12 | `1d_T8_ic100`, `1d_T8_R48`, `1d_T8_far`, `1d_T8_icd12` | IC weight 100; R = 48; focus cloud sigma 5; second-derivative hand-off | stopped at 8-9 windows (hub out of memory, then the ADM batch took priority) | no verdict; R = 48 untested as the outer-boundary test |
+| 12 | `1d_T8_R48` (10 windows, to t = 2.5) | outer boundary at R = 48 instead of 24 | alike the control at every t: fields within 1.5x, worst mass 3.7e-3 vs 7.9e-3 at t = 2.5 | **the outer boundary is not the error source**; stopped as pointless |
+| 12b | `1d_T8_ic100`, `1d_T8_far`, `1d_T8_icd12` | IC weight 100; focus cloud sigma 5; second-derivative hand-off | stopped at 8-9 windows when the ADM batch took priority | no verdict |
 
 ## C. ADM constraint penalty (4 - 5 Nov)
 
@@ -106,9 +107,11 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 3. The in-window floor: the held loss floors at 3e-8 - 3e-7 because of points the draw misses (32). Untested
    single changes against 17: a wider network (6 x 60, run 42) and 4x the points, put around and outside the horizon,
    not into the puncture (run 43). [both launched]
-4. The outer boundary as an error source (untested; 12 was stopped): we impose Sommerfeld at r = 24, which is only
-   approximately transparent (gauge speeds differ from c, 1/r tails), while the reference's boundary is at r = 60;
-   test with R = 48 to t = 8, or the reference rerun with the PINN's Sommerfeld condition at r = 24. [explained; not run]
+4. ~~The outer boundary~~ Ruled out (8 Nov, the user's point): the error does not come in from r = 24. In adm30_ic
+   the alpha error grows first at r = 3-6 (3e-4 by t = 3) and reaches 6-10 and 10-14 only at t >= 5.5 / 6.5, moving
+   outward; the bands 14-22 stay flat at 2e-4 from t = 2.5; the mass deficit at r = 18-22 is -1e-3 at all those radii
+   at once by t = 2, with no front. And R = 48 (12) was alike the control. The deficit is a coherent bias of the
+   solution the loss selects (the colleagues' <H> bias), not a reflection.
 5. 39 says the loss as formulated does not see the remaining 1e-4: changes to the formulation (40: Theta = Z = 0;
    the ADM rows at the residual weight) are the kind of thing to try, not more optimisation.
 6. `--w_adm_ic 10`, and the penalty in 3D (`--w_adm` in sing_pinn.py): the step back to 3D once 1D settles. [waits for a

@@ -1984,6 +1984,19 @@ and `1d_T8_adm30_ic` (mass).
 Mini smoke tests (2 short windows each): keep_best reports the kept iterate; n_mid runs (2x the time per iteration
 at 1600 vs 400 points). Mendieta jobs 1185966-68 (`1d_T8_zz` was running since ~10:15 UTC).
 
+**The outer boundary is not the error source (2026-11-08, the user's point against my "how to follow" item 4).** Two
+checks. (1) The outer error has no incoming signature: in `adm30_ic` the alpha error (rms by band, from report.npz)
+grows first at r = 3-6 (1.4e-4 at t = 2, 3.2e-4 at t = 3, 7.5e-4 at t = 5) and only later at 6-10 (3.4e-4 from
+t = 6) and 10-14 (4.5e-4 at t = 8), i.e. it moves outward from the puncture region; the bands 14-18 and 18-22 sit
+flat at 1.7-2.6e-4 from t = 2.5 to 8. The mass deficit is -1.0e-3 / -1.3e-3 at r = 18 / 22 already at t = 2 and
+-2.0e-3 / -2.3e-3 at t = 8, present at all outer radii at once, no front; the control's far mass likewise. A
+reflection from r = 24 would arrive at r at t ~ 24 - r (and nothing from the puncture has reached r = 24 by t = 8
+at the gauge speeds anyway). (2) `1d_T8_R48` (the control with `--R_domain 48`, 10 windows to t = 2.5, report on
+serafin, copied to eval_data/1d_T8_R48): alike the control at t = 1, 2, 2.5 in every band (alpha within 1.5x both
+ways), worst |m/M - 1| 9.2e-4 / 4.5e-3 / 3.7e-3 vs 3.7e-3 / 5.1e-3 / 7.9e-3; it was stopped because moving the
+boundary changed nothing, not for lack of time. So the deficit is a coherent bias of the solution the loss selects
+(the <H> bias of the H diagnostic), not boundary scatter; TRIES_1D.md item 4 is struck out.
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
