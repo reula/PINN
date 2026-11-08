@@ -118,7 +118,8 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    second stage: fresh N2, keep best held, 3 x 30), `1d_T8_adm30_ic_cold` (`--cold_start`). Graded 2026-11-08
    (README): seed scatter 3-7x in outer alpha at t = 8 (one-seed verdicts there are noise); s2wb alike (stage 2
    gains ~7% held loss); cold start worse (mass 3x). Next cheap fix: keep the best held iterate in stage 1 too.
-   Dense-time reference from the user: reference_1d/ref_single_m0.5_dr0.005_dt0.0625.npz (same solution).
+   The 1D reference is made by reference_1d/sph_reference.py (any dt; command in jobs/mini/fit_ref.sh); the user's
+   dt 0.0625 file is the same solution and was not needed (README).
    2026-11-08: all 1D tries in one table with lessons and next candidates: TRIES_1D.md (keep it current).
    Sobolev+dt fits done (README): d_t was the missing constraint (fit converges, PINN loss 10-1e4x below the r-only
    fit), still 1e3-1e7x the trained windows'. `--zero_z` built (Theta = Z = 0); `1d_T8_zz` (Mendieta 1185965,
