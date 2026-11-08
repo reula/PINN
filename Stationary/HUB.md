@@ -1550,3 +1550,11 @@ an ntfy notice, if the server has gone; it never starts a server.
 
 The optional arguments are the log on serafin and the finish pattern. The interval is set with INTERVAL
 (in seconds).
+
+**The keepalive does not beat a lifetime limit.** The server restarted on 2026-11-06 at about 22:10 UTC
+was gone at 2026-11-07 22:11 UTC, 24 hours later, with the pings arriving every 20 minutes until then.
+So the hub also stops a server about 24 h after it started, whatever the activity. A batch longer than
+that has to be relaunched: `hub_run.py run "cd ~/serafin/Julia/PINN/Stationary && bash Paper/hub_recipe.sh F" --start --close`
+(the remaining phases only; finished runs are skipped and the stage in progress resumes from ckpt.pkl),
+then restart the keepalive with the matching pattern, e.g. `hub_keepalive.sh <log> 'hub_recipe F finished'`.
+Plan batches to fit in 24 h, or split them between the hub and Mendieta.
