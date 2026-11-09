@@ -92,6 +92,7 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 49 | `1d_T8_tplzz` (`--zero_z --w_constraint 0 --res_rin 0.1 --keep_best --r_c 1 --w_power 2 --r_min 0.5` + the template table, no ADM penalty) | template + Theta = Z = 0 + r-weight: the user's combination (9 Nov) | alpha 5e-4, 2e-4, 9e-5 and mass within 1e-3 to r = 10, but worst mass 5e-2 beyond r = 10 (growing from t = 4); held floor 3.4e-10 | fields best, far mass drifts |
 | 50 | `1d_T8_tplzz60` (49 + `--hidden 60`) | the same with a 6 x 60 network | smallest fields of any run (alpha 1-2e-4 in every band), same far-mass drift (5e-2); held floor 3.8e-10 | fields best; 6 x 60 helps here |
 | 51 | `1d_T8_tplzz_r1` (49 with `--res_r0 1 --res_q 2` instead of `--res_rin 0.1`) | residual weighted by (1 + r^2/r0^2), r0 = 1: 1 inside, 100 at r = 10, so the constraint rows count more outside and the inner region stays in (the user, 9 Nov) | worst mass 2.8e-3 flat (no ADM penalty); alpha 6e-4, 1e-3, 2e-3 (5-20x worse than 49); held floor 2.1e-9 | outer weight fixes the mass at the fields' cost |
+| 52 | `1d_T8_tplzz60_con` (`1d_T8_tplzz60` + `--con_r0 1 --con_q 2`) | weight (1 + r^2/r0^2), r0 = 1, ONLY on the Theta row and the three Ghat rows of the Einstein residual (= Hamiltonian and momentum constraints with Theta = Z = 0); the other 14 rows weight 1; 6 x 60 (the user, 9 Nov, after 51 weighted every row) | running (Mendieta, 9 Nov) | compare with 50 (fields) and 51 (mass) |
 
 ## What it adds up to
 

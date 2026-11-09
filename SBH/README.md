@@ -2162,6 +2162,11 @@ penalty 10, no zero_z). At t = 8: alpha rms bands 0.2-1 / 1-3 / 3-10, worst |m/M
    weight restores them, an r^2 weight on the constraint rows only (rows Theta and Ghat^r) is the next thing to try: it should keep tplzz's
    fields and tplzz_r1's mass. One seed each.
 
+**`--con_r0 r0 [--con_q 2]` (sing_1d.py, 2026-11-09, the user's correction: weight ONLY the two constraint equations, not all rows).** In
+the 18 Einstein rows (gt 0-5, At 6-11, chi 12, Khat 13, Theta 14, Ghat 15-17) rows 14-17 are multiplied by 1 + (r/r0)^q on the interior and t1
+points; the other 14 rows keep weight 1. With `--zero_z` these four rows are the Hamiltonian constraint times alpha/2 and the Ghat^i evolution
+(momentum constraint times 2alpha plus the metric terms). `1d_T8_tplzz60_con` = tplzz60 + `--con_r0 1` (Mendieta, 9 Nov).
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,

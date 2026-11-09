@@ -154,6 +154,11 @@ ap.add_argument("--res_q", type=float, default=2.0, help="q of the residual's ou
 ap.add_argument("--res_rin", type=float, default=0.0,
                 help="(2026-11-08, the user's weight for --zero_z) multiply the Einstein/gauge residual weight on the interior "
                      "and t1 points by r^2 / (res_rin^2 + r^2): 1 outside res_rin, r^2 / res_rin^2 inside; 0 = off")
+ap.add_argument("--con_r0", type=float, default=0.0,
+                help="(2026-11-09, the user) weight ONLY the Theta row and the three Ghat rows of the Einstein residual (with --zero_z "
+                     "they are the Hamiltonian and momentum constraints times alpha / 2alpha) by 1 + (r/con_r0)^con_q, on the interior "
+                     "and t1 points; the other 14 rows keep weight 1; 0 = off")
+ap.add_argument("--con_q", type=float, default=2.0, help="q of --con_r0")
 ap.add_argument("--res_chi", type=float, default=0.0,
                 help="(2026-11-08) multiply the Einstein/gauge residual weight by chi^res_chi (the network's chi at the point, "
                      "floored at 0; chi -> 0 at the puncture, 1 at infinity); 0 = off")
@@ -367,6 +372,10 @@ def res_weight(r, chi):
 
 def ein_gauge(res, r, chi=None):
     wr = res_weight(r, chi)[:, None]
+    if a.con_r0 > 0:                                  # rows 14 (Theta), 15-17 (Ghat^i) of the 18 Einstein rows
+        e2 = (wr * res[:, :18] ** 2).at[:, 14:18].multiply(outer_boost(r, a.con_r0, a.con_q)[:, None])
+        return (ns["lam_einstein"] * jnp.mean(e2),
+                ns["lam_gauge"] * a.w_gauge * jnp.mean(wr * res[:, 18:22] ** 2))
     return (ns["lam_einstein"] * jnp.mean(wr * res[:, :18] ** 2),
             ns["lam_gauge"] * a.w_gauge * jnp.mean(wr * res[:, 18:22] ** 2))
 
