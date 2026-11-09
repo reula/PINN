@@ -66,7 +66,7 @@ and `tests/test_pipeline.py::test_harmonic_chart_freedom`.
     stationary/model.py        MLP: (x,y,z) -> h_ij(6), Gamma^i_jk(18), lambda(1)
     stationary/problem.py      Config, domain sampling
     stationary/losses.py       PDE residuals + inner/outer boundary conditions
-    stationary/train.py        Adam -> L-BFGS driver, checkpoints, reports
+    stationary/train.py        Adam -> SSBroyden driver (never L-BFGS: no fallback), checkpoints, reports
     stationary/evaluate.py     diagnostics and figures for a checkpoint
     stationary/profile.py      lambda (and other fields) as a function of rho
     stationary/report.py       one-screen text report of a run (paste-able)
@@ -267,7 +267,8 @@ redraws every 500.  It reproduces `ab_none` field for field.  The list below is 
 3. **DSGNAR with restart cycles**: `--qn-method dsgnar --dsgnar-paper --dsgnar-reweight 0
    --dsgnar-sketch 2000 --dsgnar-stage2-ratio 0.075 --dsgnar-cycles 5 --dsgnar-cycle-steps 60` -- each
    cycle a fresh sample and a fresh trust region.  The sketch should be ~0.9 of the parameter count.
-4. **SSBroyden to polish**: `--qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000
+4. **SSBroyden to polish** (never L-BFGS; `--lbfgs-steps` is only the old name of the SSBroyden budget, and
+   the run stops with an error rather than fall back, HUB.md 6b): `--qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000
    --resample-every 500 --plateau-patience 8 --qn-reuse-objective` (`--qn-reuse-objective`: without it
    the host memory grows ~3.4 GB per block, REPORT_OPTIMISERS.md).  **Caveat (2026-10-19):** from the
    COM-gauge DSGNAR result the Wolfe line search failed on every block (`wf_ssb`, also `m9_ssbw_com`);

@@ -911,20 +911,22 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         crunch_bfgs = jax.jit(crunch_bfgs, static_argnames=(
             "fun", "maxiter", "norm", "gtol", "update_method", "initial_scale"))
     if minimize is None:
-        if verbose:
-            print(f"[qn] SSBroyden unavailable ({where}); using optax.lbfgs", flush=True)
-        return None
+        # NO silent fallback to L-BFGS (2026-11-09): the project does not use L-BFGS, and the
+        # fallback once turned two width-60 runs into L-BFGS runs that stalled at 2e-2 unnoticed.
+        raise RuntimeError(f"[qn] SSBroyden unavailable ({where}); refusing to fall back to "
+                           f"L-BFGS.  Fix the Crunch import (see HUB.md).")
 
     flat0, unflatten = jax.flatten_util.ravel_pytree(state)
     n = int(flat0.size)
     import math as _math
     gb = n * n * jnp.dtype(flat0.dtype).itemsize / 2**30
     if gb > cfg.qn_max_H_gb:
-        if verbose:
-            print(f"[qn] SSBroyden wants a dense {n}x{n} inverse Hessian = {gb:.2f} GB "
-                  f"> --qn-max-H-gb {cfg.qn_max_H_gb:g}; using optax.lbfgs.  Shrink the "
-                  f"network, or raise the cap if the memory is really there.", flush=True)
-        return None
+        # NO silent fallback to L-BFGS (2026-11-09), see above: stop and say what to change.
+        raise RuntimeError(f"[qn] SSBroyden wants a dense {n}x{n} inverse Hessian = {gb:.2f} GB "
+                           f"> --qn-max-H-gb {cfg.qn_max_H_gb:g}; refusing to fall back to L-BFGS.  "
+                           f"Raise --qn-max-H-gb if the memory is there (an A30 holds ~4 GB of H "
+                           f"next to 65536 points at width 60, with XLA_PYTHON_CLIENT_ALLOCATOR="
+                           f"platform), or shrink the network.")
 
     _traces = [0]        # see the resource line: a retrace is a leaked LLVM module
 

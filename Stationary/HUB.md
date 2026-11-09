@@ -637,8 +637,15 @@ sends.  `train._crunch_candidates` looks in `<repo>/Jax` first, then in `<Statio
 `Stationary/` itself, the repo root and above the repo; `tests/test_crunch_lookup.py` pins the
 order and fails if the two copies differ by a byte, so a re-copy is the only way to update the
 small one.  `CRUNCH_ROOT` overrides the search with a single location; when nothing imports, the
-quasi-Newton phase falls back to `optax.lbfgs` with a printed reason (`--qn-method lbfgs` forces
-that).
+quasi-Newton phase used to fall back to `optax.lbfgs` with only a printed reason.  **It no longer
+does (2026-11-09): this project does not use L-BFGS, and both fallbacks -- Crunch not importable, or
+the dense inverse Hessian over `--qn-max-H-gb` (default 2 GB) -- now stop the run with an error.**
+The fallback had silently turned the first width-60 runs (19027 parameters, H = 2.70 GB) into
+L-BFGS runs that stalled at loss 2e-2 for 8 h.  Raise `--qn-max-H-gb` when the memory is there; for
+width 60 at 65536 points on an A30 also set `XLA_PYTHON_CLIENT_ALLOCATOR=platform` and
+`XLA_PYTHON_CLIENT_MEM_FRACTION=0.95` (the default BFC pool fragments and fails a 10-14 GiB request;
+with the plain allocator SSBroyden peaks at 17.1 GiB).  The `--lbfgs-steps` flag keeps its old name
+but is the SSBroyden iteration budget; `--qn-method lbfgs` still exists only to reproduce old runs.
 
 ## 6c. The quadrupole production run and the VTK export for VisIt
 
