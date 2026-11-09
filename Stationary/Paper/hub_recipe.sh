@@ -192,7 +192,10 @@ fi
 # Width 60 has 19027 parameters: the dense SSBroyden inverse Hessian is 2.70 GB, over the default
 # 2 GB cap (--qn-max-H-gb), under which train.py silently falls back to L-BFGS -- the first I/J runs
 # (2026-11-08, moved to runs/_invalid/) did, and stalled at loss 2e-2.  The cap is raised here.
+# And SSBroyden's first step then needs ~14 GiB on top of H, over JAX's default cap of 75% of the A30
+# (17.7 GiB, even with preallocation off): the second I/J attempt died RESOURCE_EXHAUSTED.  95% here.
 W60=(--width 60 --n-coll 65536 --n-bnd 4096 --n-bnd-outer 4096 --qn-max-H-gb 4)
+[[ $PHASES == *[IJ]* ]] && export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95
 if [[ $PHASES == *I* ]]; then
     ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
     chain rp_w60_n65k 4 "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}"
