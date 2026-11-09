@@ -161,6 +161,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    fails. kb60 not adopted. zz_rin / zz_chi survive but do not fix the mass. Nothing running. Next: second seed and r_min 0.25 / 1
    of tpl1_rmin; the user's call.
 
+16. 2026-11-09: template + Theta = Z = 0 graded (README "Template + Theta = Z = 0"). tplzz60 has the smallest fields of the study but
+   the far mass drifts to 5e-2 (no ADM penalty); `--res_r0 1` (tplzz_r1) fixes the mass at 2.8e-3 but costs the outer fields 5-20x.
+   Next: the r^2 weight on the Theta and Ghat rows only (not built). Nothing of SBH running.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs

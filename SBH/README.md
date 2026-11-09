@@ -2138,6 +2138,30 @@ t = 8 in bands 0.2-1 / 1-3 / 3-10:
    finds a much easier problem; the points near the puncture are what spoil it (both the seam and the r << 0.01 wall).
    One seed: a second seed and `--r_min` 0.25 / 1.0 are the next checks. In 3D the template would be the single-hole solution.
 
+**Template + Theta = Z = 0 (Mendieta jobs 1186152-54, done 2026-11-09 12:40 - 13:43 UTC; graded 2026-11-09; `plots/2026-11-09/loss_tplzz.png`;
+the user's combination).** Common: `--keep_best --r_c 1 --w_power 2 --template_file ..._r3_t8.npz --r_min 0.5 --zero_z --w_constraint 0`, no ADM
+penalty, no `--no_template`; tplzz = `--res_rin 0.1` (weight r^2/(0.1^2 + r^2)), 6 x 40; tplzz60 = tplzz + `--hidden 60`; tplzz_r1 =
+`--res_r0 1 --res_q 2` (weight 1 + r^2) instead of res_rin, 6 x 40. Compared with tpl1_rmin (the same template with the ADM penalty 30, Theta/Z
+penalty 10, no zero_z). At t = 8: alpha rms bands 0.2-1 / 1-3 / 3-10, worst |m/M - 1| (r >= 0.2), m/M - 1 at r = 1 / 3 / 10, median best held loss:
+
+| run | alpha (0.2-1, 1-3, 3-10) | worst mass | mass r = 1 / 3 / 10 | held loss |
+|---|---|---|---|---|
+| tpl1_rmin (ADM penalty) | 1e-4, 2e-4, 2e-4 | 3.2e-3 | -4e-4 / -4e-4 / -7e-4 | 2.6e-9 |
+| tplzz | 5e-4, 2e-4, 9e-5 | 4.8e-2 | +4e-5 / -6e-6 / +7e-4 | 3.4e-10 |
+| tplzz60 | 2e-4, 9e-5, 2e-4 | 5.0e-2 | +8e-5 / +5e-5 / -9e-4 | 3.8e-10 |
+| tplzz_r1 | 6e-4, 1e-3, 2e-3 | 2.8e-3 | +1e-4 / +6e-5 / -1e-3 | 2.1e-9 |
+
+1. **Without the ADM penalty the fields are the best of the study and the mass is good up to r = 10, but the worst mass is 5e-2:** the
+   mass at r = 1, 3 and 10 is 1e-3 or better, so the deficit sits beyond r = 10 and grows from t = 4 (9e-3) to t = 6 (2.5e-2) and t = 8
+   (5e-2). tplzz60 has the smallest fields of any run (alpha 1e-4 - 2e-4 in every band, Khat 1e-4 - 2e-4, chi 1e-5 - 1e-4) and the same far-mass
+   drift. The held floor is 3-4e-10, 7x below tpl1_rmin's.
+2. **The weight (1 + r^2) fixes the far mass:** tplzz_r1 keeps the worst mass at 2.8e-3, flat from t = 2 (2.3e-3), like the ADM-penalty runs,
+   without any ADM penalty. The price is the fields: alpha 1e-3 / 2e-3 in r = 1-10 at t = 8 (5-20x worse than tplzz), chi 3e-4 - 7e-4. The
+   weight (1 + r^2) multiplies every row, not only the constraint ones, so it trades field accuracy for the mass.
+3. Reading: the Einstein rows alone are weak on the constraints far out (they enter as (alpha/2)^2 H^2 / 18, see the discussion of 9 Nov); an outer
+   weight restores them, an r^2 weight on the constraint rows only (rows Theta and Ghat^r) is the next thing to try: it should keep tplzz's
+   fields and tplzz_r1's mass. One seed each.
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
