@@ -1388,6 +1388,18 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         # way to run to the cap was to pass a value larger than it -- 30001 for a 30000 run --
         # which is a footgun with the opposite failure: pass 30000 and the run stops one
         # iteration short, at the cap's own edge, looking like a plateau.
+        qw = int(getattr(cfg, "plateau_window", 0) or 0)
+        if qw > 0 and len(plosses) > qw:
+            b_now, b_then = min(plosses), min(plosses[:-qw])
+            if b_now > (1.0 - float(cfg.plateau_frac)) * b_then:
+                stopped_on_plateau = True
+                stop_reason = "plateau"
+                if verbose:
+                    print(f"[qn] plateaued (window): best fixed-sample loss {b_then:.6e} -> "
+                          f"{b_now:.6e} over the last {qw} blocks ({qw * block} iterations), less "
+                          f"than {cfg.plateau_frac:g} relative; stopping after {total} iterations",
+                          flush=True)
+                break
         if (cfg.plateau_min_iters >= 0 and total >= cfg.plateau_min_iters
                 and len(plosses) - 1 - best_at > pat):
                 stopped_on_plateau = True
@@ -1597,6 +1609,17 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
             cur_outer = boundary_number(parts)
             adam_losses.append(float(loss))
             adam_outers.append(cur_outer)
+            aw = int(getattr(cfg, "adam_plateau_window", 0) or 0)
+            if aw > 0 and len(adam_losses) > aw:
+                b_now, b_then = min(adam_losses), min(adam_losses[:-aw])
+                if b_now > (1.0 - float(cfg.adam_plateau_frac)) * b_then:
+                    if verbose:
+                        print(f"[adam {it:6d}] plateaued (window): best loss {b_then:.6e} -> "
+                              f"{b_now:.6e} over the last {aw * cfg.log_every} steps, less than "
+                              f"{cfg.adam_plateau_frac:g} relative; going to the quasi-Newton phase",
+                              flush=True)
+                    adam_stopped = it
+                    break
             pat = int(cfg.plateau_patience)
             if (cfg.plateau_min_iters >= 0 and it >= cfg.plateau_min_iters
                     and len(adam_losses) > pat):
@@ -1946,6 +1969,14 @@ def parse_args(argv=None):
                         "works, but passing exactly the cap stops one iteration short")
     p.add_argument("--qn-gtol", type=float, default=None,
                    help="quasi-Newton stop on ||grad||_inf")
+    p.add_argument("--plateau-window", type=int, default=None, dest="plateau_window",
+                   help="quasi-Newton window rule: stop when the best fixed-sample loss fell by less "
+                        "than --plateau-frac over the last N blocks (0 = off)")
+    p.add_argument("--plateau-frac", type=float, default=None, dest="plateau_frac")
+    p.add_argument("--adam-plateau-window", type=int, default=None, dest="adam_plateau_window",
+                   help="Adam window rule: stop when the best training loss fell by less than "
+                        "--adam-plateau-frac over the last N log_every checks (0 = off)")
+    p.add_argument("--adam-plateau-frac", type=float, default=None, dest="adam_plateau_frac")
     p.add_argument("--plateau-patience", type=int, default=None,
                    help="consecutive blocks (Adam: log_every checks) without improvement")
     p.add_argument("--qn-max-H-gb", type=float, default=None, dest="qn_max_H_gb",
@@ -2220,6 +2251,9 @@ def parse_args(argv=None):
         cfg.plateau_tol = a.plateau_tol
     if a.plateau_patience is not None:
         cfg.plateau_patience = a.plateau_patience
+    for k in ("plateau_window", "plateau_frac", "adam_plateau_window", "adam_plateau_frac"):
+        if getattr(a, k, None) is not None:
+            setattr(cfg, k, type(getattr(cfg, k))(getattr(a, k)))
     if a.plateau_min_iters is not None:
         cfg.plateau_min_iters = a.plateau_min_iters
     if a.qn_gtol is not None:

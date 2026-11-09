@@ -502,6 +502,15 @@ class Config:
     plateau_patience: int = 3
     plateau_min_iters: int = 100   # negative DISABLES the plateau stop (train.py);
                                     # a value above the cap runs to it instead
+    # WINDOW plateau rules (2026-11-09), independent of plateau_min_iters / patience above:
+    # stop when the BEST loss so far fell by less than the fraction over the last `window` checks.
+    # Quasi-Newton: the fixed-sample loss, checked once per block (qn_block iterations); the best
+    # field is restored, as on the patience rule.  Adam: the training loss, checked every log_every
+    # steps.  0 = off.  Calibrated on the staged recipe runs (Paper/NOTES.md, "One stage").
+    plateau_window: int = 0
+    plateau_frac: float = 0.1
+    adam_plateau_window: int = 0
+    adam_plateau_frac: float = 0.3
     log_every: int = 200
     seed: int = 0
     outdir: str = "runs/m1"

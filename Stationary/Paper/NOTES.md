@@ -298,3 +298,36 @@ runs/ab_none_w2/specref_nonlinear_fine.npz), mass_s2.png (hs_* networks; the -1/
 now from hs_025_n65k_w3/gh_moments_damp.json, since ms_s2_025_w2/gh_moments.json holds an old,
 uncorrected reference with M0 = 0.537). Not changed: tab:moments (old reference; moments are geometric),
 item 10, the author's \claude{} note on a bigger network for H^1 off-axis.
+
+### One stage, plateau rules, never L-BFGS (2026-11-09)
+
+The author, from the loss-vs-iteration plot of the off-axis chains (rp_w40_n16384, rp_w20_n32768,
+rp_w40_n32768): Adam flattens within ~1500 steps and the last two SSBroyden stages hardly move.
+Decision: one run per network, a plateau rule for both optimizers, points redrawn every 500 always.
+
+Why the stages were wrong, not only wasteful.  Each stage was a separate process started from the
+previous one's parameters (`--init-from`): (a) SSBroyden's inverse Hessian was rebuilt from a scaled
+identity at every stage (the bump at each stage boundary); (b) the point draws are keyed by
+`seed + 777 + steps + iterations in this run`, and with `--steps 0` every stage counted from 0, so
+stages 2-4 REPLAYED stage 1's draws: "redraw every 500" never reached new points after stage 1.
+The stages were an old workaround for per-block memory leaks (fixed since: merged Crunch, jitted
+objective) and for intermediate grading; checkpoints are in-run now.
+
+Calibration from the histories of 11 staged chains (ab_none, fn_nocom, sd1_ab_none, hs_025/030_n65k,
+rp_w40_n16384, rp_w20_n32768, rp_w40_n32768, wr_prod, wr_close35, wr_rot45), training loss:
+- SSBroyden: "best loss fell by less than 10% over the last 16 blocks (4000 iterations)" stops the
+  3-D chains at 14000-23500 of 40000 within 1.1-1.2x of their final loss (rp_w40_n16384 1.7x) and
+  hs_* within 1.0-1.05x; the axisymmetric two-stage chains stop early in stage 2 and miss a late
+  drop of 3-5x that came after the stage-2 restart -- an artefact of the restart that a single run
+  does not have.  The patience rule ("no 1% new best in P blocks") hardly ever fired (P >= 12).
+- Adam: "best loss fell by less than 30% over the last 1000 steps" stops at 1400-4000 steps with the
+  loss at ~2 (Weyl 0.05-0.09), where SSBroyden takes over anyway.
+Implemented as `--plateau-window 16 --plateau-frac 0.1` (fixed-sample loss, once per block, best
+field restored) and `--adam-plateau-window 5 --adam-plateau-frac 0.3` (log_every 200), caps Adam 5000
+and SSBroyden 40000: `ONE` and `one` in hub_recipe.sh, used from phases I and J on.  Phases A-H (the
+paper's numbers so far) are the old staged runs.
+
+L-BFGS: never.  train.py used to fall back to optax.lbfgs when SSBroyden's dense H exceeded
+--qn-max-H-gb; the first width-60 I/J runs did that silently and stalled at 2e-2 for 8 h.  It now
+raises (commit 5cc4c27).  Width 60 at 65536 points on an A30 also needs XLA_PYTHON_CLIENT_ALLOCATOR=
+platform and XLA_PYTHON_CLIENT_MEM_FRACTION=0.95 (BFC fragmentation; peak 17.1 GiB).

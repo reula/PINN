@@ -12,8 +12,15 @@
 #   loss: rho^4 weights (--scale-exps 3,4,3,4) in a chart with rho_in = 1, w_inner = w_outer = 100;
 #   network: metric only, depth 6; axisymmetric width 20 at 16384 + 1024 + 1024 points,
 #            3-D width 40 at 32768 + 2048 + 2048;
-#   training: Adam 5000, then SSBroyden (strong Wolfe) in stages of 10000, points redrawn every 500
-#            (2 stages axisymmetric, 4 in 3-D); every run checked on 5 fresh samples.
+#   training: ONE run per network (2026-11-09, `one`): Adam up to 5000 steps, stopped when its best loss
+#            fell by less than 30% over 1000 steps; then SSBroyden (strong Wolfe) up to 40000
+#            iterations, stopped when its best fixed-sample loss fell by less than 10% over 4000
+#            (16 blocks), best field restored; points redrawn every 500 throughout; every run checked
+#            on 5 fresh samples.  Phases A-H were run the OLD way (`chain`: Adam 5000, then separate
+#            SSBroyden stages of 10000, 2 axisymmetric / 4 in 3-D, no plateau stop), and the paper's
+#            numbers so far come from them.  The old way threw the inverse Hessian away at every stage
+#            and, since each stage counted its iterations from 0, REPLAYED stage 1's point draws in
+#            every later stage (Paper/NOTES.md, "One stage").  Never L-BFGS.
 # What a phase tests is the ONLY thing it changes.
 #
 # Phases, in priority order (each run skipped when its report.json exists, resumed from ckpt.pkl):
@@ -63,12 +70,18 @@ QP=(--R0 0.5773502691896258 --rho-in 1.0 --rho-out 100.0 --inner-radius 1.0 --vt
 S2_Q=-0.08333333333333333
 ADAM=(--steps 5000 --plateau-min-iters -1 --lbfgs-steps 0)
 SSB=(--steps 0 --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000 --plateau-min-iters -1)
+# the single-run scheme (`one`); the windows are calibrated on the histories of phases A-H (NOTES.md)
+ONE=(--steps 5000 --adam-plateau-window 5 --adam-plateau-frac 0.3
+     --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 40000
+     --plateau-window 16 --plateau-frac 0.1 --plateau-min-iters -1)
 NFRESH=5
 SPEC_L14=(--nonlinear --ls 0,2,4,6,8,10,12,14 --n-radial 48 --n-coll 4000 --n-bnd 600 --iters 14 --tag l14)
 R=runs
 if [ "${SMOKE:-0}" = "1" ]; then          # the same pipeline, tiny: checks flags and tools only
     ADAM=(--steps 30 --plateau-min-iters -1 --lbfgs-steps 0)
     SSB=(--steps 0 --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 20 --qn-block 10 --plateau-min-iters -1)
+    ONE=(--steps 30 --adam-plateau-window 5 --adam-plateau-frac 0.3 --qn-method ssbroyden --qn-linesearch wolfe
+         --lbfgs-steps 20 --qn-block 10 --plateau-window 16 --plateau-frac 0.1 --plateau-min-iters -1)
     AX=(--arch axisym_hybrid --width 20 --n-coll 256 --n-bnd 64 --n-bnd-outer 64)
     TD=(--arch hybrid --width 40 --n-coll 256 --n-bnd 64 --n-bnd-outer 64)
     SPEC_L14=(--nonlinear --ls 0,2 --n-radial 6 --n-coll 300 --n-bnd 60 --iters 1 --tag l14smoke)
@@ -96,6 +109,11 @@ chain() {   # chain <tag> <n stages> <flags...>: Adam, then n SSBroyden stages, 
         train ${tag}_w$i "$@" "${SSB[@]}" --init-from "$R/$prev/params.pkl"; prev=${tag}_w$i
     done
     [ -f "$R/$prev/fresh_samples.json" ] || "$PY" -u scripts/fresh_sample_loss.py "$R/$prev" --n $NFRESH
+}
+one() {     # one <tag> <flags...>: Adam + SSBroyden in ONE run (<tag>_one), then the fresh check
+    local tag=$1; shift
+    train ${tag}_one "$@" "${ONE[@]}"
+    [ -f "$R/${tag}_one/fresh_samples.json" ] || "$PY" -u scripts/fresh_sample_loss.py "$R/${tag}_one" --n $NFRESH
 }
 grade() {   # grade <run> <ref> <tag>
     "$PY" -u scripts/grade_rotated.py "$1" --ref "$2" --tag "$3" || echo "!!! grade $1 $3 failed"
@@ -200,14 +218,14 @@ W60=(--width 60 --n-coll 65536 --n-bnd 4096 --n-bnd-outer 4096 --qn-max-H-gb 4)
 [[ $PHASES == *[IJ]* ]] && export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95 XLA_PYTHON_CLIENT_ALLOCATOR=platform
 if [[ $PHASES == *I* ]]; then
     ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
-    chain rp_w60_n65k 4 "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}"
-    grade $R/rp_w60_n65k_w4 $REF_FINAL final; moments $R/rp_w60_n65k_w4 $REF_FINAL final
+    one rp_w60_n65k "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}"
+    grade $R/rp_w60_n65k_one $REF_FINAL final; moments $R/rp_w60_n65k_one $REF_FINAL final
     note I "rp_w60_n65k done"
 fi
 if [[ $PHASES == *J* ]]; then
     ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
-    chain rp_w60_n65k_tan 4 "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}" --inner-tangential
-    grade $R/rp_w60_n65k_tan_w4 $REF_FINAL final; moments $R/rp_w60_n65k_tan_w4 $REF_FINAL final
+    one rp_w60_n65k_tan "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}" --inner-tangential
+    grade $R/rp_w60_n65k_tan_one $REF_FINAL final; moments $R/rp_w60_n65k_tan_one $REF_FINAL final
     note J "rp_w60_n65k_tan done"
 fi
 # ----------------------------------------------------------------- K: Schwarzschild tests with Wolfe
