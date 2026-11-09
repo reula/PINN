@@ -156,6 +156,11 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    3.0`, copied to Mendieta's reference_1d/. Grade at r >= 1 (bands 1-3, 3-10, mass at r = 1, 3, 10) against
    adm30_ic_kb / kb60; inside r_c the fields are the template's. README "Back to the template".
 
+15. 2026-11-09: items 13 and 14 done and graded (README "Results of the five runs of 8 Nov"). Best: `1d_T8_tpl1_rmin`
+   (template r_c 1 + `--r_min 0.5`): fields 2-4x below ic, held floor 60x lower, mass 3.2e-3 flat. tpl1 (points everywhere)
+   fails. kb60 not adopted. zz_rin / zz_chi survive but do not fix the mass. Nothing running. Next: second seed and r_min 0.25 / 1
+   of tpl1_rmin; the user's call.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs
