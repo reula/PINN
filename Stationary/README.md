@@ -1173,6 +1173,24 @@ Two things about *this* project that matter on the hub:
 The two production runs of this project (the spherical validation control and the
 S1 = 0.1 dipole) are written out with their full flag lists in `HUB.md` §7.
 
+### 9.1 CPU timings on the local Macs (`bench_machine.sh`, 2026-11-08)
+
+`bash bench_machine.sh` (from `Stationary/`) runs the recipe's axisymmetric quadrupole
+(ab_none: width 20, depth 6, 16384 + 1024 + 1024 points redrawn every 500, float64, seed 0)
+for Adam 1000 and then SSBroyden/strong Wolfe 1000, on the CPU, compiling from an empty
+JAX cache; `SMOKE=1` checks the flags in about a minute. Nothing else heavy was running.
+
+| machine | chip (P+E cores) | Adam 1000 | SSBroyden 1000 | total |
+|---|---|---|---|---|
+| Mac mini | Apple M6 (2P+4E) | 292 s | 411 s | 703 s (11.7 min) |
+| MacBook Air | Apple M2 (4P+4E) | 774 s | 1132 s | 1906 s (31.8 min) |
+
+The mini is 2.7 times faster in both stages. The final losses differ (Adam 24.0 vs 20.3,
+SSBroyden 6.0e-4 vs 4.7e-4) although the smoke runs agree to all digits: over 1000 steps the
+trajectories diverge from round-off (different core counts reduce in different orders, or
+different JAX versions; the mini has jax 0.11.1). The iteration counts are the same, so the
+times compare the same work up to the line-search evaluations in the SSBroyden stage.
+
 ## 10. Invalidated results (removed)
 
 Two completed runs, `n1_control` and `n3_order4`, were **void and have been deleted** from
