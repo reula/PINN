@@ -206,6 +206,8 @@ if [[ $PHASES == *J* ]]; then
     note J "rp_w60_n65k_tan done"
 fi
 # ----------------------------------------------------------------- K: Schwarzschild tests with Wolfe
+# NOT the paper's Schwarzschild runs: with order 3 and p = (2,1,2) they leave errors ~2e-4 (2026-11-09).
+# The paper's are order 2, Paper/commands_schwarzschild.sh (sx_*, on Mendieta).
 # Paper/commands_schwarzschild.sh (Armijo, order-2 Robin on h, Gamma and P for all three) redone with
 # the strong-Wolfe line search used everywhere else, and the outer conditions of the paper: order 3 on
 # h and P; the first-order network, which has Gamma as an output, also gets the order-3 condition on

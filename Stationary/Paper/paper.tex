@@ -160,7 +160,7 @@ For the scalar we therefore impose the condition on the Geroch--Hansen potential
   \label{eq:Ppot}
 \end{equation}
 whose monopole $M/\rho + M^3/\rho^3+\dots$ has no $\rho^{-2}$ term, unlike $\lambda = 1-2M/\rho+2M^2/\rho^2-\dots$.
-The Robin conditions are chosen so that $\mathcal P_\infty=0$, i.e.\ $\lambda_\infty=1$, and $h_\infty=\delta$; we use the order $n=3$ for both $h$ and $\mathcal P$.
+The Robin conditions are chosen so that $\mathcal P_\infty=0$, i.e.\ $\lambda_\infty=1$, and $h_\infty=\delta$; we use the order $n=3$ for both $h$ and $\mathcal P$ (order 2 in the Schwarzschild test of Sec.~\ref{sec:schw}).
 These pointwise conditions on the outer sphere are all that is imposed there.
 
 \subsection{The residual gauge freedom and the center of mass}\label{sec:gaugefreedom}
@@ -199,7 +199,7 @@ The inputs are $n = x/\rho$ and $t = \ln(\rho/\rho_{\rm in})/\ln(\rho_{\rm out}/
 The general network has the seven outputs $y = (h_{ij}, u)$, $i\le j$, with $\lambda = e^u$; the output layer is initialized small so that training starts near flat space.
 The derivatives of $h$ and $\lambda$ with respect to $x$ are computed by automatic differentiation, i.e.\ by the chain rule through the layers of~\eqref{eq:mlp}: they are exact up to rounding, with no finite differences.
 The connection is the Christoffel symbol of $h$ computed in this way, so the compatibility equation holds identically.
-A first-order variant outputs $\Gamma$ as well and adds compatibility as a residual; on the same Schwarzschild problem it is three orders of magnitude less accurate, Sec.~\ref{sec:schw}.
+A first-order variant outputs $\Gamma$ as well and adds compatibility as a residual; on the same Schwarzschild problem it is three to four orders of magnitude less accurate, Sec.~\ref{sec:schw}.
 For axisymmetric problems there is a simpler system, namely we look for $(h, \lambda)$ of the form,
 \begin{gather}
   h_{ij} = (1+a)\,\delta_{ij} + b\, n_in_j + \tfrac{c}{2}\,(n_iz_j+z_in_j) + d\, z_iz_j ,
@@ -232,7 +232,7 @@ All points are redrawn every 500 iterations.
 Every result is checked on five fresh samples, on which the loss agrees with the training loss to within a few tens of per cent (the ratio is 0.95--1.18 for the runs we report; the two exceptions, the Weyl shell closest to the rods and the largest amplitude of the quadrupolar data, are noted where they appear).
 This checks that the parameters have not adapted to the particular points (overfitting): the network satisfies the equations between the points as well as at them.
 
-\paragraph{Training.} We minimize with two algorithms in succession: first the stochastic gradient method Adam~\cite{KingmaBa2014} for 5000 steps, then the self-scaled Broyden quasi-Newton method SSBroyden~\cite{Urban2025SSBroyden,Carretero2026} with a dense inverse Hessian carried between blocks of 250 iterations, a strong-Wolfe line search (Armijo backtracking in the Schwarzschild tests of Sec.~\ref{sec:schw}) and scale-invariant curvature guards, in stages of 10000 iterations; a block whose result is not finite is rejected.
+\paragraph{Training.} We minimize with two algorithms in succession: first the stochastic gradient method Adam~\cite{KingmaBa2014} for 5000 steps, then the self-scaled Broyden quasi-Newton method SSBroyden~\cite{Urban2025SSBroyden,Carretero2026} with a dense inverse Hessian carried between blocks of 250 iterations, a strong-Wolfe line search and scale-invariant curvature guards, in stages of 10000 iterations; a block whose result is not finite is rejected.
 For the quadrupolar problem with the axisymmetric network, Adam (3 minutes) and two such stages (11 minutes each) reach a loss of $1.3\times10^{-11}$.
 Everything runs in double precision with JAX~\cite{jax2018} on NVIDIA A30 GPUs; one value and gradient at 16384 points costs 0.048~s.
 
@@ -277,27 +277,28 @@ The rotated Weyl solution solves the system to $3\times10^{-14}$ or better at ev
 \subsection{Schwarzschild in harmonic coordinates}\label{sec:schw}
 
 We check the algorithm with the Schwarzschild solution of unit mass ($M_0 = R_0 = 1$).
-For that we use the spherical network with $R_0=1$, $\lambda_0 = 0.381966$ on the sphere of $h$-areal radius 2 and Robin conditions at $\rho_{\rm out}=100$.
+For that we use the spherical network with $R_0=1$, $\lambda_0 = 0.381966$ on the sphere of $h$-areal radius 2 and Robin conditions of order 2 on $h$ and $\mathcal P$ at $\rho_{\rm out}=100$; the first-order network, which has an equation for $\Gamma$, gets the corresponding order-2 Robin condition on $\Gamma$ as well.
 We recover the exact solution.
 The Robin condition is not set to zero, but rather to the value the exact solutions would produce, so it has a source term.
 Table~\ref{tab:firstorder} compares the metric-only and first-order formulations on the problem.
-The metric-only network is more accurate by three orders of magnitude (a factor 2600 in $h$ and 1300 in $\lambda$).
+The metric-only network is more accurate by three to four orders of magnitude (a factor 11000 in $h$, 1300 in $\Gamma$ and 700 in $\lambda$).
 The first-order network's error is a gauge mode: along it the compatibility residual is nearly flat, and an earlier, less converged first-order run found the same geometry in a different harmonic chart, with $h_{rr}$ off by a third.
 Deriving $\Gamma$ from $h$ removes the mode.
-With the homogeneous Robin conditions (no source), the metric-only network reaches a loss of $2.4\times10^{-11}$ and maximum errors of $7.0\times10^{-6}$ in $h$, $6.0\times10^{-6}$ in $\Gamma$ and $6.3\times10^{-7}$ in $\lambda$ against the exact solution, and its ADM mass $M_{\rm ADM} = 0.999997$ (Sec.~\ref{sec:moments}) against $M_0=R_0=1$; each run takes 9--11 minutes on one GPU. (The center-of-mass condition plays no role here: a spherically symmetric network has no dipole, and the first-order network's error is a radial chart mode.)
+With the homogeneous Robin conditions (no source), the metric-only network reaches a loss of $1.1\times10^{-11}$ and maximum errors of $9.5\times10^{-7}$ in $h$, $3.8\times10^{-6}$ in $\Gamma$ and $2.1\times10^{-6}$ in $\lambda$ against the exact solution, and its ADM mass $M_{\rm ADM} = 1.00002$ (Sec.~\ref{sec:moments}) against $M_0=R_0=1$; each run takes 7--9 minutes on one GPU.
+The residuals here carry the weights $p=(2,1,2)$, without the extra $\rho^4$. With these weights, order 3 makes the outer term stiffer and leaves errors of $2\times10^{-4}$ at the same loss; order 3 with $p=(4,3,4)$ gives $2.9\times10^{-6}$ in $h$, still above order 2. (The center-of-mass condition plays no role here: a spherically symmetric network has no dipole, and the first-order network's error is a radial chart mode.)
 
 \begin{table}
 \caption{First-order against metric-only network on the same Schwarzschild problem (manufactured
-Robin source, $\rho_{\rm out}=100$, 20000 Adam + 2000 SSBroyden iterations).}
+Robin source of order 2, $\rho_{\rm out}=100$, 20000 Adam + 2000 SSBroyden iterations).}
 \label{tab:firstorder}
 \begin{ruledtabular}
 \begin{tabular}{lcc}
  & first order ($h,\Gamma,\lambda$) & metric only ($h,\lambda$) \\
 \hline
-final loss & $1.5\times10^{-9}$ & $2.4\times10^{-11}$ \\
-$\max|\delta h|$ & $1.7\times10^{-2}$ & $6.5\times10^{-6}$ \\
-$\max|\delta\Gamma|$ & $8.6\times10^{-3}$ & $7.9\times10^{-6}$ \\
-$\max|\delta\lambda|$ & $1.3\times10^{-3}$ & $1.0\times10^{-6}$ \\
+final loss & $6.9\times10^{-10}$ & $6.9\times10^{-12}$ \\
+$\max|\delta h|$ & $1.0\times10^{-2}$ & $8.9\times10^{-7}$ \\
+$\max|\delta\Gamma|$ & $5.2\times10^{-3}$ & $4.1\times10^{-6}$ \\
+$\max|\delta\lambda|$ & $7.7\times10^{-4}$ & $1.1\times10^{-6}$ \\
 \end{tabular}
 \end{ruledtabular}
 \end{table}

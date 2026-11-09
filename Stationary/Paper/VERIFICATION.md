@@ -185,6 +185,37 @@ quotes the reruns:
 M2 of the Schwarzschild runs is 1.5e-4 +- 2.7e-4 (consistent with 0; with the inner sphere at 2M
 the axis series converges slowly, so the window spread is large).
 
+### Schwarzschild with Wolfe (2026-11-09; supersedes the reruns above in the paper)
+
+The author asked to drop Armijo everywhere.  Phase K of `hub_recipe.sh` reran the three tests with
+Wolfe AND the quadrupole recipe's Robin conditions (order 3 on h and P, none on Gamma; order 3 on
+Gamma too for the first-order network).  The errors grew 20-90x at the same loss (hub and mini agree):
+
+| K run (order 3) | loss | max dh | max dGamma | max dlam |
+|---|---|---|---|---|
+| sw_first_order | 3.2e-9 | 0.32 | 0.12 | 1.8e-2 |
+| sw_metric_manuf | 4.1e-11 | 1.4e-4 | 6.1e-5 | 1.5e-4 |
+| sw_metric_real | 2.5e-11 | 6.1e-4 | 3.5e-4 | 2.1e-4 |
+
+One change at a time on Mendieta (metric only, manufactured source unless noted; runs/sx_*):
+
+| run | order | Gamma cond. | line search | weights p | loss | max dh | max dGamma | max dlam | s |
+|---|---|---|---|---|---|---|---|---|---|
+| sx_wolfe_o2G | 2 | yes | Wolfe | (2,1,2) | 8.6e-12 | 7.6e-7 | 9.8e-6 | 9.0e-8 | 540 |
+| **sx_wolfe_o2noG** | 2 | no | Wolfe | (2,1,2) | 6.9e-12 | 8.9e-7 | 4.1e-6 | 1.1e-6 | 511 |
+| sx_wolfe_o3G | 3 | yes | Wolfe | (2,1,2) | 4.9e-11 | 2.7e-4 | 1.2e-4 | 3.0e-4 | 1840 |
+| sx_armijo_o3noG | 3 | no | Armijo | (2,1,2) | 7.0e-11 | 1.7e-4 | 7.5e-5 | 2.2e-4 | 838 |
+| sx_o3noG_rho4 | 3 | no | Wolfe | (4,3,4) | 1.3e-8 | 2.9e-6 | 6.3e-5 | 1.4e-6 | 862 |
+| **sx_first_o2** (first order) | 2 (h, G, P) | yes | Wolfe | (2,1,2) | 6.9e-10 | 1.0e-2 | 5.2e-3 | 7.7e-4 | 429 |
+| **sx_real_o2noG** (homogeneous) | 2 | no | Wolfe | (2,1,2) | 1.1e-11 | 9.5e-7 | 3.8e-6 | 2.1e-6 | 415 |
+
+The order, not the line search, is the cause: Wolfe at order 2 is 8x better than the Armijo rerun
+(6.5e-6); dropping Gamma's condition changes little; order 3 with p = (2,1,2) is stiff (README 8.8:
+the order-n residual scales as gain^n, so the same weight is a different weight at every order), and the
+rho^4 weights recover most of it.  The paper (Sec. schw, tab:firstorder) quotes the bold runs, states
+order 2 for this test and the order-3 numbers.  M_ADM (gh_moments_runs.py): sx_real_o2noG 1.000020
++- 1.2e-5, sx_wolfe_o2noG 0.999990 +- 5.7e-6.  Commands: `Paper/commands_schwarzschild.sh`.
+
 ## Rotated Weyl with the metric-only 3-D network (`Paper/commands_weyl.sh`, job 1182117)
 
 | | loss | max dh | max dlam | iterations / time | M0 / M2 / M3 / centre (exact 0.0314286 / 6.785e-6 / -3.33e-7 / 0.0374026) |
