@@ -189,7 +189,10 @@ fi
 # The author's note: at width 40 (rot_tan) the H^1 inner term slowed training and cost more than it
 # gained.  Does a bigger network change that?  Width 60 at 65536 points (G/H: a wider network needs
 # more points), without (I) and with (J) --inner-tangential; nothing else differs.  One job each.
-W60=(--width 60 --n-coll 65536 --n-bnd 4096 --n-bnd-outer 4096)
+# Width 60 has 19027 parameters: the dense SSBroyden inverse Hessian is 2.70 GB, over the default
+# 2 GB cap (--qn-max-H-gb), under which train.py silently falls back to L-BFGS -- the first I/J runs
+# (2026-11-08, moved to runs/_invalid/) did, and stalled at loss 2e-2.  The cap is raised here.
+W60=(--width 60 --n-coll 65536 --n-bnd 4096 --n-bnd-outer 4096 --qn-max-H-gb 4)
 if [[ $PHASES == *I* ]]; then
     ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
     chain rp_w60_n65k 4 "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}"
