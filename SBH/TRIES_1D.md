@@ -89,6 +89,8 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 46 | `1d_T8_zz_chi` (`--zero_z --w_constraint 0 --keep_best --res_chi 1`) | 40 with sqrt|a + b|, keep-best, and the residual weighted by chi (the user's chi-weight) | survives to t = 8 (held floor 5.9e-9); smallest non-template fields (alpha 1-4e-4); mass -5e-3 at r = 10 | better than 40; mass not fixed |
 | 47 | `1d_T8_tpl1` (`--r_c 1.0 --w_power 2 --template_file ..._r3_t8.npz`, no --no_template; + adm30_ic + keep_best) | back to the template (tries 1-7): the 1D solution inside r_c = 1, blended to 3; the network corrects outside (rho = r^2/(r^2 + 1)) | mass 1.9e-2, alpha 1e-2 at t = 6, held floor 8e-6, 14 windows above 1e-5 | fails: points near the puncture spoil it |
 | 48 | `1d_T8_tpl1_rmin` (47 + `--r_min 0.5`) | no loss points inside r = 0.5: only the outer region is trained | alpha 1-2e-4 in every band at t = 8 (2-4x below ic), chi 5e-5 - 3e-4, mass flat 3.2e-3, held floor 2.6e-9, no spikes | **best run in the fields**; next: second seed, r_min 0.25 / 1 |
+| 49 | `1d_T8_tplzz` (`--zero_z --w_constraint 0 --res_rin 0.1 --keep_best --r_c 1 --w_power 2 --r_min 0.5` + the template table, no ADM penalty) | template + Theta = Z = 0 + r-weight: the user's combination (9 Nov) | running (Mendieta, 9 Nov) | grade at r >= 1; mass is the risk (no ADM penalty) |
+| 50 | `1d_T8_tplzz60` (49 + `--hidden 60`) | the same with a 6 x 60 network | running (Mendieta, 9 Nov) | |
 
 ## What it adds up to
 
