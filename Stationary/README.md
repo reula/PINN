@@ -1187,8 +1187,9 @@ JAX cache; `SMOKE=1` checks the flags in about a minute. Nothing else heavy was 
 
 The mini is 2.7 times faster in both stages. The final losses differ (Adam 24.0 vs 20.3,
 SSBroyden 6.0e-4 vs 4.7e-4) although the smoke runs agree to all digits: over 1000 steps the
-trajectories diverge from round-off (different core counts reduce in different orders, or
-different JAX versions; the mini has jax 0.11.1). The iteration counts are the same, so the
+trajectories diverge from round-off. Both machines run jax 0.11.1, so the cause is the
+hardware: XLA compiles for the host CPU (the M6 has instructions the M2 lacks) and splits the
+reductions by core count, which changes the order of floating-point sums. The iteration counts are the same, so the
 times compare the same work up to the line-search evaluations in the SSBroyden stage.
 
 ## 10. Invalidated results (removed)
