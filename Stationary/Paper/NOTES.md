@@ -331,3 +331,7 @@ L-BFGS: never.  train.py used to fall back to optax.lbfgs when SSBroyden's dense
 --qn-max-H-gb; the first width-60 I/J runs did that silently and stalled at 2e-2 for 8 h.  It now
 raises (commit 5cc4c27).  Width 60 at 65536 points on an A30 also needs XLA_PYTHON_CLIENT_ALLOCATOR=
 platform and XLA_PYTHON_CLIENT_MEM_FRACTION=0.95 (BFC fragmentation; peak 17.1 GiB).
+
+Decision (author, 2026-11-09): phases A-H are NOT rerun in the single-run scheme.  The paper keeps
+describing the staged training for them, and a note marks the runs trained in one stage with the
+plateau rules (from phases I/J on) when their results go in.
