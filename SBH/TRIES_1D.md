@@ -91,6 +91,7 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
 | 48 | `1d_T8_tpl1_rmin` (47 + `--r_min 0.5`) | no loss points inside r = 0.5: only the outer region is trained | alpha 1-2e-4 in every band at t = 8 (2-4x below ic), chi 5e-5 - 3e-4, mass flat 3.2e-3, held floor 2.6e-9, no spikes | **best run in the fields**; next: second seed, r_min 0.25 / 1 |
 | 49 | `1d_T8_tplzz` (`--zero_z --w_constraint 0 --res_rin 0.1 --keep_best --r_c 1 --w_power 2 --r_min 0.5` + the template table, no ADM penalty) | template + Theta = Z = 0 + r-weight: the user's combination (9 Nov) | running (Mendieta, 9 Nov) | grade at r >= 1; mass is the risk (no ADM penalty) |
 | 50 | `1d_T8_tplzz60` (49 + `--hidden 60`) | the same with a 6 x 60 network | running (Mendieta, 9 Nov) | |
+| 51 | `1d_T8_tplzz_r1` (49 with `--res_r0 1 --res_q 2` instead of `--res_rin 0.1`) | residual weighted by (1 + r^2/r0^2), r0 = 1: 1 inside, 100 at r = 10, so the constraint rows count more outside and the inner region stays in (the user, 9 Nov) | running (Mendieta, 9 Nov) | compare with 49 on the mass |
 
 ## What it adds up to
 
