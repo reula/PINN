@@ -2105,6 +2105,39 @@ against `adm30_ic_kb` (and kb60 when done) in the bands r >= 1 and the mass at r
 the template's. In 3D the template is the single-puncture solution, exact for one hole and an approximation near
 each hole of a binary; the 1D result is the ceiling of that approach.
 
+**Results of the five runs of 8 Nov (Mendieta jobs 1185977-79, 1185983-84, done 2026-11-08 20:59 - 22:13 UTC; graded 2026-11-09 with
+tools/table_1d_runs.py; `plots/2026-11-09/loss_kb60_zz_tpl.png`; eval_data/1d_T8_{adm30_ic_kb60,zz_rin,zz_chi,tpl1,tpl1_rmin}).**
+Legend: kb60 = adm30_ic + `--keep_best --hidden 60`; zz_rin = control + `--zero_z --w_constraint 0 --keep_best --res_rin 0.1`;
+zz_chi = same with `--res_chi 1`; tpl1 = adm30_ic + `--keep_best --r_c 1 --w_power 2` + template table r <= 3, t <= 8
+(no `--no_template`); tpl1_rmin = tpl1 + `--r_min 0.5`. Worst |m/M - 1| (r >= 0.2) up to t = 2 / 4 / 6 / 8, then alpha rms at
+t = 8 in bands 0.2-1 / 1-3 / 3-10:
+
+| run | worst mass t = 2 / 4 / 6 / 8 | alpha t = 8 (0.2-1, 1-3, 3-10) | median best held loss |
+|---|---|---|---|
+| adm30_ic (base) | 1.3e-3 / 2.4e-3 / 2.5e-3 / 2.5e-3 | 7e-4, 5e-4, 4e-4 | 1.7e-7 |
+| kb | 6.7e-4 / 1.1e-3 / 1.5e-3 / 1.5e-3 | 5e-4, 5e-4, 3e-3 | 2.3e-7 |
+| kb60 | 1.5e-3 / 1.5e-3 / 1.5e-3 / 1.5e-3 | 1e-3, 1e-3, 9e-4 | 2.8e-7 |
+| control 1d_T8 | 5.6e-3 / 1.8e-2 / 2.7e-2 / 3.7e-2 | 5e-4, 3e-4, 4e-4 | |
+| zz_rin | 2.6e-3 / 1.3e-2 / 3.0e-2 / 4.1e-2 | 2e-4, 6e-4, 4e-4 | 2.4e-8 |
+| zz_chi | 4.2e-3 / 1.3e-2 / 2.4e-2 / 3.4e-2 | 2e-4, 1e-4, 4e-4 | 5.9e-9 |
+| tpl1 (template, points everywhere) | 9.1e-4 / 1.9e-2 / 1.9e-2 / 1.9e-2 | 7e-4, 3e-3, 4e-3 | 7.9e-6 |
+| **tpl1_rmin** (template, no points r < 0.5) | 2.1e-3 / 3.2e-3 / 3.2e-3 / 3.2e-3 | **1e-4, 2e-4, 2e-4** | **2.6e-9** |
+
+1. **kb60 (keep best + 6 x 60) does not add up:** mass 1.5e-3 like kb alone, but alpha at t = 4-8 is 2-3x worse than kb and ic
+   (6 x 60 hurt the early alpha already). Not adopted; the base stays adm30_ic + `--keep_best` at 6 x 40.
+2. **zz with the weights survives** (the unweighted zz went NaN in window 10): both reach t = 8 with the held loss 7-30x below
+   ic's. zz_chi has the smallest fields at t = 8 of the non-template runs (alpha 2e-4 / 1e-4 / 4e-4, chi 6e-6 - 3e-4) but the
+   mass of the control: r = 10 drifts to +3.0e-2 (rin) / -5.0e-3 (chi). The ADM penalty is what fixes the mass; the Einstein
+   system alone does not.
+3. **tpl1 (template, points everywhere) fails:** the network corrects a template it cannot match at the seam; mass 1.9e-2,
+   alpha 1e-2 at t = 6; the held loss floors at 8e-6 and 14 windows are above 1e-5.
+4. **tpl1_rmin (template, nothing trained inside r = 0.5) is the best run of the study in the fields:** alpha 1-2e-4 in every
+   band at t = 8 (2-4x below ic), chi 5e-5 - 3e-4, mass flat at 3.2e-3 from t = 4 (no drift, but 2x ic's 1.5e-3 with keep best),
+   held loss floor 2.6e-9 (60x below ic's), no window above 1e-5. Worst bands: Khat 2e-3 in r = 0.05-3 at t = 8 and alpha
+   7e-4 / 5e-4 at r = 0.05-1 at t = 2-4. Reading: with the inner solution given and no loss points inside r = 0.5 the network
+   finds a much easier problem; the points near the puncture are what spoil it (both the seam and the r << 0.01 wall).
+   One seed: a second seed and `--r_min` 0.25 / 1.0 are the next checks. In 3D the template would be the single-hole solution.
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
