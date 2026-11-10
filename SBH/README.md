@@ -2178,6 +2178,15 @@ Median best held loss 6.5e-10, no window above 1e-5.
    t = 8 the outer alpha is 8e-4 / 2e-3 in r = 1-10, the same as tplzz_r1: so the late outer degradation comes from the weight on the
    constraint rows outside r ~ 3, not from weighting the other rows. A smaller weight (r0 = 3 or 5) or q = 1 is the next knob; one seed.
 
+**All the errors (`tools/plot_1d_errors_t.py OUT_PREFIX LABEL=RUN_DIR ...`, 2026-11-10, the user's request; `plots/2026-11-10/errors_mass.png`,
+`errors_fields.png`).** mass.png: worst |m/M - 1| over r >= 0.2 against t, m/M - 1 at r = 1, 3, 10, and against r at t = 4 and 8; fields.png: the rms
+error of all 10 radial functions (a, b, c, d, chi, Khat, Theta, g, alpha, B) against t in r = 0.2-1 and 3-10. Runs: ic, kb, tpl1_rmin, tplzz60,
+tplzz_r1, tplzz60_con. Readings: (1) the template runs' mass error at t = 8 is +2e-3 at r = 0.2-0.4, inside the zone with no loss points,
+and 1e-4 or less from r = 0.5 to 8 (tplzz60, tplzz_r1, con), -4e-4 (tpl1_rmin); the far-field drop is the other end: tplzz60 -5e-2 at r = 20,
+con -4e-3. (2) In the inner band the template runs' a, b, d errors are 3-10x ic's (b 5e-3 against 2e-4: the network is free inside r = 0.5
+and the metric functions there are not the template's); Khat and alpha are alike. (3) The zero_z runs' Theta error is 1e-8 and below (the
+reference's own Theta), their g error is 1e-2 in r = 0.2-1 because the reference's evolved Ghat differs from the conformal metric's Gt^r there.
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
