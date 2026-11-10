@@ -165,6 +165,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    the far mass drifts to 5e-2 (no ADM penalty); `--res_r0 1` (tplzz_r1) fixes the mass at 2.8e-3 but costs the outer fields 5-20x.
    Next: the r^2 weight on the Theta and Ghat rows only (not built). Nothing of SBH running.
 
+17. 2026-11-10: `1d_T8_tplzz60_con` graded (README): weighting only the Theta and Ghat rows by 1 + r^2 fixes the far mass (4.5e-3 at
+   t = 8 vs 5e-2) and keeps the best fields to t = 6; outer alpha at t = 8 degrades (8e-4 / 2e-3 in r = 1-10). Next: r0 3 - 5 or q 1, second
+   seed. Nothing of SBH running.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs

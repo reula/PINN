@@ -2167,6 +2167,17 @@ the 18 Einstein rows (gt 0-5, At 6-11, chi 12, Khat 13, Theta 14, Ghat 15-17) ro
 points; the other 14 rows keep weight 1. With `--zero_z` these four rows are the Hamiltonian constraint times alpha/2 and the Ghat^i evolution
 (momentum constraint times 2alpha plus the metric terms). `1d_T8_tplzz60_con` = tplzz60 + `--con_r0 1` (Mendieta, 9 Nov).
 
+**Result, `1d_T8_tplzz60_con` (Mendieta job 1186473, done 2026-11-10 02:09 UTC; `plots/2026-11-09/loss_tplzz60_con.png`).** tplzz60 +
+`--con_r0 1` (weight 1 + r^2 on the Theta and Ghat rows only). Worst |m/M - 1| (r >= 0.2) at t = 2 / 4 / 6 / 8: 1.9e-3 / 2.5e-3 / 2.5e-3 /
+4.5e-3 (tplzz60: 2.4e-3 / 8.9e-3 / 2.6e-2 / 5.0e-2; tplzz_r1: 2.3e-3 / 2.3e-3 / 2.4e-3 / 2.8e-3). Alpha rms in r = 0.05-0.2 / 0.2-1 / 1-3 / 3-10:
+t = 4: 9e-5 / 4e-5 / 7e-5 / 3e-4; t = 6: 1e-4 / 1e-4 / 2e-4 / 8e-4; t = 8: 1e-4 / 4e-4 / 8e-4 / 2e-3 (tplzz60 at t = 8: 2e-4 / 2e-4 / 9e-5 / 2e-4).
+Median best held loss 6.5e-10, no window above 1e-5.
+1. **The mass is fixed by weighting only the two constraint equations:** the far-mass drift (5e-2 in tplzz60) is gone up to t = 6 and is
+   4.5e-3 at t = 8 (r = 10: -1.6e-3, still growing), without any ADM penalty.
+2. **The fields are the best of the study to t = 6** (alpha 4e-5 - 2e-4 inside r = 3 at t = 4-6, mass at r = 1 and 3 below 1e-4), but at
+   t = 8 the outer alpha is 8e-4 / 2e-3 in r = 1-10, the same as tplzz_r1: so the late outer degradation comes from the weight on the
+   constraint rows outside r ~ 3, not from weighting the other rows. A smaller weight (r0 = 3 or 5) or q = 1 is the next knob; one seed.
+
 **The PINN loss of the 1D reference itself (`sing_1d.py --eval_tr_ref NPZ --eval_tr_window K [--eval_tr_tdeg D]`,
 2026-11-06, mini; `plots/2026-11-06/tr_loss_1d_ref.png`, data `eval_data/tr_loss/ref_wKKK.npz`).** The reference
 as a function: degree-5 Lagrange interpolation of its nodes in r (dr 0.005) and in t (snapshots every 0.025,
