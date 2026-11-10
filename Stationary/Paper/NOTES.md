@@ -438,3 +438,4 @@ condition there.
 - Wording for the paper: credit the freedom to Bartnik (and O Murchadha for existence); present the
   flux as the analogue, through Green's identity, of the centre-of-mass flux; "we are not aware of
   this condition in the literature" rather than a claim of novelty, and ask Cederbaum if possible.
+- Plan (author, 2026-11-10): ask Cederbaum about the rotation condition once there is a first draft of the section.
