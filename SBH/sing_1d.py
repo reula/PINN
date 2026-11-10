@@ -76,6 +76,9 @@ ap.add_argument("--r_in", type=float, default=0.0,
                 help="(2026-11-10, the user) template-exact core: W = 1 and the network correction is zero for r <= r_in (the interior "
                      "of the horizon is given, neither sampled nor reached by the network); the correction switches on smoothly over "
                      "[r_in, r_in + --r_in_w]; sets --r_min = r_in unless --r_min is given. Horizon at m/2 = 0.25, tolerance 10%: 0.225")
+ap.add_argument("--r_in_shift", action="store_true",
+                help="with --r_in: rho = s^p/(s^p + r_c^p), s = max(r - r_in, 0) (C1 at r_in, no smoothstep; ansatz B of 2026-11-10) "
+                     "instead of rho(r) x smoothstep (ansatz A)")
 ap.add_argument("--r_in_w", type=float, default=0.1, help="width of the smooth switch-on of the correction above r_in")
 ap.add_argument("--r_min", type=float, default=0.0,
                 help="(2026-11-08, the user: with a template, look only outside the inner region) every interior / end / IC "
@@ -286,7 +289,10 @@ def bg_rad(t, r):
     B = FLAT_RAD + w * (T - FLAT_RAD)
     B = B.at[I_CHI].set(jnp.exp(w * jnp.log(_pos(T[I_CHI])))).at[I_AL].set(jnp.exp(w * jnp.log(_pos(T[I_AL]))))
     rho = 1.0 if a.no_template else r ** a.rho_power / (r ** a.rho_power + a.r_c ** a.rho_power)
-    if a.r_in > 0 and not a.no_template:                  # --r_in: smoothstep 0 -> 1 on [r_in, r_in + r_in_w]
+    if a.r_in > 0 and a.r_in_shift and not a.no_template:
+        sh = jnp.maximum(r - a.r_in, 0.0)
+        rho = sh ** a.rho_power / (sh ** a.rho_power + a.r_c ** a.rho_power)
+    elif a.r_in > 0 and not a.no_template:                # --r_in: smoothstep 0 -> 1 on [r_in, r_in + r_in_w]
         x = jnp.clip((r - a.r_in) / a.r_in_w, 0.0, 1.0)
         rho = rho * x * x * (3.0 - 2.0 * x)
     return B, rho

@@ -2490,3 +2490,5 @@ iterations, ~2.3 h per window, ~19 h per 8-window run.
 | 3-24 | 4.4e-11 | 3.1e-9 | 5.1e-22 | 4.8e-11 | 1.1e-8 |
 
 (The reference column uses the reference's own Theta and g, not the zero_z ones.) The template is an excellent solution at r >= 0.225 (1e-10 and below): the earlier hypothesis (template inconsistent with the zero_z g near the horizon) is NOT supported. `rin` is worse than `con` at every r >= 0.225, even at r = 0.5-24 where its network is free (1e-7 vs 8e-10 at 0.5-1), so the failure is global, not a core effect; at window 8 it has a spike 5e-3 at r = 0.225-0.325 (just above r_in). Untested candidates: the shifted blend W(r - r_in), the stiff smoothstep factor on the correction (rho' ~ 15) that N must live with, the optimization (SSBroyden stalls at 1e-6).
+
+**`--r_in_shift` (2026-11-10, ansatz B of plots/2026-11-10/ansatz_rin_variants.png):** with `--r_in`, rho = s^2/(s^2 + r_c^2), s = max(r - r_in, 0), instead of rho(r) x smoothstep (A, the run `1d_T8_tplzz60_con_rin`). W = exp(-(s/r_c)^p) in both. Run `1d_T8_tplzz60_con_rinB` = `con_rin` + `--r_in_shift`, cold, Mendieta.
