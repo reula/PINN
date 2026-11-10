@@ -335,3 +335,32 @@ platform and XLA_PYTHON_CLIENT_MEM_FRACTION=0.95 (BFC fragmentation; peak 17.1 G
 Decision (author, 2026-11-09): phases A-H are NOT rerun in the single-run scheme.  The paper keeps
 describing the staged training for them, and a note marks the runs trained in one stage with the
 plateau rules (from phases I/J on) when their results go in.
+
+### The off-axis error is an axial l = 1 gauge mode (2026-11-10)
+
+Phase I (rp_w60_n65k_one: width 60, 65536 points, one run, loss 1.6e-11, fresh ratio 1.006) has
+rms dh 6.7e-4 and dlambda 8.5e-6 against the rotated final spectral reference -- 2x WORSE than
+rp_w40_n32768_w4 (loss 4.4e-9) and equal to rp_w40_n16384_w4 (1.4e-8).  The error falls like
+rho^-3 with the same angular shape at every radius (Paper/aux/phaseI_loss_error.png).
+
+`scripts/error_modes.py` (spherical-harmonic content of dh, dlambda in the datum's frame) shows it
+is almost all h_r_theta, h_r_phi, and a fit of the AXIAL l = 1 HARMONIC GAUGE MODE
+xi = c x x / rho^3 (Delta xi = 0, so the chart stays harmonic; in flat space
+dh = -3 (n (c x n) + (c x n) n) / rho^3) with ONE constant c explains 96-99 % of |dh| on every
+sphere rho = 1.2 ... 50: c = (1.21e-3, -0.17e-3, 1.92e-3) in the datum frame (z = datum axis).
+Nothing sees it: on the inner sphere xi is a rigid rotation (an isometry of the round induced
+metric; the inner data change only at second order, c x quadrupole, and not at all for c along the
+datum axis); the Robin condition on h (base 2, order 3) annihilates rho^-2, -3, -4 exactly; and it
+solves the linearized equations.  It is the rotational companion of the translation mode
+(sec:gaugefreedom names only translations).  The axisymmetric networks cannot represent it (no
+h_r_phi), which is why they reach 1e-7.  (NOT h_rr / h_rA "free on the inner sphere": those are
+fixed by the gauge condition and giving them would leave no solution -- the author, paper.tex.)
+
+`scripts/error_vs_loss.py` over the stages of rp_w40_n16384, rp_w40_n32768, rp_w20_n32768 and the
+two saved points of phase I (Paper/aux/error_vs_loss.png, error_vs_loss.json): |c| is set in the
+first SSBroyden stage (1e-3 to 2.5e-3, run-dependent) and frozen afterwards; the rms dh follows |c|,
+not the loss.  With the mode removed, dh at rho = 1.5 is 1e-5 to 5e-5 and still about 5e-3 |c|,
+i.e. the remainder (and the l=2, m=1 error in lambda) is the mode acting on the quadrupole at second
+order.  Proposed: a condition J = rho^3 \oint n x (h n) dOmega = 0 on the COM spheres (the mode gives
+J = -8 pi c; the true solution, reflection-symmetric about the datum axis, gives 0), and errors
+reported with the mode removed.  Not implemented yet; literature to be checked before any claim.
