@@ -2474,3 +2474,19 @@ iterations, ~2.3 h per window, ~19 h per 8-window run.
 **`--r_in r_in [--r_in_w 0.1]` (sing_1d.py, 2026-11-10, the user's rule: every point where the network gives values is trained; the horizon interior is given).** W = exp(-(max(r - r_in, 0)/r_c)^p) is 1 for r <= r_in (the field is the template exactly there, no loss point, no network); the correction rho N is multiplied by a smoothstep 0 -> 1 on [r_in, r_in + 0.1]; `--r_min` is set to r_in, so the points start at r_in. Horizon of m = 0.5 at m/2 = 0.25, tolerance 10% inwards: r_in = 0.225. (This replaces `--r_min 0.5`, where the network was free but untrained on 0.225-0.5.) Tested locally (1 window, 30 iterations, 6x60 + zero_z + con_r0): finite, u(0) = U0 to 1e-16. Not yet run on Mendieta.
 
 **Result, `1d_T8_tplzz60_con_rin` (Mendieta job 1186577, 2026-11-10; = tplzz60_con with `--r_in 0.225` instead of `--r_min 0.5`, cold start).** Worse than tplzz60_con almost everywhere. Held floor 1e-6 - 1e-4 per window (con: 6.5e-10); train loss plateaus at 5e-7 - 1e-6 (window 0 already 5e-8 vs 4e-10). Worst |m/M - 1| (r >= 0.2) at t = 2 / 4 / 6 / 8: 3.8e-3 / 1.5e-2 / 2.7e-2 / 3.5e-2 (con: 1.9e-3 / 2.5e-3 / 2.5e-3 / 4.5e-3), mostly r = 10 (-1.4e-2 at t = 8). Fields in r = 0.2-3 are 2-10x worse (Khat 4e-3 vs 3e-4 in 0.2-1). Only gain: r = 0.05-0.2 (the exact core): alpha 2e-6, chi 5e-6, Khat 1e-5 (con: 1e-4, 8e-5, 3e-4). Plots: plots/2026-11-10/loss_con_rin.png, errors_con_rin_mass.png, errors_con_rin_fields.png. Cause not established. Hypothesis (untested): the correction is switched off (smoothstep x rho = r^2/(1+r^2)) just above r_in where there ARE loss points, so the template alone must satisfy the residual there, but the table's g differs from the zero_z g (the conformal metric's Gt^r) by ~1e-2 near the horizon and the network cannot compensate. Also W is shifted outward by r_in. To check: residual map in r of the held loss, window 0, con vs rin.
+
+**Residual check of `rin` vs `con` (2026-11-10, `--eval_tr` on window_000/008.pkl of both runs, `--eval_tr_ref` on the 1D reference itself; `eval_data/tr_loss/{con,rin,ref0}_w00K.npz`).** Band means over t of lam x mean(Einstein rows^2) + gauge:
+
+| r band | con w0 | rin w0 | 1D reference w0 | con w8 | rin w8 |
+|---|---|---|---|---|---|
+| 0.001-0.01 | 3.5e-4 | 1.3e-5 | 2.3e-3 | 1.4e1 | 1.4e1 |
+| 0.01-0.05 | 2.4e-4 | 5.1e-6 | 1.7e-6 | 4.0e-1 | 4.2e-1 |
+| 0.05-0.15 | 8.6e-5 | 6.1e-9 | 3.7e-8 | 2.7e-3 | 1.0e-4 |
+| 0.15-0.225 | 1.1e-5 | 4.1e-9 | 6.7e-10 | 1.2e-4 | 6.9e-9 |
+| 0.225-0.325 | 3.0e-6 | 4.5e-7 | 7.3e-11 | 5.1e-5 | 5.2e-3 |
+| 0.325-0.5 | 2.9e-7 | 2.1e-7 | 9.3e-13 | 3.5e-6 | 2.0e-6 |
+| 0.5-1 | 7.6e-10 | 1.2e-7 | 4.3e-15 | 3.3e-10 | 2.3e-7 |
+| 1-3 | 2.1e-10 | 1.7e-8 | 1.3e-19 | 1.5e-10 | 1.7e-7 |
+| 3-24 | 4.4e-11 | 3.1e-9 | 5.1e-22 | 4.8e-11 | 1.1e-8 |
+
+(The reference column uses the reference's own Theta and g, not the zero_z ones.) The template is an excellent solution at r >= 0.225 (1e-10 and below): the earlier hypothesis (template inconsistent with the zero_z g near the horizon) is NOT supported. `rin` is worse than `con` at every r >= 0.225, even at r = 0.5-24 where its network is free (1e-7 vs 8e-10 at 0.5-1), so the failure is global, not a core effect; at window 8 it has a spike 5e-3 at r = 0.225-0.325 (just above r_in). Untested candidates: the shifted blend W(r - r_in), the stiff smoothstep factor on the correction (rho' ~ 15) that N must live with, the optimization (SSBroyden stalls at 1e-6).
