@@ -294,6 +294,17 @@ class Config:
     # make a Monte Carlo estimate as noisy as the signal.
     com_radii: tuple | None = None
     w_com: float = 100.0
+    # ROTATION gauge condition (2026-11-10, Paper/NOTES.md "The off-axis error"): the centre of mass
+    # fixes the three asymptotic translations; the three rotations are left, as the axial l = 1
+    # harmonic mode xi = c x x / rho^3 (a rigid rotation of the inner sphere, invisible to the inner
+    # data at first order, to the Robin condition on h and to lambda).  Its conserved flux:
+    #     r_k(rho) = (1/8 pi) oint sqrt(h) (x  x  h^-1 n)_k rho^2 dOmega
+    # (Green's identity for the h-harmonic coordinates x^i, x^j: the antisymmetric part of
+    # oint x^i dx^j/dn dA_h; its divergence is eps_kim x^i d_l(sqrt h h^lm) = 0 in harmonic gauge),
+    # 0 in flat space, and r = c for the mode.  r = 0 is a gauge choice available for any data.
+    # None = off; else the chart radii of the spheres.  Same quadrature as the centre of mass.
+    rot_radii: tuple | None = None
+    w_rot: float = 100.0
 
     # ------------------------------------- radial derivative of the lambda equation
     # The lambda-equation is second order, so the loss is blind to lambda''', and lambda'''

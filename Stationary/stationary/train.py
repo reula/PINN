@@ -2101,6 +2101,10 @@ def parse_args(argv=None):
                    help="RADII: impose the centre-of-mass gauge d = 0 (the conserved dipole flux, "
                         "COM_GAUGE.md 4b) on the spheres of these chart radii, e.g. 1,2,5,20")
     p.add_argument("--w-com", type=float, default=None, dest="w_com")
+    p.add_argument("--rot-pin", type=str, default=None, dest="rot_pin",
+                   help="RADII: impose the rotation gauge r = 0 (the conserved flux of the asymptotic "
+                        "rotations, losses.rot_flux) on the spheres of these chart radii")
+    p.add_argument("--w-rot", type=float, default=None, dest="w_rot")
     p.add_argument("--lam-bc-axis", type=str, default=None, dest="lam_bc_axis",
                    help="axis of the S1/S2 inner data as a vector ax,ay,az (default z)")
     p.add_argument("--z-reflect", action="store_true", dest="z_reflect",
@@ -2430,6 +2434,10 @@ def parse_args(argv=None):
         cfg.com_radii = tuple(float(v) for v in a.com_pin.split(","))
     if a.w_com is not None:
         cfg.w_com = a.w_com
+    if getattr(a, "rot_pin", None):
+        cfg.rot_radii = tuple(float(v) for v in a.rot_pin.split(","))
+    if getattr(a, "w_rot", None) is not None:
+        cfg.w_rot = a.w_rot
     if a.robin_source:
         cfg.robin_source = True
     if a.ref_asymptotic is not None:

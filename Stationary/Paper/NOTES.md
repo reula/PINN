@@ -364,3 +364,21 @@ i.e. the remainder (and the l=2, m=1 error in lambda) is the mode acting on the 
 order.  Proposed: a condition J = rho^3 \oint n x (h n) dOmega = 0 on the COM spheres (the mode gives
 J = -8 pi c; the true solution, reflection-symmetric about the datum axis, gives 0), and errors
 reported with the mode removed.  Not implemented yet; literature to be checked before any claim.
+
+### The rotation gauge condition (2026-11-10)
+
+The author: the reflection symmetry that makes J = rho^3 oint n x (h n) vanish is a property of this
+solution, not of generic data.  The generic condition is the Green-identity flux of the h-harmonic
+coordinates, the companion of Cederbaum's centre of mass (which pairs x^i with U):
+    r_k = (1/8 pi) oint sqrt(h) (x  x  h^-1 n)_k rho^2 dOmega        (losses.rot_flux)
+Its divergence is eps_kim x^i d_l(sqrt h h^lm) + eps_kim sqrt h h^im = 0 in harmonic gauge, so it
+is the same on every sphere for any data; 0 in flat space; J is its first-order term; the axial
+l = 1 mode xi = c x x / rho^3 gives r = c.  For generic data r has some value r0 on every sphere,
+and adding the mode with c = -r0 makes it 0: r = 0 is a gauge choice available for any data (as
+d = 0), fixing the asymptotic rotations as d fixes the translations.
+Checks: on phase I's network r = (2.2147e-3, -1.652e-4, 5.034e-4) on the spheres 1, 1.5, 3, 10,
+30, 100 (equal to 4 digits) = R c of the fit by error_modes.py; on the rotated spectral reference
+r < 2e-12.  Flags `--rot-pin RADII --w-rot W` (Config.rot_radii, w_rot = 100, same quadrature as
+the centre of mass); grade_rotated.py now also prints and saves r.  Phase J resumes with it (author's
+call, 2026-11-10).  Literature to check before any claim (asymptotic rotations of harmonic charts:
+Beig-O Murchadha, Huang).

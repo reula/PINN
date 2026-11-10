@@ -224,7 +224,11 @@ if [[ $PHASES == *I* ]]; then
 fi
 if [[ $PHASES == *J* ]]; then
     ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
-    one rp_w60_n65k_tan "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}" --inner-tangential
+    # 2026-11-10 (author): J also gets the ROTATION gauge condition (losses.rot_flux, NOTES "The
+    # off-axis error"), on the centre-of-mass spheres; it resumes its run from the checkpoint at
+    # 22000 SSBroyden iterations, where it had crashed (OOM), with the condition added.
+    one rp_w60_n65k_tan "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}" --inner-tangential \
+        --rot-pin 1,1.5,3,10,30,100
     grade $R/rp_w60_n65k_tan_one $REF_FINAL final; moments $R/rp_w60_n65k_tan_one $REF_FINAL final
     note J "rp_w60_n65k_tan done"
 fi

@@ -28,7 +28,7 @@ jax.config.update("jax_enable_x64", True)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stationary.evaluate import load_run                  # noqa: E402
-from stationary.losses import com_flux                    # noqa: E402
+from stationary.losses import com_flux, rot_flux          # noqa: E402
 from stationary.model import Fields, point_fields         # noqa: E402
 from stationary.specref import SpectralAxisym, compare    # noqa: E402
 from stationary.train import exact_asset                  # noqa: E402
@@ -68,6 +68,7 @@ def main(argv=None):
     cm = compare(pf, ref, ex, cfg, modes=False)
     cc = cfg.__class__(**{**cfg.__dict__, "com_radii": (1.0, 2.0, 10.0, 100.0)})
     d = np.asarray(com_flux(pf, cc)).reshape(-1, 3)
+    rf = np.asarray(rot_flux(pf, cc, radii=cc.com_radii)).reshape(-1, 3)
     print(f"[grade] {a.run}: data axis {cfg.lam_bc_axis}, reference {os.path.basename(a.ref)} rotated")
     print(f"[grade] over the shell: rms |dlambda| {cm['rms_dlam']:.2e} (max {cm['max_dlam']:.2e}), "
           f"rms |dh| {cm['rms_dh']:.2e} (max {cm['max_dh']:.2e}); perturbation "
@@ -78,9 +79,11 @@ def main(argv=None):
               f"   {b['rms_dh']:.2e} ({b['perturbation_rms_h']:.2e})")
     print("[grade] centre-of-mass flux d on spheres 1, 2, 10, 100: "
           + "  ".join("(" + ", ".join(f"{v:+.1e}" for v in row) + ")" for row in d))
+    print("[grade] rotation flux r (= c of the axial l=1 mode) on spheres 1, 2, 10, 100: "
+          + "  ".join("(" + ", ".join(f"{v:+.1e}" for v in row) + ")" for row in rf))
     out = f"grade_rotated_{a.tag}.json" if a.tag else "grade_rotated.json"
     with open(os.path.join(a.run, out), "w") as fh:
-        json.dump({"compare": cm, "d": d.tolist(), "ref": a.ref}, fh, indent=1, default=float)
+        json.dump({"compare": cm, "d": d.tolist(), "r": rf.tolist(), "ref": a.ref}, fh, indent=1, default=float)
 
 
 if __name__ == "__main__":

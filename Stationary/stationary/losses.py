@@ -625,6 +625,49 @@ def com_flux(point_fields, cfg, n_mu: int | None = None, n_phi: int | None = Non
     return jnp.concatenate(out)
 
 
+def rot_flux(point_fields, cfg, n_mu: int | None = None, n_phi: int | None = None, radii=None):
+    """r_k = (1/8 pi) oint sqrt(h) (x x h^-1 n)_k rho^2 dOmega on each sphere of cfg.rot_radii
+    (or `radii`), flattened (3 per sphere): the conserved flux of the asymptotic ROTATION gauge mode
+    (Config.rot_radii).  0 in flat space; the axial l = 1 mode xi = c x x / rho^3 gives r = c.
+    """
+    import numpy as _np
+    if n_mu is None or n_phi is None:
+        qm, qp = com_quadrature(cfg)
+        n_mu = qm if n_mu is None else n_mu
+        n_phi = qp if n_phi is None else n_phi
+    mu, w = _np.polynomial.legendre.leggauss(n_mu)
+    phi = 2 * _np.pi * _np.arange(n_phi) / n_phi
+    MU, PHI = _np.meshgrid(mu, phi, indexing="ij")
+    st = _np.sqrt(1 - MU ** 2)
+    dirs = jnp.asarray(_np.stack([st * _np.cos(PHI), st * _np.sin(PHI), MU], -1).reshape(-1, 3))
+    wts = jnp.asarray(_np.outer(w, _np.full(n_phi, 2 * _np.pi / n_phi)).reshape(-1))
+
+    def integrand(x):
+        h = point_fields(x).h
+        hn = jnp.linalg.solve(h, x / jnp.linalg.norm(x))             # h^jk n_k
+        return jnp.sqrt(jnp.linalg.det(h)) * jnp.cross(x, hn)
+
+    out = []
+    for r in (cfg.rot_radii if radii is None else radii):
+        vals = jax.vmap(integrand)(float(r) * dirs)                 # (P, 3)
+        out.append(float(r) ** 2 * jnp.sum(wts[:, None] * vals, axis=0) / (8 * jnp.pi))
+    return jnp.concatenate(out)
+
+
+_ROT_TARGET_CACHE: dict = {}
+
+
+def rot_target(cfg, exact_fields=None):
+    """0 for problem data; the exact solution's own flux for exact data (as com_target)."""
+    if getattr(cfg, "inner_bc", "spherical") != "reference" or exact_fields is None:
+        return 0.0
+    key = (id(exact_fields), tuple(cfg.rot_radii), com_quadrature(cfg))
+    if key not in _ROT_TARGET_CACHE:
+        with jax.ensure_compile_time_eval():
+            _ROT_TARGET_CACHE[key] = jnp.asarray(_np_asarray(rot_flux(exact_fields, cfg)))
+    return _ROT_TARGET_CACHE[key]
+
+
 _COM_TARGET_CACHE: dict = {}
 
 
@@ -838,6 +881,8 @@ def residual_vector(state, batch, cfg, model, exact_fields=None, weights=None,
         push(f"pin_{k}", jnp.sqrt(w_pin / v.size) * v.reshape(-1))
     if getattr(cfg, "com_radii", None):
         push("com", jnp.sqrt(jnp.asarray(cfg.w_com)) * (com_flux(pf, cfg) - com_target(cfg, exact_fields)))
+    if getattr(cfg, "rot_radii", None):
+        push("rot", jnp.sqrt(jnp.asarray(cfg.w_rot)) * (rot_flux(pf, cfg) - rot_target(cfg, exact_fields)))
     return jnp.concatenate(rows)
 
 
@@ -881,6 +926,8 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
         parts[f"pin_{k}"] = v
     if getattr(cfg, "com_radii", None):
         parts["com"] = jnp.sum((com_flux(pf, cfg) - com_target(cfg, exact_fields)) ** 2)
+    if getattr(cfg, "rot_radii", None):
+        parts["rot"] = jnp.sum((rot_flux(pf, cfg) - rot_target(cfg, exact_fields)) ** 2)
 
     loss = 0.0
     for k in equation_keys(model):
@@ -904,5 +951,7 @@ def total_loss(state, batch, cfg, model, exact_fields=None, pde_scale=1.0,
         loss = loss + jnp.asarray(cfg.w_pin) * sum(pin.values())
     if "com" in parts:
         loss = loss + jnp.asarray(cfg.w_com) * parts["com"]
+    if "rot" in parts:
+        loss = loss + jnp.asarray(cfg.w_rot) * parts["rot"]
 
     return loss, parts
