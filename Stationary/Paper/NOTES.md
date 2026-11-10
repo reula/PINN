@@ -390,3 +390,27 @@ quadrupole).  It exists for ANY data: the inner data are untouched (xi = 0 there
 at infinity is rotation invariant.  Evidence in hand: the datum is axisymmetric about (1,0,1)/sqrt2,
 yet c has components perpendicular to that axis (1.2e-3, -0.17e-3) as large as the parallel one
 (1.9e-3) -- the rotations that change the datum are as free as the one that does not.
+
+### Green identities with the Weyl gauge source (2026-11-10, author's question)
+
+With Gamma^i = S^i (the cylindrical source of the Weyl tests) the x^i are not h-harmonic and the
+fluxes are not conserved.  Exactly, for any metric (d_l(sqrt h h^lm) = -sqrt h Gamma^m):
+  F(rho2) - F(rho1) = -int eps x Gamma sqrt h,   D(rho2) - D(rho1) = int (x Delta_h U + U Gamma) sqrt h,
+F = 8 pi r, D = 4 pi d.  The physical identities put S for Gamma and 0 for Delta_h U; the mismatch is
+the integral of the gauge and lambda-equation residuals.  `scripts/green_identities.py` checks all of
+it on wr_rot45_w4 (rotated unequal rods, 3-D network, no rotation condition; shells between the COM
+spheres 1, 1.5, 3, 6, 10; Paper/aux/green_identities_wr_rot45_w4.json):
+- the exact identities (with Gamma) hold to the quadrature: 1e-14 (5e-10 rot / 3e-8 COM on [1, 1.5],
+  next to the rods, where 12 radial nodes are not enough);
+- exact rotated Weyl solution: r = 1e-18 ... 4e-16 on every sphere, d conserved (8.3121124e-2) to
+  1e-15 except the [1, 1.5] quadrature; the S volume terms are ~1e-14, i.e. zero: S is axisymmetric
+  about the rods' axis, so x x S and U S integrate to zero there -- for these exact data the source
+  does not spoil the conservation;
+- network: d = exact to 2e-9; r = (0.4-1.1)e-6 on every sphere, changing between spheres by
+  ~4e-7, and that change is accounted for, to the quadrature, by the volume integral of the
+  gauge residual (Gamma - S) (rms 8.7e-7 in the report): |dF - vol(S)| = 0.8-9e-6 against a crude
+  bound int |x| |Gamma - S| ~ 1e-3, i.e. the residual integrates mostly to zero.  So the identities
+  hold to the order of the residuals.
+- The rotation mode is present in the rotated Weyl network too, at |r| ~ 1e-6; it gives
+  dh ~ 3|r|/rho^3 ~ 3e-6 at the inner sphere, the size of the max dh 3.3e-6 the paper quotes for this
+  test: it may be most of the rotated-Weyl error as well (to check with error_modes.py).
