@@ -215,7 +215,7 @@ fi
 # the BFC pool, not size.  With the plain CUDA allocator 20 iterations peak at 17.1 GiB (hub, 2026-11-09,
 # ~/w60_memtest.sh, logs/w60_memtest.log).  So both settings, for I and J only.
 W60=(--width 60 --n-coll 65536 --n-bnd 4096 --n-bnd-outer 4096 --qn-max-H-gb 4)
-[[ $PHASES == *[IJ]* ]] && export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95 XLA_PYTHON_CLIENT_ALLOCATOR=platform
+[[ $PHASES == *[IJL]* ]] && export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95 XLA_PYTHON_CLIENT_ALLOCATOR=platform
 if [[ $PHASES == *I* ]]; then
     ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
     one rp_w60_n65k "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}"
@@ -249,6 +249,20 @@ if [[ $PHASES == *K* ]]; then
     train sw_metric_manuf "${SCHW[@]}" --arch sym_hybrid --robin-source --robin-orders h=3,lam=3 --no-robin-G
     train sw_metric_real "${SCHW[@]}" --arch sym_hybrid --robin-orders h=3,lam=3 --no-robin-G
     note K "Schwarzschild tests with Wolfe done"
+fi
+# ----------------------------------------------------------------- L: the rotation condition on I's network
+# Phase I's network (rp_w60_n65k_one, loss 1.6e-11) carries the axial l = 1 gauge mode with
+# r = (2.2e-3, -1.7e-4, 5.0e-4).  L continues it with the rotation condition added (losses.rot_flux,
+# on the centre-of-mass spheres) and nothing else changed: SSBroyden only, the same plateau rule and
+# cap, snapshots every 1000.  The author's proposal, 2026-11-10.
+if [[ $PHASES == *L* ]]; then
+    train rp_w60_n65k_rot "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}" \
+        --rot-pin 1,1.5,3,10,30,100 --init-from $R/rp_w60_n65k_one/params.pkl \
+        --steps 0 --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 40000 \
+        --plateau-window 16 --plateau-frac 0.1 --plateau-min-iters -1 --snapshot-every 1000
+    [ -f "$R/rp_w60_n65k_rot/fresh_samples.json" ] || "$PY" -u scripts/fresh_sample_loss.py "$R/rp_w60_n65k_rot" --n $NFRESH
+    grade $R/rp_w60_n65k_rot $REF_FINAL final; moments $R/rp_w60_n65k_rot $REF_FINAL final
+    note L "rp_w60_n65k_rot (I + rotation condition) done"
 fi
 echo "=== hub_recipe $PHASES finished $(date -u '+%F %T UTC')"
 note done "phases $PHASES finished"
