@@ -14,7 +14,7 @@ nothing was recomputed for the paper.
 | III networks, loss, optimisers, specref | README.md 6.1, 8.6; REPORT_OPTIMISERS.md; DSGNAR.md 1-9; HUB.md (timings); stationary/specref.py |
 | IV tests | README.md 8.1-8.12 (m2R3_symhybrid, m2R4_realrobin, weyl_prod, weyl_unequal, weyl_close4/35, weyl_rot45*) |
 | V quadrupole | REPORT_PIN_COM.md; PERTURBATION.md; COM_GAUGE.md; DSGNAR.md rounds 3-27; MULTIPOLES_GH_THORNE.md |
-| figures | figs/optimisers.png = plots/report_optimisers.png; figs/com_steps.png = plots/report_pin_com.png; figs/weyl_plane.png = runs/wr_prod_w2/plane/plane.png (`python -m stationary.plane runs/wr_prod_w2 --no-title --n-rho 240 --n-z 480`) |
+| figures | figs/optimisers.png = plots/report_optimisers.png; figs/com_steps.png = plots/report_pin_com.png; figs/weyl_surface.png = runs/wr_prod_w2/plane/plane_surface.png (`python -m stationary.plane runs/wr_prod_w2 --no-title --n-rho 100 --n-z 151 --surface`; surfaces to rho = 30, replaced weyl_plane.png on 2026-11-10 at the author's request); figs/training_*.png, surface_J.png = Paper/fig_training.py |
 
 ## Open items (marked TODO in the text)
 

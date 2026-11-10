@@ -188,6 +188,63 @@ def figure(cfg, data, R, Z, out_png, factor=1.0, suptitle=True):
     plt.close(fig)
 
 
+def surface_figure(cfg, data, R, Z, out_png, factor=1.0):
+    """The same four panels as `figure`, drawn as 3-D surfaces over the whole meridional plane.
+
+    The run is axisymmetric, so the half-plane (rho_cyl >= 0) is mirrored to rho_cyl < 0; the
+    (r, theta) node grid makes the inner sphere a clean edge (no masking).  The paper's
+    Fig. weyl since 2026-11-10 (author's request: surfaces instead of colour maps).
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.colors import Normalize
+
+    def mirror(v, sign=1.0):
+        # theta from 0 to pi on rho_cyl >= 0, then back from pi to 0 on rho_cyl <= 0: one loop
+        v = np.asarray(v)
+        return np.concatenate([v, sign * v[:, ::-1][:, 1:]], axis=1)
+
+    X = mirror(np.asarray(R) * factor, -1.0)
+    Zm = mirror(np.asarray(Z) * factor)
+    panels = ((np.asarray(data["lambda"]), "viridis", r"$\lambda$ (computed)"),
+              (np.log10(np.abs(np.asarray(data["lambda_err"]))), "magma",
+               r"$\log_{10}|\lambda_{net}-\lambda_{exact}|$"),
+              (np.log10(np.asarray(data["h_err"])), "magma", r"$\log_{10}\max_{ij}|h_{net}-h_{exact}|$"),
+              (np.log10(np.asarray(data["curvature"]) / factor ** 4), "cividis",
+               r"$\log_{10}R_{ab}R^{ab}$ (exact)"))
+    fig = plt.figure(figsize=(13, 11))
+    for k, (v, cmap, title) in enumerate(panels):
+        v = np.array(v, dtype=float)
+        # the exact curvature is not finite ON the axis (theta = 0, pi): take the neighbour column
+        for j, jn in ((0, 1), (-1, -2)):
+            bad = ~np.isfinite(v[:, j])
+            v[bad, j] = v[bad, jn]
+        if k in (1, 2):
+            # log of an error that changes sign: floor it four decades below its maximum, or the
+            # zero crossings draw as spikes down to the round-off and hide the error's structure
+            v = np.maximum(v, np.nanmax(v[np.isfinite(v)]) - 4.0)
+        V = mirror(v)
+        a = fig.add_subplot(2, 2, k + 1, projection="3d")
+        if cmap == "RdBu_r":
+            m = float(np.nanmax(np.abs(V)))
+            norm = Normalize(-m, m)
+        else:
+            norm = Normalize(float(np.nanmin(V)), float(np.nanmax(V)))
+        a.plot_surface(X, Zm, V, facecolors=plt.get_cmap(cmap)(norm(V)), rstride=1, cstride=1,
+                       lw=0, antialiased=False, shade=False)
+        a.set_title(title, fontsize=12)
+        a.set_xlabel(r"$\rho_{cyl}$")
+        a.set_ylabel("$z$")
+        a.view_init(elev=30, azim=-60)
+        if cmap == "RdBu_r":
+            a.ticklabel_format(axis="z", style="sci", scilimits=(0, 0))
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=130)
+    plt.close(fig)
+
+
 def rods_spans(cfg):
     """The rod spans of a Weyl run, or nothing for other references."""
     if not getattr(cfg, "weyl", False):
@@ -215,6 +272,11 @@ def main(argv=None):
                         "invariant under the rescaling, so only the axes, the rods and the "
                         "spheres move -- which is how a run trained in a scaled chart is "
                         "presented in the standard sizes")
+    p.add_argument("--surface", action="store_true",
+                   help="also write plane/plane_surface.png: the four panels as 3-D surfaces over "
+                        "the whole meridional plane (the paper's Fig. weyl)")
+    p.add_argument("--surface-zoom", type=float, default=4.0,
+                   help="outer radius of the surfaces, in inner radii (default 4)")
     p.add_argument("--no-title", action="store_true",
                    help="no run/arch title over the panels (the paper's figure)")
     a = p.parse_args(argv)
@@ -256,6 +318,14 @@ def main(argv=None):
     os.makedirs(out_dir, exist_ok=True)
     png = os.path.join(out_dir, "plane.png")
     figure(cfg, data, R, Z, png, factor=factor, suptitle=not a.no_title)
+    if a.surface:
+        # its own grid, out to --surface-zoom inner radii: the far field is featureless and would
+        # shrink the inner sphere, where the solution and the error have their structure, to a dot
+        r_s = min(cfg.rho_out, a.surface_zoom * cfg.rho_in)
+        pts_s, ins_s, R_s, Z_s = half_plane(a.n_rho, a.n_z, r_s, cfg.rho_in)
+        data_s = maps(pf, ref, pts_s, ins_s, (a.n_rho, a.n_z), chunk=a.chunk, curv_fn=curv_fn)
+        surface_figure(cfg, data_s, R_s, Z_s, os.path.join(out_dir, "plane_surface.png"), factor=factor)
+        print(f"[plane] wrote {os.path.join(out_dir, 'plane_surface.png')}")
 
     # a one-line summary of each panel, on the grid that was actually evaluated
     summary = {"n_rho": a.n_rho, "n_z": a.n_z, "n_points": int(inside.sum()),
