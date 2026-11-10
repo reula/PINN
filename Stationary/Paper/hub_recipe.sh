@@ -267,5 +267,21 @@ if [[ $PHASES == *L* ]]; then
     grade $R/rp_w60_n65k_rot $REF_FINAL final; moments $R/rp_w60_n65k_rot $REF_FINAL final
     note L "rp_w60_n65k_rot (I + rotation condition) done"
 fi
+# ----------------------------------------------------------------- M: the rotation condition on the rotated Weyl
+# wr_rot45_w4 (phase F, no rotation condition) carries the rotation mode at |r| ~ 1e-6, which alone
+# gives dh ~ 3e-6 at the inner sphere -- the size of its error (NOTES, "Green identities with the
+# Weyl gauge source").  M continues it with the rotation condition on its centre-of-mass spheres,
+# target the exact solution's own flux (losses.rot_target, inner_bc = reference), nothing else
+# changed: SSBroyden only, the plateau rule, snapshots every 1000.  Author's proposal, 2026-11-10.
+if [[ $PHASES == *M* ]]; then
+    read -r -a W <<< "$(weyl 3.5 1 0.1 0.5)"
+    train wr_rot45_rot "${NUM[@]}" "${TD[@]}" "${W[@]}" --weyl-rotate-deg 45 \
+        --rot-pin 1,1.5,3,6,10 --init-from $R/wr_rot45_w4/params.pkl \
+        --steps 0 --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 40000 \
+        --plateau-window 16 --plateau-frac 0.1 --plateau-min-iters -1 --snapshot-every 1000
+    [ -f "$R/wr_rot45_rot/fresh_samples.json" ] || "$PY" -u scripts/fresh_sample_loss.py "$R/wr_rot45_rot" --n $NFRESH
+    moments $R/wr_rot45_rot
+    note M "wr_rot45_rot (rotated Weyl + rotation condition) done"
+fi
 echo "=== hub_recipe $PHASES finished $(date -u '+%F %T UTC')"
 note done "phases $PHASES finished"
