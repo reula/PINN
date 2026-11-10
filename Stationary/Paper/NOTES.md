@@ -419,3 +419,22 @@ c = (2.3-5.3e-7, -0.8-1.3e-7, -8.5-9.0e-7) in the rods' frame (|c| ~ 9e-7, = r o
 explains 50-70 % of |dh| on rho = 1 ... 3 (unexplained fraction 0.31-0.53) and none of it further out
 (rho >= 6, where the error is ~3e-8 and mixed l <= 2).  Phase M (wr_rot45_rot, Mendieta) tests the
 condition there.
+
+### Literature on the rotation freedom and its fixing (2026-11-10, web search; to be refined)
+
+- The freedom itself is classical: asymptotically flat harmonic coordinates exist (O Murchadha 1986,
+  Bartnik 1986) and are unique up to a rigid (Euclidean) motion at infinity -- Bartnik, "The mass of
+  an asymptotically flat manifold", CPAM 39 (1986), Thm 3.1 (the decaying harmonic functions form an
+  (n+1)-dimensional space).  Cederbaum-Metzger (arXiv:2604.07168, review) restate it: "harmonic
+  coordinates are unique up to asymptotic rotations and translations".  Cite Bartnik for the six
+  residual motions.
+- Translations: fixed in the paper by Cederbaum's pseudo-Newtonian centre of mass (Cederbaum 2012).
+- Rotations: no source found that FIXES them by a condition, and none with the antisymmetric
+  Green flux of the coordinate functions, eps_kij oint x^i d_nu x^j dA_h.  Cederbaum-Metzger give no
+  rule for the rotation; Cederbaum-Graf (arXiv:2307.12541) use Bartnik's coordinates but do not fix Q.
+  The Regge-Teitelboim / Beig-O Murchadha angular momentum is a different object (a flux of the
+  momentum pi against rotation fields); it vanishes for static (time-symmetric) data and does not
+  fix a chart rotation.
+- Wording for the paper: credit the freedom to Bartnik (and O Murchadha for existence); present the
+  flux as the analogue, through Green's identity, of the centre-of-mass flux; "we are not aware of
+  this condition in the literature" rather than a claim of novelty, and ask Cederbaum if possible.
