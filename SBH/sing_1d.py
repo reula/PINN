@@ -72,6 +72,11 @@ ap.add_argument("--log_frac", type=float, default=0.0,
                 help="share of every point set (interior, t1, IC, held) drawn log-uniform in r on [--log_rmin, R], "
                      "the same number of points per decade; the cloud shares are scaled by (1 - log_frac) (2026-11-05)")
 ap.add_argument("--log_rmin", type=float, default=1e-3)
+ap.add_argument("--r_in", type=float, default=0.0,
+                help="(2026-11-10, the user) template-exact core: W = 1 and the network correction is zero for r <= r_in (the interior "
+                     "of the horizon is given, neither sampled nor reached by the network); the correction switches on smoothly over "
+                     "[r_in, r_in + --r_in_w]; sets --r_min = r_in unless --r_min is given. Horizon at m/2 = 0.25, tolerance 10%: 0.225")
+ap.add_argument("--r_in_w", type=float, default=0.1, help="width of the smooth switch-on of the correction above r_in")
 ap.add_argument("--r_min", type=float, default=0.0,
                 help="(2026-11-08, the user: with a template, look only outside the inner region) every interior / end / IC "
                      "radius below r_min is redrawn log-uniform on [r_min, R], so no loss point sits inside r_min; 0 = off")
@@ -208,6 +213,8 @@ rest = argv[argv.index("--") + 1:] if "--" in argv else []
 a = ap.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
 os.makedirs(a.out, exist_ok=True)
 
+if a.r_in > 0 and a.r_min <= 0:
+    a.r_min = a.r_in
 if a.no_template and not a.hard_ic:
     raise SystemExit("--no_template needs --hard_ic")
 tfile = a.template_file or os.path.join(REF, "sing_bl_m0.5_dense.npz")
@@ -275,10 +282,13 @@ def U0_rad(r):
 def bg_rad(t, r):
     """Template part B (10,) and rho at (t, r): W-blended template, multiplicative chi and alpha."""
     T = radial(t, jnp.minimum(r, R_TPL))
-    w = jnp.exp(-(r / a.r_c) ** a.w_power) * (0.0 if a.no_template else 1.0)
+    w = jnp.exp(-(jnp.maximum(r - a.r_in, 0.0) / a.r_c) ** a.w_power) * (0.0 if a.no_template else 1.0)
     B = FLAT_RAD + w * (T - FLAT_RAD)
     B = B.at[I_CHI].set(jnp.exp(w * jnp.log(_pos(T[I_CHI])))).at[I_AL].set(jnp.exp(w * jnp.log(_pos(T[I_AL]))))
     rho = 1.0 if a.no_template else r ** a.rho_power / (r ** a.rho_power + a.r_c ** a.rho_power)
+    if a.r_in > 0 and not a.no_template:                  # --r_in: smoothstep 0 -> 1 on [r_in, r_in + r_in_w]
+        x = jnp.clip((r - a.r_in) / a.r_in_w, 0.0, 1.0)
+        rho = rho * x * x * (3.0 - 2.0 * x)
     return B, rho
 
 

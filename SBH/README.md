@@ -2470,3 +2470,5 @@ A30 with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.47` each, both died with RESOURCE_EXH
 allocation) at the first full-phase iteration: the allocator kept the ~4.3 GB of the IC phase and the full
 phase needs ~10 GB. One run per GPU (peak 10.1 GB alone). Measured alone at baseline settings: 87 s per 250
 iterations, ~2.3 h per window, ~19 h per 8-window run.
+
+**`--r_in r_in [--r_in_w 0.1]` (sing_1d.py, 2026-11-10, the user's rule: every point where the network gives values is trained; the horizon interior is given).** W = exp(-(max(r - r_in, 0)/r_c)^p) is 1 for r <= r_in (the field is the template exactly there, no loss point, no network); the correction rho N is multiplied by a smoothstep 0 -> 1 on [r_in, r_in + 0.1]; `--r_min` is set to r_in, so the points start at r_in. Horizon of m = 0.5 at m/2 = 0.25, tolerance 10% inwards: r_in = 0.225. (This replaces `--r_min 0.5`, where the network was free but untrained on 0.225-0.5.) Tested locally (1 window, 30 iterations, 6x60 + zero_z + con_r0): finite, u(0) = U0 to 1e-16. Not yet run on Mendieta.
