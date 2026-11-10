@@ -59,7 +59,10 @@ def real_ylm(lmax, th, ph):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("run")
-    ap.add_argument("--ref", required=True)
+    ap.add_argument("--ref", default=None, help="spectral reference .npz (off-axis problem data)")
+    ap.add_argument("--exact", action="store_true",
+                    help="grade against the run's exact solution instead (Weyl runs; the frame is the "
+                         "rods' axis, rotated by cfg.weyl_rotate_deg)")
     ap.add_argument("--params", default="params.pkl")
     ap.add_argument("--radii", default="1,1.2,1.5,2,3,5,10,20,50,100")
     ap.add_argument("--lmax", type=int, default=8)
@@ -71,15 +74,24 @@ def main(argv=None):
     cfg, model, state = load_run(a.run, a.params)[:3]
     pf = point_fields(model, state["net"])
     ex = exact_asset(cfg)
-    R = np.asarray(rotation_to(cfg.lam_bc_axis if cfg.lam_bc_axis is not None else (0, 0, 1)))
-    z = np.load(a.ref)
-    ref0 = SpectralAxisym(cfg, ex, ls=tuple(int(v) for v in z["ls"]),
-                          n_radial=int(z["n_radial"])).fields_of(jnp.asarray(z["c"]))
-    Rj = jnp.asarray(R)
+    if a.exact:
+        from stationary.weyl import rotation_matrix
+        R = np.asarray(rotation_matrix(getattr(cfg, "weyl_rotate_deg", 0.0) or 0.0))
+        Rj = jnp.asarray(R)
 
-    def err(y):
-        fn, fr = pf(Rj @ y), ref0(y)
-        return Rj.T @ fn.h @ Rj - fr.h, fn.lam - fr.lam
+        def err(y):
+            fn, fr = pf(Rj @ y), ex(Rj @ y)
+            return Rj.T @ (fn.h - fr.h) @ Rj, fn.lam - fr.lam
+    else:
+        R = np.asarray(rotation_to(cfg.lam_bc_axis if cfg.lam_bc_axis is not None else (0, 0, 1)))
+        z = np.load(a.ref)
+        ref0 = SpectralAxisym(cfg, ex, ls=tuple(int(v) for v in z["ls"]),
+                              n_radial=int(z["n_radial"])).fields_of(jnp.asarray(z["c"]))
+        Rj = jnp.asarray(R)
+
+        def err(y):
+            fn, fr = pf(Rj @ y), ref0(y)
+            return Rj.T @ fn.h @ Rj - fr.h, fn.lam - fr.lam
 
     err_v = jax.jit(jax.vmap(err))
 
@@ -96,7 +108,7 @@ def main(argv=None):
     radii = [float(v) for v in a.radii.split(",")]
     res = {"run": a.run, "ref": a.ref, "params": a.params, "radii": radii, "lmax": a.lmax,
            "axis": list(map(float, R[:, 2])), "modes": {}}
-    print(f"[modes] {a.run} ({a.params}) against {os.path.basename(a.ref)}, datum axis {R[:, 2].round(4)}")
+    print(f"[modes] {a.run} ({a.params}) against {'the exact solution' if a.exact else os.path.basename(a.ref)}, datum axis {R[:, 2].round(4)}")
     for rho in radii:
         Yp = (rho * n).reshape(-1, 3)
         dh, dl = err_v(jnp.asarray(Yp))

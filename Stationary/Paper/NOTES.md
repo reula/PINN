@@ -414,3 +414,8 @@ spheres 1, 1.5, 3, 6, 10; Paper/aux/green_identities_wr_rot45_w4.json):
 - The rotation mode is present in the rotated Weyl network too, at |r| ~ 1e-6; it gives
   dh ~ 3|r|/rho^3 ~ 3e-6 at the inner sphere, the size of the max dh 3.3e-6 the paper quotes for this
   test: it may be most of the rotated-Weyl error as well (to check with error_modes.py).
+error_modes.py --exact on wr_rot45_w4 (against the exact rotated Weyl solution): the rotation mode,
+c = (2.3-5.3e-7, -0.8-1.3e-7, -8.5-9.0e-7) in the rods' frame (|c| ~ 9e-7, = r of green_identities),
+explains 50-70 % of |dh| on rho = 1 ... 3 (unexplained fraction 0.31-0.53) and none of it further out
+(rho >= 6, where the error is ~3e-8 and mixed l <= 2).  Phase M (wr_rot45_rot, Mendieta) tests the
+condition there.
