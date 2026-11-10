@@ -456,6 +456,6 @@ spectral reference specref_nonlinear_fine; Weyl errors against the exact solutio
 
 1. The rotation condition alone (L) removes the mode in 2000-3000 iterations and gives 2600x in h and 1100x in
    lambda over I already at 7000 iterations, at the same loss as I.  It is 12x better than J in h: the H^1 term
-   keeps J's loss at 8e-10 (its residuals are 50x larger than L's), so H^1 is not needed and costs accuracy.
+   keeps J's loss at 8e-10 (its PDE residual terms are 25-70x larger than L's), so H^1 is not needed and costs accuracy.
 2. In M the rms dh improves 2.6x (the mode was 50-70% of the inner error), max dh and dlambda do not change.
 3. J's jump in the loss curve at 27000 is the rotation term switched on at its resume.
