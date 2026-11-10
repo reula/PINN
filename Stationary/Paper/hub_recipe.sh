@@ -73,7 +73,7 @@ SSB=(--steps 0 --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 10000 -
 # the single-run scheme (`one`); the windows are calibrated on the histories of phases A-H (NOTES.md)
 ONE=(--steps 5000 --adam-plateau-window 5 --adam-plateau-frac 0.3
      --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 40000
-     --plateau-window 16 --plateau-frac 0.1 --plateau-min-iters -1)
+     --plateau-window 16 --plateau-frac 0.1 --plateau-min-iters -1 --snapshot-every 1000)
 NFRESH=5
 SPEC_L14=(--nonlinear --ls 0,2,4,6,8,10,12,14 --n-radial 48 --n-coll 4000 --n-bnd 600 --iters 14 --tag l14)
 R=runs

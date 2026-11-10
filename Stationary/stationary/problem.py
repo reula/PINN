@@ -511,6 +511,9 @@ class Config:
     plateau_frac: float = 0.1
     adam_plateau_window: int = 0
     adam_plateau_frac: float = 0.3
+    # Keep the parameters every N iterations as params_it<NNNNNN>.pkl (0 = off), so that the error
+    # against a reference can be followed along a run (scripts/error_vs_loss.py).  2026-11-10.
+    snapshot_every: int = 0
     log_every: int = 200
     seed: int = 0
     outdir: str = "runs/m1"

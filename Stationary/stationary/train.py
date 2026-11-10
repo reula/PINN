@@ -1020,6 +1020,9 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
             json.dump(history_prefix + rows_so_far, fh, indent=2)
         os.replace(tmp, os.path.join(cfg.outdir, "history.json"))
         write_params(cfg.outdir, unflatten(x))
+        se = int(getattr(cfg, "snapshot_every", 0) or 0)
+        if se > 0 and int(row.get("step", 0)) % se == 0:
+            write_params(cfg.outdir, unflatten(x), f"params_it{int(row['step']):06d}.pkl")
         # AND a resume checkpoint, at the same place and under the same key the Adam phase
         # uses, so there is one resume path rather than two.  Before this, `ckpt.pkl` was
         # written only inside the Adam loop, so `--resume auto` on a run that died here --
@@ -1648,6 +1651,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
                       f"bc_out={float(sum(parts[k] for k in parts if k.startswith('outer_'))):.2e}"
                       + (f"  pin={pins:.2e}" if pins else ""),
                       flush=True)
+        if int(getattr(cfg, "snapshot_every", 0) or 0) > 0 and it % int(cfg.snapshot_every) == 0:
+            write_params(cfg.outdir, state, f"params_it{it:06d}.pkl")
         if cfg.ckpt_every and it % cfg.ckpt_every == 0:
             save_checkpoint(os.path.join(cfg.outdir, CKPT_NAME), state, opt_state,
                             weights, history, it, cfg)
@@ -2069,6 +2074,8 @@ def parse_args(argv=None):
                    help="build the diagnostic reference with this asymptotic lambda")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--init-from", type=str, default=None)
+    p.add_argument("--snapshot-every", type=int, default=None, dest="snapshot_every",
+                   help="also keep params_it<N>.pkl every N iterations (0 = off)")
     p.add_argument("--ckpt-every", type=int, default=None, dest="ckpt_every",
                    help="write a resumable checkpoint every N Adam steps (0 = off)")
     p.add_argument("--resume", type=str, default=None,
@@ -2341,6 +2348,8 @@ def parse_args(argv=None):
         cfg.seed = a.seed
     if getattr(a, "init_from", None) is not None:
         cfg.init_from = a.init_from
+    if getattr(a, "snapshot_every", None) is not None:
+        cfg.snapshot_every = int(a.snapshot_every)
     if getattr(a, "ckpt_every", None) is not None:
         cfg.ckpt_every = a.ckpt_every
     if getattr(a, "resume", None) is not None:
