@@ -439,3 +439,23 @@ condition there.
   flux as the analogue, through Green's identity, of the centre-of-mass flux; "we are not aware of
   this condition in the literature" rather than a claim of novelty, and ask Cederbaum if possible.
 - Plan (author, 2026-11-10): ask Cederbaum about the rotation condition once there is a first draft of the section.
+
+### Results of J, M and the first half of L (2026-11-10)
+Figures: `Paper/fig_training.py` -> `figs/training_loss.png` (loss vs iteration), `figs/training_error.png`
+(rms error vs loss at the snapshots; cache `aux/training_errors.json`), `figs/surface_J.png` (J's lambda and
+log10 R_ab R^ab of h on the plane y = 0, which contains the datum axis).  Off-axis errors are against the rotated
+spectral reference specref_nonlinear_fine; Weyl errors against the exact solution.
+
+| run | what | iterations | loss | rms dh | rms dlam | abs(c) |
+|---|---|---|---|---|---|---|
+| I  rp_w60_n65k_one | plain, one run | Adam 1600 + SSB 40000 | 1.6e-11 | 6.7e-4 | 8.5e-6 | 2.3e-3 |
+| J  rp_w60_n65k_tan_one | H^1 inner data; rotation condition added at its resume (27000) | SSB stopped on plateau at 32250 | 7.9e-10 | 3.1e-6 | 3.2e-8 | 5e-9 |
+| L  rp_w60_n65k_rot | I's network + rotation condition, snapshot 7000 (OOM on the hub there; resumed on Mendieta, job 1186619) | 7000 | 1.6e-11 | 2.6e-7 | 7.4e-9 | 6e-10 |
+| wr_rot45_w4 | rotated Weyl, staged | - | 1.3e-11 | 5.3e-7 | 1.35e-8 | - |
+| M  wr_rot45_rot | wr_rot45_w4 + rotation condition | SSB stopped on plateau at 5250 | 1.4e-11 | 2.0e-7 | 1.5e-8 | - |
+
+1. The rotation condition alone (L) removes the mode in 2000-3000 iterations and gives 2600x in h and 1100x in
+   lambda over I already at 7000 iterations, at the same loss as I.  It is 12x better than J in h: the H^1 term
+   keeps J's loss at 8e-10 (its residuals are 50x larger than L's), so H^1 is not needed and costs accuracy.
+2. In M the rms dh improves 2.6x (the mode was 50-70% of the inner error), max dh and dlambda do not change.
+3. J's jump in the loss curve at 27000 is the rotation term switched on at its resume.
