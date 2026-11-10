@@ -2496,3 +2496,45 @@ iterations, ~2.3 h per window, ~19 h per 8-window run.
 **Result, `1d_T8_tplzz60_con_rinB` (job 1186588, 2026-11-10; = con_rin + `--r_in_shift`, cold).** The smoothstep of A was the problem. Held floor per window 3e-10 - 2e-9 for windows 0-20, rising to 1e-8 - 4e-8 in windows 21-31 (con: 6.5e-10 flat; A: 1e-6 - 1e-4). Worst |m/M - 1| (r >= 0.2) at t = 2 / 4 / 6 / 8: 1.2e-3 / 1.2e-3 / 2.3e-3 / 5.6e-3 (con 1.9e-3 / 2.5e-3 / 2.5e-3 / 4.5e-3; A 3.8e-3 / 1.5e-2 / 2.7e-2 / 3.5e-2). Fields to t = 4 are the best of the study (alpha in r = 0.2-1: 7e-6 at t = 2, 7e-6 at t = 4, 6e-5 at t = 6, 2e-4 at t = 8; con 5e-4 / 4e-5 / 1e-4 / 4e-4); r = 0.05-0.2 alpha 2e-6 (exact core). At t = 8 the outer bands drift as in con (alpha 1e-3 in r = 1-3, 2e-3 in 3-10). Residual (window 0 / 8) at r = 0.225-0.325: 3.6e-9 / 3.3e-9 (A 4.5e-7 / 5.2e-3, con 3.0e-6 / 5.1e-5); r >= 0.5 as con (1e-10 - 1e-9). Plots: plots/2026-11-10/loss_con_rinA_rinB.png, errors_con_rinA_rinB_{mass,fields}.png.
 
 Launched `1d_T8_tplzz60_con_rinB_s8` (= con_rinB with `--seed 8`, Mendieta, 2026-11-10).
+
+## A dynamical 1D test: puncture + scalar-field shell (2026-11-10/11)
+
+The user (10 Nov): in a dynamical situation the hole's mass grows by infalling radiation, so the template's mass
+(and position) must be able to change and the excised core r_in with it; test this in 1D with a scalar field.
+
+**Code.** `scalar_field.py`: massless scalar phi, Pi = n^a d_a phi; sources (rho, S_i, S_ij) and the Klein-Gordon
+right-hand sides in the BH code's conformal variables (formulae in its docstring). `EEccz4_BH_puncture.py`:
+`_ccz4_residual_one(..., matter=None)` takes (tau, S_i, S_ij) (default None = vacuum, unchanged; the source terms
+were already written in the equations and set to zero). `reference_1d/sph_reference_scalar.py`: the vacuum
+finite-difference reference with phi and Pi added (12 radial functions), time-symmetric conformally flat initial
+data phi = A exp(-((r - r0)/sigma)^2), Pi = 0, psi = 1 + m/(2r) + u with the Hamiltonian constraint solved by
+shooting; prints per snapshot the apparent horizon (r_AH, M_AH = areal radius / 2), the Misner-Sharp mass at
+r = 20 and the constraints with matter. `tools/plot_scalar_ref.py` plots it against the vacuum reference.
+
+**Reference run** (`reference_1d/ref_scalar_m0.5_A0.03_dr0.005_t8.npz`, git-ignored; 3 min on the mini's CPU:
+`sph_reference_scalar.py --dr 0.005 --tfinal 8 --amp 0.03` with r0 = 3, sigma = 0.75, m = 0.5, snapshots every
+0.25): M_ADM = 0.59735; half of the shell falls in. Plot: `plots/2026-11-11/scalar_reference.png`.
+
+| t | M_AH scalar | r_AH scalar | r_AH vacuum | r_AH ratio | M_AH / 0.5 |
+|---|---|---|---|---|---|
+| 0 | 0.50779 | 0.2462 | 0.2501 | 0.984 | 1.016 |
+| 2 | 0.50779 | 0.4350 | 0.4473 | 0.972 | 1.016 |
+| 4 | 0.52206 | 0.4522 | 0.4532 | 0.998 | 1.044 |
+| 5 | 0.54474 | 0.4694 | 0.4375 | 1.073 | 1.090 |
+| 6 | 0.55255 | 0.4696 | 0.4251 | 1.105 | 1.105 |
+| 8 | 0.55264 | 0.4547 | 0.4154 | 1.095 | 1.105 |
+
+1. The horizon mass grows 8.8 % (0.5078 -> 0.5526) between t = 2.5 and 6, in two steps (the two lobes of phi'^2),
+   and is constant afterwards; the Misner-Sharp mass at r = 20 stays 0.597345 to 7 digits until the outgoing half
+   passes.
+2. Checks: constraints with matter (H - 16 pi rho, M_r - 8 pi S_r) in r = 1-20 are 1e-8 at dr = 0.005 and fall
+   16x per halving of dr (4th order), the same level as the vacuum run (a wrong sign or factor in the sources
+   would leave O(rho) ~ 1e-3). Richardson error of the dr = 0.005 fields in r = 0.2-24: <= 1.3e-5 (Khat, d),
+   others <= 4e-6, at t = 4 and 8. With A = 0 the code reproduces the vacuum run.
+3. For the template with changing mass: once the shell is absorbed (t >= 6) the coordinate radius of the horizon
+   is the vacuum one times M_AH/0.5 to 1 % (1.095-1.105 vs 1.105), so the scaled vacuum solution
+   T_mu(t, r) = T(t m0/mu, r m0/mu) and r_in proportional to mu are a consistent first model. During the
+   absorption (t = 3-5) the ratio lags (0.97-1.07 vs 1.02-1.09).
+4. The coordinate horizon is NOT at m/2 after t = 0: in vacuum r_AH goes 0.25 -> 0.46 (t = 3) -> 0.415 (t = 8)
+   (gauge). `--r_in 0.225` stays inside it at all times; "10 % inside the horizon" would allow r_in up to 0.37-0.41
+   for t >= 2.

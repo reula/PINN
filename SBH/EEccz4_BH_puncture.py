@@ -2583,7 +2583,9 @@ def _taylor_derivs(apply_fn, params, t, x, y, z, window_start, window_end):
 # The CCZ4 residual at one point from its derivative stack (value (22,), d_t (22,), d_xyz (22,3),
 # d_xyz d_xyz of the _DD_OUTPUT_IDXS fields (11,3,3)); module level so that callers holding their own
 # derivative stacks (stage2.py: a frozen run plus a correction network) can use it. (2026-10-26)
-def _ccz4_residual_one(full_val, full_dt, full_d, full_dd):
+def _ccz4_residual_one(full_val, full_dt, full_d, full_dd, matter=None):
+    # matter (2026-11-10, scalar_field.py): None = vacuum, or (tau, S_i, S_ij) = (rho, S_i lower, S_ij lower),
+    # the standard 3+1 projections of T_ab, as arrays () / (3,) / (3,3).
     gt    = unpack_sym3(full_val[GT_SLICE])
     At    = unpack_sym3(full_val[AT_SLICE])
     chi   = full_val[CHI_IDX]
@@ -2646,6 +2648,8 @@ def _ccz4_residual_one(full_val, full_dt, full_d, full_dd):
     tau  = 0.0
     Si_4 = jnp.zeros(3, dtype=gt.dtype)
     Sij  = jnp.zeros((3, 3), dtype=gt.dtype)
+    if matter is not None:
+        tau, Si_4, Sij = matter
 
     kappa_2_l = kappa_2
 

@@ -171,6 +171,11 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
 
 18. 2026-11-10: `--r_in 0.225` built (template exact for r <= r_in, correction switched on over 0.1, points from r_in; the user's rule that no region where the network gives values stays untrained). Proposed run: tplzz60_con + `--r_in 0.225` (replacing `--r_min 0.5`). Run cold (job 1186577): WORSE (held floor 1e-6 - 1e-4, mass 3.5e-2 at t = 8, fields 2-10x worse; only r < 0.2 better). Cause open: residual map in r of rin vs con; see README.
 
+20. 2026-11-11: scalar-field 1D reference built and validated (README "A dynamical 1D test"): `scalar_field.py`,
+   `reference_1d/sph_reference_scalar.py`, `_ccz4_residual_one(matter=)`; A = 0.03 shell: M_AH 0.5078 -> 0.5526.
+   Next: `sing_1d.py --scalar` (phi, Pi outputs, sources, KG rows), then the template with trainable mu(t) and
+   r_in(t) (the user's plan, 10 Nov).
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs
