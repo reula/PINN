@@ -382,3 +382,11 @@ r < 2e-12.  Flags `--rot-pin RADII --w-rot W` (Config.rot_radii, w_rot = 100, sa
 the centre of mass); grade_rotated.py now also prints and saves r.  Phase J resumes with it (author's
 call, 2026-11-10).  Literature to check before any claim (asymptotic rotations of harmonic charts:
 Beig-O Murchadha, Huang).
+What the mode is (2026-11-10, agreed with the author): the inner data are met to 1e-14, so the mode
+is xi = c x x / rho^3 - c x x, i.e. xi = 0 on the inner sphere and an asymptotic ROTATION -c x x at
+infinity -- the rotational twin of the translation mode of sec:gaugefreedom.  The rigid part c x x
+is a flat-space isometry and acts only on the perturbation (the l=2, m=1 error in lambda, ~ c x
+quadrupole).  It exists for ANY data: the inner data are untouched (xi = 0 there) and every condition
+at infinity is rotation invariant.  Evidence in hand: the datum is axisymmetric about (1,0,1)/sqrt2,
+yet c has components perpendicular to that axis (1.2e-3, -0.17e-3) as large as the parallel one
+(1.9e-3) -- the rotations that change the datum are as free as the one that does not.
