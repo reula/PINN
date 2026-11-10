@@ -169,7 +169,7 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    t = 8 vs 5e-2) and keeps the best fields to t = 6; outer alpha at t = 8 degrades (8e-4 / 2e-3 in r = 1-10). Next: r0 3 - 5 or q 1, second
    seed. Nothing of SBH running.
 
-18. 2026-11-10: `--r_in 0.225` built (template exact for r <= r_in, correction switched on over 0.1, points from r_in; the user's rule that no region where the network gives values stays untrained). Proposed run: tplzz60_con + `--r_in 0.225` (replacing `--r_min 0.5`). Not launched.
+18. 2026-11-10: `--r_in 0.225` built (template exact for r <= r_in, correction switched on over 0.1, points from r_in; the user's rule that no region where the network gives values stays untrained). Proposed run: tplzz60_con + `--r_in 0.225` (replacing `--r_min 0.5`). Run cold (job 1186577): WORSE (held floor 1e-6 - 1e-4, mass 3.5e-2 at t = 8, fields 2-10x worse; only r < 0.2 better). Cause open: residual map in r of rin vs con; see README.
 
 ## 4. Next steps
 

@@ -131,3 +131,4 @@ end / 400 IC / 2000 held-out points, 4000 iterations per window, SSBroyden, resa
    sweep's best, try 2), the network only outside, graded only outside. Runs 47 (template) and 48 (template + no
    points inside r = 0.5). In 1D this is the ceiling of the approach (the template is exact); in 3D it is the
    single-hole approximation near each puncture.
+| 53 | `1d_T8_tplzz60_con_rin` (52 with `--r_in 0.225` instead of `--r_min 0.5`, cold) | template exact inside r_in = horizon - 10%, correction switched on over 0.1, points from r_in (the user, 10 Nov) | held floor 1e-6 - 1e-4 (52: 6.5e-10); worst mass 3.5e-2 at t = 8 (r = 10); fields 2-10x worse in r 0.2-3; only r < 0.2 better (alpha 2e-6) | worse; cause not established (hypothesis: correction off where points are, template g inconsistent with zero_z g) |
