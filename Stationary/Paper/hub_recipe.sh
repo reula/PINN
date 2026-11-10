@@ -256,6 +256,9 @@ fi
 # on the centre-of-mass spheres) and nothing else changed: SSBroyden only, the same plateau rule and
 # cap, snapshots every 1000.  The author's proposal, 2026-11-10.
 if [[ $PHASES == *L* ]]; then
+    # ROT is defined per phase: the first L run (2026-11-10 11:48) had it empty and so solved the
+    # SPHERICAL problem (S2 = 0) from I's network; moved to runs/_invalid/rp_w60_n65k_rot_noS2.
+    ROT=(--lam-bc-axis 1,0,1 --lam-bc-S2 $S2_Q)
     train rp_w60_n65k_rot "${NUM[@]}" "${QP[@]}" "${ROT[@]}" "${TD[@]}" "${W60[@]}" \
         --rot-pin 1,1.5,3,10,30,100 --init-from $R/rp_w60_n65k_one/params.pkl \
         --steps 0 --qn-method ssbroyden --qn-linesearch wolfe --lbfgs-steps 40000 \
