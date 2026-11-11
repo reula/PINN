@@ -76,6 +76,22 @@ ap.add_argument("--r_in", type=float, default=0.0,
                 help="(2026-11-10, the user) template-exact core: W = 1 and the network correction is zero for r <= r_in (the interior "
                      "of the horizon is given, neither sampled nor reached by the network); the correction switches on smoothly over "
                      "[r_in, r_in + --r_in_w]; sets --r_min = r_in unless --r_min is given. Horizon at m/2 = 0.25, tolerance 10%: 0.225")
+ap.add_argument("--tpl_mu", action="store_true",
+                help="(2026-11-11, the user: the template's mass can change, and r_in with it) trainable template mass mu(t): "
+                     "per window mu = mu0 + mud0 (t - t0) + mu_scale (q1 x^2 + q2 x^3), x = (t - t0)/(t1 - t0), mu0 and mud0 the "
+                     "previous window's end value and rate (window 0: --mu_init, 0), q1, q2 trained with the network. The "
+                     "template is the vacuum table scaled, T_mu(t, r) = S T(tau, r m0/mu), tau' = m0/mu, S = m0/mu on Khat, "
+                     "Theta, g; the core radius is r_in mu/m0 (W, rho). Loss points still start at --r_in. mu per window in mu.csv")
+ap.add_argument("--mu_init", type=float, default=0.0, help="mu(0); 0 = the template's mass")
+ap.add_argument("--mu_scale", type=float, default=0.01)
+ap.add_argument("--scalar", action="store_true",
+                help="(2026-11-11, the user: a dynamical test where the hole's mass grows) add a massless scalar field: "
+                     "two more radial functions phi, Pi (scalar_field.py), matter sources in the CCZ4 rows, two Klein-Gordon "
+                     "rows; initial data and reference from --scalar_ref (reference_1d/sph_reference_scalar.py). The "
+                     "template stays the vacuum one (phi, Pi have no template and rho = 1); the reported mass is "
+                     "(m - m_ref(r)) / M_ADM. Not with --w_adm, --w_adm_ic, the second stage or the --eval_* / --fit_ref tools")
+ap.add_argument("--scalar_ref", default=None, help="default reference_1d/ref_scalar_m0.5_A0.03_dr0.005_t8.npz")
+ap.add_argument("--w_kg", type=float, default=1.0, help="weight of the two Klein-Gordon rows (x lam_einstein, in the einstein part)")
 ap.add_argument("--r_in_shift", action="store_true",
                 help="with --r_in: rho = s^p/(s^p + r_c^p), s = max(r - r_in, 0) (C1 at r_in, no smoothstep; ansatz B of 2026-11-10) "
                      "instead of rho(r) x smoothstep (ansatz A)")
@@ -236,8 +252,39 @@ radial = stpl.make_radial(jnp, jax, tab)
 FLAT_RAD = jnp.asarray(stpl.FLAT)
 I_CHI, I_AL = stpl.I_CHI, stpl.I_ALPHA
 LOG_EPS = 1e-10
-REF_D = np.load(os.path.join(REF, "ref_single_m0.5_dr0.005_t20.npz"))
-REF_R, REF_T, REF_U = REF_D["r"], REF_D["t"], REF_D["U"]              # U (n_t, 10, n_r)
+MU_INIT = a.mu_init if a.mu_init > 0 else MASS
+if a.tpl_mu and not (a.r_in > 0 and a.r_in_shift and not a.no_template):
+    raise SystemExit("--tpl_mu needs the template with --r_in and --r_in_shift")
+NF = 12 if a.scalar else 10                                           # radial functions
+FIELDS = tuple(stpl.FIELDS) + (("phi", "Pi") if a.scalar else ())
+if a.scalar:
+    if a.w_adm > 0 or a.w_adm_ic > 0 or a.s2_window_iters > 0:
+        raise SystemExit("--scalar: not with --w_adm, --w_adm_ic or the second stage")
+    sys.path.insert(0, REF)
+    import scalar_field as sf
+    import sph_reference_scalar as srs
+    REF_D = np.load(a.scalar_ref or os.path.join(REF, "ref_scalar_m0.5_A0.03_dr0.005_t8.npz"))
+    SC_A, SC_R0, SC_S, M_ADM = (float(REF_D[k]) for k in ("amp", "r0", "sigma", "M_adm"))
+    assert abs(float(REF_D["mass"]) - MASS) < 1e-12
+    U_H = 0.01                                                        # table of u(r), psi = 1 + m/(2r) + u
+    U_TAB = jnp.asarray(srs.conformal_u(MASS, SC_A, SC_R0, SC_S, float(REF_D["R_out"]),
+                                        U_H * np.arange(int(round((R + 1.0) / U_H))))[0])
+    REF_MS = np.stack([srs.diagnostics(REF_D["r"], u)[2] for u in REF_D["U"]])       # Misner-Sharp mass (n_t, n_r)
+    FLAT_RAD = jnp.concatenate([FLAT_RAD, jnp.zeros(2)])
+    DDX = np.concatenate([DD, [22]])                                  # second derivatives: the BH code's 11, then phi
+else:
+    REF_D = np.load(os.path.join(REF, "ref_single_m0.5_dr0.005_t20.npz"))
+    DDX = DD
+REF_R, REF_T, REF_U = REF_D["r"], REF_D["t"], REF_D["U"]              # U (n_t, NF, n_r)
+
+
+def u_shell(r):
+    """u(r) of the scalar initial data: degree-5 Lagrange interpolation of U_TAB (uniform, step U_H)."""
+    i0 = jnp.clip(jnp.floor(r / U_H).astype(int) - 2, 0, U_TAB.shape[0] - 6)
+    xs = U_H * (i0 + jnp.arange(6))
+    w = jnp.stack([jnp.prod(jnp.where(jnp.arange(6) == j, 1.0, (r - xs) / jnp.where(jnp.arange(6) == j, 1.0, xs[j] - xs)))
+                   for j in range(6)])
+    return jnp.dot(w, jax.lax.dynamic_slice(U_TAB, (i0,), (6,)))
 
 
 def _pos(v):
@@ -255,7 +302,7 @@ def mlp_value(net, t, r, ws, we):
 
 
 def init_net(key):
-    sizes = [2] + [a.hidden] * a.layers + [10]
+    sizes = [2] + [a.hidden] * a.layers + [NF]
     mlp = {}
     for i in range(len(sizes) - 1):
         key, k = jax.random.split(key)
@@ -278,28 +325,53 @@ def init_net2(key):
 
 
 def U0_rad(r):
+    if a.scalar:
+        psi = 1.0 + MASS / (2.0 * r) + u_shell(r)
+        return FLAT_RAD.at[I_CHI].set(psi ** -4).at[I_AL].set(1.0 / psi).at[10].set(SC_A * jnp.exp(-((r - SC_R0) / SC_S) ** 2))
     psi = 1.0 + MASS / (2.0 * r)
     return FLAT_RAD.at[I_CHI].set(psi ** -4).at[I_AL].set(1.0 / psi)
 
 
-def bg_rad(t, r):
-    """Template part B (10,) and rho at (t, r): W-blended template, multiplicative chi and alpha."""
-    T = radial(t, jnp.minimum(r, R_TPL))
-    w = jnp.exp(-(jnp.maximum(r - a.r_in, 0.0) / a.r_c) ** a.w_power) * (0.0 if a.no_template else 1.0)
+MU_SC = jnp.ones(10).at[jnp.array([5, 6, 7])].set(0.0)       # 1 on the dimensionless functions, 0 on Khat, Theta, g
+
+
+def mu_of(P, win, t):
+    """--tpl_mu: (mu(t), tau(t)) of the window; tau' = m0/mu by the trapezoid rule from the window start."""
+    t0, t1, mu0, mud0, tau0 = win
+    x = (t - t0) / (t1 - t0)
+    mu = mu0 + mud0 * (t - t0) + a.mu_scale * (P["mu"][0] * x ** 2 + P["mu"][1] * x ** 3)
+    return mu, tau0 + MASS * (t - t0) * 2.0 / (mu0 + mu)
+
+
+def bg_rad(t, r, mu=None, tau=None):
+    """Template part B (10,) and rho at (t, r): W-blended template, multiplicative chi and alpha. With mu, tau
+    (--tpl_mu): the table scaled to the mass mu at its own time tau, and the core radius r_in mu/m0."""
+    r_in = a.r_in
+    if mu is None:
+        T = radial(t, jnp.minimum(r, R_TPL))
+    else:
+        lam = mu / MASS
+        T = radial(tau, jnp.minimum(r / lam, R_TPL)) * (MU_SC + (1.0 - MU_SC) / lam)
+        r_in = a.r_in * lam
+    if a.scalar:                                          # the vacuum template has no scalar field
+        T = jnp.concatenate([T, jnp.zeros(2)])
+    w = jnp.exp(-(jnp.maximum(r - r_in, 0.0) / a.r_c) ** a.w_power) * (0.0 if a.no_template else 1.0)
     B = FLAT_RAD + w * (T - FLAT_RAD)
     B = B.at[I_CHI].set(jnp.exp(w * jnp.log(_pos(T[I_CHI])))).at[I_AL].set(jnp.exp(w * jnp.log(_pos(T[I_AL]))))
     rho = 1.0 if a.no_template else r ** a.rho_power / (r ** a.rho_power + a.r_c ** a.rho_power)
     if a.r_in > 0 and a.r_in_shift and not a.no_template:
-        sh = jnp.maximum(r - a.r_in, 0.0)
+        sh = jnp.maximum(r - r_in, 0.0)
         rho = sh ** a.rho_power / (sh ** a.rho_power + a.r_c ** a.rho_power)
     elif a.r_in > 0 and not a.no_template:                # --r_in: smoothstep 0 -> 1 on [r_in, r_in + r_in_w]
         x = jnp.clip((r - a.r_in) / a.r_in_w, 0.0, 1.0)
         rho = rho * x * x * (3.0 - 2.0 * x)
+    if a.scalar:                                          # phi, Pi: no template, so the network acts with weight 1
+        rho = jnp.concatenate([rho * jnp.ones(10), jnp.ones(2)])
     return B, rho
 
 
 def hard_h(r):
-    U0, B0 = U0_rad(r), bg_rad(0.0, r)[0]
+    U0, B0 = U0_rad(r), (bg_rad(0.0, r, MU_INIT, 0.0) if a.tpl_mu else bg_rad(0.0, r))[0]
     h = U0 - B0
     return h.at[I_CHI].set(jnp.log(_pos(U0[I_CHI])) - jnp.log(B0[I_CHI])).at[I_AL].set(jnp.log(_pos(U0[I_AL])) - jnp.log(B0[I_AL]))
 
@@ -325,8 +397,8 @@ def rad_fn(P, win, t, r):
 
 def _rad_fn(P, win, t, r):
     """The 10 radial functions of u at (t, r), all from the network."""
-    t0, t1 = win
-    B, rho = bg_rad(t, r)
+    t0, t1 = win[0], win[1]
+    B, rho = bg_rad(t, r, *mu_of(P, win, t)) if a.tpl_mu else bg_rad(t, r)
     N = mlp_value(P["net"], t, r, t0, t1)
     if a.hard_ic:
         N = N * jnp.where(t0 == 0.0, (t - t0) / (t1 - t0), 1.0)
@@ -345,7 +417,8 @@ def _rad_fn(P, win, t, r):
 def u_point(P, win, q):
     """The 22 Cartesian fields at q = (t, x, y, z)."""
     xyz = q[1:4]
-    return stpl.lift(jnp, pack, rad_fn(P, win, q[0], jnp.sqrt(jnp.sum(xyz ** 2))), xyz)
+    f = rad_fn(P, win, q[0], jnp.sqrt(jnp.sum(xyz ** 2)))
+    return jnp.concatenate([stpl.lift(jnp, pack, f[:10], xyz), f[10:]])       # with --scalar: 22 fields, then phi, Pi
 
 
 def stacks(P, win, Q):
@@ -354,12 +427,21 @@ def stacks(P, win, Q):
         f = lambda qq: u_point(P, win, qq)
         v, vt = jax.jvp(f, (q,), (jnp.array([1.0, 0.0, 0.0, 0.0]),))
         g = lambda X: f(jnp.concatenate([q[:1], X]))
-        return v, vt, jax.jacfwd(g)(q[1:]), jax.jacfwd(jax.jacfwd(g))(q[1:])[DD]
+        return v, vt, jax.jacfwd(g)(q[1:]), jax.jacfwd(jax.jacfwd(g))(q[1:])[DDX]
     return jax.vmap(one)(Q)
 
 
 def residual(D):
-    return jax.vmap(ns["_ccz4_residual_one"])(*D)
+    """(n, 22) CCZ4 rows; with --scalar (n, 24): the matter sources in them, then the two Klein-Gordon rows."""
+    if not a.scalar:
+        return jax.vmap(ns["_ccz4_residual_one"])(*D)
+
+    def one(val, dt, d, dd):
+        v22, d22, sv, sd = val[:22], d[:22], val[22:], d[22:]
+        res = ns["_ccz4_residual_one"](v22, dt[:22], d22, dd[:11], matter=sf.matter_one(ns, v22, d22, sv, sd))
+        rp, rP = sf.kg_rhs_one(ns, v22, d22, sv, sd, dd[11])
+        return jnp.concatenate([res, jnp.stack([dt[22] - rp, dt[23] - rP])])
+    return jax.vmap(one)(*D)
 
 
 def zeta(D):
@@ -388,11 +470,12 @@ def res_weight(r, chi):
 
 def ein_gauge(res, r, chi=None):
     wr = res_weight(r, chi)[:, None]
+    kg = a.w_kg * jnp.mean(wr * res[:, 22:24] ** 2) if a.scalar else 0.0      # --scalar: the Klein-Gordon rows
     if a.con_r0 > 0:                                  # rows 14 (Theta), 15-17 (Ghat^i) of the 18 Einstein rows
         e2 = (wr * res[:, :18] ** 2).at[:, 14:18].multiply(outer_boost(r, a.con_r0, a.con_q)[:, None])
-        return (ns["lam_einstein"] * jnp.mean(e2),
+        return (ns["lam_einstein"] * (jnp.mean(e2) + kg),
                 ns["lam_gauge"] * a.w_gauge * jnp.mean(wr * res[:, 18:22] ** 2))
-    return (ns["lam_einstein"] * jnp.mean(wr * res[:, :18] ** 2),
+    return (ns["lam_einstein"] * (jnp.mean(wr * res[:, :18] ** 2) + kg),
             ns["lam_gauge"] * a.w_gauge * jnp.mean(wr * res[:, 18:22] ** 2))
 
 
@@ -507,9 +590,11 @@ def mass_rad(P, win, t, r):
 def report(P, win, t):
     j = int(np.argmin(np.abs(REF_T - t)))
     assert abs(REF_T[j] - t) < 1e-6, f"no reference snapshot at t = {t}"
-    f = np.asarray(jax.vmap(lambda r: rad_fn(P, win, t, r))(jnp.asarray(REP_R)))          # (n_r, 10)
-    ref = np.stack([np.interp(REP_R, REF_R, REF_U[j, i]) for i in range(10)], axis=1)
+    f = np.asarray(jax.vmap(lambda r: rad_fn(P, win, t, r))(jnp.asarray(REP_R)))          # (n_r, NF)
+    ref = np.stack([np.interp(REP_R, REF_R, REF_U[j, i]) for i in range(NF)], axis=1)
     m = np.asarray(jax.vmap(lambda r: mass_rad(P, win, t, r))(jnp.asarray(REP_R)))
+    if a.scalar:                                          # the mass is not constant in r: error against the reference's
+        m = ((m + 1.0) * MASS - np.interp(REP_R, REF_R, REF_MS[j])) / M_ADM
     return f - ref, m
 
 
@@ -588,7 +673,7 @@ if a.eval_seams:
         out["dt_prev"].append(ftp)
         out["err_prev"].append(fp - ref)
         out["warm"].append(fw - fp)
-    np.savez(a.eval_seams_out, r=np.asarray(rg), fields=np.array(stpl.FIELDS), **{k: np.array(v) for k, v in out.items()})
+    np.savez(a.eval_seams_out, r=np.asarray(rg), fields=np.array(FIELDS), **{k: np.array(v) for k, v in out.items()})
     print("wrote", a.eval_seams_out, len(out["t"]), "seams")
     sys.exit(0)
 if a.eval_H:
@@ -840,7 +925,7 @@ if a.stage2:
         rep["t"].append(float(E2[k + 1]))
         rep["err"].append(err)
         rep["mass"].append(m)
-    np.savez(os.path.join(a.out, "report.npz"), r=REP_R, fields=np.array(stpl.FIELDS), t=np.array(rep["t"]),
+    np.savez(os.path.join(a.out, "report.npz"), r=REP_R, fields=np.array(FIELDS), t=np.array(rep["t"]),
              err=np.array(rep["err"]), mass=np.array(rep["mass"]), config=np.array(str(vars(a))))
     print("done:", a.out, flush=True)
     sys.exit(0)
@@ -877,6 +962,14 @@ PART_NAMES = (("einstein", "gauge", "end", "bc", "ic", "constraint") + (("adm",)
 for k in range(k0, a.N_window):
     t0, t1 = float(edges[k]), float(edges[k + 1])
     win = (jnp.asarray(t0), jnp.asarray(t1))
+    if a.tpl_mu:                                          # mu, d mu/dt and tau continue from the previous window's end
+        if prev is None:
+            mu_s = (MU_INIT, 0.0, 0.0)
+        else:
+            (m_e, tau_e), (md_e, _) = jax.jvp(lambda tt: mu_of(prev[0], prev[1], tt), (prev[1][1],), (jnp.ones(()),))
+            mu_s = (float(m_e), float(md_e), float(tau_e))
+        win = win + tuple(jnp.asarray(v) for v in mu_s)
+        P = {**P, "mu": jnp.zeros(2)}
     if prev is None:
         Uic_fn = jax.jit(jax.vmap(lambda r: taylor_r(U0_rad, r)))
     else:
@@ -893,6 +986,8 @@ for k in range(k0, a.N_window):
         off = jax.vmap(lambda r: rad_fn(P, win, win[0], r) - rad_fn(Pp, wp, wp[1], r))(jnp.asarray(REP_R))
         print(f"window {k}: warm-start offset at the seam, max |f_new - f_prev| = {float(jnp.abs(off).max()):.2e}"
               f" (alpha {float(jnp.abs(off[:, 8]).max()):.2e})", flush=True)
+    if a.tpl_mu and "mu" not in P:
+        P = {**P, "mu": jnp.zeros(2)}
     w, unr = ns["flatten_util"].ravel_pytree(P)
     key, kh = jax.random.split(key)
     held = draw(kh, win, a.n_held, a.n_held // 8, a.n_held // 4, Uic_fn)
@@ -939,7 +1034,7 @@ for k in range(k0, a.N_window):
             for k_, v in (("window", k), ("iteration", it), ("order", o), ("snapshot", int(snap)),
                           ("held", row["held"]), ("L0", LO_L0), ("err", err_o), ("mass", m_o)):
                 LO[k_].append(v)
-            np.savez(LO_F, r=REP_R, fields=np.array(stpl.FIELDS), **{k_: np.array(v) for k_, v in LO.items()})
+            np.savez(LO_F, r=REP_R, fields=np.array(FIELDS), **{k_: np.array(v) for k_, v in LO.items()})
             if snap:
                 pickle.dump({"params": jax.tree_util.tree_map(np.asarray, Pk), "win": [np.asarray(v) for v in win],
                              "window": k, "iteration": it, "held": row["held"], "L0": LO_L0},
@@ -986,11 +1081,17 @@ for k in range(k0, a.N_window):
         print(f"  second stage kept: held {best_h:.3e} (" + ("N2 = 0, the first stage alone" if best_it == 0
               else f"iteration {best_it}") + f"; first stage {h1:.3e})", flush=True)
         N2_prev = P["net2"]
+    if a.tpl_mu:
+        (m_e, tau_e), (md_e, _) = jax.jvp(lambda tt: mu_of(P, win, tt), (win[1],), (jnp.ones(()),))
+        print(f"  template mass: mu({t1:g}) = {float(m_e):.6f}, d mu/dt = {float(md_e):+.3e}, tau = {float(tau_e):.5f}, "
+              f"core radius {a.r_in * float(m_e) / MASS:.4f}", flush=True)
+        with open(os.path.join(a.out, "mu.csv"), "a") as fmu:
+            fmu.write(f"{k},{t1},{float(m_e)},{float(md_e)},{float(tau_e)}\n")
     err, m = report(P, win, t1)
     rep["t"].append(t1)
     rep["err"].append(err)
     rep["mass"].append(m)
-    np.savez(REP, r=REP_R, fields=np.array(stpl.FIELDS), t=np.array(rep["t"]), err=np.array(rep["err"]),
+    np.savez(REP, r=REP_R, fields=np.array(FIELDS), t=np.array(rep["t"]), err=np.array(rep["err"]),
              mass=np.array(rep["mass"]), config=np.array(str(vars(a))))
     band = (REP_R >= 0.2) & (REP_R < 1.0)
     print(f"  t = {t1:g}: rms vs reference, alpha {np.sqrt((err[:, 8] ** 2).mean()):.2e} (0.2-1: "

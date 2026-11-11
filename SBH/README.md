@@ -2538,3 +2538,25 @@ r = 20 and the constraints with matter. `tools/plot_scalar_ref.py` plots it agai
 4. The coordinate horizon is NOT at m/2 after t = 0: in vacuum r_AH goes 0.25 -> 0.46 (t = 3) -> 0.415 (t = 8)
    (gauge). `--r_in 0.225` stays inside it at all times; "10 % inside the horizon" would allow r_in up to 0.37-0.41
    for t >= 2.
+
+**The network side: `sing_1d.py --scalar` and `--tpl_mu` (2026-11-11).** `--scalar`: 12 radial functions (phi, Pi
+added; network output 12), the matter sources in the 22 CCZ4 rows and two Klein-Gordon rows (in the einstein part,
+weight `--w_kg` 1), initial data and report from the scalar reference (psi = 1 + m/(2r) + u(r), u tabulated by
+`sph_reference_scalar.conformal_u` and interpolated at degree 5); the template stays the vacuum table (m = 0.5), phi
+and Pi have no template and rho = 1 for them; the reported "mass" is (m - m_ref(r))/M_ADM. `--tpl_mu`: trainable
+template mass mu(t), per window mu = mu0 + mud0 (t - t0) + 0.01 (q1 x^2 + q2 x^3) with mu0, mud0 continued from
+the previous window and q1, q2 trained; template T_mu(t, r) = S T(tau, r m0/mu) (tau' = m0/mu; S = m0/mu on Khat,
+Theta, g: the vacuum scaling, exact only for eta = 0), core radius r_in mu/m0 in W and rho; loss points still start
+at r_in = 0.225, so the band between 0.225 and the core radius is pure template and its residual trains mu. mu per
+window in `mu.csv`. `tools/plot_scalar_runs.py OUT.png REF.npz LABEL=RUN_DIR ...` compares runs (horizon mass of
+the network, mu(t), mass error, alpha / chi / phi errors).
+
+Local checks (mini CPU, 6x60, recipe of con_rinB + --scalar): window 0, 2500 iterations: held loss 3.6e-6 and still
+falling (plateau 4e-4 for the first 750), phi error 1e-4 of 3e-2 at the shell, alpha 1e-4 - 5e-4; the largest errors
+are c, d, g (3e-3 - 9e-3) at r = 0.1-0.35, the fixed vacuum core: the hole inside the shell is not the m = 0.5
+puncture (psi = (1 + c) + m/(2r), c = 0.0156: mass 0.5078 in rescaled coordinates and lapse). `--tpl_mu`, 2 windows
+x 250 iterations: runs, mu 0.50011 -> 0.50041, seam hand-off of mu, d mu/dt, tau works.
+
+Caveat for the design (to discuss): a mass-only template family cannot represent the hole inside a shell exactly
+even at t = 0: besides the mass there is a constant conformal factor (1 + c) and a lapse factor 1/(1 + c). The
+same holds for each hole of a binary (c = m_2 / (2 d)). The offset h(r) of --hard_ic absorbs it at t = 0 only.

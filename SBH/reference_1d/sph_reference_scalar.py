@@ -61,25 +61,31 @@ def parse():
     return p.parse_args()
 
 
-def initial_data(args, r):
-    """U0 (12, n_r) and the ADM mass."""
+def conformal_u(m, A, r0, s, R_out, r_eval):
+    """u(r_eval) of psi = 1 + m/(2r) + u for the shell (r_eval increasing, r_eval[0] may be 0), and the ADM mass."""
     from scipy.integrate import solve_ivp
-    m, A, r0, s = args.mass, args.amp, args.r0, args.sigma
     dphi2 = lambda x: (A * np.exp(-((x - r0) / s) ** 2) * (-2.0 * (x - r0) / s ** 2)) ** 2
     part = lambda x, y: [y[1], -np.pi * dphi2(x) * (x + m / 2 + y[0])]
     homo = lambda x, y: [y[1], -np.pi * dphi2(x) * y[0]]
-    kw = dict(method="DOP853", rtol=1e-13, atol=1e-16, t_eval=np.concatenate([r, [args.R_out]]))
-    yp = solve_ivp(part, (0.0, args.R_out), [0.0, 0.0], **kw).y
-    yh = solve_ivp(homo, (0.0, args.R_out), [0.0, 1.0], **kw).y
+    kw = dict(method="DOP853", rtol=1e-13, atol=1e-16, t_eval=np.concatenate([r_eval, [R_out]]))
+    yp = solve_ivp(part, (0.0, R_out), [0.0, 0.0], **kw).y
+    yh = solve_ivp(homo, (0.0, R_out), [0.0, 1.0], **kw).y
     c = -yp[1, -1] / yh[1, -1]
-    v = yp[0] + c * yh[0]
-    psi = 1.0 + m / (2.0 * r) + v[:-1] / r
+    v, dv = (yp[0] + c * yh[0])[:-1], (yp[1] + c * yh[1])[:-1]
+    u = np.where(r_eval > 0, v / np.where(r_eval > 0, r_eval, 1.0), dv)      # u(0) = v'(0)
+    return u, m + 2.0 * (yp[0, -1] + c * yh[0, -1])
+
+
+def initial_data(args, r):
+    """U0 (12, n_r) and the ADM mass."""
+    u, M_adm = conformal_u(args.mass, args.amp, args.r0, args.sigma, args.R_out, r)
+    psi = 1.0 + args.mass / (2.0 * r) + u
     U0 = np.zeros((12, len(r)))
     U0[0] = 1.0
     U0[4] = psi ** -4
     U0[8] = 1.0 / psi
-    U0[10] = A * np.exp(-((r - r0) / s) ** 2)
-    return U0, m + 2.0 * v[-1]
+    U0[10] = args.amp * np.exp(-((r - args.r0) / args.sigma) ** 2)
+    return U0, M_adm
 
 
 def diagnostics(r, U):
