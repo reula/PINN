@@ -2560,3 +2560,54 @@ x 250 iterations: runs, mu 0.50011 -> 0.50041, seam hand-off of mu, d mu/dt, tau
 Caveat for the design (to discuss): a mass-only template family cannot represent the hole inside a shell exactly
 even at t = 0: besides the mass there is a constant conformal factor (1 + c) and a lapse factor 1/(1 + c). The
 same holds for each hole of a binary (c = m_2 / (2 d)). The offset h(r) of --hard_ic absorbs it at t = 0 only.
+
+### Results (2026-11-11): the scalar runs and the second seed of ansatz B
+
+**Vacuum, second seed** (`1d_T8_tplzz60_con_rinB_s8` = con_rinB with `--seed 8`, job 1186620). Seed 8 reproduces
+seed 7. Worst |m/M - 1| (r >= 0.2) up to t = 2 / 4 / 6 / 8: seed 7 1.2e-3 / 1.2e-3 / 2.3e-3 / 5.6e-3, seed 8
+1.4e-3 / 1.4e-3 / 1.4e-3 / 3.0e-3 (con: 1.9e-3 / 2.5e-3 / 2.5e-3 / 4.5e-3). Field errors equal within a factor 2
+in every band and time (core r = 0.05-0.2: alpha 2e-6 - 3e-6 both; t = 8, r = 1-3: alpha 1e-3 / 9e-4). The rise of
+the held loss after window 20 (1e-9 -> 1e-8 - 4e-8) happens in both seeds at the same windows: it belongs to the
+ansatz, not to the seed. Plots: `plots/2026-11-11/loss_rinB_seeds.png`, `errors_rinB_seeds_{mass,fields}.png`.
+
+**Scalar runs** (cold, seed 7, 6x60, 32 windows to t = 8; common flags `--hard_ic --N_window 32 --tfinal 8 --scalar
+--zero_z --w_constraint 0 --res_rin 0.1 --keep_best --r_c 1 --w_power 2 --hidden 60 --con_r0 1 --con_q 2
+--template_file reference_1d/sing_bl_m0.5_dense_r3_t8.npz`):
+
+- `1d_T8_sc_B` (job 1186646): + `--r_in 0.225 --r_in_shift` (fixed vacuum template m = 0.5, exact core);
+- `1d_T8_sc_Bmu` (job 1186647): + `--r_in 0.225 --r_in_shift --tpl_mu` (trainable mu(t), core radius 0.225 mu/0.5);
+- `1d_T8_sc_con` (job 1186648): + `--r_min 0.5` (no exact core, W and rho unshifted, points from r = 0.5).
+
+Graded against the scalar finite-difference reference (`ref_scalar_m0.5_A0.03_dr0.005_t8.npz`) with
+`tools/plot_scalar_runs.py` (`plots/2026-11-11/scalar_runs.png`); loss plot `plots/2026-11-11/loss_scalar_runs.png`.
+
+| | t = 2 | t = 4 | t = 6 | t = 8 |
+|---|---|---|---|---|
+| horizon mass, reference | 0.50779 | 0.52206 | 0.55255 | 0.55264 |
+| sc_con | 0.50792 | 0.52157 | 0.55214 | 0.55230 |
+| sc_B | 0.49763 | 0.48602 | 0.49336 | 0.49844 |
+| sc_Bmu (template mu) | 0.48528 (0.48909) | 0.45731 (0.45808) | 0.47013 (0.46747) | 0.45002 (0.45207) |
+| alpha rms r = 0.2-1 / 1-3 / 3-10, sc_con | 2e-3 1e-4 2e-4 | 2e-3 3e-4 6e-4 | 8e-3 7e-4 1e-3 | 1e-2 3e-3 2e-3 |
+| same, sc_B | 3e-3 1e-3 6e-4 | 2e-2 1e-2 2e-3 | 5e-2 4e-2 7e-3 | 4e-2 6e-2 3e-2 |
+| same, sc_Bmu | 2e-3 1e-3 6e-4 | 2e-2 2e-2 9e-3 | 6e-2 6e-2 2e-2 | 8e-2 7e-2 3e-2 |
+| phi rms r = 0.2-1 / 1-3 / 3-10, sc_con | 1e-3 9e-5 1e-4 | 4e-3 3e-4 2e-4 | 3e-3 4e-4 2e-4 | 5e-3 5e-4 3e-4 |
+| held loss, best per window | sc_con 3e-8 -> 5e-9 | sc_B 1e-6 -> 1e-2 | sc_Bmu 1e-6 -> 1e-3 (windows 8-12) -> 1e-6 - 1e-4 | |
+
+1. **The control follows the absorption.** `sc_con` gives the horizon mass to 6e-4 at every time (0.5079 -> 0.5523,
+   reference 0.5078 -> 0.5526) and the horizon radius to 1e-3; the held loss falls through the run (3e-8 -> 5e-9).
+   In the trained region r >= 0.5 the mass error is 6e-4 (0.5-1), 4e-4 (1-3), 2e-3 (3-10) at t = 8. Its errors
+   sit at r < 0.5, where it has no points (worst mass 4e-2 and alpha 1e-2 in r = 0.2-0.5 at t = 6-8): the horizon
+   (r = 0.25 -> 0.47) is inside the untrained region, the case the user's rule excludes.
+2. **The fixed exact core fails** (`sc_B`): held loss 1e-6 at window 0, 1e-2 from window 12; the horizon mass
+   falls (0.498 at t = 2) instead of growing. It departs from t ~ 1, BEFORE any scalar field reaches the hole
+   (reference constant to t = 2.5): the core is wrong from the start, not only when the mass grows. The core is the
+   m = 0.5 vacuum puncture; the hole inside the shell has horizon mass 0.5078 = 0.5 (1 + c), c = 0.0156 (the
+   constant conformal factor and lapse factor of the caveat above).
+3. **The trainable mass goes the wrong way** (`sc_Bmu`): mu falls from 0.5000 to 0.452 (the hole's mass rises to
+   0.5526), tau runs ahead (8.48 at t = 8). The network's horizon mass equals mu to 3e-3 at every time: with this
+   ansatz the horizon mass is the template's, the correction (rho = s^2/(s^2 + 1), 0.03 at the horizon) does not
+   move it. So mu is trained only by the residual of a template that cannot represent the hole, and the minimum
+   of that residual is not at the hole's mass. Why it prefers a smaller mu is not established.
+4. Consequence: before the mass can be followed, the template family must contain the hole it describes at t = 0.
+   Here that needs, besides mu, the constant conformal factor (1 + c) and the lapse factor (the same in a binary,
+   c = m_2/(2d)); and the correction must be able to move the horizon (rho small there with r_c = 1). Not built.

@@ -182,6 +182,15 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    `tools/plot_scalar_runs.py` + table + loss plot. Needs reference_1d/ref_scalar_m0.5_A0.03_dr0.005_t8.npz
    (copied to Mendieta; remake with sph_reference_scalar.py, 3 min).
 
+22. 2026-11-11: the four runs graded (README "Results (2026-11-11)"). Vacuum B seed 8 reproduces seed 7 (the
+   held-loss rise after window 20 is systematic). Scalar: `sc_con` (no core, points r >= 0.5) follows the horizon
+   mass to 6e-4 (0.5079 -> 0.5523); `sc_B` (fixed m = 0.5 core) fails from t ~ 1, before any infall; `sc_Bmu`
+   moves mu the wrong way (0.500 -> 0.452) and the network's horizon mass equals mu. Reading: the vacuum m = 0.5
+   template is not the hole inside the shell even at t = 0 (factor 1 + c = 1.0156 in the conformal factor, its
+   inverse in the lapse), and with rho ~ 0.03 at the horizon the correction cannot move the horizon. OPEN, the
+   user's decision: (a) template family with mu and the constant factor c; (b) a correction that reaches the
+   horizon (smaller r_c in rho, or core well inside); (c) no exact core, points down to the core. Nothing launched.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs
