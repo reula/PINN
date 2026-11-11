@@ -2611,3 +2611,35 @@ Graded against the scalar finite-difference reference (`ref_scalar_m0.5_A0.03_dr
 4. Consequence: before the mass can be followed, the template family must contain the hole it describes at t = 0.
    Here that needs, besides mu, the constant conformal factor (1 + c) and the lapse factor (the same in a binary,
    c = m_2/(2d)); and the correction must be able to move the horizon (rho small there with r_c = 1). Not built.
+
+### Can a rescaled vacuum puncture represent the hole of the scalar case? (2026-11-11)
+
+The user (11 Nov): the core is inconsistent, the solution inside changes a lot when the scalar falls in and the
+template does not follow it; hopefully the factor c repairs it. Tested without any training:
+`tools/fit_template_family.py` fits chi, Khat, alpha of the scalar finite-difference reference in the core
+(r = 0.05-0.225) by the vacuum table rescaled with (mu, s, k, tau) (s = (1 + c)^2 conformal factor as a dilation,
+k lapse factor; s = k = 1 is the --tpl_mu family). rms misfit chi / Khat / alpha:
+
+| t | fixed template | mu, tau | mu, s, k, tau | fitted mu, s, k |
+|---|---|---|---|---|
+| 0.25 | 7e-4 6e-5 2e-3 | 1e-4 2e-4 6e-4 | 8e-6 8e-7 1e-6 | 0.5078, 1.033, 0.984 |
+| 1 | 1e-3 5e-3 5e-3 | 1e-4 9e-4 8e-4 | 2e-5 3e-5 3e-5 | 0.5078, 1.039, 0.983 |
+| 2 | 2e-3 4e-2 4e-3 | 5e-4 5e-3 2e-3 | 4e-5 1e-4 2e-4 | 0.5078, 1.042, 0.978 |
+| 3 | 2e-3 3e-2 7e-3 | 1e-3 3e-3 7e-4 | 8e-4 1e-3 3e-4 | 0.518, 1.016, 0.993 |
+| 4 | 3e-3 1e-2 6e-3 | 4e-4 4e-3 7e-3 | 5e-4 4e-4 4e-4 | 0.528, 0.986, 0.964 |
+| 5 | 4e-3 1e-2 1e-2 | 2e-3 7e-3 6e-3 | 5e-4 3e-3 2e-3 | 0.526, 1.045, 0.863 |
+| 6 | 5e-3 8e-3 2e-2 | 3e-3 3e-3 3e-3 | 5e-4 1e-3 4e-4 | 0.548, 0.994, 0.918 |
+| 8 | 6e-3 4e-2 2e-2 | 4e-3 8e-3 2e-3 | 3e-3 2e-3 3e-3 | 0.571, 1.103, 0.853 |
+
+1. Before the infall the four-parameter family IS the hole: misfit 1e-6 - 1e-5 at t = 0.25 with mu = 0.5078 (the
+   horizon mass), s = 1.033 ((1 + c)^2 = 1.0315), k = 0.984 (1/(1 + c) = 0.9846); it degrades slowly to 1e-4 at
+   t = 2 (the lapse factor is not a symmetry of the 1+log condition).
+2. The fixed template is off by 1e-3 - 4e-2 at all times, the mass-only family by 1e-4 - 8e-3: this is why sc_B and
+   sc_Bmu fail (held losses 1e-6 - 1e-2).
+3. During and after the infall (t >= 3) NO rescaled vacuum puncture fits the core better than 3e-4 - 3e-3, and the
+   fitted parameters are erratic (mu 0.526 at t = 5, 0.571 at t = 8; k 0.86 - 0.99): the interior is not a rescaled
+   vacuum puncture while the field crosses it, and has not relaxed to one by t = 8 (at t = 8 the fit is also limited
+   by the end of the table, tau = 8). The same in r = 0.05-0.45.
+4. So the user's objection holds: an exact core is consistent only before the field arrives. With the field inside,
+   the core must be a region where the network solves the equations (points there), with the template at most a
+   soft starting blend.
