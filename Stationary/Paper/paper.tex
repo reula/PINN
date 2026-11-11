@@ -34,6 +34,7 @@ The connection is the Christoffel symbol of the network metric.
 We test the solver on Schwarzschild in harmonic coordinates and on two-rod Weyl solutions, on the symmetry axis and rotated so that no symmetry is left.
 For quadrupolar data, which have no closed-form solution, we compare with an independent spectral solution of the same problem.
 The harmonic gauge and the inner data leave the asymptotic chart free to translate, and this translation dominates the error until it is fixed by Cederbaum's pseudo-Newtonian center of mass, a conserved flux of the static equations; with it, the solution agrees with the spectral one to five to six orders below the size of the perturbation.
+Without symmetry the chart is also free to rotate; a second conserved flux, the antisymmetric counterpart of the first, fixes the rotation and lowers the error of the general three-dimensional network by three orders of magnitude, to the accuracy of the axisymmetric one.
 Finally, we read the Geroch--Hansen mass moments of the computed solutions off the symmetry axis, without constructing Weyl coordinates; they reproduce the exact moments of the Weyl solutions and the spectral-reference moments of the quadrupolar one.
 \end{abstract}
 
@@ -182,6 +183,22 @@ It is quasi-local, obeys an addition theorem for several separated sources, coin
 \footnote{The asymptotic notions it is compared with go back to Regge--Teitelboim and Beig--\'O~Murchadha~\cite{ReggeTeitelboim1974,BeigOMurchadha1987} and to the foliation-based definitions of Huisken--Yau, Metzger, Huang, Corvino--Wu and Eichmair--Metzger~\cite{HuiskenYau1996,Metzger2007,Huang2009,Huang2010,CorvinoWu2008,EichmairMetzger2012} (see Ref.~\cite{CorvinoPollack2011}); Cederbaum's analysis builds on the asymptotics of static fields of Beig, Beig--Simon and Kennefick--\'O~Murchadha~\cite{Beig1980,BeigSimon1980,KennefickOMurchadha1995}.} We impose $d \equiv D/4\pi = 0$ on a set of spheres.
 This is a gauge choice, available for any data; Sec.~\ref{sec:quadrupole} shows that without it the translation mode is the largest error of the computed solution.
 
+\paragraph{Rotations.} The translations are not the only harmonic diffeomorphisms left free: harmonic coordinates of an asymptotically flat manifold are unique only up to rigid motions at infinity~\cite{Bartnik1986}, and the rotations are free as well.
+For a constant vector $c$ the field $\xi = c\times x\,(\rho_{\rm in}^3/\rho^3-1)$ (flat-space form, $\rho_{\rm in}=1$ below) is harmonic, vanishes on the inner sphere and tends to the rigid rotation $-c\times x$ at infinity.
+It leaves $\lambda$ and the induced metric of the inner sphere unchanged, since $\xi$ and its tangential derivatives vanish there, and changes $h$ only by $\delta h\simeq-3\,[\,n\otimes(c\times n)+(c\times n)\otimes n\,]/\rho^3$, in the components $h_{rA}$, which are not data; asymptotically it decays like $\rho^{-3}$, so the outer conditions do not see it either.
+For data symmetric about an axis, an axisymmetric network excludes the mode; a general three-dimensional network does not.
+To fix it we use the antisymmetric counterpart of Eq.~\eqref{eq:comflux}.
+Since $\partial_l(\sqrt h\,h^{lm}) = -\sqrt h\,\Gamma^m$, the vector field $\epsilon_{kij}\,x^i\sqrt h\,h^{jl}$ is divergence-free in harmonic gauge (its divergence is $\epsilon_{kij}\sqrt h\,h^{ji}=0$), so
+\begin{equation}
+  r_k(S) = \frac1{8\pi}\oint_S \epsilon_{kij}\,x^i\,\sqrt h\,h^{jl}n_l\,\dd A
+  \label{eq:rotflux}
+\end{equation}
+($n$ and $\dd A$ the flat normal and area element) is the same on every surface enclosing the inner sphere.
+It vanishes for the spherical solutions, and for the mode above $r = c$ to first order.
+We impose $r=0$ on the same spheres as $d$, with the same weight.
+Like $d$, it is a gauge choice available for any data; we have not found it used for this purpose in the literature.
+With a gauge source, $\Gamma^i=S^i$ (Sec.~\ref{sec:weylsol}), the flux changes between two spheres by $-\int\epsilon_{kij}x^iS^j\sqrt h\,\dd^3x$ over the shell between them, and $D$ by $\int U\,S^i\sqrt h\,\dd^3x$; in the Weyl tests we impose on each sphere the fluxes of the exact solution (for the rotation flux they vanish, by axial symmetry of the source).
+
 % =====================================================================================
 \section{The solver}\label{sec:code}
 % =====================================================================================
@@ -218,12 +235,12 @@ The loss is
 \begin{multline}
   L = \sum_g w_g\,\overline{(\rho^{p_g}R_g)^2}
      + w_{\rm in}\overline{r_{\rm in}^2} + w_{\rm out}\overline{r_{\rm out}^2} \\
-     + w_{\rm com}\sum_S|d|^2 ,
+     + w_{\rm com}\sum_S|d|^2 + w_{\rm rot}\sum_S|r|^2 ,
   \label{eq:loss}
 \end{multline}
 where the bar is the mean over the sampled points, $\overline{F} = N^{-1}\sum_{k=1}^{N}F(x_k)$, and a square is the sum of the squares of the components.
 $p=(2,1,2)$ makes every residual dimensionless; for the Weyl and quadrupolar problems, in order to have a more accurate far field, we use $p=(4,3,4)$, an extra weight $\rho^4$ that determines the far field.
-$w_{\rm in}=w_{\rm out}=w_{\rm com}=100$.
+$w_{\rm in}=w_{\rm out}=w_{\rm com}=w_{\rm rot}=100$; the rotation term~\eqref{eq:rotflux} is used only with the general three-dimensional network, in the runs of Secs.~\ref{sec:rotweyl} and~\ref{sec:offaxis} where it is said.
 The center-of-mass term uses a fixed product quadrature on each sphere, Gauss--Legendre in $\mu=\cos\theta$ and uniform in $\phi$: $24\times8$ nodes for the axisymmetric network and $48\times32$ for the three-dimensional one (with data about an axis other than $z$, the coarser rule aliases the angular structure on the inner sphere; $48\times32$ agrees with $96\times64$ there).
 
 \paragraph{Sampling points} Interior points are drawn with uniform directions and logarithmically uniform radius $\rho$, i.e., with a density proportional to $\rho^{-3}$, which concentrates them near the inner boundary, where we expect the largest features of the fields.
@@ -234,6 +251,8 @@ This checks that the parameters have not adapted to the particular points (overf
 
 \paragraph{Training.} We minimize with two algorithms in succession: first the stochastic gradient method Adam~\cite{KingmaBa2014} for 5000 steps, then the self-scaled Broyden quasi-Newton method SSBroyden~\cite{Urban2025SSBroyden,Carretero2026} with a dense inverse Hessian carried between blocks of 250 iterations, a strong-Wolfe line search and scale-invariant curvature guards, in stages of 10000 iterations; a block whose result is not finite is rejected.
 For the quadrupolar problem with the axisymmetric network, Adam (3 minutes) and two such stages (11 minutes each) reach a loss of $1.3\times10^{-11}$.
+Each stage restarted the inverse Hessian.
+The width-60 runs of Sec.~\ref{sec:offaxis} and the continuation of Sec.~\ref{sec:rotweyl} use instead a single run with stopping rules: Adam (at most 5000 steps) stops when its best loss has fallen by less than 30\% over the last 1000 steps, and SSBroyden (at most 40000 iterations, one inverse Hessian throughout) stops when its best loss has fallen by less than 10\% over the last 4000 iterations, after which the best field seen is kept.
 Everything runs in double precision with JAX~\cite{jax2018} on NVIDIA A30 GPUs; one value and gradient at 16384 points costs 0.048~s.
 
 \paragraph{Spectral approximations.}\label{sec:specref} A problem without an exact solution needs an independent approximation against which to measure the error of the networks.
@@ -353,7 +372,7 @@ $\log_{10}R_{ab}R^{ab}$ of the exact solution.}
 \label{fig:weyl}
 \end{figure}
 
-\subsection{A rotated Weyl configuration}
+\subsection{A rotated Weyl configuration}\label{sec:rotweyl}
 
 The above approximations were obtained with a scheme adapted to the axis symmetry.
 In order to test the 3D setting we rotate the closest configuration by $45^\circ$ about the $y$ axis, so that the symmetry is not apparent, and use the generic 3D setting.
@@ -363,6 +382,10 @@ The general three-dimensional metric-only network, of width 40 with 32768 points
 
 The general network is about seven times less accurate than the axisymmetric one in $h$ and fifteen times in $\lambda$ for the same problem, although it is four times larger and uses twice as many points: it has to represent functions of three variables instead of two.
 Both the size of the network and the number of points matter there (Sec.~\ref{sec:quadrupole}): the loss is a mean over the sampled points, and with too few of them a larger network can lower the mean while the residual grows at points it does not sample.
+
+Part of that difference is the rotation mode of Sec.~\ref{sec:gaugefreedom}: fitted on spheres, it accounts for 50--70\% of the error in $h$ for $\rho\le3$.
+The identities behind the two fluxes hold for this network to the order of its residuals: $d$ agrees with the flux of the exact solution to $2\times10^{-9}$, and $r$, $(0.4$--$1.1)\times10^{-6}$ instead of zero, changes between spheres by the volume integral of the gauge residual.
+Continuing the run with the rotation condition (Fig.~\ref{fig:training}, right), SSBroyden stops after 5250 iterations at the same loss, $1.4\times10^{-11}$, with the rms error in $h$ lowered from $5.3\times10^{-7}$ to $2.0\times10^{-7}$, while its maximum ($3.1\times10^{-6}$) and the error in $\lambda$ ($1.5\times10^{-8}$ rms) do not change.
 % =====================================================================================
 \section{Quadrupolar data}\label{sec:quadrupole}
 % =====================================================================================
@@ -458,7 +481,7 @@ spherical solution).}
 \label{fig:com}
 \end{figure*}
 
-\subsection{Off-axis data}
+\subsection{Off-axis data}\label{sec:offaxis}
 
 The same datum about the axis $(1,0,1)/\sqrt2$. Since we keep the same harmonic coordinates it looks like a fully three-dimensional problem whose solution is the rotated axisymmetric one. Here we solve it with the whole 3-dimensional network. We solve it with the general metric-only network in the formulation of Sec.~\ref{sec:bcs}, Adam and four SSBroyden stages.
 At network-width 20 (2347 parameters, 16384 points) the loss levels off at $1.2\times10^{-6}$, five orders above the axisymmetric one, decreasing by only 10--25\% per stage, with rms errors of $9.1\times10^{-6}$ in $\lambda$ and $1.2\times10^{-3}$ in $h$.
@@ -466,8 +489,24 @@ Doubling either the width or the number of points alone gains little: width 40 a
 With both, width 40 (8687 parameters) and 32768 points, the loss falls to $4.3\times10^{-9}$ within two stages and stays there (fresh/training ratio 1.00), and the error against the rotated spectral reference is $3.4\times10^{-6}$ in $\lambda$ and $2.6\times10^{-4}$ in $h$ (rms over the shell), i.e.\ 2800 and 40 times below the perturbation; a second run from a different initialization gives $3.6\times10^{-6}$ and $3.3\times10^{-4}$.
 A larger network needs more points to constrain it.
 The error concentrates in $h$ near the inner sphere ($5.3\times10^{-4}$ for $1\le\rho\le3$, against a perturbation of $2.3\times10^{-2}$) and falls to $3\times10^{-8}$ beyond $\rho=30$; $|d|\le7.5\times10^{-7}$ on every sphere.
-The rotated Weyl test of Sec.~\ref{sec:tests}, with the same network and points, reached $1.3\times10^{-11}$, but in a much weaker field.
 Each stage takes 30 minutes at width 40 (10 at width 20).
+
+\paragraph{The rotation mode.} Doubling both again, width 60 (19027 parameters) and 65536 points, in a single run (I), brings the loss down to $1.6\times10^{-11}$, as low as that of the axisymmetric network, but not the error: $8.5\times10^{-6}$ in $\lambda$ and $6.7\times10^{-4}$ in $h$ (Fig.~\ref{fig:training}).
+The loss and the error have come apart, and the reason is the rotation mode of Sec.~\ref{sec:gaugefreedom}.
+On the spheres $1.2\le\rho\le50$ one constant vector $c$, $|c| = 2.3\times10^{-3}$, accounts for 96--99\% of the error in $h$, and the flux~\eqref{eq:rotflux} of the network has the same size, $|r| = 2.3\times10^{-3}$, on every sphere from $\rho=1$ to 100, while that of the spectral reference is below $2\times10^{-12}$.
+In the staged runs at width 40 the mode, $|c|$ between $1\times10^{-3}$ and $2.5\times10^{-3}$, is set in the first SSBroyden stage and does not change while the loss falls by another order of magnitude: it costs almost nothing in the loss.
+Continuing I with the condition $r=0$ (run L) removes it within 3000 iterations, $|c| < 10^{-9}$, and SSBroyden stops after 11000 iterations at the same loss, $1.6\times10^{-11}$ (fresh/training ratio 1.03).
+The error falls to $7.6\times10^{-9}$ in $\lambda$ and $2.6\times10^{-7}$ in $h$ (rms; maxima $1.0\times10^{-7}$ and $3.3\times10^{-6}$), 1100 and 2600 times below that of I and the same as the axisymmetric network on the aligned datum (Table~\ref{tab:com}).
+In $h$ it is $5.4\times10^{-7}$ for $1\le\rho\le3$ and $1.5\times10^{-9}$ beyond $\rho=30$, and $|d|\le1.4\times10^{-8}$.
+With both conditions, then, the general network solves the problem without symmetry as accurately as the symmetric network solves the symmetric one.
+Run L takes 2.2 hours on one A30.
+
+\begin{figure*}
+\includegraphics[width=\textwidth]{figs/training_loss.png}
+\includegraphics[width=\textwidth]{figs/training_error.png}
+\caption{Top: loss against iteration. Left, the off-axis datum with the width-60 network: I (no rotation condition), J (inner data in $H^1$; the rotation condition added at its iteration 27000, where the loss jumps), and L (the final network of I continued with the rotation condition, drawn from the end of I); Adam stops on its plateau rule near step 1600 and the SSBroyden iterations are counted from 5000. Right, the rotated Weyl network continued with the rotation condition, with the final loss of the run without it (dashed). Bottom: rms error against the loss along the same runs (snapshots every 1000 iterations; for I, the end of Adam and the final network), in $h$ (left) and $\lambda$ (right); off-axis runs against the rotated spectral reference, Weyl runs against the exact solution.}
+\label{fig:training}
+\end{figure*}
 
 \paragraph{The inner data in $H^1$.} Since the error of every run concentrates at the inner sphere, a natural extension is to impose the inner data together with their derivatives along the sphere: we add to the loss $\rho\,(I-n\otimes n)\nabla$ of the $\lambda$ residual and of the induced-metric residual $PhP-(r_{\rm in}^2/\rho^2)P$ of Eq.~\eqref{eq:innerbc}, with the weight of the inner term, so that the inner condition is imposed in the $H^1$ norm of the sphere rather than in $L^2$.
 On the sphere $PhP$ is the induced metric $h_{AB}$ alone, so the new terms involve only the data, and $h_{rr}$, $h_{rA}$ remain free.
@@ -475,7 +514,9 @@ On the axisymmetric problem, with the same budget, it lowers the loss from $1.3\
 Over three initializations each, the error in $\lambda$ is $(2.9$--$3.7)\times10^{-9}$ with the term and $(0.7$--$1.9)\times10^{-8}$ without it, and the one in $h$ $(0.9$--$1.6)\times10^{-7}$ against $(1.45$--$3.1)\times10^{-7}$: the gain is larger than the scatter between runs.
 On the off-axis problem at width 40 it slows the training down: after the same four stages the field-equation residuals are seven times larger and the error is 1.6--1.8 times larger ($6.1\times10^{-6}$ in $\lambda$, $4.0\times10^{-4}$ in $h$), with the loss still decreasing ($2.9\times10^{-8}$) where the run without the term had leveled off.
 Two further stages bring it to $1.9\times10^{-8}$, now leveling off at 4.5 times the loss of the run without the term, with the error still 1.4--1.5 times larger ($4.7\times10^{-6}$ in $\lambda$, $3.8\times10^{-4}$ in $h$).
-In three dimensions the term therefore costs more than it gains, and we do not include it in the formulation. \claude{Perhaps we should try here a bigger network}
+A larger network does not change this.
+At width 60 with 65536 points (run J, with the rotation condition added at its iteration 27000), the loss levels off at $7.9\times10^{-10}$, fifty times that of L, with field-equation residuals 25--70 times larger, and the error is $3.2\times10^{-8}$ in $\lambda$ and $3.1\times10^{-6}$ in $h$, four and twelve times that of L (Fig.~\ref{fig:training}).
+In three dimensions the term therefore costs more than it gains, and we do not include it in the formulation.
 
 % =====================================================================================
 \section{Multipole moments}\label{sec:moments}
@@ -579,7 +620,7 @@ In the mass-centered harmonic chart $c_l\rho^{l+1}$ tends to $0.58387$, $0.1747$
 
 A PINN solves the exterior boundary-value problem of the static vacuum Einstein equations with prescribed inner data and asymptotic flatness, and reproduces exact solutions with and without symmetry.
 Two ingredients are essential: a network whose connection is derived from its metric, and a complete gauge fixing.
-Harmonic coordinates and the inner data leave the asymptotic chart free to translate; the mode is invisible to every residual except at a very low level, and it is the largest error until the pseudo-Newtonian center of mass is fixed.
+Harmonic coordinates and the inner data leave the asymptotic chart free to translate and to rotate; these modes are invisible to every residual except at a very low level, and they are the largest error until the pseudo-Newtonian center of mass and its antisymmetric counterpart, the rotation flux, are fixed.
 With that, the boundary conditions are minimal: $\lambda$ and the induced metric on the inner sphere, pointwise Robin conditions on the outer one, nothing on $h_{rr}$ or $h_{rA}$; conditions added beyond these only make the solution worse.
 We expect the same issue, and the same remedy, in any elliptic formulation of the stationary problem whose inner data do not fix the asymptotic frame.
 The Geroch--Hansen moments of the computed solutions can be read off the symmetry axis without constructing Weyl coordinates, and they are insensitive to that translation.
@@ -601,6 +642,8 @@ The runs with extra conditions on the outer spheres, \texttt{ab\_*} in \texttt{P
 Off-axis data, \texttt{Paper/hub\_qp3.sh} (\texttt{qp\_rot3\_*}, width 20, 10 minutes per stage) and \texttt{Paper/hub\_qp4.sh} (\texttt{qp\_rot4\_n32768\_*}, width 40, 30 minutes per stage).
 The mass against $S_2$ (Table~\ref{tab:mass}), \texttt{Paper/hub\_mass.sh}: the networks \texttt{ms\_s2h\_*} ($S_2=-1/24$) and \texttt{ms\_s2d\_*} ($-1/6$), and the spectral reference of each amplitude (\texttt{specref\_nonlinear\_fine} in the run directory; \texttt{Paper/commands\_specref.sh} for its settings, 35--40 minutes each).
 The hard end: the networks \texttt{ms\_s2\_025\_*} and \texttt{ms\_s2\_030\_*} continued by \texttt{Paper/hub\_hard2.sh}, at width 40 with 32768 points \texttt{Paper/hub\_hard3.sh} (\texttt{*\_b40\_*}) and with 65536 points \texttt{Paper/hub\_recipe.sh} (\texttt{hs\_*}, Table~\ref{tab:mass}); the spectral references with the damped step of \texttt{stationary/specref.py}, \texttt{Paper/hub\_hardref.sh} ($-1/4$, tag \texttt{damp}) and \texttt{Paper/hub\_bigref.sh} ($-0.30$, tag \texttt{big\_l20}; 12--40 minutes per Newton step on one A30, 6\,GB of device memory).
+\item The width-60 off-axis runs and the rotation condition (Sec.~\ref{sec:offaxis}, Fig.~\ref{fig:training}): phases I (\texttt{rp\_w60\_n65k\_one}), J (\texttt{rp\_w60\_n65k\_tan\_one}) and L (\texttt{rp\_w60\_n65k\_rot}) of \texttt{Paper/hub\_recipe.sh}, and phase M (\texttt{wr\_rot45\_rot}) for the rotated Weyl continuation; the mode analysis \texttt{scripts/error\_modes.py}, the flux identities \texttt{scripts/green\_identities.py}, the figure \texttt{Paper/fig\_training.py}.
+The Weyl figure (Fig.~\ref{fig:weyl}): \texttt{python -m stationary.plane runs/wr\_prod\_w2 --surface}.
 \item The geometry figures (Figs.~\ref{fig:geometry} and~\ref{fig:hawking}): \texttt{scripts/geometry\_quadrupole.py} on the run \texttt{ms\_s2\_025\_w5} with the spectral reference \texttt{specref\_nonlinear\_damp.npz} (about 5 minutes for the slice and one hour for the Hawking profile on a laptop CPU).
 \item The spectral reference of Sec.~\ref{sec:quadrupole}: \texttt{stationary/specref.py} with the settings of \texttt{SPEC} in \texttt{Paper/hub\_mass.sh} (loss $1.6\times10^{-13}$, 6 minutes on one A30); the larger one, phase C of \texttt{Paper/hub\_recipe.sh}.
 \item Grading and moments: \texttt{scripts/grade\_rotated.py}, \texttt{scripts/fresh\_sample\_loss.py}, \texttt{scripts/gh\_moments\_runs.py}, \texttt{scripts/tail\_decay.py}.
