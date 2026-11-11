@@ -310,3 +310,31 @@ def test_a_block_draws_one_sample_at_the_newest_resampling_point():
     # reach a point -- not the number of points covered
     assert T._newest_resample_point(500, 500, 6500) == 6500
     assert T._newest_resample_point(1500, 4500, 6500) == 6000
+
+
+def test_a_resume_in_the_qn_phase_keeps_where_adam_stopped(tmp_path, monkeypatch):
+    """report.json's adam_stopped_at survives a resume inside the quasi-Newton phase.
+
+    Before 2026-11-11 the resumed run skipped the Adam loop, never set the stop point and
+    reported cfg.steps (phase J/L said 5000 where Adam had stopped at ~1600).
+    """
+    import json
+    import sys
+    from stationary import train
+
+    args = ["train", "--outdir", str(tmp_path), "--arch", "sym_hybrid", "--width", "8",
+            "--depth", "2", "--steps", "400", "--log-every", "20",
+            "--adam-plateau-window", "1", "--adam-plateau-frac", "0.999",
+            "--lbfgs-steps", "100", "--qn-block", "50",
+            "--n-coll", "256", "--n-bnd", "32", "--no-figures", "--ref-solution",
+            "--ref-asymptotic", "1.0", "--outer-bc", "robin", "--robin-exps", "2,3,1",
+            "--robin-orders", "h=3,lam=3", "--no-robin-G", "--lam-inf", "1.0"]
+    monkeypatch.setattr(sys, "argv", args)
+    train.train(train.parse_args())
+    first = json.load(open(tmp_path / "report.json"))["adam_stopped_at"]
+    assert first < 400, "the window rule (frac 0.999) must stop Adam early"
+
+    monkeypatch.setattr(sys, "argv", args + ["--resume", "auto", "--lbfgs-steps", "150"])
+    train.train(train.parse_args())
+    again = json.load(open(tmp_path / "report.json"))["adam_stopped_at"]
+    assert again == first, (first, again)

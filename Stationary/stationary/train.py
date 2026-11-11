@@ -1037,7 +1037,10 @@ def ssbroyden_phase(state, batch, weights, loss_fn, cfg: Config, verbose: bool =
         save_checkpoint(os.path.join(cfg.outdir, CKPT_NAME), unflatten(x), None, weights,
                         history_prefix + rows_so_far, cfg.steps + total, cfg,
                         extra={"phase": "qn",
-                               "qn_H": (jax.device_get(H) if carry_H else None)})
+                               "qn_H": (jax.device_get(H) if carry_H else None),
+                               # where Adam stopped: a resume inside the quasi-Newton phase
+                               # skips the Adam loop and could not know it otherwise
+                               "adam_stopped_at": getattr(cfg, "_adam_stopped_at", None)})
 
     # Blocks, not one long call: the inverse Hessian is carried from block to block (that is
     # what makes the quasi-Newton phase work), and the loss is inspected between blocks so
@@ -1524,6 +1527,7 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         resume = cfg.resume
     # Defaults for a fresh run, and for any checkpoint written before `phase` existed.
     resume_phase, resume_H, resume_loss = "adam", None, None
+    resume_adam_stopped = None
     if resume is not None:
         rpath = os.path.join(cfg.outdir, CKPT_NAME) if resume == "auto" else resume
         if not os.path.exists(rpath):
@@ -1545,6 +1549,7 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         # enough to carry.
         resume_phase = ck.get("phase", "adam")
         resume_H = ck.get("qn_H")
+        resume_adam_stopped = ck.get("adam_stopped_at")
         # Warn rather than silently change the trajectory: the Adam LR schedule and
         # the resampling/reweighting cadences are all functions of the step index.
         prev = ck.get("config", {})
@@ -1597,7 +1602,9 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
     t0 = time.time()
     adam_losses = []
     adam_outers = []
-    adam_stopped = None
+    # 2026-11-11: a resume inside the quasi-Newton phase runs no Adam iterations, so the stop
+    # point comes from the checkpoint (report.json said cfg.steps after such resumes)
+    adam_stopped = resume_adam_stopped
     for it in range(resume_step + 1, cfg.steps + 1):
         sc = 1.0 if cfg.pde_ramp_steps <= 0 else min(1.0, it / cfg.pde_ramp_steps)
         if cfg.resample_every and it % cfg.resample_every == 1 and it > 1:
@@ -1673,6 +1680,8 @@ def train(cfg: Config, verbose: bool = True, init_from: str | None = None,
         # the record of where that warm-up ended.
         write_params(cfg.outdir, state, "params_adam.pkl")
 
+    # for the quasi-Newton checkpoints (not a Config field: not written to config.json)
+    object.__setattr__(cfg, "_adam_stopped_at", adam_stopped if adam_stopped is not None else cfg.steps)
     qn_stopped_at = 0
     if cfg.lbfgs_steps > 0:
         batch = make_batch(jax.random.PRNGKey(cfg.seed + 777), cfg)

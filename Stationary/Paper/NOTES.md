@@ -479,3 +479,11 @@ then on a flat background F_T = M k_T and F_R = rho_in^3 k_R (paper App. app:mod
 where xi = 0).  On the spherical solution of the quadrupole problem F_R = 0.79 k_R (decaying l=1 harmonic of
 h = dr^2 + r(r-2M) dOmega^2 is 3 Q_1(rho/M)/M^2; alpha = 1/f(rho_in)).  The main text says only that the relations
 are linear with geometry-dependent coefficients (author's choice).
+
+### report.json adam_stopped_at after a resume (fixed 2026-11-11)
+A resume inside the quasi-Newton phase skips the Adam loop, so train.py never learned where Adam had stopped and
+report.json said cfg.steps (5000) for I and J, whose logs say "[adam 1600] plateaued (window)".  Training was not
+affected (the SSBroyden counter and budget were right); only the reported number.  train.py now stores the stop
+point in the QN checkpoint ("adam_stopped_at") and restores it on resume; tests/test_qn_phase.py
+test_a_resume_in_the_qn_phase_keeps_where_adam_stopped (fails before the fix: 400 vs 40).  The two report.json
+files were corrected by hand (field adam_stopped_at_note says so).
