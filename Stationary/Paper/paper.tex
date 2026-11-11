@@ -167,9 +167,9 @@ These pointwise conditions on the outer sphere are all that is imposed there.
 \subsection{The residual gauge freedom and the center of mass}\label{sec:gaugefreedom}
 
 The harmonic condition fixes the chart only up to harmonic diffeomorphisms $x \to x+\xi$, $\Delta_h\xi = 0$.
-One of them is left free by our boundary and asymptotic  data: $\xi = 0$ on the inner sphere and $\xi\to a$, ($a$ a constant vector) at infinity.
-It keeps the chart harmonic and the inner data unchanged, and translates the asymptotic chart by $a$.
-Its effect on the scalar, $\xi\cdot\nabla\lambda$, vanishes at $\rho_{\rm in}$ and decays like $\rho^{-2}$ asymptotically, so the outer conditions barely penalize it: in the run of Sec.~\ref{sec:quadrupole} without the condition, which drifted by $a_z=-1.8\times10^{-3}$, the dipole of $\mathcal P$ at $\rho=100$ is $-1.1\times10^{-7}$, i.e.\ $M_{\rm ADM}a_z/\rho^2$, against $4\times10^{-11}$ in the run with it.
+One of them is left free by our boundary and asymptotic  data: $\xi = 0$ on the inner sphere and $\xi\to k_T$, ($k_T$ a constant vector) at infinity.
+It keeps the chart harmonic and the inner data unchanged, and translates the asymptotic chart by $k_T$.
+Its effect on the scalar, $\xi\cdot\nabla\lambda$, vanishes at $\rho_{\rm in}$ and decays like $\rho^{-2}$ asymptotically, so the outer conditions barely penalize it: in the run of Sec.~\ref{sec:quadrupole} without the condition, which drifted by $k_{T,z}=-1.8\times10^{-3}$, the dipole of $\mathcal P$ at $\rho=100$ is $-1.1\times10^{-7}$, i.e.\ $M_{\rm ADM}k_{T,z}/\rho^2$, against $4\times10^{-11}$ in the run with it.
 
 To avoid this freedom (which does not change the geometry but does change the pointwise values of our fields and so makes the error determination harder) we fix it by requiring the center of mass to vanish.
 Since $U$ and the coordinates $x^i$ are both $h$-harmonic, Green's identity makes
@@ -177,27 +177,29 @@ Since $U$ and the coordinates $x^i$ are both $h$-harmonic, Green's identity make
   D^i(S) = \oint_S\bigl(x^i\,\partial_\nu U - U\,\partial_\nu x^i\bigr)\,\dd A_h
   \label{eq:comflux}
 \end{equation}
-the same on every closed surface $S$ enclosing the inner sphere, and $D = 4\pi M a$ for a mass $M$ displaced by $a$.
+the same on every closed surface $S$ enclosing the inner sphere, and $D = 4\pi M k_T$ for a mass $M$ displaced by $k_T$.
 This is the pseudo-Newtonian center of mass that Cederbaum introduced for static (``geometrostatic'') isolated systems~\cite{Cederbaum2012}, written in our variables.
 It is quasi-local, obeys an addition theorem for several separated sources, coincides with the ADM and constant-mean-curvature centers of mass in suitable asymptotic coordinates, and converges to the Newtonian center of mass in the Newtonian limit~\cite{Cederbaum2012,CederbaumNerz2015}.
-\footnote{The asymptotic notions it is compared with go back to Regge--Teitelboim and Beig--\'O~Murchadha~\cite{ReggeTeitelboim1974,BeigOMurchadha1987} and to the foliation-based definitions of Huisken--Yau, Metzger, Huang, Corvino--Wu and Eichmair--Metzger~\cite{HuiskenYau1996,Metzger2007,Huang2009,Huang2010,CorvinoWu2008,EichmairMetzger2012} (see Ref.~\cite{CorvinoPollack2011}); Cederbaum's analysis builds on the asymptotics of static fields of Beig, Beig--Simon and Kennefick--\'O~Murchadha~\cite{Beig1980,BeigSimon1980,KennefickOMurchadha1995}.} We impose $d \equiv D/4\pi = 0$ on a set of spheres.
+\footnote{The asymptotic notions it is compared with go back to Regge--Teitelboim and Beig--\'O~Murchadha~\cite{ReggeTeitelboim1974,BeigOMurchadha1987} and to the foliation-based definitions of Huisken--Yau, Metzger, Huang, Corvino--Wu and Eichmair--Metzger~\cite{HuiskenYau1996,Metzger2007,Huang2009,Huang2010,CorvinoWu2008,EichmairMetzger2012} (see Ref.~\cite{CorvinoPollack2011}); Cederbaum's analysis builds on the asymptotics of static fields of Beig, Beig--Simon and Kennefick--\'O~Murchadha~\cite{Beig1980,BeigSimon1980,KennefickOMurchadha1995}.} We impose $F_T \equiv D/4\pi = 0$ (so $F_T = M k_T$) on a set of spheres.
 This is a gauge choice, available for any data; Sec.~\ref{sec:quadrupole} shows that without it the translation mode is the largest error of the computed solution.
 
 \paragraph{Rotations.} The translations are not the only harmonic diffeomorphisms left free: harmonic coordinates of an asymptotically flat manifold are unique only up to rigid motions at infinity~\cite{Bartnik1986}, and the rotations are free as well.
-For a constant vector $c$ the field $\xi = c\times x\,(\rho_{\rm in}^3/\rho^3-1)$ (flat-space form, $\rho_{\rm in}=1$ below) is harmonic, vanishes on the inner sphere and tends to the rigid rotation $-c\times x$ at infinity.
-It leaves $\lambda$ and the induced metric of the inner sphere unchanged, since $\xi$ and its tangential derivatives vanish there, and changes $h$ only by $\delta h\simeq-3\,[\,n\otimes(c\times n)+(c\times n)\otimes n\,]/\rho^3$, in the components $h_{rA}$, which are not data; asymptotically it decays like $\rho^{-3}$, so the outer conditions do not see it either.
+For a constant vector $k_R$ the field $\xi^i = \epsilon_{ijk}k_R^j x^k\,(\rho_{\rm in}^3/\rho^3-1)$ (flat-space form, $\rho_{\rm in}=1$ below; $\epsilon_{ijk}$ is the permutation symbol, so $\epsilon_{ijk}k_R^jx^k = (k_R\times x)^i$) is harmonic, vanishes on the inner sphere and tends to the rigid rotation $-k_R\times x$ at infinity.
+It leaves $\lambda$ and the induced metric of the inner sphere unchanged, since $\xi$ and its tangential derivatives vanish there, and changes $h$ only by $\delta h_{ij}\simeq-3\,(n_i\epsilon_{jkl}+n_j\epsilon_{ikl})\,k_R^kn^l/\rho^3$, in the components $h_{rA}$, which are not data; asymptotically it decays like $\rho^{-3}$, so the outer conditions do not see it either.
 For data symmetric about an axis, an axisymmetric network excludes the mode; a general three-dimensional network does not.
 To fix it we use the antisymmetric counterpart of Eq.~\eqref{eq:comflux}.
-Since $\partial_l(\sqrt h\,h^{lm}) = -\sqrt h\,\Gamma^m$, the vector field $\epsilon_{kij}\,x^i\sqrt h\,h^{jl}$ is divergence-free in harmonic gauge (its divergence is $\epsilon_{kij}\sqrt h\,h^{ji}=0$), so
+The coordinates are $h$-harmonic functions, $\Delta_h x^i = -\Gamma^i = 0$, so Green's identity applied to a pair of them, as it was applied to $x^i$ and $U$ in Eq.~\eqref{eq:comflux}, makes
 \begin{equation}
-  r_k(S) = \frac1{8\pi}\oint_S \epsilon_{kij}\,x^i\,\sqrt h\,h^{jl}n_l\,\dd A
+  F_R^k(S) = \frac1{16\pi}\,\epsilon_{kij}\oint_S\bigl(x^i\,\partial_\nu x^j - x^j\,\partial_\nu x^i\bigr)\,\dd A_h
   \label{eq:rotflux}
 \end{equation}
-($n$ and $\dd A$ the flat normal and area element) is the same on every surface enclosing the inner sphere.
-It vanishes for the spherical solutions, and for the mode above $r = c$ to first order.
-We impose $r=0$ on the same spheres as $d$, with the same weight.
-Like $d$, it is a gauge choice available for any data; we have not found it used for this purpose in the literature.
-With a gauge source, $\Gamma^i=S^i$ (Sec.~\ref{sec:weylsol}), the flux changes between two spheres by $-\int\epsilon_{kij}x^iS^j\sqrt h\,\dd^3x$ over the shell between them, and $D$ by $\int U\,S^i\sqrt h\,\dd^3x$; in the Weyl tests we impose on each sphere the fluxes of the exact solution (for the rotation flux they vanish, by axial symmetry of the source).
+the same on every closed surface enclosing the inner sphere.
+Here $\epsilon_{kij}$ is the constant permutation symbol: it does not refer to any metric, only labels the three antisymmetric pairs $(ij)$ of coordinate functions, and each component of $F_R$ is an identity between two scalars, like $D$; the geometry enters through $\partial_\nu$ and $\dd A_h$ alone.
+In terms of the coordinate normal $n$ and area element $\dd A$ of the sphere, $\partial_\nu x^j\,\dd A_h = \sqrt h\,h^{jl}n_l\,\dd A$, which is how we evaluate both fluxes; the $\sqrt h$ comes from that change of area element, not from a volume form.
+$F_R$ vanishes for the spherical solutions, and for the mode above $F_R = k_R$ to first order.
+We impose $F_R=0$ on the same spheres as $F_T$, with the same weight.
+Like $F_T$, it is a gauge choice available for any data; we have not found it used for this purpose in the literature.
+With a gauge source, $\Gamma^i=S^i$ (Sec.~\ref{sec:weylsol}), the coordinates are no longer harmonic and the fluxes change between two spheres by the integral over the shell between them, $-\frac1{8\pi}\int\epsilon_{kij}x^iS^j\sqrt h\,\dd^3x$ for $F_R$ and $\frac1{4\pi}\int U\,S^i\sqrt h\,\dd^3x$ for $F_T$; in the Weyl tests we impose on each sphere the fluxes of the exact solution (those of $F_R$ vanish, by axial symmetry of the source).
 
 % =====================================================================================
 \section{The solver}\label{sec:code}
@@ -230,12 +232,12 @@ We also use networks of width 40 and depth 6 (the rotated Weyl test, the off-axi
 Spherically symmetric tests use $h = \alpha(\rho)\delta+\beta(\rho)nn$.
 
 \paragraph{Loss.} The parameters are found by minimizing a loss: a non-negative function of $\theta$ that vanishes exactly when the network fields satisfy the equations, the gauge and the boundary conditions at the sampled points.
-Its terms are the residuals, the left-hand side minus the right-hand side of each condition evaluated on the network fields: $R_g$ for the three groups $g$ of interior equations, the Ricci equation~\eqref{eq:ricci}, the gauge condition~\eqref{eq:gauge} and the scalar equation~\eqref{eq:lam}; $r_{\rm in}$ for the inner conditions~\eqref{eq:innerbc}; $r_{\rm out}$ for the outer conditions~\eqref{eq:robin}; and the center of mass $d$ of Sec.~\ref{sec:gaugefreedom} on a set of spheres $S$.
+Its terms are the residuals, the left-hand side minus the right-hand side of each condition evaluated on the network fields: $R_g$ for the three groups $g$ of interior equations, the Ricci equation~\eqref{eq:ricci}, the gauge condition~\eqref{eq:gauge} and the scalar equation~\eqref{eq:lam}; $r_{\rm in}$ for the inner conditions~\eqref{eq:innerbc}; $r_{\rm out}$ for the outer conditions~\eqref{eq:robin}; and the fluxes $F_T$ (center of mass) and $F_R$ (rotation) of Sec.~\ref{sec:gaugefreedom} on a set of spheres $S$.
 The loss is
 \begin{multline}
   L = \sum_g w_g\,\overline{(\rho^{p_g}R_g)^2}
      + w_{\rm in}\overline{r_{\rm in}^2} + w_{\rm out}\overline{r_{\rm out}^2} \\
-     + w_{\rm com}\sum_S|d|^2 + w_{\rm rot}\sum_S|r|^2 ,
+     + w_{\rm com}\sum_S|F_T|^2 + w_{\rm rot}\sum_S|F_R|^2 ,
   \label{eq:loss}
 \end{multline}
 where the bar is the mean over the sampled points, $\overline{F} = N^{-1}\sum_{k=1}^{N}F(x_k)$, and a square is the sum of the squares of the components.
@@ -340,7 +342,7 @@ The inner boundary is the coordinate sphere $\rho_{\rm in}=7.5$, three times the
 The inner data, $\lambda$ and the induced metric, are those of the exact solution, and so are the sources of the Robin conditions; nothing else is taken from the exact solution.
 The runs use the formulation and the training of the quadrupolar problem of Sec.~\ref{sec:quadrupole}: the axisymmetric network of width 20, 16384 points, Adam and two SSBroyden stages, in a chart scaled so that $\rho_{\rm in}=1$.
 The fields are invariant under that scaling, and we quote lengths and moments in the original units.
-The center-of-mass condition is imposed with the value of the exact solution, $d=D/4\pi$ evaluated on it, instead of zero, since the Weyl chart of unequal rods is not mass centered.
+The center-of-mass condition is imposed with the value of the exact solution, $F_T=D/4\pi$ evaluated on it, instead of zero, since the Weyl chart of unequal rods is not mass centered.
 For two equal rods (masses 1, gap 1) on the shell $[7.5,75]$ the network reaches a loss of $6.0\times10^{-15}$, with maximum errors $1.6\times10^{-7}$ in $h$ and $4.7\times10^{-9}$ in $\lambda$ (Fig.~\ref{fig:weyl}).
 Unequal rods (masses 1 and 0.1) give $1.1\times10^{-14}$, $2.7\times10^{-7}$ and $4.3\times10^{-9}$.
 Their moments are in Sec.~\ref{sec:moments}.
@@ -384,7 +386,7 @@ The general network is about seven times less accurate than the axisymmetric one
 Both the size of the network and the number of points matter there (Sec.~\ref{sec:quadrupole}): the loss is a mean over the sampled points, and with too few of them a larger network can lower the mean while the residual grows at points it does not sample.
 
 Part of that difference is the rotation mode of Sec.~\ref{sec:gaugefreedom}: fitted on spheres, it accounts for 50--70\% of the error in $h$ for $\rho\le3$.
-The identities behind the two fluxes hold for this network to the order of its residuals: $d$ agrees with the flux of the exact solution to $2\times10^{-9}$, and $r$, $(0.4$--$1.1)\times10^{-6}$ instead of zero, changes between spheres by the volume integral of the gauge residual.
+The identities behind the two fluxes hold for this network to the order of its residuals: $F_T$ agrees with the flux of the exact solution to $2\times10^{-9}$, and $F_R$, $(0.4$--$1.1)\times10^{-6}$ instead of zero, changes between spheres by the volume integral of the gauge residual.
 Continuing the run with the rotation condition (Fig.~\ref{fig:training}, right), SSBroyden stops after 5250 iterations at the same loss, $1.4\times10^{-11}$, with the rms error in $h$ lowered from $5.3\times10^{-7}$ to $2.0\times10^{-7}$, while its maximum ($3.1\times10^{-6}$) and the error in $\lambda$ ($1.5\times10^{-8}$ rms) do not change.
 % =====================================================================================
 \section{Quadrupolar data}\label{sec:quadrupole}
@@ -445,13 +447,13 @@ spectral reference (right).}
 
 Two runs with identical settings, the formulation of Sec.~\ref{sec:bcs}, except for the center-of-mass term (Appendix~\ref{app:repro}), show what the condition does (Table~\ref{tab:com}, Fig.~\ref{fig:com}).
 Without it, the error is dominated by a term in the approximation that is odd under $z\to-z$ (an $l=1$ coefficient of $\lambda$ peaking at $1.4\times10^{-4}$ near $\rho\approx2$), which the even data forbid; every term of the loss is exactly reflection symmetric, so nothing forces this part: it is the translation mode of Sec.~\ref{sec:gaugefreedom}.
-The flux~\eqref{eq:comflux} confirms it: it is the same on the spheres $\rho = 1, 2, 10$ and 100 but not zero, $d_z = -1.063\times10^{-3}$, and the $\lambda$ error near the inner sphere is $0.061\,|d_z|$.
-With $d = 0$ imposed on the spheres $\rho = 1, 1.5, 3, 10, 30, 100$, the error falls by a factor 5000 in $\lambda$ and 2800 in $h$, to $7.1\times10^{-9}$ and $1.45\times10^{-7}$ (rms over the shell), six and five orders below the size of the perturbation.
+The flux~\eqref{eq:comflux} confirms it: it is the same on the spheres $\rho = 1, 2, 10$ and 100 but not zero, $F_{T,z} = -1.063\times10^{-3}$, and the $\lambda$ error near the inner sphere is $0.061\,|F_{T,z}|$.
+With $F_T = 0$ imposed on the spheres $\rho = 1, 1.5, 3, 10, 30, 100$, the error falls by a factor 5000 in $\lambda$ and 2800 in $h$, to $7.1\times10^{-9}$ and $1.45\times10^{-7}$ (rms over the shell), six and five orders below the size of the perturbation.
 The loss does not see the difference: it is $1.6\times10^{-11}$ without the condition and $1.3\times10^{-11}$ with it, because the translation costs almost nothing in it.
-For the same reason its size without the condition is not fixed: it depends on how far the optimization happens to drift along the mode (the same run with extra conditions on the outer spheres drifted to $d_z = 7.6\times10^{-5}$, 14 times less).
+For the same reason its size without the condition is not fixed: it depends on how far the optimization happens to drift along the mode (the same run with extra conditions on the outer spheres drifted to $F_{T,z} = 7.6\times10^{-5}$, 14 times less).
 Two more runs of each kind, from different random initializations and samples, show this directly.
-Without the condition they drift to $d_z = -6.6\times10^{-3}$ and $+1.7\times10^{-3}$, with rms errors $2.5\times10^{-3}$ and $6.4\times10^{-4}$ in $h$, while their losses, $6.4\times10^{-12}$ and $1.7\times10^{-11}$, are as low as before.
-With it the three runs agree: $1.45$, $2.1$ and $3.1\times10^{-7}$ in $h$, and $7.1\times10^{-9}$, $1.7\times10^{-8}$ and $1.9\times10^{-8}$ in $\lambda$, with $|d|\le1.2\times10^{-7}$.
+Without the condition they drift to $F_{T,z} = -6.6\times10^{-3}$ and $+1.7\times10^{-3}$, with rms errors $2.5\times10^{-3}$ and $6.4\times10^{-4}$ in $h$, while their losses, $6.4\times10^{-12}$ and $1.7\times10^{-11}$, are as low as before.
+With it the three runs agree: $1.45$, $2.1$ and $3.1\times10^{-7}$ in $h$, and $7.1\times10^{-9}$, $1.7\times10^{-8}$ and $1.9\times10^{-8}$ in $\lambda$, with $|F_T|\le1.2\times10^{-7}$.
 The center of mass condition removes the mode.
 
 \begin{table*}
@@ -488,16 +490,16 @@ At network-width 20 (2347 parameters, 16384 points) the loss levels off at $1.2\
 Doubling either the width or the number of points alone gains little: width 40 at 16384 points lowers the loss to $1.4\times10^{-8}$ but leaves the errors at $1.4\times10^{-5}$ and $7.2\times10^{-4}$, and width 20 at 32768 points gives $5.4\times10^{-7}$, $1.9\times10^{-5}$ and $8.2\times10^{-4}$.
 With both, width 40 (8687 parameters) and 32768 points, the loss falls to $4.3\times10^{-9}$ within two stages and stays there (fresh/training ratio 1.00), and the error against the rotated spectral reference is $3.4\times10^{-6}$ in $\lambda$ and $2.6\times10^{-4}$ in $h$ (rms over the shell), i.e.\ 2800 and 40 times below the perturbation; a second run from a different initialization gives $3.6\times10^{-6}$ and $3.3\times10^{-4}$.
 A larger network needs more points to constrain it.
-The error concentrates in $h$ near the inner sphere ($5.3\times10^{-4}$ for $1\le\rho\le3$, against a perturbation of $2.3\times10^{-2}$) and falls to $3\times10^{-8}$ beyond $\rho=30$; $|d|\le7.5\times10^{-7}$ on every sphere.
+The error concentrates in $h$ near the inner sphere ($5.3\times10^{-4}$ for $1\le\rho\le3$, against a perturbation of $2.3\times10^{-2}$) and falls to $3\times10^{-8}$ beyond $\rho=30$; $|F_T|\le7.5\times10^{-7}$ on every sphere.
 Each stage takes 30 minutes at width 40 (10 at width 20).
 
 \paragraph{The rotation mode.} Doubling both again, width 60 (19027 parameters) and 65536 points, in a single run (I), brings the loss down to $1.6\times10^{-11}$, as low as that of the axisymmetric network, but not the error: $8.5\times10^{-6}$ in $\lambda$ and $6.7\times10^{-4}$ in $h$ (Fig.~\ref{fig:training}).
 The loss and the error have come apart, and the reason is the rotation mode of Sec.~\ref{sec:gaugefreedom}.
-On the spheres $1.2\le\rho\le50$ one constant vector $c$, $|c| = 2.3\times10^{-3}$, accounts for 96--99\% of the error in $h$, and the flux~\eqref{eq:rotflux} of the network has the same size, $|r| = 2.3\times10^{-3}$, on every sphere from $\rho=1$ to 100, while that of the spectral reference is below $2\times10^{-12}$.
-In the staged runs at width 40 the mode, $|c|$ between $1\times10^{-3}$ and $2.5\times10^{-3}$, is set in the first SSBroyden stage and does not change while the loss falls by another order of magnitude: it costs almost nothing in the loss.
-Continuing I with the condition $r=0$ (run L) removes it within 3000 iterations, $|c| < 10^{-9}$, and SSBroyden stops after 11000 iterations at the same loss, $1.6\times10^{-11}$ (fresh/training ratio 1.03).
+On the spheres $1.2\le\rho\le50$ one constant vector $k_R$, $|k_R| = 2.3\times10^{-3}$, accounts for 96--99\% of the error in $h$, and the flux~\eqref{eq:rotflux} of the network has the same size, $|F_R| = 2.3\times10^{-3}$, on every sphere from $\rho=1$ to 100, while that of the spectral reference is below $2\times10^{-12}$.
+In the staged runs at width 40 the mode, $|k_R|$ between $1\times10^{-3}$ and $2.5\times10^{-3}$, is set in the first SSBroyden stage and does not change while the loss falls by another order of magnitude: it costs almost nothing in the loss.
+Continuing I with the condition $F_R=0$ (run L) removes it within 3000 iterations, $|k_R| < 10^{-9}$, and SSBroyden stops after 11000 iterations at the same loss, $1.6\times10^{-11}$ (fresh/training ratio 1.03).
 The error falls to $7.6\times10^{-9}$ in $\lambda$ and $2.6\times10^{-7}$ in $h$ (rms; maxima $1.0\times10^{-7}$ and $3.3\times10^{-6}$), 1100 and 2600 times below that of I and the same as the axisymmetric network on the aligned datum (Table~\ref{tab:com}).
-In $h$ it is $5.4\times10^{-7}$ for $1\le\rho\le3$ and $1.5\times10^{-9}$ beyond $\rho=30$, and $|d|\le1.4\times10^{-8}$.
+In $h$ it is $5.4\times10^{-7}$ for $1\le\rho\le3$ and $1.5\times10^{-9}$ beyond $\rho=30$, and $|F_T|\le1.4\times10^{-8}$.
 With both conditions, then, the general network solves the problem without symmetry as accurately as the symmetric network solves the symmetric one.
 Run L takes 2.2 hours on one A30.
 
@@ -534,7 +536,7 @@ The axisymmetric network on the same shell gives the same values to five digits,
 \paragraph{The quadrupolar solution.} Table~\ref{tab:moments} lists the moments.
 The data raise the mass from the value $M_0=R_0 = 0.57735$ of the spherical reference to $M_{\rm ADM} = 0.583847$, a nonlinear back-reaction of 1.1\% in the monopole, and the quadrupole moment is $M_2 = 0.1747$.
 The run without the center-of-mass condition, whose pointwise error is 5000 times larger, has moments as close to the spectral reference as the run with it (within $3\times10^{-7}$ in $M_2$ and $3\times10^{-6}$ in $M_4$, against an extraction spread of $1.2\times10^{-4}$ and $7\times10^{-4}$): moments are geometric, and the translation mode moves the chart, not the geometry.
-The extraction shows the mode directly: the center of mass of that run, measured from the center of the coordinate sphere of radius $\rho$, is $-8\times10^{-7}$ at $\rho=1$, $-8.1\times10^{-4}$ at $\rho=2$, $-1.63\times10^{-3}$ at 10 and $-1.79\times10^{-3}$ at 70: it vanishes at the inner sphere, as the mode must, and tends to the translation $a = d_z/M_{\rm ADM} = -1.82\times10^{-3}$.
+The extraction shows the mode directly: the center of mass of that run, measured from the center of the coordinate sphere of radius $\rho$, is $-8\times10^{-7}$ at $\rho=1$, $-8.1\times10^{-4}$ at $\rho=2$, $-1.63\times10^{-3}$ at 10 and $-1.79\times10^{-3}$ at 70: it vanishes at the inner sphere, as the mode must, and tends to the translation $k_{T,z} = F_{T,z}/M_{\rm ADM} = -1.82\times10^{-3}$.
 With the condition it is below $6\times10^{-8}$ at every radius.
 
 \begin{table}

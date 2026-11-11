@@ -466,3 +466,11 @@ dh 5.4e-7 / 2.8e-8 / 2.6e-9 / 1.5e-9 and dlam 1.5e-8 / 2.4e-9 / 1.4e-9 / 1.0e-9 
 |d| <= 1.4e-8.  The errors were already reached at 7000.  The general 3-D network is now as accurate as the
 axisymmetric one on the axis-aligned problem (tab:com: 1.45e-7 in h, 7.1e-9 in lambda; three seeds 1.45-3.1e-7,
 0.7-1.9e-8).  2.2 h on the A30 for the 11000 SSBroyden iterations.
+
+### Notation in the paper (2026-11-11, author's request)
+Translation mode amplitude a -> k_T, rotation mode amplitude c -> k_R (xi^i = eps_ijk k_R^j x^k (rho_in^3/rho^3 - 1));
+centre-of-mass flux d = D/4pi -> F_T (= M k_T), rotation flux r -> F_R (= k_R for the mode).  The code and the
+scripts keep d (com_flux) and r (rot_flux).  eq:rotflux is now written as the Green identity of a pair of
+h-harmonic coordinate functions, F_R^k = (1/16pi) eps_kij oint (x^i d_nu x^j - x^j d_nu x^i) dA_h, the
+antisymmetric twin of eq:comflux; eps_kij is the constant permutation symbol labelling the pair (ij), no metric;
+sqrt h enters only through d_nu x^j dA_h = sqrt h h^jl n_l dA (flat normal and area), as losses.rot_flux evaluates it.
