@@ -176,6 +176,12 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Next: `sing_1d.py --scalar` (phi, Pi outputs, sources, KG rows), then the template with trainable mu(t) and
    r_in(t) (the user's plan, 10 Nov).
 
+21. 2026-11-11: `sing_1d.py --scalar` and `--tpl_mu` built (README "The network side"). Launched on Mendieta, cold,
+   seed 7, 6x60, recipe of con_rinB: `1d_T8_sc_B` (fixed template), `1d_T8_sc_Bmu` (+ --tpl_mu), `1d_T8_sc_con`
+   (--r_min 0.5 control); also pending `1d_T8_tplzz60_con_rinB_s8` (vacuum, seed 8). Grade with
+   `tools/plot_scalar_runs.py` + table + loss plot. Needs reference_1d/ref_scalar_m0.5_A0.03_dr0.005_t8.npz
+   (copied to Mendieta; remake with sph_reference_scalar.py, 3 min).
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs
