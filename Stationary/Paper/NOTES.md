@@ -14,7 +14,7 @@ nothing was recomputed for the paper.
 | III networks, loss, optimisers, specref | README.md 6.1, 8.6; REPORT_OPTIMISERS.md; DSGNAR.md 1-9; HUB.md (timings); stationary/specref.py |
 | IV tests | README.md 8.1-8.12 (m2R3_symhybrid, m2R4_realrobin, weyl_prod, weyl_unequal, weyl_close4/35, weyl_rot45*) |
 | V quadrupole | REPORT_PIN_COM.md; PERTURBATION.md; COM_GAUGE.md; DSGNAR.md rounds 3-27; MULTIPOLES_GH_THORNE.md |
-| figures | figs/optimisers.png = plots/report_optimisers.png; figs/com_steps.png = plots/report_pin_com.png; figs/weyl_surface.png = runs/wr_prod_w2/plane/plane_surface.png (`python -m stationary.plane runs/wr_prod_w2 --no-title --n-rho 100 --n-z 151 --surface`; surfaces to rho = 30, replaced weyl_plane.png on 2026-11-10 at the author's request); figs/training_*.png, surface_J.png = Paper/fig_training.py |
+| figures | figs/optimisers.png = plots/report_optimisers.png; figs/com_steps.png = plots/report_pin_com.png; figs/weyl_surface.png = runs/wr_prod_w2/plane/plane_surface.png (`python -m stationary.plane runs/wr_prod_w2 --no-title --n-rho 100 --n-z 151 --surface`; surfaces to rho = 30, replaced weyl_plane.png on 2026-11-10 at the author's request); figs/training_*.png, surface_L.png = Paper/fig_training.py |
 
 ## Open items (marked TODO in the text)
 
@@ -442,7 +442,7 @@ condition there.
 
 ### Results of J, M and the first half of L (2026-11-10)
 Figures: `Paper/fig_training.py` -> `figs/training_loss.png` (loss vs iteration), `figs/training_error.png`
-(rms error vs loss at the snapshots; cache `aux/training_errors.json`), `figs/surface_J.png` (J's lambda and
+(rms error vs loss at the snapshots; cache `aux/training_errors.json`), `figs/surface_L.png` (L's lambda and
 log10 R_ab R^ab of h on the plane y = 0, which contains the datum axis).  Off-axis errors are against the rotated
 spectral reference specref_nonlinear_fine; Weyl errors against the exact solution.
 
@@ -459,3 +459,10 @@ spectral reference specref_nonlinear_fine; Weyl errors against the exact solutio
    keeps J's loss at 8e-10 (its PDE residual terms are 25-70x larger than L's), so H^1 is not needed and costs accuracy.
 2. In M the rms dh improves 2.6x (the mode was 50-70% of the inner error), max dh and dlambda do not change.
 3. J's jump in the loss curve at 27000 is the rotation term switched on at its resume.
+
+L finished (2026-11-11 01:40 UTC, Mendieta job 1186619, resumed from 7000): the plateau rule stopped SSBroyden at
+11000, loss 1.62e-11 (fresh ratio 1.03), rms dh 2.59e-7, max 3.3e-6, rms dlam 7.6e-9, max 1.0e-7; by region
+dh 5.4e-7 / 2.8e-8 / 2.6e-9 / 1.5e-9 and dlam 1.5e-8 / 2.4e-9 / 1.4e-9 / 1.0e-9 on 1-3 / 3-10 / 10-30 / 30-100;
+|d| <= 1.4e-8.  The errors were already reached at 7000.  The general 3-D network is now as accurate as the
+axisymmetric one on the axis-aligned problem (tab:com: 1.45e-7 in h, 7.1e-9 in lambda; three seeds 1.45-3.1e-7,
+0.7-1.9e-8).  2.2 h on the A30 for the 11000 SSBroyden iterations.

@@ -13,7 +13,7 @@ Reads the local copies of the runs (history.json, params_itNNNNNN.pkl snapshots)
                          against the rotated spectral reference specref_nonlinear_fine (as grade_rotated);
                          Weyl runs: against the exact solution.  The off-axis points of I are its end of Adam
                          and its final network (I kept no snapshots).
-    surface_J.png        surface plots of the J network's lambda and log10 R_ab R^ab (3-d Ricci of h, from
+    surface_L.png        surface plots of the L network's lambda and log10 R_ab R^ab (3-d Ricci of h, from
                          its autodiff Gamma derivatives, vtk.fields_at) on the plane y = 0, which contains
                          the datum axis (1,0,1)/sqrt 2; polar grid rho_in <= rho <= 4.
 
@@ -132,7 +132,7 @@ def fig_loss(remote, out):
     sJ, lJ = history(os.path.join(remote, OFF["J"]))
     ax[0].semilogy(sJ, lJ, color=COL["J"], label=LEGEND["J"])
     sL, lL = history(os.path.join(remote, OFF["L"]))
-    ax[0].semilogy(sI[-1] + sL, lL, color=COL["L"], label=LEGEND["L"] + " (crashed at 7000; resuming)")
+    ax[0].semilogy(sI[-1] + sL, lL, color=COL["L"], label=LEGEND["L"])
     ax[0].axvline(5000, color="0.6", lw=0.8, ls=":")
     k = int(np.argmax(lJ[1:] / lJ[:-1])) + 1                 # J's jump: the rotation term switched on
     ax[0].annotate("J resumed with the\nrotation condition", (sJ[k], lJ[k]), xytext=(-110, 10),
@@ -181,11 +181,11 @@ def fig_error(res, out):
     print(f"[fig] wrote {out}")
 
 
-def fig_surface(remote, out, n=121, L=4.0):
+def fig_surface(remote, out, n=121, L=4.0, key="L"):
     from stationary.evaluate import load_run
     from stationary.model import point_fields
     from stationary.vtk import fields_at
-    run = os.path.join(remote, OFF["J"])
+    run = os.path.join(remote, OFF[key])
     cfg, model, state = load_run(run, "params.pkl")[:3]
     pf = point_fields(model, state["net"])
     # polar grid on the plane, so that the inner sphere is a clean edge
@@ -210,9 +210,9 @@ def fig_surface(remote, out, n=121, L=4.0):
         s0 = cfg.rho_in / np.sqrt(2)
         for sg in (1, -1):                                   # the datum axis x = z, outside rho_in
             a.plot([sg * s0, sg * L], [sg * s0, sg * L], [np.nanmin(V)] * 2, "k--", lw=1)
-        a.set(xlabel="x", ylabel="z", title=t + "  (network J, plane y = 0)")
+        a.set(xlabel="x", ylabel="z", title=t + f"  (network {key}, plane y = 0)")
         a.view_init(elev=32, azim=-60)
-    fig.suptitle("J network on the plane containing the datum axis (1,0,1) (dashed); "
+    fig.suptitle(f"{key} network on the plane containing the datum axis (1,0,1) (dashed); "
                  r"inner sphere $\rho=1$ at the bottom", fontsize=10)
     fig.tight_layout()
     fig.savefig(out, dpi=150)
@@ -233,7 +233,7 @@ def main(argv=None):
     if "error" in want:
         fig_error(errors(a.remote, a.recompute), os.path.join(figs, "training_error.png"))
     if "surface" in want:
-        fig_surface(a.remote, os.path.join(figs, "surface_J.png"))
+        fig_surface(a.remote, os.path.join(figs, "surface_L.png"))
 
 
 if __name__ == "__main__":
