@@ -482,3 +482,23 @@ P = (1 - lambda^2)/(4 lambda) on the sphere rho = 100 (48-point Gauss-Legendre, 
 fn_nocom_w2 and +3.9e-11 for ab_none_w2; d_z / rho^2 = M_ADM a_z / rho^2 = -1.063e-7.  At rho = 10:
 -9.60e-6 against -1.063e-5.  The old "|a| ~ 0.04 -> 2.5e-6" (COM_GAUGE.md, old formulation) is
 consistent with the same law (0.58 x 0.0445 / 1e4 = 2.6e-6).
+
+## Width 60 off-axis and the rotation condition (phases I, J, L, M of hub_recipe.sh; 2026-11-10/11)
+Single-run scheme (Adam plateau rule, one SSBroyden run with plateau rule, best field restored), resample 500.
+Off-axis errors against the rotated spectral reference specref_nonlinear_fine (grade_rotated_final.json);
+Weyl errors against the exact solution.  Figures: Paper/fig_training.py; cache Paper/aux/training_errors.json.
+
+| run | settings beyond the recipe | stop | loss | fresh ratio | rms dh | max dh | rms dlam | max dlam |
+|---|---|---|---|---|---|---|---|---|
+| I  rp_w60_n65k_one | width 60, 65536 pts | Adam ~1600, SSB cap 40000 | 1.6e-11 | 1.006 | 6.7e-4 | - | 8.5e-6 | - |
+| J  rp_w60_n65k_tan_one | + inner data in H^1; + rotation condition from its resume at 27000 | SSB plateau 32250 | 7.9e-10 | 1.028 | 3.09e-6 | 4.3e-5 | 3.2e-8 | 3.0e-7 |
+| L  rp_w60_n65k_rot | I's final network + rotation condition (--rot-pin 1,1.5,3,10,30,100) | SSB plateau 11000 | 1.62e-11 | 1.026 | 2.59e-7 | 3.3e-6 | 7.6e-9 | 1.0e-7 |
+| wr_rot45_w4 | rotated Weyl, width 40, staged | - | 1.32e-11 | 1.18 | 5.3e-7 | 3.3e-6 | 1.35e-8 | 1.2e-7 |
+| M  wr_rot45_rot | wr_rot45_w4 + rotation condition (--rot-pin 1,1.5,3,6,10, exact target) | SSB plateau 5250 | 1.36e-11 | 1.15 | 2.0e-7 | 3.1e-6 | 1.5e-8 | 1.4e-7 |
+
+Mode diagnostics (scripts/error_modes.py): in I one constant k_R, |k_R| = 2.3e-3, explains 96-99% of dh on
+rho 1.2-50, and |F_R| = 2.3e-3 on every sphere 1-100 (spectral reference < 2e-12); in L |k_R| < 1e-9 from 3000
+iterations on.  Flux identities (scripts/green_identities.py, wr_rot45_w4): exact solution to quadrature; network
+F_T = exact to 2e-9, F_R (0.4-1.1)e-6 with its change between spheres = the gauge-residual volume integral.
+J and L each ran out of device memory once (13.6 GiB request) and were resumed from ckpt.pkl (J on Mendieta at
+22000; L moved from the hub to Mendieta at 7000, job 1186619).
