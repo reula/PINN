@@ -474,3 +474,8 @@ scripts keep d (com_flux) and r (rot_flux).  eq:rotflux is now written as the Gr
 h-harmonic coordinate functions, F_R^k = (1/16pi) eps_kij oint (x^i d_nu x^j - x^j d_nu x^i) dA_h, the
 antisymmetric twin of eq:comflux; eps_kij is the constant permutation symbol labelling the pair (ij), no metric;
 sqrt h enters only through d_nu x^j dA_h = sqrt h h^jl n_l dA (flat normal and area), as losses.rot_flux evaluates it.
+Mode convention (2026-11-11): chart change y = x + xi, translation xi -> k_T, rotation xi -> k_R x x at infinity;
+then on a flat background F_T = M k_T and F_R = rho_in^3 k_R (paper App. app:modes, computed on the inner sphere
+where xi = 0).  On the spherical solution of the quadrupole problem F_R = 0.79 k_R (decaying l=1 harmonic of
+h = dr^2 + r(r-2M) dOmega^2 is 3 Q_1(rho/M)/M^2; alpha = 1/f(rho_in)).  The main text says only that the relations
+are linear with geometry-dependent coefficients (author's choice).

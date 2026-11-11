@@ -184,7 +184,7 @@ It is quasi-local, obeys an addition theorem for several separated sources, coin
 This is a gauge choice, available for any data; Sec.~\ref{sec:quadrupole} shows that without it the translation mode is the largest error of the computed solution.
 
 \paragraph{Rotations.} The translations are not the only harmonic diffeomorphisms left free: harmonic coordinates of an asymptotically flat manifold are unique only up to rigid motions at infinity~\cite{Bartnik1986}, and the rotations are free as well.
-For a constant vector $k_R$ the field $\xi^i = \epsilon_{ijk}k_R^j x^k\,(\rho_{\rm in}^3/\rho^3-1)$ (flat-space form, $\rho_{\rm in}=1$ below; $\epsilon_{ijk}$ is the permutation symbol, so $\epsilon_{ijk}k_R^jx^k = (k_R\times x)^i$) is harmonic, vanishes on the inner sphere and tends to the rigid rotation $-k_R\times x$ at infinity.
+For a constant vector $k_R$ the field $\xi^i = \epsilon_{ijk}k_R^j x^k\,(1-\rho_{\rm in}^3/\rho^3)$ (flat-space form; $\epsilon_{ijk}$ is the permutation symbol, so $\epsilon_{ijk}k_R^jx^k = (k_R\times x)^i$) is harmonic, vanishes on the inner sphere and tends to the rigid rotation $k_R\times x$ at infinity.
 It leaves $\lambda$ and the induced metric of the inner sphere unchanged, since $\xi$ and its tangential derivatives vanish there, and changes $h$ only by $\delta h_{ij}\simeq-3\,(n_i\epsilon_{jkl}+n_j\epsilon_{ikl})\,k_R^kn^l/\rho^3$, in the components $h_{rA}$, which are not data; asymptotically it decays like $\rho^{-3}$, so the outer conditions do not see it either.
 For data symmetric about an axis, an axisymmetric network excludes the mode; a general three-dimensional network does not.
 To fix it we use the antisymmetric counterpart of Eq.~\eqref{eq:comflux}.
@@ -196,7 +196,8 @@ The coordinates are $h$-harmonic functions, $\Delta_h x^i = -\Gamma^i = 0$, so G
 the same on every closed surface enclosing the inner sphere.
 Here $\epsilon_{kij}$ is the constant permutation symbol: it does not refer to any metric, only labels the three antisymmetric pairs $(ij)$ of coordinate functions, and each component of $F_R$ is an identity between two scalars, like $D$; the geometry enters through $\partial_\nu$ and $\dd A_h$ alone.
 In terms of the coordinate normal $n$ and area element $\dd A$ of the sphere, $\partial_\nu x^j\,\dd A_h = \sqrt h\,h^{jl}n_l\,\dd A$, which is how we evaluate both fluxes; the $\sqrt h$ comes from that change of area element, not from a volume form.
-$F_R$ vanishes for the spherical solutions, and for the mode above $F_R = k_R$ to first order.
+$F_R$ vanishes for the spherical solutions.
+To first order $F_T$ and $F_R$ are linear in the mode amplitudes $k_T$ and $k_R$, with coefficients that depend on the background geometry and have to be computed for it; Appendix~\ref{app:modes} gives both modes and the two relations on a flat background, where $F_T = M k_T$ and $F_R = \rho_{\rm in}^3 k_R$.
 We impose $F_R=0$ on the same spheres as $F_T$, with the same weight.
 Like $F_T$, it is a gauge choice available for any data; we have not found it used for this purpose in the literature.
 With a gauge source, $\Gamma^i=S^i$ (Sec.~\ref{sec:weylsol}), the coordinates are no longer harmonic and the fluxes change between two spheres by the integral over the shell between them, $-\frac1{8\pi}\int\epsilon_{kij}x^iS^j\sqrt h\,\dd^3x$ for $F_R$ and $\frac1{4\pi}\int U\,S^i\sqrt h\,\dd^3x$ for $F_T$; in the Weyl tests we impose on each sphere the fluxes of the exact solution (those of $F_R$ vanish, by axial symmetry of the source).
@@ -629,6 +630,31 @@ The Geroch--Hansen moments of the computed solutions can be read off the symmetr
 The extension to the stationary equations is the natural next step.
 
 \appendix
+\section{The gauge modes on a flat background}\label{app:modes}
+
+We write a change of chart as $y^i = x^i+\xi^i$; to first order the components of $h$ in the new chart are $h_{ij}-\partial_i\xi_j-\partial_j\xi_i$ and those of a scalar $f$ are $f-\xi^k\partial_kf$.
+The new coordinates are $h$-harmonic if each $\xi^i$ is, and the inner data are unchanged if $\xi=0$ on the inner sphere, since then $\delta\lambda=0$ there and $\delta h_{ij} = -(n_i\partial_\rho\xi_j+n_j\partial_\rho\xi_i)$ has no tangential--tangential part.
+On a flat background the $l\le1$ harmonic fields that vanish at $\rho=\rho_{\rm in}$ and stay bounded by $|x|$ at infinity are
+\begin{align}
+  \text{translations:}\quad & \xi^i = k_T^i\,\bigl(1-\rho_{\rm in}/\rho\bigr), \\
+  \text{rotations:}\quad & \xi^i = \epsilon_{ijk}k_R^jx^k\,\bigl(1-\rho_{\rm in}^3/\rho^3\bigr),
+\end{align}
+which tend to the rigid motions $k_T$ and $k_R\times x$.
+They change $h$ by $\delta h_{ij} = -\rho_{\rm in}\,(n_ik_{T,j}+n_jk_{T,i})/\rho^2$ in the first case, and by $\delta h_{ij} = -3\rho_{\rm in}^3\,(n_i\epsilon_{jkl}+n_j\epsilon_{ikl})\,k_R^kn^l/\rho^3$ in the second, i.e.\ only in $h_{rr}$ and $h_{rA}$ for the translations and only in $h_{rA}$ for the rotations; the rigid parts change nothing.
+
+Both fluxes are conserved, so their change can be evaluated on the inner sphere, where $\xi=0$ and only $\partial_\rho\xi$ contributes.
+For the center of mass, with $U = -M/\rho$, $\partial_\rho\xi^i = k_T^i/\rho_{\rm in}$ and $\dd A = \rho_{\rm in}^2\dd\Omega$,
+\begin{equation}
+  \delta D^i = \oint\bigl(\xi^i\partial_\rho U - U\,\partial_\rho\xi^i\bigr)\,\dd A = -U(\rho_{\rm in})\,\rho_{\rm in}\,4\pi\,k_T^i = 4\pi M\,k_T^i ,
+\end{equation}
+so $F_T = M k_T$, the center of mass of a mass $M$ displaced by $k_T$.
+For the rotation flux, $\partial_\rho\xi^j = 3\,(k_R\times n)^j$ at $\rho_{\rm in}$, $x^i = \rho_{\rm in}n^i$, and $\epsilon_{kij}n^i(k_R\times n)^j = k_{R,k}-n_k\,n\cdot k_R$, whose integral over the unit sphere is $\tfrac{8\pi}{3}k_R$:
+\begin{equation}
+  \delta F_R^k = \frac1{8\pi}\,\epsilon_{kij}\oint x^i\,\partial_\rho\xi^j\,\dd A = \frac{3\rho_{\rm in}^3}{8\pi}\cdot\frac{8\pi}3\,k_R^k = \rho_{\rm in}^3\,k_R^k .
+\end{equation}
+Evaluated at infinity instead, the rigid rotation $k_R\times x$ contributes nothing (it does not change $F_R$ of a flat chart) and the whole flux comes from the decaying part $-\rho_{\rm in}^3\,k_R\times x/\rho^3$: $F_R$ measures how much the asymptotic chart is turned with respect to the inner sphere.
+On a curved background the same calculation, with $\partial_\nu$, $\dd A_h$ and the harmonic functions of $h$, gives other coefficients; for the spherical solution of Sec.~\ref{sec:quadrupole} the decaying $l=1$ harmonic function is a Legendre function of the second kind in $\rho/M_0$, and $F_R = 0.79\,k_R$.
+
 \section{Reproducing the results}\label{app:repro}
 
 \todo{repository URL and the commit the paper's numbers come from.} The code is the \texttt{Stationary} package of that repository: \texttt{stationary/train.py} (the solver; every option below is a flag of \texttt{python -m stationary.train}), \texttt{stationary/specref.py} (the spectral reference), \texttt{stationary/gh\_moments.py} (the moments).
