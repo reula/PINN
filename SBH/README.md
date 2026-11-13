@@ -2785,3 +2785,35 @@ d_t f + c d_r (f - U0) + c (f - U0)/R = 0 (the same equation; flat cancels). U0(
 static far out until the first signal reaches R (t ~ 16). Local check, window 0, 250 iterations: runs, bc term
 4.0e-7 (f - flat: 9.1e-7). Launched: `1d_T8_tplzz60_con_rinB_bc` (job 1187254) = `1d_T8_tplzz60_con_rinB` +
 `--bc_ic`, seed 7. The user expects no change.
+
+**Hand-offs between windows: hard or soft, and where B's hand-off term grows (2026-11-13, the user's question).**
+Window 0: hard (`--hard_ic`: the network times (t - t0)/(t1 - t0), added to the initial data; ic term 1e-33).
+Windows 1-31: soft, lamg0 = 10 times mean |f_new(t_k, r) - f_prev(t_k, r)|^2 over the 10 radial functions on
+`--n_ic` 400 radii redrawn with every batch, against the frozen previous window at its end; values only
+(`--ic_d1`, `--ic_d2` off). Inside the exact core of B (r <= 0.225) both windows are the same template: exact.
+The hand-off radii come from `radii()`: clouds of 12.5 % (sigma 0.05), 37.5 % (sigma 0.5), 25 % (sigma 2) and 25 %
+volume-uniform; with `--r_min 0.5` (con) the points inside are redrawn log-uniform on [0.5, R], in B they stay. So
+the held_ic columns of con and B are NOT on the same sample: B's weighs r < 1 far more.
+- Held hand-off term at the end of windows 1 / 8 / 16 / 24 / 31, as rms sqrt(ic / 10): con 1.6e-6 2.3e-6 2.2e-6
+  2.0e-6 3.0e-6; B seed 7 3.3e-6 1.8e-6 7.7e-6 3.1e-5 4.0e-5; B seed 8 2.8e-6 2.4e-6 5.5e-6 2.3e-5 3.2e-5. In B
+  it is 9.5e-9 of the held loss 1.6e-8 at window 24 and 1.6e-8 of 3.9e-8 at window 31: a good part of the rise of
+  B's held loss after window 20 is this term.
+- Measured on the same radii for the three runs (`--eval_seams` with each run's own flags and a dummy `--out`,
+  eval_data/seams/{con,rinB,rinB_s8}.npz; `tools/plot_seams_compare.py`, plots/2026-11-13/seams_con_vs_rinB.png;
+  loss plots/2026-11-13/loss_con_vs_rinB.png). Band rms of the jump at t = 2 / 4 / 6 / 7 / 7.75:
+  - r = 3-10: the same in the three runs, 1e-6 to 9e-6 in every field (50-300x below the error carried).
+  - r = 0.5-1, alpha: con 9e-7 1e-6 3e-6 2e-6 1e-6; B s7 2e-6 5e-6 3e-5 6e-5 1.2e-4; B s8 3e-6 4e-6 2e-5 7e-5 8e-5.
+  - r = 0.5-1, shift B: con 4e-6 6e-6 3e-6 1e-6 2e-6; B s7 4e-6 4e-5 1.9e-4 5e-5 2.1e-4; B s8 8e-6 3e-5 1.4e-4
+    4e-5 1.2e-4. Khat: con 2e-6 to 5e-6, B 2e-6 to 3e-5. chi: con below 1e-6, B up to 1e-5.
+  - r = 0.225-0.5 (con has no points there): B's alpha jump 2e-6 until t = 4, 1.4e-4 at t = 7.75 (both seeds).
+  - r = 1-3: B 3-20x con from t = 4 (shift 1e-5 to 4e-5 against 1e-6 to 4e-6).
+- In B at r = 0.225-1 the jump is as large as the error the previous window carries (shift at 0.5-1, t = 6: jump
+  1.9e-4, error 1.5e-4), and for the shift it is opposite to it: regression slope of the jump on the carried error
+  -0.4 to -1.3 (s7), -0.1 to -1.0 (s8) at t = 4-7.75, correlation -0.9 to -1.0 at most seams; i.e. the new window
+  starts nearer the 1D reference than the previous window ended. In con at r = 0.5-1 the slope is 0.00 +- 0.02: the
+  new window starts where the previous one ended.
+- Read: from t ~ 4 each window of B leaves the right solution just outside the exact core (the horizon, r = 0.415
+  to 0.46, is in that strip) by ~1e-4 in the gauge fields within its 0.25 of time, and the next window does not
+  inherit that; it pays the hand-off term instead. Not present in con (the user). Cause NOT established; candidate:
+  the far lapse drift, which spreads inward at unit speed and reaches r ~ 1-3 at t = 5-7, meets a core held at the
+  right solution (alpha error at t = 7.75: 3e-6 in the core, 2.8e-4 at r = 0.5-1, 8.6e-4 at r = 1-3). Untested.

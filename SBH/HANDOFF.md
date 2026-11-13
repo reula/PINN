@@ -224,6 +224,13 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    against B seeds 7 and 8 with table, loss plot, `plot_far_drift.py`, `plot_invariants.py` (mass at r = 20 at
    t = 1-2, Khat drift at r = 12). Also pending `1d_T8_sc_con_r0225` (job 1187249; grade vs sc_con with
    `plot_scalar_runs.py`, `plot_gauge_error_map.py`).
+29. 2026-11-13 (the user: hard or soft between windows?): hard in window 0 only; soft (lamg0 = 10, 400 radii,
+   values only) at the 31 hand-offs. B's hand-off term grows from window ~16 (rms 3e-6 -> 4e-5, 40-60 % of the
+   held loss at windows 24-31), con's stays 2e-6 to 3e-6. Located (`--eval_seams`, `tools/plot_seams_compare.py`,
+   plots/2026-11-13/seams_con_vs_rinB.png): r = 0.225-1, alpha and shift, both seeds; jumps ~1e-4, as large as the
+   error carried and (shift) opposite to it; r > 3 identical to con. Cause not established (candidate: the far
+   lapse drift arriving at a core held exact). README "Hand-offs between windows". The held_ic columns of con and
+   B are not on the same radii (con redraws r < 0.5 outside). Hard hand-overs stay rejected (the user).
 
 ## 4. Next steps
 
