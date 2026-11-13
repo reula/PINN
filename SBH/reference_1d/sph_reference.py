@@ -85,6 +85,12 @@ def parse():
     p.add_argument("--kappa_z", type=float, default=0.0)
     p.add_argument("--kappa_c", type=float, default=0.0)
     p.add_argument("--kappa_2", type=float, default=0.0)
+    p.add_argument("--lapse_K", type=str, default="plain", choices=["plain", "abs", "pos"],
+                   help="(2026-11-13) Khat in the lapse equation: plain (1+log), abs (|Khat|) or pos (max(Khat, 0)); BH code flag")
+    p.add_argument("--k_force", type=float, default=0.0,
+                   help="(2026-11-13) test only: constant forcing added to d_t Khat for r > --k_force_r (switched on over "
+                        "a width 1 by a tanh), a stand-in for the network's Khat-row bias (-3.5e-5 at r = 8-16)")
+    p.add_argument("--k_force_r", type=float, default=5.0)
     p.add_argument("--r_save", type=float, default=30.0, help="store only r <= r_save (the PINN domain is r <= 24)")
     p.add_argument("--out", type=str, default=None)
     return p.parse_args()
@@ -97,7 +103,7 @@ def build(args):
     ns = load(["--chi_floor", repr(args.chi_floor), "--f_alpha", repr(args.f_alpha),
                "--f_beta", repr(args.f_beta), "--eta", repr(args.eta),
                "--kappa_z", repr(args.kappa_z), "--kappa_c", repr(args.kappa_c),
-               "--kappa_2", repr(args.kappa_2),
+               "--kappa_2", repr(args.kappa_2), "--lapse_K", args.lapse_K,
                "--n_stars", "1", "--BL_masses", repr(args.mass),
                "--BL_momenta", "0", "--BL_momenta_y", "0", "--BL_spins", "0,0,0"])
     import jax
@@ -188,6 +194,8 @@ def make_solver(args):
                          R[:, 9], R[:, 6] - R[:, 9],          # c, d   (At_yy, At_xx - At_yy)
                          R[:, 12], R[:, 13], R[:, 14],        # chi, Khat, Theta
                          R[:, 15], R[:, 18], R[:, 19]])       # g, alpha, B
+        if args.k_force != 0.0:
+            out = out.at[5].add(args.k_force * 0.5 * (1.0 + jnp.tanh(r_j - args.k_force_r)))
         return out + stencil(P, ko, 3)
 
     return r, U0, rhs, jax, jnp

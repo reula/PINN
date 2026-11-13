@@ -159,6 +159,10 @@ parser.add_argument("--gauge",        type=str,   default="ccz4",
 parser.add_argument("--f_alpha", type=float, default=1.0,
                     help="1+log slicing coefficient: d_t alpha = beta^i d_i alpha - 2 alpha f_alpha Khat. "
                          "Paper's standard choice is f_alpha=1 (constant).")
+parser.add_argument("--lapse_K", type=str, default="plain", choices=["plain", "abs", "pos"],
+                    help="(2026-11-13, test of the user's idea) the Khat that drives the lapse: d_t alpha = beta^i d_i alpha "
+                         "- 2 alpha f_alpha L(Khat) with L = Khat ('plain', default: 1+log), |Khat| ('abs') or "
+                         "max(Khat, 0) ('pos'). Only the lapse equation changes.")
 parser.add_argument("--f_beta", type=float, default=1.0,
                     help="Gamma-driver shift coefficient: "
                          "d_t beta^i = beta^j d_j beta^i + (3/4) f_beta Ghat^i - eta*beta^i. "
@@ -989,6 +993,7 @@ reinit_mode  = args.reinit_mode
 metric_bc_mode = args.metric_bc
 gauge_mode   = args.gauge
 f_alpha      = args.f_alpha
+lapse_K      = args.lapse_K
 f_beta       = args.f_beta
 eta_shift    = args.eta
 kappa_z      = args.kappa_z
@@ -2759,7 +2764,8 @@ def _ccz4_residual_one(full_val, full_dt, full_d, full_dd, matter=None):
         - (alpha/3.0)*kappa_c*gt*At_trace + chi*bracket_At_TF \
         + alpha*(Khat*At - 2.0*AtAt_mixed)
 
-    rhs_alpha = jnp.einsum("i,i->", beta, alpha_d) - 2.0*alpha*f_alpha*Khat
+    Khat_lapse = jnp.abs(Khat) if lapse_K == "abs" else (jnp.maximum(Khat, 0.0) if lapse_K == "pos" else Khat)
+    rhs_alpha = jnp.einsum("i,i->", beta, alpha_d) - 2.0*alpha*f_alpha*Khat_lapse
     rhs_beta  = jnp.einsum("j,ij->i", beta, beta_d) + 0.75*f_beta*Ghat - eta_shift*beta
 
     res_gt    = gt_dt    - rhs_gt

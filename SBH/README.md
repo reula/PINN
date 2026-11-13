@@ -2690,3 +2690,27 @@ characteristics; `plots/2026-11-13/gauge_error_map_{vacuum,scalar}.png`; `tools/
 5. **Near the outer edge** B and g have a second systematic, equal in all runs: at r = 20 g = -2.2e-4 and
    B = -3.3e-4 at t = 8, growing linearly, larger towards R; the reference has +2e-5 and +3e-5 there (the slowly
    growing shift tail). Compatible with the Sommerfeld condition at R = 24 acting on B, g; not verified.
+
+### The lapse law with |Khat| or max(Khat, 0), tested in the finite-difference code (2026-11-13)
+
+The user (13 Nov): modify the alpha equation using the absolute value of Khat; Khat becomes negative and drives
+alpha exponentially. Tested without training. New flags, off by default: BH code `--lapse_K {plain,abs,pos}`
+(d_t alpha = beta d alpha - 2 alpha L(Khat), L = Khat, |Khat|, max(Khat, 0)); `sph_reference.py --lapse_K` and
+`--k_force EPS --k_force_r 5` (test only: constant EPS added to d_t Khat for r > 5, the stand-in for the networks'
+Khat-row bias). Runs dr = 0.02 and 0.01 to t = 16 (reference_1d/lapse_test/, git-ignored);
+`tools/plot_lapse_law_test.py`, `plots/2026-11-13/lapse_law_test.png`.
+
+1. **The networks' far drift IS the 1+log solution with a Khat forcing of -3.5e-5.** Forced plain run minus unforced,
+   at r = 12: alpha +3.4e-5 / 1.4e-4 / 5.5e-4 / 2.15e-3 at t = 1 / 2 / 4 / 8 (networks: 2.7e-5 / 1.3e-4 / 6.0e-4 /
+   2.6e-3); at t = 8 Khat -2.7e-4 (networks -3.1e-4), chi -6.5e-4 (-6.9e-4); the profile in r at t = 8 also agrees
+   (inward spread to r = 1). Growth is t^2 to t = 16 (8.4e-3), not exponential: 2 |Khat| t = 5e-3, alpha just
+   integrates the drift. In the true solution Khat >= 0 everywhere up to t = 8 (except |Khat| < 7e-4 at r < 0.05,
+   t <= 1); it turns negative from t = 8.5 (r = 1.5-2.7, -1.7e-3, moving out: r = 5.7-12.5 at t = 16).
+2. **|Khat| is ill-posed.** Where Khat < 0 the pair d_t alpha = +2 alpha Khat, d_t Khat ~ -D^2 alpha is elliptic in
+   time (growth rate sqrt(2 alpha) k, unbounded in k). The UNFORCED run blows up from round-off in the far zone:
+   non-finite at t = 0.75 (dr = 0.02) and t = 0.5 (dr = 0.01), sooner at higher resolution; forced, at t = 0.5 / 0.25.
+3. **max(Khat, 0) is stable but hides, does not cure.** Unforced it equals the plain run to 1e-13 up to t = 8 (then
+   it is another gauge: alpha differs by 6e-3 at t = 12, 1.6e-2 at t = 16). Forced: alpha error at r >= 12 is 2e-5
+   at t = 8 (plain 2.2e-3), but 4e-4 - 6e-4 in r = 3-8 (plain 1.4e-3 - 2.0e-3), where the true Khat > 0 keeps the
+   law active; Khat (-2.9e-4) and chi (-6.8e-4) errors are unchanged. Same numbers at both resolutions.
+4. Reading: the lapse equation is not the culprit; the thing to remove is the bias of the Khat row.

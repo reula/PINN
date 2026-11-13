@@ -203,6 +203,12 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Nothing launched; candidates for the user: weight the Khat (and alpha) rows in the far zone, or a penalty on
    d_t Khat where the template says nothing has arrived.
 
+25. 2026-11-13: the user's idea |Khat| in the lapse equation, tested in the FD code (README "The lapse law with
+   |Khat|..."; flags `--lapse_K`, `--k_force`, off by default). |Khat|: ill-posed, the unforced run blows up by
+   t = 0.5-0.75. max(Khat, 0): stable, removes the alpha drift only where the true Khat = 0 (r >= 12), Khat and chi
+   errors unchanged, changes the gauge after t = 8.5. A forcing of -3.5e-5 on d_t Khat reproduces the networks'
+   far drift in alpha, Khat, chi within 15%: the Khat-row bias is the whole effect. Nothing launched.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs
