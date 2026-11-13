@@ -220,6 +220,11 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    condition at R = 24 is not satisfied by the static solution (chi -4.3e-5); test = condition on f - U0. Not
    launched, the user's decision.
 
+28. 2026-11-13: `--bc_ic` built; launched `1d_T8_tplzz60_con_rinB_bc` (job 1187254; B + --bc_ic, seed 7). Grade
+   against B seeds 7 and 8 with table, loss plot, `plot_far_drift.py`, `plot_invariants.py` (mass at r = 20 at
+   t = 1-2, Khat drift at r = 12). Also pending `1d_T8_sc_con_r0225` (job 1187249; grade vs sc_con with
+   `plot_scalar_runs.py`, `plot_gauge_error_map.py`).
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs

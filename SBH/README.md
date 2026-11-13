@@ -2778,3 +2778,10 @@ t = 2 / 4 / 8 (and the invariant error of (grad R)^2 at r = 20, t = 8):
 
 Launched (the user, 13 Nov): `1d_T8_sc_con_r0225` (job 1187249) = `1d_T8_sc_con` with `--r_min 0.225` instead of
 0.5: the scalar test with points over the whole region where the network gives values (horizon 0.25-0.47 inside).
+
+**`--bc_ic` (2026-11-13; the user agreed: f - U0 instead of f - flat; the user's form: the Sommerfeld operator on f
+equals the operator on U0).** At r = R: d_t f + c d_r f + c (f - flat)/R = c d_r U0 + c (U0 - flat)/R, i.e.
+d_t f + c d_r (f - U0) + c (f - U0)/R = 0 (the same equation; flat cancels). U0(r) = the initial data (`U0_rad`),
+static far out until the first signal reaches R (t ~ 16). Local check, window 0, 250 iterations: runs, bc term
+4.0e-7 (f - flat: 9.1e-7). Launched: `1d_T8_tplzz60_con_rinB_bc` (job 1187254) = `1d_T8_tplzz60_con_rinB` +
+`--bc_ic`, seed 7. The user expects no change.
