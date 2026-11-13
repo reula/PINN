@@ -75,7 +75,7 @@ ap.add_argument("--log_rmin", type=float, default=1e-3)
 ap.add_argument("--r_in", type=float, default=0.0,
                 help="(2026-11-10, the user) template-exact core: W = 1 and the network correction is zero for r <= r_in (the interior "
                      "of the horizon is given, neither sampled nor reached by the network); the correction switches on smoothly over "
-                     "[r_in, r_in + --r_in_w]; sets --r_min = r_in unless --r_min is given. Horizon at m/2 = 0.25, tolerance 10%: 0.225")
+                     "[r_in, r_in + --r_in_w]; sets --r_min = r_in unless --r_min is given. Horizon at m/2 = 0.25, tolerance 10%%: 0.225")
 ap.add_argument("--tpl_mu", action="store_true",
                 help="(2026-11-11, the user: the template's mass can change, and r_in with it) trainable template mass mu(t): "
                      "per window mu = mu0 + mud0 (t - t0) + mu_scale (q1 x^2 + q2 x^3), x = (t - t0)/(t1 - t0), mu0 and mud0 the "
@@ -92,6 +92,10 @@ ap.add_argument("--scalar", action="store_true",
                      "(m - m_ref(r)) / M_ADM. Not with --w_adm, --w_adm_ic, the second stage or the --eval_* / --fit_ref tools")
 ap.add_argument("--scalar_ref", default=None, help="default reference_1d/ref_scalar_m0.5_A0.03_dr0.005_t8.npz")
 ap.add_argument("--w_kg", type=float, default=1.0, help="weight of the two Klein-Gordon rows (x lam_einstein, in the einstein part)")
+ap.add_argument("--bc_ic", action="store_true",
+                help="(2026-11-13) Sommerfeld condition at r = R on the deviation from the initial data, "
+                     "d_t f + c d_r (f - U0) + c (f - U0)/R = 0, instead of on f - flat: the static solution satisfies it "
+                     "exactly (with f - flat the 1/r^2 terms leave -4.3e-5 for chi, -4.4e-6 for alpha at R = 24)")
 ap.add_argument("--r_in_shift", action="store_true",
                 help="with --r_in: rho = s^p/(s^p + r_c^p), s = max(r - r_in, 0) (C1 at r_in, no smoothstep; ansatz B of 2026-11-10) "
                      "instead of rho(r) x smoothstep (ansatz A)")
@@ -503,7 +507,11 @@ def parts(P, win, batch):
     f = lambda t, r: rad_fn(P, win, t, r)
     fb, ft = jax.vmap(lambda t: jax.jvp(lambda tt: f(tt, R), (t,), (1.0,)))(tb)
     fr = jax.vmap(lambda t: jax.jvp(lambda rr: f(t, rr), (R,), (1.0,))[1])(tb)
-    som = ft + ns["c"] * fr + ns["c"] * (fb - FLAT_RAD[None]) / R
+    if a.bc_ic:
+        u0R, du0R = jax.jvp(U0_rad, (R,), (1.0,))
+        som = ft + ns["c"] * (fr - du0R[None]) + ns["c"] * (fb - u0R[None]) / R
+    else:
+        som = ft + ns["c"] * fr + ns["c"] * (fb - FLAT_RAD[None]) / R
     d = jax.vmap(lambda r: taylor_r(lambda rr: f(win[0], rr), r))(ric) - Uic
     ic = sum(wk * jnp.mean(d[:, k] ** 2) for k, wk in enumerate(IC_W))
     con = zeta(Di) if a.w_constraint > 0 else jnp.zeros(())
