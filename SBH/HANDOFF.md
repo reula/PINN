@@ -214,6 +214,12 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    well-conditioned invariant (grad R)^2 is right to 1e-5 - 7e-5 (t <= 4) and 1e-4 - 3e-4 (t = 8) at all radii;
    M_AH to 1e-5 - 2e-4. The far Khat drift is mostly gauge where uniform, real (momentum constraint) at its edges.
 
+27. 2026-11-13: launched `1d_T8_sc_con_r0225` (job 1187249; sc_con with `--r_min 0.225`). After it: vacuum only
+   (the user). "Far weight on all rows" is run 51 and has the same Khat drift as con: withdrawn (README). Without
+   far weight (50) the drift is 5-8x smaller but the far geometry 10x worse. Open candidate: the Sommerfeld
+   condition at R = 24 is not satisfied by the static solution (chi -4.3e-5); test = condition on f - U0. Not
+   launched, the user's decision.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs

@@ -2749,3 +2749,32 @@ invariant: they mix the geometry's error with how well the gauge conditions are 
 5. For grading: report m/M - 1 by bands, not only its maximum; add the error of (grad R)^2 and M_AH. Scalar
    case: m(R) on a slice is slicing-dependent while matter is present; invariant there: M_AH after the absorption,
    and m at large R (the total mass).
+
+### Is a far weight on ALL rows the cure of the Khat drift? Already tried: no (2026-11-13)
+
+Proposed above: weight the Khat and alpha rows far out as well. That run exists: 51 `1d_T8_tplzz_r1`
+(`--res_r0 1 --res_q 2`: every row weighted 1 + r^2; 6 x 40). Far zone of the four recipes, error at r = 12 and
+t = 2 / 4 / 8 (and the invariant error of (grad R)^2 at r = 20, t = 8):
+
+| run | far weight | alpha | Khat | m/M - 1 at r = 12 | (grad R)^2 at r = 20, t = 8 |
+|---|---|---|---|---|---|
+| 50 `tplzz60` | none | 5e-6 / 5e-5 / 3.1e-4 | -8e-7 / -1e-5 / -6e-5 | -1.2e-3 / -2.8e-3 / -5.7e-3 | -2.4e-3 (m: -5e-2) |
+| 51 `tplzz_r1` | all rows | 1.1e-4 / 6.5e-4 / 3.0e-3 | -8e-5 / -1.9e-4 / -3.7e-4 | -1e-4 / -3e-4 / -1.4e-3 | -1.4e-4 |
+| 52 `con` | Theta, Ghat rows | 1.2e-4 / 5.6e-4 / 2.3e-3 | -6e-5 / -1.4e-4 / -2.8e-4 | +9e-5 / -3e-4 / -2.2e-3 | -2.2e-4 |
+| 54 `con_rinB` | Theta, Ghat rows | 1.3e-4 / 6.0e-4 / 2.6e-3 | -7e-5 / -1.6e-4 / -3.1e-4 | -2e-4 / -5e-4 / -1.7e-3 | -2.7e-4 |
+
+1. Weighting every row (51) gives the SAME Khat drift as weighting the constraint rows only (52, 54): the proposal
+   is withdrawn, not launched.
+2. Without any far weight (50) the Khat / alpha drift is 5-8x smaller, but the geometry is 10x worse far out
+   ((grad R)^2 -2.4e-3, mass -5e-2 at r = 20). So the far weight on the constraints converts a physical error
+   (mass loss) into a mostly-gauge one (slicing drift): in invariant terms 52 / 54 are the better runs.
+3. All four runs share the same early error at the outer edge, whatever the weights: m/M - 1 = +0.9e-3 to +1.2e-3
+   at r = 20 at t = 1-2 (fields right to 1e-5 there), turning negative later. Common to all: the Sommerfeld
+   condition at R = 24, d_t f + c d_r f + c (f - flat)/R = 0. The static solution does not satisfy it:
+   f_r + (f - 1)/R = -4.3e-5 for chi and -4.4e-6 for alpha at R = 24 (the 1/r^2 terms of psi^-4 and 1/psi). If the
+   network obeyed it through chi' alone, (grad R)^2 would be off by ~1e-3 at R (mass 2e-2); it is a soft term, so
+   the error is shared. NOT verified as the cause. Candidate test (not launched): the condition on f - U0(r)
+   (deviation from the initial data, which is static far out until t ~ 16), exact for the static solution.
+
+Launched (the user, 13 Nov): `1d_T8_sc_con_r0225` (job 1187249) = `1d_T8_sc_con` with `--r_min 0.225` instead of
+0.5: the scalar test with points over the whole region where the network gives values (horizon 0.25-0.47 inside).
