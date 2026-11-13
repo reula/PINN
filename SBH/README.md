@@ -2714,3 +2714,38 @@ Khat-row bias). Runs dr = 0.02 and 0.01 to t = 16 (reference_1d/lapse_test/, git
    at t = 8 (plain 2.2e-3), but 4e-4 - 6e-4 in r = 3-8 (plain 1.4e-3 - 2.0e-3), where the true Khat > 0 keeps the
    law active; Khat (-2.9e-4) and chi (-6.8e-4) errors are unchanged. Same numbers at both resolutions.
 4. Reading: the lapse equation is not the culprit; the thing to remove is the bias of the Khat row.
+
+### Gauge-invariant accuracy; why the mass looks bad (2026-11-13)
+
+The user (13 Nov): if what we see is gauge, judge the accuracy with gauge-invariant geometrical quantities; why
+does the mass behave so badly? `tools/plot_invariants.py` (`plots/2026-11-13/invariants_vacuum.png`).
+
+Invariants in spherical symmetry: the areal radius R and the Misner-Sharp mass m = (R/2)(1 - (grad R)^2) are
+spacetime scalars. In vacuum (Birkhoff) the solution is Schwarzschild iff m = M everywhere, so m/M - 1 IS the
+complete gauge-invariant error; it is also the relative error of the curvature (Psi_2 = -m/R^3). The horizon
+mass (area of the apparent horizon) is M for any spherical slicing. The errors of alpha, B at fixed r are not
+invariant: they mix the geometry's error with how well the gauge conditions are followed.
+
+1. **The mass is ill-conditioned far out.** (grad R)^2 = 1 - 2m/R, so an error eps of the metric gives
+   m/M - 1 ~ (R/2M) eps: x20 at R = 10, x40 at R = 20 (M = 0.5). Checked on con_rinB seed 7 (reference + the
+   network's error of ONE field): at r = 16, t = 8 the error of a alone gives -1.4e-2, chi alone +1.5e-2, b alone
+   -4.8e-3, Khat alone -3e-4; together -3.6e-3 = the network's mass error. The field errors there are 2e-4 - 6e-4.
+   At t = 1, r = 20 the mass is off by 1.1e-3 with field errors of 1e-5. "Worst |m/M - 1| over r >= 0.2" is always
+   taken at r >= 8.
+2. **The well-conditioned invariant is (grad R)^2 itself**, error (2M/R)(m/M - 1). Maxima in r = 0.2-1 / 1-5 /
+   5-12 / 12-20:
+   con_rinB s7: t = 4: 2e-5 / 3e-5 / 5e-5 / 3e-5; t = 8: 2.6e-4 / 1.4e-4 / 1.4e-4 / 2.7e-4
+   con_rinB s8: t = 4: 3e-5 / 3e-5 / 7e-5 / 5e-5; t = 8: 3.1e-4 / 2.1e-4 / 1.2e-4 / 1.5e-4
+   con:         t = 4: 3.0e-3 / 9e-6 / 3e-5 / 3e-5; t = 8: 2.6e-3 / 3e-5 / 1.8e-4 / 2.2e-4 (0.2-1: its untrained r < 0.5)
+   i.e. the geometry is right to 1e-5 - 7e-5 up to t = 4 and 1e-4 - 3e-4 at t = 8, at every radius.
+   The mass itself in r = 1-5: 3e-5 - 1e-4 (t = 4), 1e-4 - 4e-4 (t = 8).
+3. **Horizon mass** M_AH/M - 1 (grid error of the finder 3e-5 subtracted): con_rinB s7 -1e-5 / -2e-5 / 0 / -7e-5
+   at t = 2 / 4 / 6 / 8; s8 -1e-5 / -2e-5 / -1e-5 / -2e-4; con +4e-5 / +4e-5 / +7e-5 / +1e-4.
+4. **The far drift is mostly, not purely, gauge.** In the forced finite-difference run (Khat forced by -3.5e-5
+   for r > 5) alpha is off by 2.2e-3 at r = 12-20 at t = 8 while the mass changes by 1.5e-4 - 6e-4 there (a uniform
+   shift of K changes the slice, constraints violated only at second order); but at the EDGE of the forced region
+   the mass changes by -1.5e-3 (r = 5) to -1.9e-3 (r = 8): a gradient of the Khat error violates the momentum
+   constraint. The networks' real (invariant) error at r = 8-20 and t >= 6 is of this size (-4e-4 to -5.6e-3).
+5. For grading: report m/M - 1 by bands, not only its maximum; add the error of (grad R)^2 and M_AH. Scalar
+   case: m(R) on a slice is slicing-dependent while matter is present; invariant there: M_AH after the absorption,
+   and m at large R (the total mass).

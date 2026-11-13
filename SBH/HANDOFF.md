@@ -209,6 +209,11 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    errors unchanged, changes the gauge after t = 8.5. A forcing of -3.5e-5 on d_t Khat reproduces the networks'
    far drift in alpha, Khat, chi within 15%: the Khat-row bias is the whole effect. Nothing launched.
 
+26. 2026-11-13: gauge-invariant grading (README "Gauge-invariant accuracy"; `tools/plot_invariants.py`). In vacuum
+   m/M - 1 is the complete invariant error but amplifies metric errors by R/2M (x20-40 at R = 10-20); the
+   well-conditioned invariant (grad R)^2 is right to 1e-5 - 7e-5 (t <= 4) and 1e-4 - 3e-4 (t = 8) at all radii;
+   M_AH to 1e-5 - 2e-4. The far Khat drift is mostly gauge where uniform, real (momentum constraint) at its edges.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs
