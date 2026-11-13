@@ -2817,3 +2817,23 @@ the held_ic columns of con and B are NOT on the same sample: B's weighs r < 1 fa
   inherit that; it pays the hand-off term instead. Not present in con (the user). Cause NOT established; candidate:
   the far lapse drift, which spreads inward at unit speed and reaches r ~ 1-3 at t = 5-7, meets a core held at the
   right solution (alpha error at t = 7.75: 3e-6 in the core, 2.8e-4 at r = 0.5-1, 8.6e-4 at r = 1-3). Untested.
+
+**Causal weights inside a window: `--causal_eps`, `--causal_bins` (2026-11-13, the user's request).** Until now
+neither sing_1d.py nor sing_pinn.py had them (interior times uniform in the window, weights functions of r and chi
+only; the collaborators' EEccz4_BH_puncture.py has `--causal_weight`, default on, eps = 1, 8 buckets, in its own
+training loop). Now in sing_1d.py: the window is cut in `--causal_bins` (8) equal time bins, L_j = mean over bin j
+of the per-point Einstein + gauge loss (`ein_gauge_points`, whose mean is einstein + gauge), the interior points of
+bin j count with w_j = exp(-eps (L_1 + ... + L_(j-1))) and the end term (t = t1) with exp(-eps (L_1 + ... + L_n)).
+The weights are computed from the current network on every new batch (every `--n_change` = 250 iterations) and
+frozen during that quasi-Newton segment (a fixed objective per segment; weights that follow the network inside a
+line search would make value and gradient inconsistent). Not weighted: held loss, `--keep_best`, IC / hand-off,
+BC. Log: one line per segment (bin losses, weights), history.csv columns causal_w_last, causal_w_end; the `train`
+column is the weighted loss.
+- Scale: only eps x L matters. Our L per bin: 3e-10 (end of early windows), 3e-9 (B's late windows), 3e-8 (first
+  250 iterations of a warm window), 1e-5 (first 250 of window 0). eps = 1 (the value of other works, whose losses
+  are O(1)) gives weights 1 - 1e-8: nothing. eps = 1e8: weights first -> last bin 1 -> 0.81 / 1 -> 0.12 / first
+  one or two bins only / first bin only. eps = 1e7 would be nearly off in B's late windows (1 -> 0.8).
+- Why B: its window 24 is flat from iteration 250 (held 1.8e-8 -> 1.6e-8; ic 1e-8 against einstein + gauge 3e-9).
+- Launched (the user's ok to eps = 1e8): `1d_T8_tplzz60_con_rinB_causal` = `1d_T8_tplzz60_con_rinB` +
+  `--causal_eps 1e8`, seed 7. Risk to watch: window 0 (cold start, eps x L ~ 1000, bins open one after another);
+  baseline held loss of window 0: 8.2e-10.

@@ -229,6 +229,16 @@ ap.add_argument("--eval_constraints", action="store_true",
                 help="evaluate H, M_r, chi H, chi M_r and the --w_adm density on the report radii at every saved window "
                      "end in --out, write constraints.npz there, and exit")
 ap.add_argument("--w_gauge", type=float, default=1.0)
+ap.add_argument("--causal_eps", type=float, default=0.0,
+                help="(2026-11-13, the user) causal weights inside each window (Wang, Sankaran, Perdikaris; as "
+                     "--causal_weight of EEccz4_BH_puncture.py): the window is cut in --causal_bins equal time bins, "
+                     "L_j = the mean over bin j of the per-point Einstein + gauge loss, and the interior points of "
+                     "bin j count with w_j = exp(-causal_eps (L_1 + ... + L_(j-1))); the end term (t = t1) with "
+                     "exp(-causal_eps (L_1 + ... + L_n)). The weights are computed from the current network on each "
+                     "new batch (every --n_change iterations) and FROZEN during that quasi-Newton segment, so the "
+                     "objective of a segment is a fixed function. L ~ 1e-10 to 1e-8 in these runs: causal_eps ~ 1e8 "
+                     "(1 does nothing). Held loss, --keep_best and the IC, BC terms are not weighted. 0 = off")
+ap.add_argument("--causal_bins", type=int, default=8, help="number of time bins of --causal_eps")
 ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--resume", action="store_true")
 argv = sys.argv[1:]
@@ -472,8 +482,38 @@ def res_weight(r, chi):
     return w
 
 
-def ein_gauge(res, r, chi=None):
+def ein_gauge_points(res, r, chi=None):
+    """Per-point density whose mean over the points is einstein + gauge of ein_gauge (for --causal_eps)."""
     wr = res_weight(r, chi)[:, None]
+    e2 = wr * res[:, :18] ** 2
+    if a.con_r0 > 0:
+        e2 = e2.at[:, 14:18].multiply(outer_boost(r, a.con_r0, a.con_q)[:, None])
+    q = ns["lam_einstein"] * jnp.mean(e2, axis=1) + ns["lam_gauge"] * a.w_gauge * jnp.mean(wr * res[:, 18:22] ** 2, axis=1)
+    if a.scalar:
+        q = q + ns["lam_einstein"] * a.w_kg * jnp.mean(wr * res[:, 22:24] ** 2, axis=1)
+    return q
+
+
+def causal_weights(P, win, batch):
+    """--causal_eps: (weight of each interior point, weight of the end term, the bin weights, the bin losses L_j)."""
+    Qi = batch[0]
+    Di = stacks(P, win, Qi)
+    q = jnp.nan_to_num(ein_gauge_points(residual(Di), Qi[:, 1], Di[0][:, CHI]), nan=1e30, posinf=1e30)
+    nb = a.causal_bins
+    b = jnp.clip(((Qi[:, 0] - win[0]) / (win[1] - win[0]) * nb).astype(jnp.int32), 0, nb - 1)
+    L = jnp.zeros(nb).at[b].add(q) / jnp.maximum(jnp.zeros(nb).at[b].add(1.0), 1.0)
+    cum = jnp.cumsum(L)
+    wb = jnp.exp(-a.causal_eps * jnp.concatenate([jnp.zeros(1), cum[:-1]]))
+    return wb[b], jnp.exp(-a.causal_eps * cum[-1]), wb, L
+
+
+N_BATCH = 6 if (a.adm_vol > 0 and a.w_adm > 0) else 5     # entries of a batch of draw(); --causal_eps appends 2
+
+
+def ein_gauge(res, r, chi=None, cw=None):
+    wr = res_weight(r, chi)[:, None]
+    if cw is not None:                                # --causal_eps: frozen per-point weights
+        wr = wr * cw[:, None]
     kg = a.w_kg * jnp.mean(wr * res[:, 22:24] ** 2) if a.scalar else 0.0      # --scalar: the Klein-Gordon rows
     if a.con_r0 > 0:                                  # rows 14 (Theta), 15-17 (Ghat^i) of the 18 Einstein rows
         e2 = (wr * res[:, :18] ** 2).at[:, 14:18].multiply(outer_boost(r, a.con_r0, a.con_q)[:, None])
@@ -500,10 +540,12 @@ def taylor_r(g, r):
 
 def parts(P, win, batch):
     Qi, Qe, tb, ric, Uic = batch[:5]                 # Uic (n, IC_ORDER + 1, 10): the target and its r-derivatives
+    cw_i, cw_e = batch[-2:] if len(batch) > N_BATCH else (None, 1.0)      # --causal_eps (training batches only)
     Di = stacks(P, win, Qi)
-    e_i, g_i = ein_gauge(residual(Di), Qi[:, 1], Di[0][:, CHI])
+    e_i, g_i = ein_gauge(residual(Di), Qi[:, 1], Di[0][:, CHI], cw_i)
     De = stacks(P, win, Qe)
     e_e, g_e = ein_gauge(residual(De), Qe[:, 1], De[0][:, CHI])
+    e_e, g_e = cw_e * e_e, cw_e * g_e
     f = lambda t, r: rad_fn(P, win, t, r)
     fb, ft = jax.vmap(lambda t: jax.jvp(lambda tt: f(tt, R), (t,), (1.0,)))(tb)
     fr = jax.vmap(lambda t: jax.jvp(lambda rr: f(t, rr), (R,), (1.0,))[1])(tb)
@@ -966,6 +1008,7 @@ if a.resume:
 loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), static_argnums=1)
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 parts_jit = jax.jit(parts)
+causal_jit = jax.jit(causal_weights)
 hist = os.path.join(a.out, "history.csv")
 PART_NAMES = (("einstein", "gauge", "end", "bc", "ic", "constraint") + (("adm",) if a.w_adm > 0 else ())
               + (("adm_ic",) if a.w_adm_ic > 0 else ()))
@@ -1018,11 +1061,18 @@ for k in range(k0, a.N_window):
     while it < n_iters:
         key, kd = jax.random.split(key)
         batch = draw(kd, win, a.n_int, a.n_end, a.n_ic, Uic_fn)
+        if a.causal_eps > 0:                                    # weights from the current network, frozen for this segment
+            cw_i, cw_e, cw_b, cw_L = causal_jit(unr(w), win, batch)
+            batch = batch + (cw_i, cw_e)
+            print("  causal: bin loss " + " ".join(f"{float(v):.1e}" for v in cw_L) + " | weight "
+                  + " ".join(f"{float(v):.2f}" for v in cw_b) + f" | end {float(cw_e):.2f}", flush=True)
         w = mb.minimize(lambda v: loss_fn(v, unr, win, batch), lambda v: vg_fn(v, unr, win, batch), w, opts).x
         it += a.n_change
         hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}
         row = dict(window=k, iteration=it, seconds=round(time.time() - t_start, 1),
                    train=float(loss_fn(w, unr, win, batch)), held=sum(hp.values()), **{f"held_{n}": hp[n] for n in PART_NAMES})
+        if a.causal_eps > 0:                                    # the weights this segment was trained with
+            row.update(causal_w_last=float(cw_b[-1]), causal_w_end=float(cw_e))
         if a.keep_best and np.isfinite(row["held"]) and row["held"] < kb_h:
             kb_h, kb_w, kb_it = row["held"], w, it
         new = not os.path.exists(hist)

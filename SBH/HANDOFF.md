@@ -231,6 +231,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    error carried and (shift) opposite to it; r > 3 identical to con. Cause not established (candidate: the far
    lapse drift arriving at a core held exact). README "Hand-offs between windows". The held_ic columns of con and
    B are not on the same radii (con redraws r < 0.5 outside). Hard hand-overs stay rejected (the user).
+30. 2026-11-13 (the user): causal weights inside each window built (`--causal_eps`, `--causal_bins`; frozen per
+   quasi-Newton segment; README "Causal weights inside a window"). Launched `1d_T8_tplzz60_con_rinB_causal`
+   (B seed 7 + `--causal_eps 1e8`). Check window 0 first (baseline held 8.2e-10), then grade against B seeds 7,
+   8: table, loss plot, seams (`plot_seams_compare.py`), invariants. eps = 1 does nothing at our loss levels.
 
 ## 4. Next steps
 
