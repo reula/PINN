@@ -191,6 +191,18 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    user's decision: (a) template family with mu and the constant factor c; (b) a correction that reaches the
    horizon (smaller r_c in rho, or core well inside); (c) no exact core, points down to the core. Nothing launched.
 
+23. 2026-11-13: `tools/fit_template_family.py` (README "Can a rescaled vacuum puncture..."): the vacuum family
+   with (mu, conformal factor, lapse factor, tau) fits the scalar reference's core to 1e-5 before the infall and
+   no better than 3e-4 - 3e-3 during and after: an exact core is consistent only while the hole is isolated.
+
+24. 2026-11-13: gauge-error analysis (README "Where do the gauge errors come from?"; `plot_gauge_error_map.py`,
+   `plot_far_drift.py`, `--eval_tr` saves `rows`). The dominant late error of ALL vacuum runs is a slicing drift
+   born at r = 8-16 from t < 1 (alpha error ~ t^2, 2.6e-3 at t = 8, = -2 alpha int dKhat), spreading inward at
+   unit speed; source: a coherent Khat-row residual of -2e-5 (= the held floor) where the true solution is static.
+   Not from the origin, not from the boundary. Cause of the fixed sign OPEN. Second systematic: B, g at r -> R.
+   Nothing launched; candidates for the user: weight the Khat (and alpha) rows in the far zone, or a penalty on
+   d_t Khat where the template says nothing has arrived.
+
 ## 4. Next steps
 
 1. Seed pair graded (2026-11-04): the mass gain of lambda = 30 holds with both seeds (worst 1.2e-3 / 1.4e-3 vs

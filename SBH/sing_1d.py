@@ -711,7 +711,7 @@ if a.eval_tr:
     rg = np.geomspace(1e-3, R, 240)
     T_, R_ = np.meshgrid(tg, rg, indexing="ij")
     Q = jnp.asarray(np.stack([T_.ravel(), R_.ravel(), 0 * T_.ravel(), 0 * T_.ravel()], axis=1))
-    out = {k: [] for k in ("einstein", "gauge", "adm")}
+    out = {k: [] for k in ("einstein", "gauge", "adm", "rows")}     # rows (2026-11-13): the signed residual, row by row
     st = jax.jit(lambda Q: stacks(Pk, wk, Q))
     for i in range(0, Q.shape[0], 2048):
         D = st(Q[i:i + 2048])
@@ -719,8 +719,10 @@ if a.eval_tr:
         out["einstein"].append(np.asarray(ns["lam_einstein"] * jnp.mean(res[:, :18] ** 2, axis=1)))
         out["gauge"].append(np.asarray(ns["lam_gauge"] * a.w_gauge * jnp.mean(res[:, 18:22] ** 2, axis=1)))
         out["adm"].append(np.asarray(adm_density(D, Q[i:i + 2048, 1])))
+        out["rows"].append(np.asarray(res))
     shape = T_.shape
-    np.savez(a.eval_tr_out, t=tg, r=rg, **{k: np.concatenate(v).reshape(shape) for k, v in out.items()},
+    np.savez(a.eval_tr_out, t=tg, r=rg, **{k: np.concatenate(v).reshape(shape + np.concatenate(v).shape[1:])
+                                           for k, v in out.items()},
              src=np.array(a.eval_tr))
     print("wrote", a.eval_tr_out)
     sys.exit(0)

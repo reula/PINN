@@ -2643,3 +2643,50 @@ k lapse factor; s = k = 1 is the --tpl_mu family). rms misfit chi / Khat / alpha
 4. So the user's objection holds: an exact core is consistent only before the field arrives. With the field inside,
    the core must be a region where the network solves the equations (points there), with the template at most a
    soft starting blend.
+
+### Where do the gauge errors come from? (2026-11-13)
+
+The user (13 Nov): a gauge mode may develop from a very small error in the equations or from a boundary condition;
+maybe something comes out of the region near the origin, which we do not control. Is B positive there, what is g?
+
+**Gauge equations** (EEccz4_BH_puncture.py; f_alpha = f_beta = 1, eta = 0.1 in all 1D runs):
+d_t alpha = beta^i d_i alpha - 2 alpha Khat; d_t beta^i = beta^j d_j beta^i + (3/4) Ghat^i - eta beta^i.
+
+**B and g near the origin** (vacuum 1D reference; the scalar one within 10%). B > 0 everywhere for t > 0, linear
+in r near 0 (B at r = 0.05 / 0.2: 0.046 / 0.120 at t = 1, 0.099 / 0.212 at t = 2, 0.046 / 0.121 at t = 8). g is
+positive to t = 1 (+0.17 at r = 0.2), changes sign between t = 1 and 2 (negative for r < 0.22 at t = 2, for r < 0.5
+at t = 3, minimum -0.18 at r = 0.1), then decays (-0.04 at t = 8). Outgoing speeds: light -B + alpha sqrt(g^rr) < 0
+inside the horizon; lapse mode -B + sqrt(2 alpha g^rr) < 0 for r < 0.1-0.15 from t = 1, > 0 outside; the
+longitudinal shift mode (principal part d_t B = 3/4 g, d_t g ~ 4/3 gt^rr B'': speed sqrt(gt^rr) = 1.00, independent
+of alpha and chi; derived, not measured) leaves at 1 - B = 0.8-0.95 from r -> 0. So an error near the origin CAN
+leave as a shift mode.
+
+**What the runs show** (`tools/plot_gauge_error_map.py`: signed error of B, g, alpha over (r, t) with the outgoing
+characteristics; `plots/2026-11-13/gauge_error_map_{vacuum,scalar}.png`; `tools/plot_far_drift.py`,
+`plots/2026-11-13/far_drift.png`). Runs: `con` (r_min 0.5), `con_rinB` seeds 7 and 8, `sc_con`, `sc_B`.
+
+1. **The dominant late error is a slicing drift born in the far zone, not at the origin.** The alpha error appears
+   at t < 1 at r = 8-16 (maximum at r = 12) and grows as t^2 there: 2.7e-5 / 1.3e-4 / 3.2e-4 / 6.0e-4 / 1.4e-3 /
+   2.6e-3 at t = 1 / 2 / 3 / 4 / 6 / 8 (con_rinB seed 7; seed 8 and con equal within 10%). The true solution is
+   static there (reference: alpha changes by 8e-9 at r = 12 up to t = 2, 2e-6 up to t = 6), and nothing from the
+   centre (fastest speed 1.4) or from the boundary R = 24 can have arrived. It then spreads inward at about unit
+   speed (r = 5 at t = 3, r = 2 at t = 5, r = 1 at t = 6): this is the "late outer drift" of every run.
+2. **It is the lapse equation integrating a drift of Khat.** At r = 8, 12, 16 the alpha error equals
+   -2 alpha int (Khat error) dt within 5% at all times; Khat drifts at -3e-5 to -4e-5 per unit time, same sign over
+   r = 5-20, in the three runs. chi follows (negative, 1/4 of alpha).
+3. **The source is a coherent residual of the Khat row at the level of the loss floor.** Row-by-row residual of
+   con_rinB (`--eval_tr` now saves `rows`, the signed residual of the 22 rows): in r = 8-16 the Khat row has signed
+   mean -5e-6 (window 0) and -2e-5 (window 8) with rms 1e-5 / 2e-5: a bias, not noise. Squared, 4e-10 = the held
+   loss floor. The Theta row (Hamiltonian constraint, weight 1 + r^2) is 1e-7 - 7e-7 there, the alpha row 5e-6. The
+   reference's own residual in the same rows is 1e-12 - 1e-10. The drift is long-wavelength (size ~10), so the
+   lapse wave equation does not restore it within t = 8 (period ~ 2 pi 10 / sqrt 2 = 40): alpha error ~ alpha eps t^2
+   with eps = 4e-5 gives 2.5e-3 at t = 8. WHY the bias has a fixed sign is not established.
+4. **From the inner zone**: with the exact core (con_rinB) the errors of B and g for r < 0.225 are <= 1e-5; stripes
+   of alternating sign start at r = 0.3-1 (the core edge and the horizon) and follow the outgoing shift / lapse
+   characteristics, 1e-5 - 1e-4 to t = 5, growing after (g 3e-3 at r = 0.5, Khat +-6e-4 at r = 0.5-1 at t = 7-8,
+   both seeds: the held-loss rise after window 20). In `con` the untrained r < 0.5 holds a steady g error of
+   -4e-3 to -7e-3 at r = 0.3 from t = 0.5, but for r >= 1 its B, g errors are those of con_rinB (1e-4 at t = 8): the
+   untrained interior does not flood the exterior. In `sc_con` the outgoing stripes are 1e-3 from t = 0.
+5. **Near the outer edge** B and g have a second systematic, equal in all runs: at r = 20 g = -2.2e-4 and
+   B = -3.3e-4 at t = 8, growing linearly, larger towards R; the reference has +2e-5 and +3e-5 there (the slowly
+   growing shift tail). Compatible with the Sommerfeld condition at R = 24 acting on B, g; not verified.
