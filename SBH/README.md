@@ -2837,3 +2837,42 @@ column is the weighted loss.
 - Launched (the user's ok to eps = 1e8): `1d_T8_tplzz60_con_rinB_causal` = `1d_T8_tplzz60_con_rinB` +
   `--causal_eps 1e8`, seed 7. Risk to watch: window 0 (cold start, eps x L ~ 1000, bins open one after another);
   baseline held loss of window 0: 8.2e-10.
+
+**Results (2026-11-14): `--bc_ic`, causal weights, scalar with `--r_min 0.225`.** Runs: B s7 =
+`1d_T8_tplzz60_con_rinB` (`--r_in 0.225 --r_in_shift`), B s8 = the same with `--seed 8`, B + bc_ic =
+`1d_T8_tplzz60_con_rinB_bc` (B s7 + `--bc_ic`), B + causal = `1d_T8_tplzz60_con_rinB_causal` (B s7 +
+`--causal_eps 1e8`, 8 bins; job 1187408); scalar: `1d_T8_sc_con` (`--scalar --r_min 0.5`), `1d_T8_sc_con_r0225`
+(`--scalar --r_min 0.225`). Plots: plots/2026-11-14/{invariants_bc_causal, far_drift_bc_causal, loss_bc_causal,
+scalar_runs_r0225, loss_scalar_r0225}.png.
+1. `--bc_ic` (TRIES 60). The early mass error at the outer edge was the boundary condition: m/M - 1 at r = 20 at
+   t = 0.5 / 1 / 2: -2.4e-4 -4.2e-5 -4.0e-4 against +6.3e-4 +1.1e-3 +1.2e-3 (B s7) and +1.1e-3 +1.2e-3 +1.2e-3
+   (B s8); max |m/M - 1| in r = 12-20 at t = 2: 4.5e-4 against 1.2e-3 / 1.2e-3. The Khat drift is NOT the boundary
+   condition (as the user expected): Khat error at r = 12 grows -3.4e-5 per unit time (B s7 -3.9e-5, s8 -4.5e-5),
+   alpha error there +2.9e-5 +1.5e-4 +6.8e-4 +1.6e-3 +2.7e-3 at t = 1/2/4/6/8 (B s7 +2.7e-5 +1.3e-4 +6.0e-4
+   +1.4e-3 +2.6e-3). Later the outer mass is worse: max in r = 12-20 at t = 4/6/8 2.6e-3 5.1e-3 7.4e-3 (B s7
+   4.3e-4 2.3e-3 5.6e-3; s8 6.1e-4 1.3e-3 3.0e-3); without the +1e-3 offset of the old condition the negative
+   trend of the drift shows from the start (chi error at r = 20: -4e-6 -2e-5 -1e-4 -4e-4 at t = 1/2/4/8, B s7
+   +1e-5 +1e-5 -4e-5 -3e-4). Inside r = 5 and in the fields: equal within the seed spread. Held loss equal until
+   window 16, lower at window 24 (4.2e-9 against 1.6e-8 / 1.2e-8; hand-off term 1.9e-9 against 1.0e-8 / 6.0e-9),
+   equal at window 31 (3.6e-8). Verdict: keep `--bc_ic` as the consistent condition (one seed; the later outer
+   mass is within 2.5x of the seed pair), it does not touch the drift.
+2. Causal weights, eps = 1e8 (TRIES 61): fails. Window 0: after the first 250 iterations bins 2-8 have weight
+   0.00; they open one by one (weights at iteration 4000: 1.00 0.87 0.76 0.58 0.45 0.25 0.12 0.00, end term 0.00
+   throughout) because the bins floor at ~2e-9 each, not below; held 2.3e-7 against 8.2e-10 (end term 2.2e-7).
+   Windows 4-16: weights 1 -> 0.4-0.6, held 2.4e-9 - 5.4e-9 against 5e-10 - 2e-9. From window ~20 the bins shut
+   again (w24: last 0.00, held 6.1e-6; w31: 1.1e-4): the under-trained window end is handed on and compounds.
+   Worst mass 2.1e-3 2.1e-3 3.1e-3 2.5e-2 at t = 2/4/6/8 (B s7 1.2e-3 1.2e-3 2.3e-3 5.6e-3); (grad R)^2 error at
+   t = 8 9e-4 - 1.9e-3 (B s7 1.4e-4 - 2.7e-4). The far drift is not changed where the run still works (alpha at
+   r = 12, t = 4, 6: +5.4e-4 +1.4e-3). The user's doubt about the size of eps was right in effect: eps x (bin
+   floor) x 8 bins must stay well below 1 for the window end to be trained, i.e. eps <~ 1e7 here, and then the
+   weights only act while the loss is above ~1e-8 (window 0 and the first segment of each window). Not tested:
+   a gentler eps, an annealed one, or a floor on the weights. The local check that weights without effect
+   reproduce the unweighted run did NOT complete (session restart); the log of the run shows the weights acting
+   as designed.
+3. Scalar with `--r_min 0.225` (TRIES 59) against `--r_min 0.5`: rms error in r = 0.2-1 at t = 2/4/6/8, alpha
+   5e-4 3e-4 7e-4 1e-3 (2e-3 2e-3 8e-3 1e-2), Khat 2e-3 1e-3 6e-3 4e-3 (8e-3 8e-3 1e-2 3e-3), phi 2e-4 4e-4 7e-4
+   7e-4 (1e-3 4e-3 3e-3 5e-3); worst |m - m_ref|/M over r >= 0.2: 6.2e-3 7.7e-3 7.7e-3 7.7e-3 (2.8e-3 4.0e-3
+   2.6e-2 4.3e-2); horizon mass 0.50664 0.52085 0.55222 0.55247 (0.50792 0.52157 0.55214 0.55230; scalar
+   finite-difference reference 0.50779 0.52206 0.55255 0.55264): worse before the infall (-1.2e-3 against +1e-4,
+   -5e-4), better after (-3e-4, -2e-4 against -4e-4, -3e-4); r = 3-10 up to 2x worse (alpha 2e-3 3e-3 against
+   1e-3 2e-3 at t = 6, 8). Training the region around the horizon pays where it was untrained and late.

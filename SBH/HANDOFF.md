@@ -235,6 +235,13 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    quasi-Newton segment; README "Causal weights inside a window"). Launched `1d_T8_tplzz60_con_rinB_causal`
    (B seed 7 + `--causal_eps 1e8`). Check window 0 first (baseline held 8.2e-10), then grade against B seeds 7,
    8: table, loss plot, seams (`plot_seams_compare.py`), invariants. eps = 1 does nothing at our loss levels.
+31. 2026-11-14, graded (README "Results (2026-11-14)"): (a) `--bc_ic` removes the early +1e-3 mass error at the
+   outer edge (it was the boundary condition) but not the Khat drift (-3.4e-5 per unit time, as before); later
+   outer mass up to 2.5x worse than the seed pair; no net gain, consistent condition. (b) causal weights with
+   eps = 1e8 FAIL (window end never trained in window 0, collapse from window ~20; worst mass 2.5e-2); eps must be
+   <~ 1e7 for the window end to open; gentler / annealed eps not tested. (c) scalar `--r_min 0.225` beats 0.5
+   near the horizon and late (worst mass 7.7e-3 against 4.3e-2), horizon mass worse before the infall (-1.2e-3).
+   Nothing running. Open: cause of the Khat-row bias; B's hand-off growth at r = 0.225-1 (item 29).
 
 ## 4. Next steps
 
