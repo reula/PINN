@@ -64,7 +64,8 @@ update that restarts is therefore safe, but check `tailscale status` afterwards.
 
 Do this **before** moving it, while it is still reachable through Tailscale; macOS then joins any
 saved network on its own whenever it is in range, with no screen or keyboard. The mini's Wi-Fi
-is device `en1`; it already has `uib@events` and `Leco` saved.
+is device `en1`; saved (2026-11-16, in this order): `Leco` (the user's phone hotspot), `galina`
+(home router, addresses 192.168.100.x), `MIWIFI_ZAfh`, `uib@events`.
 
     # join and save a WPA2 network (asks for the mini's password for sudo)
     ssh -t reula@100.98.22.2 'sudo networksetup -setairportnetwork en1 "NETWORK_NAME" "PASSWORD"'
@@ -85,3 +86,19 @@ has internet.
   hotspot and stays reachable.
 - Not possible without a screen: networks with a login page (captive portals), and enterprise
   Wi-Fi such as eduroam (needs a profile or certificate). A wrong password leaves it offline.
+- **`-addpreferredwirelessnetworkatindex` never overwrites** a network that is already saved
+  ("already in the preferred networks list"), so it cannot correct a wrong password. Use
+  `-setairportnetwork`, which joins at once and saves (an error message if the name or password is
+  wrong or the network is out of range), or `-removepreferredwirelessnetwork en1 "NAME"` first.
+  Test a new entry while the hotspot is on: if the join fails the mini stays where it was.
+
+**If it has gone offline after a move (2026-11-16).** It was moved to `galina` with the entry saved
+beforehand and stayed offline for two days: the entry was most likely wrong (the security mode was
+fine, every network in range was WPA2 or WPA/WPA2). Recovered without a screen by turning on the phone
+hotspot under the name and password of a saved network (`Leco`): the mini joined it within a minute,
+Tailscale came back, and `sudo networksetup -setairportnetwork en1 "galina" 'PASSWORD'` (typed on the
+mini) moved it to `galina` for good. To tell which network it is on: recent macOS hides network names
+from the command line (`networksetup -getairportnetwork` says "not associated", `ipconfig getsummary`
+shows `<redacted>`), so use `ipconfig getifaddr en1` and `ipconfig getoption en1 router` (an iPhone
+hotspot gives 172.20.10.x; `galina` gives 192.168.100.x). The `ssh mini` alias exists only in the
+laptop's `~/.ssh/config`.
