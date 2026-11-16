@@ -2876,3 +2876,11 @@ scalar_runs_r0225, loss_scalar_r0225}.png.
    finite-difference reference 0.50779 0.52206 0.55255 0.55264): worse before the infall (-1.2e-3 against +1e-4,
    -5e-4), better after (-3e-4, -2e-4 against -4e-4, -3e-4); r = 3-10 up to 2x worse (alpha 2e-3 3e-3 against
    1e-3 2e-3 at t = 6, 8). Training the region around the horizon pays where it was untrained and late.
+
+**Causal weights, scan of eps (2026-11-16, the user: "a smaller epsilon, e7 to e2, for just a couple of
+windows").** Six runs `1d_T05_rinB_causal_e7` ... `_e2` = `1d_T8_tplzz60_con_rinB` (B seed 7) + `--causal_eps`
+1e7, 1e6, 1e5, 1e4, 1e3, 1e2, windows 0 and 1 only (`--N_window 2 --tfinal 0.5`: the same window edges, seed and
+point draws as the first two windows of the full run). Compared with the unweighted windows 0, 1 of B seed 7
+(held 8.2e-10, 3.5e-10) and of eps = 1e8 (2.3e-7, 1.1e-7). eps = 1e2 has weights within a few % of 1 from the
+first segment (bin losses 1e-4 before training), so it also checks that the weighted code reproduces the
+unweighted one.

@@ -242,6 +242,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    <~ 1e7 for the window end to open; gentler / annealed eps not tested. (c) scalar `--r_min 0.225` beats 0.5
    near the horizon and late (worst mass 7.7e-3 against 4.3e-2), horizon mass worse before the infall (-1.2e-3).
    Nothing running. Open: cause of the Khat-row bias; B's hand-off growth at r = 0.225-1 (item 29).
+32. 2026-11-16 (the user): scan of `--causal_eps` 1e7 ... 1e2 on B seed 7, two windows each
+   (`1d_T05_rinB_causal_e7` ... `_e2`, `--N_window 2 --tfinal 0.5`), launched on Mendieta. Grade: weights at the
+   end of window 0, held parts of windows 0, 1 and errors at t = 0.25, 0.5 against B seed 7 and eps = 1e8.
+   The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
 
