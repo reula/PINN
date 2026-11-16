@@ -81,7 +81,11 @@ Keep the quotes as shown; backslash-escape `"`, `$` and backticks inside the pas
 connection drops for a few seconds while it switches, then Tailscale reconnects if the new network
 has internet.
 
-- **Ethernet is the most reliable**: plug the cable in and it needs no setup.
+- **Ethernet is the most reliable**: plug the cable in and it needs no setup. Built-in port `en0`,
+  hardware (MAC) address `bc:74:ea:f1:85:c8` (give it if the socket needs registering, as office and
+  university ports often do; `en4` "Ethernet Adapter" is virtual). Ethernet is first in the service
+  order, ahead of Wi-Fi, so traffic moves to the cable by itself and the saved Wi-Fi is the fallback.
+  Check with `ipconfig getifaddr en0`.
 - **Save the phone hotspot as a fallback**, so that if the new Wi-Fi fails the mini joins the
   hotspot and stays reachable.
 - Not possible without a screen: networks with a login page (captive portals), and enterprise
