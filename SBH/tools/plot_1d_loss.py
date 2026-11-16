@@ -19,7 +19,9 @@ import numpy as np
 
 out = sys.argv[1]
 runs = [s.split("=", 1) for s in sys.argv[2:]]
-COLS = ["#222222", "#e8a33d", "#2a6fdb", "#d1495b", "#1b9e77"]
+COLS = ["#222222", "#e8a33d", "#2a6fdb", "#d1495b", "#1b9e77", "#8a5cd0", "#7a7a7a", "#17a2b8"]
+if len(runs) > len(COLS):  # zip below would silently drop the extra runs (found 2026-11-16)
+    sys.exit("plot_1d_loss.py: at most %d runs (got %d)" % (len(COLS), len(runs)))
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 9.5})
 fig, (a1, a2, a3, a4) = plt.subplots(1, 4, figsize=(18.5, 4.2), constrained_layout=True)
 for (lab, d), c in zip(runs, COLS):

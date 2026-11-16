@@ -2884,3 +2884,47 @@ point draws as the first two windows of the full run). Compared with the unweigh
 (held 8.2e-10, 3.5e-10) and of eps = 1e8 (2.3e-7, 1.1e-7). eps = 1e2 has weights within a few % of 1 from the
 first segment (bin losses 1e-4 before training), so it also checks that the weighted code reproduces the
 unweighted one.
+
+**Result of the scan (2026-11-16; jobs 1188863-1188868, 11 min each; `tools/plot_causal_scan.py`,
+plots/2026-11-16/causal_eps_scan.png; data eval_data/1d_T05_rinB_causal_e{2..7}/).** Held loss (fresh points, never
+weighted) at the end of windows 0 and 1, and the first history row (one every 250 iterations) at which the causal
+weight of the window-end term exceeds 0.5:
+
+| run | eps | held, window 0 | held, window 1 | end weight > 0.5 from (w0 / w1) | end weight at iteration 4000 (w0 / w1) |
+|---|---|---|---|---|---|
+| B seed 7 (`1d_T8_tplzz60_con_rinB`) | off | 8.2e-10 | 3.5e-10 | - | - |
+| B seed 8 (`..._rinB_s8`) | off | 1.1e-9 | 5.8e-10 | - | - |
+| B seed 7 + `--bc_ic` (`..._rinB_bc`) | off | 8.8e-10 | 2.9e-10 | - | - |
+| `1d_T05_rinB_causal_e2` | 1e2 | 2.2e-9 | 8.1e-10 | 250 / 250 | 1.00 / 1.00 |
+| `..._e3` | 1e3 | 1.2e-9 | 5.4e-10 | 500 / 500 | 1.00 / 1.00 |
+| `..._e4` | 1e4 | 3.3e-9 | 6.8e-10 | 750 / 500 | 1.00 / 1.00 |
+| `..._e5` | 1e5 | 2.1e-9 | 1.1e-9 | 1250 / 750 | 1.00 / 1.00 |
+| `..._e6` | 1e6 | 2.5e-9 | 9.0e-10 | 1500 / 1000 | 0.99 / 1.00 |
+| `..._e7` | 1e7 | 2.9e-9 | 7.0e-10 | 2750 / 1750 | 0.90 / 0.97 |
+| `1d_T8_tplzz60_con_rinB_causal` | 1e8 | 2.3e-7 | 1.1e-7 | never / never | 0.00 / 0.00 |
+
+- The window end opens for every eps <= 1e7 (as estimated from the bin floor ~2e-9: eps x 8 bins x 2e-9 < 1). The
+  failure of 1e8 was the value, not the scheme. At 1e7 the weights of the 8 bins at iteration 4000 of window 0 are
+  1.00 0.97 0.96 0.95 0.94 0.93 0.92 0.91 (bin losses 1e-9 - 2.6e-9), of window 1 1.00 ... 0.97.
+- The larger eps, the longer the later part of the window waits: at 1e7 the end term has weight 0 until iteration
+  ~1750 of window 0 and ~1000 of window 1 (a warm window starts with bin losses 2e-4 - 3e-4, so every eps >= 1e4
+  shuts all bins but the first in the first segment of EVERY window).
+- No eps beats the runs without weights. Window 0: 1.2e-9 - 3.3e-9 with weights against 8.2e-10 - 1.1e-9 without
+  (three runs); window 1: 5.4e-10 - 1.1e-9 against 2.9e-10 - 5.8e-10. No trend with eps between 1e2 and 1e7 (the order
+  is 1e3 < 1e5 < 1e2 < 1e6 < 1e7 < 1e4 in window 0): the differences among the six are scatter.
+- eps = 1e2 does NOT reproduce the unweighted run's final loss, although its weights are 0.91 - 1.00 in the first
+  segment and 1.00 afterwards: its held loss follows B seed 7 within 15% up to iteration 1750 (2.0e-5 8.3e-7 3.4e-7
+  1.7e-7 1.2e-7 7.7e-8 3.5e-8 against 2.1e-5 7.3e-7 3.1e-7 1.6e-7 1.2e-7 8.0e-8 3.8e-8), then separates and ends 2.7x
+  higher. The close start says the weighted loss is the same function; whether the later factor 1.5 - 4 of all six
+  runs is chance (quasi-Newton trajectories separating after a small perturbation; 1e2, 1e3, 1e4 with weights 1.00
+  from iteration 750 already differ 2.7x among themselves) or a small systematic cost of the weighted path is NOT
+  settled: six of six above the three unweighted runs is suggestive. The clean control is the same two windows with
+  the current code and `--causal_eps 0` plus one with 1e-30 (not launched).
+- Errors against the 1D finite-difference reference at t = 0.25 and 0.5 (`tools/table_1d_runs.py`): equal within
+  scatter for eps 1e2 - 1e7 and B seed 7 (alpha rms in r = 1-3: 6e-7 - 3e-6 against 6e-7 at t = 0.25; worst
+  |m/M - 1| over r >= 0.2: 3.5e-4 - 8.6e-4 against 4.9e-4 at t = 0.25, 6.0e-4 - 1.2e-3 against 6.3e-4 at t = 0.5);
+  eps = 1e8 is worse (chi 7e-6 against 1e-6 in r = 0.2-1 at t = 0.5).
+- Reading: in the first two windows causal weights cost iterations and give nothing; these windows are not where B
+  has its problem (the hand-off growth at r = 0.225 - 1 starts at window ~16), so the scan does not answer whether
+  a gentle eps helps there. `tools/plot_1d_loss.py` now takes up to 8 runs and stops with an error beyond that (it
+  silently dropped runs past the fifth).

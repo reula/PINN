@@ -245,6 +245,14 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
 32. 2026-11-16 (the user): scan of `--causal_eps` 1e7 ... 1e2 on B seed 7, two windows each
    (`1d_T05_rinB_causal_e7` ... `_e2`, `--N_window 2 --tfinal 0.5`), launched on Mendieta. Grade: weights at the
    end of window 0, held parts of windows 0, 1 and errors at t = 0.25, 0.5 against B seed 7 and eps = 1e8.
+   GRADED (README "Result of the scan", plots/2026-11-16/causal_eps_scan.png): the window end opens for every
+   eps <= 1e7 (end weight 0.90 at the end of window 0 for 1e7, 1.00 for <= 1e5), later the larger eps (end weight
+   > 0.5 from iteration 250 / 500 / 750 / 1250 / 1500 / 2750 for 1e2 ... 1e7); no eps beats the unweighted runs
+   (held window 0: 1.2e-9 - 3.3e-9 against 8.2e-10 - 1.1e-9; window 1: 5.4e-10 - 1.1e-9 against 2.9e-10 - 5.8e-10),
+   no trend with eps, errors at t = 0.25, 0.5 equal within scatter. eps = 1e2 follows the unweighted run to
+   iteration 1750 and then ends 2.7x higher: chance or a small cost of the weighted path is not settled (control:
+   two windows with the current code, `--causal_eps 0` and 1e-30; not launched). Two windows do not test B's actual
+   problem (hand-offs from window ~16). Nothing running on Mendieta.
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
