@@ -265,6 +265,15 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    weights 0.91 - 1.00 in the first 250 iterations only). Open: sensitivity to any early perturbation or a
    systematic cost of training early times first. Still running: `1d_T8_tplzz60_con_rinB_causal_e7` (job
    1189058, node ivb05, which ran the controls 3-4x slower than usual).
+   FULL RUN GRADED (README "Result of the full run at eps = 1e7", plots/2026-11-17/): no gain. Window end
+   trained in every window but the last (end weight 0.97-0.98 in w1-w14, 0.6-0.75 in w27-w30, 0.10 in w31); held
+   loss 2x above B in w0-w3, within the seed pair after, 1.4e-7 against 3.9e-8 / 2.2e-8 in w31; hand-off jumps at
+   r = 0.225 - 1 the same curve as B (alpha 0.5-1 at t = 7.75: 5.8e-5 against 1.2e-4, 7.9e-5; shift 2.8e-4
+   against 2.1e-4, 1.2e-4); fields and masses within the seed spread (worst mass 6.6e-3 against 5.6e-3, 3.0e-3);
+   far Khat drift -5.1e-5 per unit time (unchanged). Weighted runs are not reproducible digit for digit (10% at
+   the end of window 0 between two identical eps = 1e7 runs; candidate: GPU scatter-add of the bin losses).
+   Causal weights are closed (tries 61-64) unless a new reason appears. 32-window jobs use 28.2 of 28 GB.
+   Nothing running on Mendieta.
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps

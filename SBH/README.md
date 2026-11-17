@@ -2957,3 +2957,46 @@ still open is whether that is the sensitivity of the quasi-Newton path to any ea
 is chance: six of six, against three unweighted variants at 8.2e-10 - 1.1e-9) or a systematic cost of training
 early times first; the scan cannot tell these apart. (The two control jobs took 44 and 37 min of wall time
 against 11 for the scan jobs, with 15 min of training in history.csv: node ivb05, where the full run also sits.)
+
+**Result of the full run at eps = 1e7 (2026-11-17; job 1189058, 3 h 01 min on ivb05; data
+eval_data/1d_T8_tplzz60_con_rinB_causal_e7/, eval_data/seams/rinB_causal_e7.npz; plots/2026-11-17/
+{loss_causal_e7, seams_causal_e7, invariants_causal_e7, far_drift_causal_e7}.png).**
+`1d_T8_tplzz60_con_rinB_causal_e7` = B seed 7 + `--causal_eps 1e7` (8 bins), against B seed 7
+(`1d_T8_tplzz60_con_rinB`), B seed 8 (`..._rinB_s8`) and eps = 1e8 (`..._rinB_causal`). No gain: the run is B within
+the seed spread, and the hand-off growth it was meant to test is unchanged.
+- Weights: the window end is trained in every window but the last. End-term weight at iteration 4000: 0.89 (w0),
+  0.97-0.98 (w1-w14), 0.94-0.96 (w15-w20), 0.81-0.92 (w21-w26), 0.59-0.75 (w27-w30), 0.10 (w31: never above 0.5,
+  the same shutting as eps = 1e8 from window ~20, here only at the very end). It passes 0.5 at iteration 2750 /
+  2000 / 1000 of windows 0 / 1 / 2, then at 750 (1000-1250 from window 23).
+- Held loss at the end of the window (eps 1e7 | B seed 7 | B seed 8): w0 3.2e-9 | 8.2e-10 | 1.1e-9; w1-w3 8e-10 |
+  3-4e-10 | 4-7e-10 (2x higher, as in the scan); w4-w20 within 1.5x of the pair (e.g. w8 8.7e-10 | 6.7e-10 |
+  7.0e-10; w16 3.2e-9 | 2.4e-9 | 1.9e-9); w21-w27 5e-9 - 1.4e-8 | 5e-9 - 1.6e-8 | 1.5e-9 - 1.6e-8; w28, w29 2.4e-8,
+  2.0e-8 | 9.8e-9, 1.2e-8 | 6.8e-9, 1.5e-8; w31 1.4e-7 | 3.9e-8 | 2.2e-8. The hand-off part of the held loss grows as
+  in B: 2e-9 (w21), 5e-9 - 6e-9 (w23, w24), 2e-8 (w31) against B seed 7's 2e-9, 6e-9 - 1e-8, 2e-8.
+- Hand-off jumps by band (`--eval_seams`), rms at t = 6 / 7 / 7.75 (eps 1e7 | B seed 7 | B seed 8): alpha in
+  r = 0.5-1: 2.4e-5 5.0e-5 5.8e-5 | 2.9e-5 5.9e-5 1.2e-4 | 2.4e-5 6.5e-5 7.9e-5; shift in r = 0.5-1: 1.4e-4 1.8e-4
+  2.8e-4 | 1.9e-4 5.0e-5 2.1e-4 | 1.4e-4 4.0e-5 1.2e-4; r > 3 the same as B and con (2e-6 - 8e-6). The growth at
+  r = 0.225 - 1 from t ~ 4 is the same curve; the shift jump is again opposite to the carried error (slope -0.35
+  to -1.36 at r = 0.5-1). Ordering the training in time inside the window does not touch it.
+- Errors against the 1D finite-difference reference at t = 2 / 4 / 6 / 8 (`tools/table_1d_runs.py`): alpha, chi,
+  Khat by band within the seed pair's spread at all four times; worst |m/M - 1| (r >= 0.2, up to t) 1.3e-3 1.3e-3
+  2.8e-3 6.6e-3 against 1.2e-3 1.2e-3 2.3e-3 5.6e-3 (seed 7) and 1.4e-3 1.4e-3 1.4e-3 3.0e-3 (seed 8); mass in
+  r = 12-20 at t = 8: 6.6e-3 against 5.6e-3, 3.0e-3. One difference, at the last time only: in r = 0.2-1 at t = 8
+  max |m/M - 1| = 3.8e-5 against 3.2e-4, 3.7e-4, (grad R)^2 error 3.9e-5 against 2.6e-4, 3.1e-4, horizon mass
+  error +3e-5 against -6.5e-5, -2.1e-4, Khat rms 5e-4 against 9e-4, 9e-4; at t = 6 the three runs are equal there
+  (4.0e-5 | 3.7e-5 | 1.5e-5). One seed, one time: noted, not claimed.
+- Far zone: Khat error at r = 12 drifts -5.1e-5 per unit time (seed 7: -4.0e-5, seed 8: -4.5e-5), alpha error
+  there +2.6e-3 at t = 8 (2.6e-3, 2.6e-3): unchanged.
+- Weighted runs are NOT reproducible digit for digit, unlike the unweighted ones: window 0 of this run and of the
+  two-window `1d_T05_rinB_causal_e7` (same flags but `--N_window 2`, which the eps = 0 control showed to be
+  irrelevant) agree to 5 digits up to iteration 500, differ from iteration 750 (held 5.168e-4 against 5.176e-4)
+  and end at 2.9e-9 against 3.2e-9. Cause not checked; candidate: the scatter-add of the bin losses in
+  `causal_weights` on the GPU. This also measures the effect of a rounding-size perturbation on a weighted window:
+  10%, far below the factor 1.5 - 4 of the scan, which speaks for a real cost of the early weighting rather than
+  chance (one comparison).
+- The job used 28.2 GB of the 28 GB it asks for (seff: 100.87%); it completed, but 32-window jobs are at the
+  memory limit of `jobs/mendieta/sing1d.sbatch`.
+
+Conclusion on causal weights inside a window (tries 61-64): eps = 1e8 breaks the run, eps <= 1e7 gives the
+unweighted run at a cost in the first windows, and no value changes B's hand-off growth. Not pursued further
+unless a new reason appears.
