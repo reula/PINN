@@ -259,6 +259,12 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    `1d_T8_tplzz60_con_rinB_causal_e7` (B seed 7 + `--causal_eps 1e7`, 32 windows). Grade (a) against windows 0, 1
    of B seed 7 (held 8.2e-10, 3.5e-10) and of the scan; (b) against B seed 7 / seed 8 / eps 1e8 with the seams by
    band, held loss per window, invariants and far drift. README "Control of the scan and a full run".
+   CONTROL GRADED: `--causal_eps 0` and `1e-30` both reproduce B seed 7's windows 0, 1 digit for digit (held
+   8.248e-10, 3.548e-10; all 32 history rows): reruns are deterministic and the weighted code path with unit
+   weights is the unweighted run. The scan's factor 1.5 - 4 comes from the weights themselves (at eps = 1e2 from
+   weights 0.91 - 1.00 in the first 250 iterations only). Open: sensitivity to any early perturbation or a
+   systematic cost of training early times first. Still running: `1d_T8_tplzz60_con_rinB_causal_e7` (job
+   1189058, node ivb05, which ran the controls 3-4x slower than usual).
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps

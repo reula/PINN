@@ -2943,3 +2943,17 @@ weight of the window-end term exceeds 0.5:
   unweighted run after the first ~1000 iterations of each window. To grade against B seed 7, B seed 8 and
   eps = 1e8: hand-off term and seams by band (`--eval_seams`, `tools/plot_seams_compare.py`), held loss per window,
   invariants, far Khat drift.
+
+**Result of the control (2026-11-17; jobs 1189056, 1189057; data eval_data/1d_T05_rinB_causal_{e0,em30}/).** Both
+controls reproduce the first two windows of B seed 7 to every printed digit, at every one of the 32 history rows:
+held loss at the end of window 0 / 1 = 8.248e-10 / 3.548e-10 for `--causal_eps 0`, for `--causal_eps 1e-30` (weights
+printed 1.00 in all 8 bins and the end term in all 32 segments) and for the original run of 2026-11-12. So
+(1) a rerun on Mendieta is reproducible digit for digit (same seed, different node: ivb05 against the original's),
+i.e. there is no run-to-run noise at fixed seed and flags; (2) the weighted code path with unit weights is the
+unweighted run: the path is not the cause. The factor 1.5 - 4 of the six scan runs therefore comes from the
+weights themselves, and for eps = 1e2 that means from weights 0.91 - 1.00 during the first 250 iterations only
+(1.00 afterwards): a perturbation of < 10% of the early objective is enough to end window 0 2.7x higher. What is
+still open is whether that is the sensitivity of the quasi-Newton path to any early perturbation (then the sign
+is chance: six of six, against three unweighted variants at 8.2e-10 - 1.1e-9) or a systematic cost of training
+early times first; the scan cannot tell these apart. (The two control jobs took 44 and 37 min of wall time
+against 11 for the scan jobs, with 15 min of training in history.csv: node ivb05, where the full run also sits.)
