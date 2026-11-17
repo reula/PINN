@@ -252,7 +252,13 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    no trend with eps, errors at t = 0.25, 0.5 equal within scatter. eps = 1e2 follows the unweighted run to
    iteration 1750 and then ends 2.7x higher: chance or a small cost of the weighted path is not settled (control:
    two windows with the current code, `--causal_eps 0` and 1e-30; not launched). Two windows do not test B's actual
-   problem (hand-offs from window ~16). Nothing running on Mendieta.
+   problem (hand-offs from window ~16).
+33. 2026-11-17 (the user: "let us do both"): launched on Mendieta (a) the control of the scan, two windows each:
+   `1d_T05_rinB_causal_e0` (`--causal_eps 0`: the unweighted path of the current code) and
+   `1d_T05_rinB_causal_em30` (`--causal_eps 1e-30`: weighted path, all weights exactly 1); (b) the full run
+   `1d_T8_tplzz60_con_rinB_causal_e7` (B seed 7 + `--causal_eps 1e7`, 32 windows). Grade (a) against windows 0, 1
+   of B seed 7 (held 8.2e-10, 3.5e-10) and of the scan; (b) against B seed 7 / seed 8 / eps 1e8 with the seams by
+   band, held loss per window, invariants and far drift. README "Control of the scan and a full run".
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps

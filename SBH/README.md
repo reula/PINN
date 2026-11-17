@@ -2928,3 +2928,18 @@ weight of the window-end term exceeds 0.5:
   has its problem (the hand-off growth at r = 0.225 - 1 starts at window ~16), so the scan does not answer whether
   a gentle eps helps there. `tools/plot_1d_loss.py` now takes up to 8 runs and stops with an error beyond that (it
   silently dropped runs past the fifth).
+
+**Control of the scan and a full run at eps = 1e7 (2026-11-17, the user: "let us do both").** Launched on Mendieta:
+- `1d_T05_rinB_causal_e0` and `1d_T05_rinB_causal_em30` = B seed 7 + `--causal_eps 0` / `1e-30`, windows 0 and 1
+  only (`--N_window 2 --tfinal 0.5`). eps = 0 runs the unweighted path of the current code: against B seed 7's
+  windows 0, 1 (held 8.2e-10, 3.5e-10) it measures how well a rerun reproduces. eps = 1e-30 runs the weighted
+  path with every weight exactly 1 (exp(-1e-30 x) = 1 in double precision): against eps = 0 it isolates the
+  weighted code path from the weights. Together they say whether "six of six above the unweighted runs" in the
+  scan is chance, a rerun effect or the weighted path.
+- `1d_T8_tplzz60_con_rinB_causal_e7` = B seed 7 + `--causal_eps 1e7`, the full 32 windows to t = 8. 1e7 and not
+  1e6: it is the largest value of the scan that still trains the window end, and at B's late bin losses (~3e-9)
+  its weights run from 1 to ~0.8 across the window, so the ordering in time still acts where B has its problem
+  (hand-offs at r = 0.225 - 1 from window ~16); at 1e6 the weights there would be ~0.98, i.e. almost the
+  unweighted run after the first ~1000 iterations of each window. To grade against B seed 7, B seed 8 and
+  eps = 1e8: hand-off term and seams by band (`--eval_seams`, `tools/plot_seams_compare.py`), held loss per window,
+  invariants, far Khat drift.
