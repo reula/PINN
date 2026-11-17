@@ -2947,7 +2947,7 @@ weight of the window-end term exceeds 0.5:
 **Result of the control (2026-11-17; jobs 1189056, 1189057; data eval_data/1d_T05_rinB_causal_{e0,em30}/).** Both
 controls reproduce the first two windows of B seed 7 to every printed digit, at every one of the 32 history rows:
 held loss at the end of window 0 / 1 = 8.248e-10 / 3.548e-10 for `--causal_eps 0`, for `--causal_eps 1e-30` (weights
-printed 1.00 in all 8 bins and the end term in all 32 segments) and for the original run of 2026-11-12. So
+printed 1.00 in all 8 bins and the end term in all 32 segments) and for the original run of 2026-11-10 (node ivb07). So
 (1) a rerun on Mendieta is reproducible digit for digit (same seed, different node: ivb05 against the original's),
 i.e. there is no run-to-run noise at fixed seed and flags; (2) the weighted code path with unit weights is the
 unweighted run: the path is not the cause. The factor 1.5 - 4 of the six scan runs therefore comes from the
