@@ -3122,10 +3122,14 @@ the problem to be well posed: the interior points are uniform in t up to t1. It 
 indicative): errors at t = 0.5 with the term | without: alpha rms 1.8e-3 | 6.6e-4, chi 1.3e-3 | 5.5e-4, Khat
 5.9e-3 | 1.9e-3, mass at r = 1 -9.2e-3 | -8.2e-3.
 
-**The cluster run moved to the hub (2026-11-18 19:10 UTC, the user: "If Mendieta is full we could try with the HUB").**
-Both Mendieta jobs were still pending (estimated start 02:30 - 03:00 UTC on 19 Nov) and the hub had no server
-running, so `1d_T8_tplzz60_con_rinB_cluster_hw` was launched on the hub's A30 with
-`NPAR=1 jobs/hub/sing1d_batch.sh` (`--settings cluster --inner_hw 0.15`, the same flags as the Mendieta job), with
-the keepalive on the mini. The hub's tree (shared with serafin) was fast-forwarded over HTTPS and
-`reference_1d/sing_bl_m0.5_dense_r3_t8.npz` copied to it from the mini. This run is also the first measurement
-of time and GPU memory at the cluster point counts on one A30.
+**Trying the hub while Mendieta's queue is full (2026-11-18 19:10 UTC, the user: "If Mendieta is full we could try with
+the HUB").** Both Mendieta jobs were pending (estimated start 02:30 - 03:00 UTC on 19 Nov). The hub had no server
+running and could not start one: two spawn requests (19:21, 19:35 UTC) ended with "0/10 nodes are available ...
+CardInsufficientMemory (fat.boogie.ccad.unc.edu.ar)", i.e. the hub's GPU node has no free card memory. Nothing was
+launched there. Prepared so that a launch needs no further step: the hub's tree (shared with serafin)
+fast-forwarded over HTTPS, `reference_1d/sing_bl_m0.5_dense_r3_t8.npz` copied to it from the mini, the one-line
+launch in `jobs/hub/cmd_cluster_hw.txt` (`NPAR=1 jobs/hub/sing1d_batch.sh`, the Mendieta job's flags with
+`--settings cluster --inner_hw 0.15`). `jobs/mini/hub_retry.sh` (new) runs on the mini: every ~30 min it asks the
+hub for a server and, if one comes up, types that command and becomes the batch's keepalive; it stops when the
+Mendieta copy of the run (job 1189439) is no longer pending or after 12 tries (~6 h), and cancels nothing. Log:
+`~/hub_retry_sbh.log` on the mini.

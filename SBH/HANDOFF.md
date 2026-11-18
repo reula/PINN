@@ -306,12 +306,14 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    IN THE QUEUE: `..._cluster_hw` (1189439) and `..._cluster_hw_noend`. Grade the pair on errors, masses,
    seams, far drift. Words: the user says "hand-over" for the end-of-window points too; ask which slice.
    2026-11-18 19:10 UTC (the user: if Mendieta is full, try the hub): both Mendieta jobs still pending (start
-   estimated 02:30 - 03:00 UTC on the 19th); the hub had no server. `1d_T8_tplzz60_con_rinB_cluster_hw` LAUNCHED ON
-   THE HUB (one A30; `NPAR=1 jobs/hub/sing1d_batch.sh`, log logs/batch_cluster_hw.log and
-   logs/hub_1d_T8_tplzz60_con_rinB_cluster_hw.log on serafin; keepalive on the mini, ~/hub_keepalive_sbh.log).
-   The Mendieta copy of that run (1189439) stays queued only until the hub run has shown it works, then is
-   cancelled; the noend run (1189443) stays on Mendieta. The hub tree was fast-forwarded from serafin over HTTPS
-   and reference_1d/sing_bl_m0.5_dense_r3_t8.npz copied there from the mini.
+   estimated 02:30 - 03:00 UTC on the 19th). THE HUB COULD NOT START A SERVER EITHER: its GPU node is full
+   ("CardInsufficientMemory (fat.boogie)", 19:21 and 19:35 UTC). Nothing was launched there. A retry loop runs on
+   the mini (`jobs/mini/hub_retry.sh jobs/hub/cmd_cluster_hw.txt 1189439 ...`, log ~/hub_retry_sbh.log): every
+   ~30 min it asks for the server and, if it comes up, launches `1d_T8_tplzz60_con_rinB_cluster_hw` on the hub
+   (`NPAR=1 jobs/hub/sing1d_batch.sh`, logs/batch_cluster_hw.log on serafin) and becomes its keepalive; it stops
+   when the Mendieta job 1189439 leaves PENDING or after 12 tries, and never cancels anything. IF BOTH END UP
+   RUNNING, cancel one copy by hand. The hub tree was fast-forwarded from serafin over HTTPS and
+   reference_1d/sing_bl_m0.5_dense_r3_t8.npz copied there from the mini.
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
