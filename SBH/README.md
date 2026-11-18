@@ -3013,3 +3013,32 @@ Launched: `1d_T8_tplzz60_con_rinB_n10` = B seed 7 (`1d_T8_tplzz60_con_rinB`) + `
 B seed 7 and seed 8: time and memory per window, held loss per window, band errors and masses at t = 2, 4, 6, 8, the
 far Khat drift and the hand-off jumps by band. If the points matter, the comparisons of TRIES_1D.md made at 2000
 points have to be re-read in that light.
+
+**Mini settings and cluster settings (2026-11-18, the user: "the A30 do not have that much memory... But you can use
+two of them. Also use more points on the time boundaries. We should have mini settings and mendieta/hub settings
+and do not mix them.").** `sing_1d.py --settings {auto, mini, cluster}`:
+
+| settings | where | interior | end slice t = t1 | hand-off slice t = t0 | outer boundary (times) | devices |
+|---|---|---|---|---|---|---|
+| mini | the mini, the laptop: smoke tests | 2000 | 250 | 400 | 125 | 1 |
+| cluster | Mendieta, the hub: every graded run | 20000 | 5000 | 8000 | 2500 | the visible GPUs, at most 2 |
+
+Points per draw (a new draw every 250 iterations); 10x in the interior and 20x on the two time slices of the
+window. Held-out points (2000) and iterations (4000 per window) are the same in both for now. Rules built into
+the code: `auto` (the default) = cluster when the machine has NVIDIA GPUs, mini otherwise; `--settings mini` on a
+GPU is refused; a deliberate deviation is spelled with explicit `--n_int / --n_end / --n_ic / --n_gpus` and is
+printed and saved as NON-STANDARD; a training run writes `OUT/settings.json` and a `--resume` with other values
+is refused, so the settings cannot change inside a run. Every 1D try up to 64 was made at the mini sizes, on
+Mendieta too (TRIES_1D.md says so now).
+Two GPUs: `--n_gpus N` splits every per-point array of a training batch over N devices with JAX's automatic
+sharding, the scheme of `EEccz4_BH_puncture.py --n_gpus` (each GPU evaluates the residual of its own points; the
+parameters and the inverse Hessian are not touched). The 2000-point runs peak at 9.4 GB on one A30 (24 GB, of
+which 80% is given to JAX); how much of that scales with the points was not known when this was launched.
+`jobs/mendieta/sing1d.sbatch` now asks for both A30 of a node and 56 GB, and passes `--settings cluster`.
+The pending one-GPU run `1d_T8_tplzz60_con_rinB_n10` (job 1189431) was cancelled before it started and replaced by
+`1d_T8_tplzz60_con_rinB_cluster` = B seed 7 at the cluster settings.
+Checked on the mini before launching (tiny network 2x8, 64 / 16 / 16 points, 20 iterations, window 0; 19 s and
+32 s): one device and two emulated CPU devices (`XLA_FLAGS=--xla_force_host_platform_device_count=2`, `--n_gpus 2`)
+give the same train and held loss to every printed digit (3.327e-04, 2.524e-04) and the same errors at t = 0.25;
+a `--resume` with another `--n_int` is refused with the list of differences. Not checked before the launch: the
+two-GPU path on real A30s, and the GPU memory at 20000 points (the job's first window says).

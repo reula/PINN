@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# One sing_1d.py run on a Mendieta A30 (2026-11-06; the hub's jobs/hub/sing1d_batch.sh items, one job each).
+# One sing_1d.py run on a Mendieta node, both A30 (2026-11-06; the hub's jobs/hub/sing1d_batch.sh items, one job each).
 #
 #   cd ~/Julia/PINN/SBH && sbatch -J NAME --export=ALL,OUTDIR=NAME,SING_ARGS="..." jobs/mendieta/sing1d.sbatch
 #
@@ -9,12 +9,16 @@
 # reference_1d/ref_single_m0.5_dr0.005_t20.npz and sing_bl_m0.5_dense.npz (git-ignored: copy them over), and
 # for --stage2 the finished run's window_*.pkl under runs/. Mendieta's /home is not the hub's: results go back
 # by rsync. Log: runs/slurm_NAME_JOBID.out.
+# 2026-11-18 (the user): the run uses sing_1d.py's CLUSTER settings (--settings cluster: 20000 interior, 5000 end-slice,
+# 8000 hand-off points per draw, split over the node's two A30) - never the mini's. A deliberate deviation goes in
+# SING_ARGS as explicit --n_int / --n_end / --n_ic / --n_gpus and is logged NON-STANDARD. One GPU only:
+# sbatch --gres=gpu:1 --mem=28G ... with --n_gpus 1 in SING_ARGS.
 # ---------------------------------------------------------------------------
 #SBATCH -p multi
 #SBATCH -A ifeg
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #SBATCH -c 8
-#SBATCH --mem=28G
+#SBATCH --mem=56G
 #SBATCH -t 2-00:00:00
 #SBATCH -o runs/slurm_%x_%j.out
 set -uo pipefail
@@ -27,5 +31,5 @@ echo "=== $(hostname) $(nvidia-smi -L | tr '\n' ' ') $OUTDIR  HEAD $(git rev-par
 echo "ARGS: $BASE $SING_ARGS"
 "$PY" -c "import jax; d = jax.devices(); print('jax', jax.__version__, d); raise SystemExit(d[0].platform != 'gpu')" \
     || { echo "ERROR: JAX does not see a GPU" >&2; exit 1; }
-"$PY" -u sing_1d.py --out "runs/$OUTDIR" --resume $BASE $SING_ARGS
+"$PY" -u sing_1d.py --out "runs/$OUTDIR" --resume --settings cluster $BASE $SING_ARGS
 echo "=== done $(date -u '+%F %T UTC')"

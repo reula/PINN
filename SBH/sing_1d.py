@@ -33,7 +33,9 @@ The exact solution of this problem IS the 1D reference, so the error is the erro
 import argparse
 import csv
 import os
+import json
 import pickle
+import shutil
 import sys
 import tempfile
 import time
@@ -58,9 +60,22 @@ ap.add_argument("--hidden", type=int, default=40)
 ap.add_argument("--layers", type=int, default=6)
 ap.add_argument("--tfinal", type=float, default=0.5)
 ap.add_argument("--N_window", type=int, default=2)
-ap.add_argument("--n_int", type=int, default=2000)
-ap.add_argument("--n_end", type=int, default=250)
-ap.add_argument("--n_ic", type=int, default=400)
+ap.add_argument("--settings", choices=["auto", "mini", "cluster"], default="auto",
+                help="(2026-11-18, the user: mini settings and Mendieta / hub settings, never mixed) the two named sets of "
+                     "point counts, SETTINGS below. mini: the sizes of the laptop / mini tests (every 1D run up to try 64 "
+                     "used them, on Mendieta too). cluster: Mendieta and the hub. auto = cluster when the machine has "
+                     "NVIDIA GPUs, mini otherwise. --settings mini on a GPU is refused: a deliberate deviation is spelled "
+                     "with the explicit --n_int / --n_end / --n_ic / --n_gpus flags and is printed and saved as "
+                     "NON-STANDARD. A training run writes OUT/settings.json and a --resume with other values is refused")
+ap.add_argument("--n_int", type=int, default=None, help="interior points per draw (default: --settings)")
+ap.add_argument("--n_end", type=int, default=None,
+                help="points on the end slice t = t1 per draw; the outer boundary gets n_end // 2 times (default: --settings)")
+ap.add_argument("--n_ic", type=int, default=None, help="points on the hand-off slice t = t0 per draw (default: --settings)")
+ap.add_argument("--n_gpus", type=int, default=None,
+                help="(2026-11-18, the user: two A30) split every per-point array of a training batch over this many GPUs "
+                     "(automatic sharding, as --n_gpus of EEccz4_BH_puncture.py: each GPU evaluates the residual of its own "
+                     "points, the parameters and the inverse Hessian are untouched). Default: mini 1; cluster = the visible "
+                     "GPUs, at most 2. The point counts must be divisible by it")
 ap.add_argument("--n_held", type=int, default=2000)
 ap.add_argument("--inner_frac", type=float, default=0.125)
 ap.add_argument("--inner_sigma", type=float, default=0.05)
@@ -103,6 +118,8 @@ ap.add_argument("--r_in_w", type=float, default=0.1, help="width of the smooth s
 ap.add_argument("--r_min", type=float, default=0.0,
                 help="(2026-11-08, the user: with a template, look only outside the inner region) every interior / end / IC "
                      "radius below r_min is redrawn log-uniform on [r_min, R], so no loss point sits inside r_min; 0 = off")
+SETTINGS = {"mini": dict(n_int=2000, n_end=250, n_ic=400),          # 2026-11-01 laptop sizes
+            "cluster": dict(n_int=20000, n_end=5000, n_ic=8000)}     # 2026-11-18: 10x interior, 20x on the two time slices
 ap.add_argument("--iters", type=int, default=4000)
 ap.add_argument("--iters0", type=int, default=0,
                 help="iterations of window 0 when > 0 (default: --iters); window 0 starts from scratch and can sit on a "
@@ -245,6 +262,12 @@ argv = sys.argv[1:]
 rest = argv[argv.index("--") + 1:] if "--" in argv else []
 a = ap.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
 os.makedirs(a.out, exist_ok=True)
+if a.settings == "auto":
+    a.settings = "cluster" if shutil.which("nvidia-smi") else "mini"
+NONSTD = [f"{k_}={getattr(a, k_)}" for k_, v_ in SETTINGS[a.settings].items() if getattr(a, k_) not in (None, v_)]
+for k_, v_ in SETTINGS[a.settings].items():
+    if getattr(a, k_) is None:
+        setattr(a, k_, v_)
 
 if a.r_in > 0 and a.r_min <= 0:
     a.r_min = a.r_in
@@ -257,6 +280,11 @@ MASS = tab["mass"]
 ns = load(["--n_stars", "1", "--BL_masses", repr(MASS), "--BL_momenta", "0", "--BL_momenta_y", "0",
            "--chi_bg_mode", "physical", "--bh_center_mode", "fixed"] + rest, outdir=tempfile.mkdtemp(prefix="sing1d_"))
 jax, jnp, np = ns["jax"], ns["jnp"], ns["np"]
+ON_GPU = jax.devices()[0].platform == "gpu"
+if a.n_gpus is None:
+    a.n_gpus = min(2, len(jax.devices())) if (a.settings == "cluster" and ON_GPU) else 1
+elif a.n_gpus != (min(2, len(jax.devices())) if a.settings == "cluster" else 1):
+    NONSTD.append(f"n_gpus={a.n_gpus}")
 GT, CHI, TH, GH, AL = ns["GT_SLICE"], ns["CHI_IDX"], ns["THETA_IDX"], ns["GHAT_SLICE"], ns["ALPHA_IDX"]
 DD = np.asarray(ns["_DD_OUTPUT_IDXS"])
 R = float(ns["R_domain"])
@@ -1005,6 +1033,51 @@ if a.resume:
         z = np.load(REP)
         rep = {k: list(z[k]) for k in rep}
         print(f"resumed after window {S['window']}")
+# ---- the settings of this training run: printed, saved, and never changed on a resume -----------------
+if a.settings == "mini" and ON_GPU:
+    raise SystemExit("--settings mini on a GPU machine: the mini settings are for the mini / laptop. Use --settings cluster "
+                     "(the default here); spell a deliberate deviation with --n_int / --n_end / --n_ic / --n_gpus")
+if a.settings == "cluster" and not ON_GPU:
+    print("WARNING: --settings cluster without a GPU", flush=True)
+SET = dict(settings=a.settings, n_int=a.n_int, n_end=a.n_end, n_ic=a.n_ic, n_held=a.n_held, iters=a.iters,
+           n_change=a.n_change, nonstandard=NONSTD)
+print(f"settings: {a.settings}" + (f" NON-STANDARD ({', '.join(NONSTD)})" if NONSTD else "")
+      + f" | points per draw: interior {a.n_int}, end slice {a.n_end}, hand-off slice {a.n_ic}, outer boundary "
+        f"{max(a.n_end // 2, 8)} | held {a.n_held} | {a.iters} iterations per window, new draw every {a.n_change} | "
+        f"{a.n_gpus} device(s)", flush=True)
+SET_F = os.path.join(a.out, "settings.json")
+if os.path.exists(SET_F):
+    old = json.load(open(SET_F))
+    diff = [f"{k_}: {old.get(k_)} -> {v_}" for k_, v_ in SET.items() if old.get(k_) != v_]
+    if diff:
+        raise SystemExit(f"{SET_F}: this run was started with other settings ({'; '.join(diff)}); settings are not mixed "
+                         "inside a run")
+elif k0 > 0:
+    print(f"note: resuming a run without settings.json (made before 2026-11-18); writing the current ones", flush=True)
+json.dump({**SET, "n_gpus": a.n_gpus}, open(SET_F, "w"), indent=1)
+SH_P = SH_R = None
+if a.n_gpus > 1:                                           # split the points of every training batch over the GPUs
+    from jax.sharding import Mesh, NamedSharding, PartitionSpec
+    if len(jax.devices()) < a.n_gpus:
+        raise SystemExit(f"--n_gpus {a.n_gpus} but {len(jax.devices())} device(s) visible: {jax.devices()}")
+    _mesh = Mesh(np.array(jax.devices()[:a.n_gpus]), ("d",))
+    SH_P, SH_R = NamedSharding(_mesh, PartitionSpec("d")), NamedSharding(_mesh, PartitionSpec())
+    print(f"data parallelism over {a.n_gpus} devices: {jax.devices()[:a.n_gpus]}", flush=True)
+
+
+def shard(batch):
+    """--n_gpus: arrays with a leading point axis are split over the devices, scalars are replicated."""
+    if SH_P is None:
+        return batch
+    out = []
+    for x in batch:
+        x = jnp.asarray(x)
+        if x.ndim and x.shape[0] % a.n_gpus:
+            raise SystemExit(f"--n_gpus {a.n_gpus}: a batch array of {x.shape[0]} points is not divisible by it")
+        out.append(jax.device_put(x, SH_P if x.ndim else SH_R))
+    return tuple(out)
+
+
 loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), static_argnums=1)
 vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 parts_jit = jax.jit(parts)
@@ -1060,10 +1133,10 @@ for k in range(k0, a.N_window):
     kb_h, kb_w, kb_it = np.inf, None, 0                           # --keep_best: lowest held loss so far
     while it < n_iters:
         key, kd = jax.random.split(key)
-        batch = draw(kd, win, a.n_int, a.n_end, a.n_ic, Uic_fn)
+        batch = shard(draw(kd, win, a.n_int, a.n_end, a.n_ic, Uic_fn))
         if a.causal_eps > 0:                                    # weights from the current network, frozen for this segment
             cw_i, cw_e, cw_b, cw_L = causal_jit(unr(w), win, batch)
-            batch = batch + (cw_i, cw_e)
+            batch = shard(batch + (cw_i, cw_e))
             print("  causal: bin loss " + " ".join(f"{float(v):.1e}" for v in cw_L) + " | weight "
                   + " ".join(f"{float(v):.2f}" for v in cw_b) + f" | end {float(cw_e):.2f}", flush=True)
         w = mb.minimize(lambda v: loss_fn(v, unr, win, batch), lambda v: vg_fn(v, unr, win, batch), w, opts).x

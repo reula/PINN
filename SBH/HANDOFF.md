@@ -277,6 +277,14 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    of 1 Nov, never tested. Launched `1d_T8_tplzz60_con_rinB_n10` = B seed 7 + `--n_int 20000 --n_end 2500
    --n_ic 4000` (job with `--mem=31G`: the 2000-point runs already used 28.2 of 28 GB). Grade against B seed 7 /
    seed 8: time and memory, held loss, errors, far drift, seams. README "Number of points of the 1D runs".
+   Same day (the user: one A30 may not hold it, use two; more points on the time boundaries; mini settings and
+   Mendieta / hub settings, never mixed): `sing_1d.py --settings {auto,mini,cluster}` (mini 2000 / 250 / 400,
+   cluster 20000 / 5000 / 8000 points; mini refused on a GPU; settings.json per run, a resume with other values
+   refused) and `--n_gpus` (points split over two A30); `jobs/mendieta/sing1d.sbatch` asks for 2 GPUs, 56 GB and
+   passes `--settings cluster`. Job 1189431 cancelled while pending; launched `1d_T8_tplzz60_con_rinB_cluster`
+   (B seed 7 at the cluster settings). ALL 1D tries up to 64 are at the mini sizes. To reproduce an old run on
+   Mendieta: `--n_int 2000 --n_end 250 --n_ic 400 --n_gpus 1` in SING_ARGS (logged NON-STANDARD) and
+   `sbatch --gres=gpu:1 --mem=28G`. README "Mini settings and cluster settings".
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
