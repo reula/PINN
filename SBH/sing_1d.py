@@ -79,6 +79,11 @@ ap.add_argument("--n_gpus", type=int, default=None,
 ap.add_argument("--n_held", type=int, default=2000)
 ap.add_argument("--inner_frac", type=float, default=0.125)
 ap.add_argument("--inner_sigma", type=float, default=0.05)
+ap.add_argument("--inner_hw", type=float, default=0.0,
+                help="(2026-11-18, the user: a half-Gaussian, to cut the sharp edge of --inner_hi) with --r_min / --r_in: the "
+                     "inner cloud's points are drawn r = r_min + inner_hw |N(0, 1)|, a half-Gaussian that starts at the core "
+                     "edge and has no outer edge. 0.15: 93%% of them in r = 0.225 to 0.5, 99.7%% inside 0.675. Not with "
+                     "--inner_hi. 0 = off")
 ap.add_argument("--inner_hi", type=float, default=0.0,
                 help="(2026-11-18, the user: the points of the inner bump should go to the region near the horizon) with "
                      "--r_min / --r_in: the inner cloud's points (--inner_frac of every draw) are drawn uniform in r on "
@@ -279,6 +284,8 @@ if a.r_in > 0 and a.r_min <= 0:
     a.r_min = a.r_in
 if a.inner_hi > 0 and not 0 < a.r_min < a.inner_hi:
     raise SystemExit("--inner_hi needs --r_min (or --r_in) below it")
+if a.inner_hw > 0 and (a.inner_hi > 0 or a.r_min <= 0):
+    raise SystemExit("--inner_hw needs --r_min (or --r_in) and excludes --inner_hi")
 if a.no_template and not a.hard_ic:
     raise SystemExit("--no_template needs --hard_ic")
 tfile = a.template_file or os.path.join(REF, "sing_bl_m0.5_dense.npz")
@@ -625,6 +632,8 @@ def radii(key, n):
           for k, m, s in zip(keys[:3], sizes, (a.inner_sigma, a.core_sigma, a.focus_sigma))]
     if a.inner_hi > 0:                                    # --inner_hi: the inner cloud sits in the horizon band instead
         rs[0] = a.r_min + (a.inner_hi - a.r_min) * jax.random.uniform(keys[0], (sizes[0],))
+    if a.inner_hw > 0:                                    # --inner_hw: the same, as a half-Gaussian from the core edge
+        rs[0] = a.r_min + a.inner_hw * jnp.abs(jax.random.normal(keys[0], (sizes[0],)))
     rs.append(R * jax.random.uniform(keys[3], (n - n_log - sum(sizes),)) ** (1 / 3))
     if n_log > 0:
         rs.append(a.log_rmin * (R / a.log_rmin) ** jax.random.uniform(keys[4], (n_log,)))
@@ -1053,6 +1062,8 @@ SET = dict(settings=a.settings, n_int=a.n_int, n_end=a.n_end, n_ic=a.n_ic, n_hel
            n_change=a.n_change, nonstandard=NONSTD)
 if a.inner_hi > 0:                                         # only when set, so runs made before the flag still resume
     SET["inner_hi"] = a.inner_hi
+if a.inner_hw > 0:
+    SET["inner_hw"] = a.inner_hw
 print(f"settings: {a.settings}" + (f" NON-STANDARD ({', '.join(NONSTD)})" if NONSTD else "")
       + f" | points per draw: interior {a.n_int}, end slice {a.n_end}, hand-off slice {a.n_ic}, outer boundary "
         f"{max(a.n_end // 2, 8)} | held {a.n_held} | {a.iters} iterations per window, new draw every {a.n_change} | "

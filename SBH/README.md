@@ -3082,3 +3082,15 @@ e.g. a half-Gaussian from the core edge, is an option not taken).
 Later on 18 Nov the user had the run with the old placement cancelled (job 1189436, pending): only
 `1d_T8_tplzz60_con_rinB_cluster_ih` runs. Against B seeds 7, 8 (mini sizes, old placement) it changes the point
 counts and the inner placement together.
+
+**Half-Gaussian instead of the flat block (2026-11-18, the user: "use a half gausian to cut the sharp edge").** New flag
+`--inner_hw S`: the inner cloud's points are r = r_min + S |N(0, 1)|, a half-Gaussian that starts at the core
+edge; it excludes `--inner_hi` and is saved in settings.json. S = 0.15: 93% of the inner points in r = 0.225 to
+0.5, 99.7% inside r = 0.675. Per draw of 20000 by band (`tools/plot_1d_radii_rmin.py OUT.png 0.225 20000 0 0.15`,
+plots/2026-11-18/radii_exact_core_inner_hw.png and ..._inner_hw_linear.png): r = 0.225-0.5: 3701 (18.5%),
+0.5-1: 4378 (21.9%), 1-3: 4249 (21.2%), 3-10: 3001 (15.0%), 10-24: 4671 (23.4%). On the linear axis the density is
+~390 points per 0.025 of r at the core edge, falling smoothly to ~240 at r = 0.6 and joining the core cloud: no
+step. Checked on the mini (smoke test: runs; without the flags the earlier losses are reproduced; both flags
+together are refused). The pending flat-block run `1d_T8_tplzz60_con_rinB_cluster_ih` (job 1189437) was cancelled
+and replaced by `1d_T8_tplzz60_con_rinB_cluster_hw` = B seed 7 flags at the cluster settings + `--inner_hw 0.15`,
+one A30.
