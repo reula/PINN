@@ -301,6 +301,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    settings + `--inner_hw 0.15`, one A30). plots/2026-11-18/radii_exact_core_inner_hw{,_linear}.png.
    Also queued (the user: a run without the hand-over, he thinks it does not help): `1d_T2_rinB_cluster_hw_noic`
    = the same + `-- --lamg0 0`, 8 windows to t = 2. Grade the pair on errors at t = 0.5, 1, 2 and the seam jumps.
+   CORRECTED (the user meant the END-slice points, not the initial condition): job 1189441 cancelled; queued
+   instead `1d_T8_tplzz60_con_rinB_cluster_hw_noend` = the cluster_hw run + `-- --lam_tapa 0`, 32 windows.
+   IN THE QUEUE: `..._cluster_hw` (1189439) and `..._cluster_hw_noend`. Grade the pair on errors, masses,
+   seams, far drift. Words: the user says "hand-over" for the end-of-window points too; ask which slice.
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps

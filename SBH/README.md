@@ -3108,3 +3108,16 @@ indicative): without the term window 1 reaches a LOWER held loss (4.7e-4 against
 t = 0.5 (alpha rms 8.2e-3 against 1.8e-3, chi 8.0e-3 against 1.3e-3, Khat 6.0e-3 against 5.9e-3). To grade
 against the first 8 windows of the run with the term: errors and masses at t = 0.5, 1, 2 and the jumps at the
 seams (`--eval_seams`).
+
+**Correction, and a run without the END-slice term (2026-11-18, the user: "No, I meant the ones that train near the
+boundary, NOT the ones that train on the initial condition").** I had read "hand-over" as the initial-condition
+points at t0; the user meant the points at the end of the window, t1, where the equations are trained with weight
+`lam_tapa` = 2. `1d_T2_rinB_cluster_hw_noic` (job 1189441) was cancelled while pending. Launched
+`1d_T8_tplzz60_con_rinB_cluster_hw_noend` = `1d_T8_tplzz60_con_rinB_cluster_hw` + `-- --lam_tapa 0` (the main
+script's weight, passed after `--`; history shows end 0), 32 windows. The end points are still drawn (their
+count also sets the outer-boundary times), so the pair differs only in the weight of that term; `--keep_best`
+and the held loss then do not contain an end part. Unlike the initial-condition term this one is not needed for
+the problem to be well posed: the interior points are uniform in t up to t1. It has never been varied in 1D (in
+3D, `sing_bl_ic_t05` used 0.5). Smoke test on the mini (2x8 network, 64 points, 2 windows, 40 iterations; only
+indicative): errors at t = 0.5 with the term | without: alpha rms 1.8e-3 | 6.6e-4, chi 1.3e-3 | 5.5e-4, Khat
+5.9e-3 | 1.9e-3, mass at r = 1 -9.2e-3 | -8.2e-3.
