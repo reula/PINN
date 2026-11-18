@@ -3124,7 +3124,7 @@ indicative): errors at t = 0.5 with the term | without: alpha rms 1.8e-3 | 6.6e-
 
 **Trying the hub while Mendieta's queue is full (2026-11-18 19:10 UTC, the user: "If Mendieta is full we could try with
 the HUB").** Both Mendieta jobs were pending (estimated start 02:30 - 03:00 UTC on 19 Nov). The hub had no server
-running and could not start one: two spawn requests (19:21, 19:35 UTC) ended with "0/10 nodes are available ...
+running and could not start one: two spawn requests (about 19:10 and 19:21 UTC) ended with "0/10 nodes are available ...
 CardInsufficientMemory (fat.boogie.ccad.unc.edu.ar)", i.e. the hub's GPU node has no free card memory. Nothing was
 launched there. Prepared so that a launch needs no further step: the hub's tree (shared with serafin)
 fast-forwarded over HTTPS, `reference_1d/sing_bl_m0.5_dense_r3_t8.npz` copied to it from the mini, the one-line
