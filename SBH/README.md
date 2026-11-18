@@ -3046,3 +3046,14 @@ One card first (2026-11-18, the user: "perhaps we can try first with a single ca
 of time"): the two-card job 1189435 was cancelled while pending and `1d_T8_tplzz60_con_rinB_cluster` resubmitted
 with `sbatch --gres=gpu:1 --mem=31G` (the cluster settings then run on the one visible GPU, `--n_gpus` 1, still
 standard). Two cards (the job script's default) only if 20000 / 5000 / 8000 points do not fit in one A30.
+
+**The radial point distribution with an exact core (2026-11-18, the user asked whether the overlaid clouds are in
+place; `tools/plot_1d_radii_rmin.py`, plots/2026-11-18/radii_exact_core.png).** `radii()` still draws the four
+clouds of the 3D code: inner Gaussian sigma 0.05 (12.5% of the points), core Gaussian sigma 0.5 (37.5%), focus
+Gaussian sigma 2 (25%), uniform in the ball r <= 24 (25%). With `--r_in 0.225` (which sets `--r_min`) every
+radius below 0.225 is redrawn log-uniform on [0.225, 24]: that is ALL of the inner cloud and 2.3% of the core
+cloud, 13.4% of the points, so in the B runs the inner cloud does not act as a cloud; it is an even sprinkle per
+decade over the whole exterior. Points per draw of 20000 by band: r = 0.225-0.5: 1795 (9.0%), 0.5-1: 4583 (22.9%),
+1-3: 4837 (24.2%), 3-10: 3646 (18.2%), 10-24: 5139 (25.7%). The thinnest band is the one next to the core, where
+the hand-off jumps grow. Not changed; an option raised with the user is to re-centre the inner cloud just outside
+the core edge.
