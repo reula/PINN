@@ -3094,3 +3094,17 @@ step. Checked on the mini (smoke test: runs; without the flags the earlier losse
 together are refused). The pending flat-block run `1d_T8_tplzz60_con_rinB_cluster_ih` (job 1189437) was cancelled
 and replaced by `1d_T8_tplzz60_con_rinB_cluster_hw` = B seed 7 flags at the cluster settings + `--inner_hw 0.15`,
 one A30.
+
+**A run without the hand-off term (2026-11-18, the user: "can we make a run without the hand-over and compare? I think
+that is not helping at all.").** `1d_T2_rinB_cluster_hw_noic` = `1d_T8_tplzz60_con_rinB_cluster_hw` (cluster
+settings, `--inner_hw 0.15`) + `-- --lamg0 0` (the main script's weight of the IC term, passed after `--`; the
+history then shows ic 0), 8 windows to t = 2 (`--N_window 8 --tfinal 2`: the edges of the full run's first 8
+windows; a `--resume` with the full length would continue it). Window 0 is unaffected (its initial data are in
+the ansatz). Expectation written before the run: for windows >= 1 the term is the only initial data; the
+equations are autonomous, so a window without it can settle on another solution of them (the warm start is the
+previous window's solution replayed on the new interval), and only the exact core and the template blend
+(r <~ 1) carry the true time. Smoke test on the mini (2x8 network, 64 points, 2 windows, 40 iterations; only
+indicative): without the term window 1 reaches a LOWER held loss (4.7e-4 against 5.3e-4) and larger errors at
+t = 0.5 (alpha rms 8.2e-3 against 1.8e-3, chi 8.0e-3 against 1.3e-3, Khat 6.0e-3 against 5.9e-3). To grade
+against the first 8 windows of the run with the term: errors and masses at t = 0.5, 1, 2 and the jumps at the
+seams (`--eval_seams`).

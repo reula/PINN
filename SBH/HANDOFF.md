@@ -299,6 +299,8 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Finally (the user: a half-Gaussian, no sharp edge): `--inner_hw 0.15` (r = 0.225 + 0.15 |N(0, 1)|); job
    1189437 cancelled while pending; THE RUN IN THE QUEUE IS `1d_T8_tplzz60_con_rinB_cluster_hw` (cluster
    settings + `--inner_hw 0.15`, one A30). plots/2026-11-18/radii_exact_core_inner_hw{,_linear}.png.
+   Also queued (the user: a run without the hand-over, he thinks it does not help): `1d_T2_rinB_cluster_hw_noic`
+   = the same + `-- --lamg0 0`, 8 windows to t = 2. Grade the pair on errors at t = 0.5, 1, 2 and the seam jumps.
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
