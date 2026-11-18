@@ -3042,3 +3042,7 @@ Checked on the mini before launching (tiny network 2x8, 64 / 16 / 16 points, 20 
 give the same train and held loss to every printed digit (3.327e-04, 2.524e-04) and the same errors at t = 0.25;
 a `--resume` with another `--n_int` is refused with the list of differences. Not checked before the launch: the
 two-GPU path on real A30s, and the GPU memory at 20000 points (the job's first window says).
+One card first (2026-11-18, the user: "perhaps we can try first with a single card. Waiting for two will take a lot
+of time"): the two-card job 1189435 was cancelled while pending and `1d_T8_tplzz60_con_rinB_cluster` resubmitted
+with `sbatch --gres=gpu:1 --mem=31G` (the cluster settings then run on the one visible GPU, `--n_gpus` 1, still
+standard). Two cards (the job script's default) only if 20000 / 5000 / 8000 points do not fit in one A30.

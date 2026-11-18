@@ -285,6 +285,9 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    (B seed 7 at the cluster settings). ALL 1D tries up to 64 are at the mini sizes. To reproduce an old run on
    Mendieta: `--n_int 2000 --n_end 250 --n_ic 400 --n_gpus 1` in SING_ARGS (logged NON-STANDARD) and
    `sbatch --gres=gpu:1 --mem=28G`. README "Mini settings and cluster settings".
+   Later that day (the user: try first with a single card, two take long to get): the two-card job 1189435
+   cancelled while pending; `1d_T8_tplzz60_con_rinB_cluster` resubmitted on ONE A30 (`sbatch --gres=gpu:1
+   --mem=31G`; --n_gpus then defaults to 1). If it runs out of GPU memory: two cards (plain sbatch).
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
