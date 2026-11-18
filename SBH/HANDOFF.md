@@ -273,7 +273,10 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    far Khat drift -5.1e-5 per unit time (unchanged). Weighted runs are not reproducible digit for digit (10% at
    the end of window 0 between two identical eps = 1e7 runs; candidate: GPU scatter-add of the bin losses).
    Causal weights are closed (tries 61-64) unless a new reason appears. 32-window jobs use 28.2 of 28 GB.
-   Nothing running on Mendieta.
+34. 2026-11-18 (the user: 2000 points is far too few, at least 10x): the 1D point counts were the laptop defaults
+   of 1 Nov, never tested. Launched `1d_T8_tplzz60_con_rinB_n10` = B seed 7 + `--n_int 20000 --n_end 2500
+   --n_ic 4000` (job with `--mem=31G`: the 2000-point runs already used 28.2 of 28 GB). Grade against B seed 7 /
+   seed 8: time and memory, held loss, errors, far drift, seams. README "Number of points of the 1D runs".
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps

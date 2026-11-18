@@ -3000,3 +3000,16 @@ the seed spread, and the hand-off growth it was meant to test is unchanged.
 Conclusion on causal weights inside a window (tries 61-64): eps = 1e8 breaks the run, eps <= 1e7 gives the
 unweighted run at a cost in the first windows, and no value changes B's hand-off growth. Not pursued further
 unless a new reason appears.
+
+**Number of points of the 1D runs (2026-11-18, the user: "Why are we using so few points on our setting! We should be
+using at least one order of magnitude more.").** Every 1D run so far used `sing_1d.py`'s defaults: 2000 interior,
+250 end-of-window and 400 hand-off points per draw (redrawn every 250 iterations, so 16 draws = 32000 interior
+points per window), and 4000 iterations per window. These are the sizes of the first laptop test of the twin
+(2026-11-01); they became "the settings common to every run" (TRIES_1D.md) and were never varied: no entry of
+TRIES_1D.md tests the number of points. The 3D baseline uses 128000 interior points and 24000 iterations per
+window. One earlier sign that 2000 is thin: try 27 (a 19k-parameter second stage overfitted the draw).
+Launched: `1d_T8_tplzz60_con_rinB_n10` = B seed 7 (`1d_T8_tplzz60_con_rinB`) + `--n_int 20000 --n_end 2500
+--n_ic 4000`, nothing else changed (2000 held-out points, 4000 iterations, resampling every 250). To grade against
+B seed 7 and seed 8: time and memory per window, held loss per window, band errors and masses at t = 2, 4, 6, 8, the
+far Khat drift and the hand-off jumps by band. If the points matter, the comparisons of TRIES_1D.md made at 2000
+points have to be re-read in that light.
