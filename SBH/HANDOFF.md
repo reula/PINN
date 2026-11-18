@@ -293,6 +293,9 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    of the points instead of 9%); launched `1d_T8_tplzz60_con_rinB_cluster_ih` = the cluster run + that flag.
    Grade the pair against each other (seams, errors near the horizon, outer bands) and both against B seed 7 / 8
    at the mini sizes. plots/2026-11-18/radii_exact_core{,_inner_hi}.png.
+   Then (the user): the run with the old placement (job 1189436) cancelled while pending; ONLY
+   `1d_T8_tplzz60_con_rinB_cluster_ih` (job 1189437, one A30) is in the queue. It differs from B seed 7 in two
+   things (cluster point counts and the inner placement).
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps

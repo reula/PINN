@@ -3079,3 +3079,6 @@ with `--inner_hi 0.5`): without the flag ~120 points per 0.025 at the core edge 
 redrawn points are densest near the core in linear r, being log-uniform, but are few); with it ~290 at the core
 edge rising to ~400 at r = 0.5, then a step down to ~190: the uniform band ends sharply at 0.5 (a smoother shape,
 e.g. a half-Gaussian from the core edge, is an option not taken).
+Later on 18 Nov the user had the run with the old placement cancelled (job 1189436, pending): only
+`1d_T8_tplzz60_con_rinB_cluster_ih` runs. Against B seeds 7, 8 (mini sizes, old placement) it changes the point
+counts and the inner placement together.
