@@ -305,6 +305,13 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    instead `1d_T8_tplzz60_con_rinB_cluster_hw_noend` = the cluster_hw run + `-- --lam_tapa 0`, 32 windows.
    IN THE QUEUE: `..._cluster_hw` (1189439) and `..._cluster_hw_noend`. Grade the pair on errors, masses,
    seams, far drift. Words: the user says "hand-over" for the end-of-window points too; ask which slice.
+   2026-11-18 19:10 UTC (the user: if Mendieta is full, try the hub): both Mendieta jobs still pending (start
+   estimated 02:30 - 03:00 UTC on the 19th); the hub had no server. `1d_T8_tplzz60_con_rinB_cluster_hw` LAUNCHED ON
+   THE HUB (one A30; `NPAR=1 jobs/hub/sing1d_batch.sh`, log logs/batch_cluster_hw.log and
+   logs/hub_1d_T8_tplzz60_con_rinB_cluster_hw.log on serafin; keepalive on the mini, ~/hub_keepalive_sbh.log).
+   The Mendieta copy of that run (1189439) stays queued only until the hub run has shown it works, then is
+   cancelled; the noend run (1189443) stays on Mendieta. The hub tree was fast-forwarded from serafin over HTTPS
+   and reference_1d/sing_bl_m0.5_dense_r3_t8.npz copied there from the mini.
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
