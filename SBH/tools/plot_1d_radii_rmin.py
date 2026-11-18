@@ -8,6 +8,10 @@ on [R_MIN, R]. Left: points per decade of r for N points, stacked by where the p
 that reach outside R_MIN, and the redrawn points); the black line is the distribution as coded, before the
 redraw. Right: points per radial band. The shapes come from 200 x N draws, scaled to N. The interior, end-slice,
 hand-off and held sets are all drawn this way. Also prints the table.
+Also OUT_linear.png (2026-11-18, the user: the inner region on a linear axis): points per 0.025 of r for
+0 <= r <= 2, linear in r, left without and right with --inner_hi (INNER_HI, or 0.5 when it is 0), stacked by
+origin; the thin black line of the left panel is the distribution as coded, before the redraw; shaded: the range
+the apparent horizon moves through for t <= 8 (r = 0.25 to 0.46).
 With INNER_HI > 0 (sing_1d.py --inner_hi): the inner cloud is drawn uniform in r on [R_MIN, INNER_HI] instead; the
 black line is then the distribution WITHOUT --inner_hi (after its redraw), for comparison.
 """
@@ -97,3 +101,55 @@ print("wrote", out)
 print("redrawn: %.1f%% of all points" % (100 * n_in / M))
 for (lo, hi), v in zip(BANDS, tot):
     print("r = %g to %g: %6.0f points (%.1f%%)" % (lo, hi, v, 100 * v / N))
+
+# ---- the inner region on a linear axis, without and with --inner_hi ----------------------------------------
+H2 = IHI if IHI > 0 else 0.5
+rng = np.random.default_rng(1)
+DR, RL = 0.025, 2.0
+be = np.arange(0.0, RL + DR / 2, DR)
+
+
+def clouds(ihi):
+    out = []
+    for name, frac, sg in CLOUDS:
+        m = int(frac * M)
+        r = sg * np.linalg.norm(rng.normal(size=(m, 3)), axis=1) if sg else R * rng.uniform(size=m) ** (1 / 3)
+        if ihi > 0 and name.startswith("inner"):
+            name, r = "inner cloud, uniform in r on [%g, %g]" % (RMIN, ihi), RMIN + (ihi - RMIN) * rng.uniform(size=m)
+        out.append((name, np.minimum(r, R)))
+    return out
+
+
+fig, axs = plt.subplots(1, 2, figsize=(13, 4.6), sharey=True, constrained_layout=True)
+for ax, ihi, title in ((axs[0], 0.0, "without --inner_hi (every run up to try 66)"), (axs[1], H2, "with --inner_hi %g" % H2)):
+    C = clouds(ihi)
+    n_re = sum(int((r < RMIN).sum()) for _, r in C)
+    parts_ = [(nm, r[r >= RMIN]) for nm, r in C if (r >= RMIN).mean() > 1e-3]
+    parts_.append(("redrawn log-uniform outside the core (%.0f%% of the points)" % (100 * n_re / M),
+                   RMIN * (R / RMIN) ** rng.uniform(size=n_re)))
+    base = np.zeros(len(be) - 1)
+    for nm, r in parts_:
+        h = np.histogram(r, be)[0] / M * N
+        c = COL["inner Gaussian, sigma 0.05"] if nm.startswith("inner") else COL.get(nm, COL["redrawn"])
+        ax.bar(be[:-1], h, width=DR, bottom=base, align="edge", color=c, edgecolor="white", lw=0.3, label=nm)
+        base += h
+    if ihi <= 0:
+        hc = np.histogram(np.concatenate([r for _, r in C]), be)[0] / M * N
+        ax.step(be, np.append(hc, hc[-1]), where="post", color=INK, lw=1.1, label="as coded, before the redraw (the inner Gaussian, sigma 0.05)")
+    ax.axvspan(0.25, 0.46, color="#f3d9a4", alpha=0.35, lw=0, zorder=0, label="apparent horizon, t <= 8 (r = 0.25 to 0.46)")
+    ax.axvline(RMIN, color=INK2, lw=1, ls="--")
+    n_band = sum(int(((r >= RMIN) & (r < 0.5)).sum()) for _, r in parts_) / M * N
+    ax.set_title("%s: %d of %d points in r = %g to 0.5" % (title, round(n_band), N, RMIN))
+    ax.set_xlim(0, RL)
+    ax.set_xlabel("r (linear)")
+    ax.grid(True, color=GRID, lw=0.6, axis="y")
+    ax.set_axisbelow(True)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+axs[0].set_ylabel("points per %g of r (of %d)" % (DR, N))
+axs[0].set_ylim(0, None)
+fig.suptitle("sing_1d.py with an exact core (dashed: r = %g): the inner region, one draw of %d points, linear in r" % (RMIN, N), fontsize=11)
+o2 = out.replace(".png", "_linear.png")
+fig.savefig(o2, dpi=130)
+print("wrote", o2)

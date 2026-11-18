@@ -3073,3 +3073,9 @@ held set is drawn the same way, so the held loss of a run with the flag is measu
 the runs without; compare errors against the 1D reference and seams, not held losses, across the two.
 Launched `1d_T8_tplzz60_con_rinB_cluster_ih` = `1d_T8_tplzz60_con_rinB_cluster` + `--inner_hi 0.5` (both at the
 cluster settings on one A30, both pending), so the pair differs only in the placement of the inner points.
+The inner region on a linear axis (the user asked; the tool also writes OUT_linear.png,
+plots/2026-11-18/radii_exact_core_inner_hi_linear.png: points per 0.025 of r for r <= 2, left without and right
+with `--inner_hi 0.5`): without the flag ~120 points per 0.025 at the core edge rising to ~245 at r = 0.7 (the
+redrawn points are densest near the core in linear r, being log-uniform, but are few); with it ~290 at the core
+edge rising to ~400 at r = 0.5, then a step down to ~190: the uniform band ends sharply at 0.5 (a smoother shape,
+e.g. a half-Gaussian from the core edge, is an option not taken).
