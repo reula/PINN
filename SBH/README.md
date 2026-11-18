@@ -3057,3 +3057,19 @@ decade over the whole exterior. Points per draw of 20000 by band: r = 0.225-0.5:
 1-3: 4837 (24.2%), 3-10: 3646 (18.2%), 10-24: 5139 (25.7%). The thinnest band is the one next to the core, where
 the hand-off jumps grow. Not changed; an option raised with the user is to re-centre the inner cloud just outside
 the core edge.
+
+**The inner cloud moved to the horizon band (2026-11-18, the user: "can we have the points on the inner bump to go to
+the region near the horizon?").** New flag `--inner_hi H`: with `--r_min` / `--r_in`, the inner cloud's points
+(`--inner_frac` = 12.5% of every draw: interior, end slice, hand-off slice and held set) are drawn uniform in r on
+[r_min, H] instead of the Gaussian of sigma 0.05. H = 0.5 covers the range the apparent horizon moves through
+(r = 0.25 to 0.46 for t <= 8). 0 = off, the default, so every earlier run reproduces (checked on the mini: without
+the flag the smoke test gives the same losses as before, 3.327e-04 / 2.524e-04; with it 3.071e-04 / 2.461e-04).
+Only 0.9% of the points are then still redrawn (the core cloud's part inside the core). Points per draw of 20000
+by band, with `--inner_hi 0.5` | without: r = 0.225-0.5: 3868 (19.3%) | 1795 (9.0%); 0.5-1: 4211 (21.1%) | 4583
+(22.9%); 1-3: 4249 (21.2%) | 4837 (24.2%); 3-10: 3002 (15.0%) | 3644 (18.2%); 10-24: 4671 (23.4%) | 5139 (25.7%)
+(`tools/plot_1d_radii_rmin.py OUT.png 0.225 20000 0.5`, plots/2026-11-18/radii_exact_core_inner_hi.png: the
+black line there is the distribution without the flag). The flag is saved in settings.json when set. Note: the
+held set is drawn the same way, so the held loss of a run with the flag is measured on another radial sample than
+the runs without; compare errors against the 1D reference and seams, not held losses, across the two.
+Launched `1d_T8_tplzz60_con_rinB_cluster_ih` = `1d_T8_tplzz60_con_rinB_cluster` + `--inner_hi 0.5` (both at the
+cluster settings on one A30, both pending), so the pair differs only in the placement of the inner points.

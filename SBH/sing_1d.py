@@ -79,6 +79,12 @@ ap.add_argument("--n_gpus", type=int, default=None,
 ap.add_argument("--n_held", type=int, default=2000)
 ap.add_argument("--inner_frac", type=float, default=0.125)
 ap.add_argument("--inner_sigma", type=float, default=0.05)
+ap.add_argument("--inner_hi", type=float, default=0.0,
+                help="(2026-11-18, the user: the points of the inner bump should go to the region near the horizon) with "
+                     "--r_min / --r_in: the inner cloud's points (--inner_frac of every draw) are drawn uniform in r on "
+                     "[r_min, inner_hi] instead of the Gaussian of --inner_sigma, which lies wholly inside the core and was "
+                     "therefore redrawn log-uniform over the whole exterior. The apparent horizon moves through r = 0.25 "
+                     "to 0.46 in t <= 8, so 0.5 covers it. 0 = off (the Gaussian and the redraw, as every run up to try 66)")
 ap.add_argument("--core_frac", type=float, default=0.375)
 ap.add_argument("--core_sigma", type=float, default=0.5)
 ap.add_argument("--focus_frac", type=float, default=0.25)
@@ -271,6 +277,8 @@ for k_, v_ in SETTINGS[a.settings].items():
 
 if a.r_in > 0 and a.r_min <= 0:
     a.r_min = a.r_in
+if a.inner_hi > 0 and not 0 < a.r_min < a.inner_hi:
+    raise SystemExit("--inner_hi needs --r_min (or --r_in) below it")
 if a.no_template and not a.hard_ic:
     raise SystemExit("--no_template needs --hard_ic")
 tfile = a.template_file or os.path.join(REF, "sing_bl_m0.5_dense.npz")
@@ -615,6 +623,8 @@ def radii(key, n):
     keys = jax.random.split(key, 5)
     rs = [s * jnp.linalg.norm(jax.random.normal(k, (m, 3)), axis=1)
           for k, m, s in zip(keys[:3], sizes, (a.inner_sigma, a.core_sigma, a.focus_sigma))]
+    if a.inner_hi > 0:                                    # --inner_hi: the inner cloud sits in the horizon band instead
+        rs[0] = a.r_min + (a.inner_hi - a.r_min) * jax.random.uniform(keys[0], (sizes[0],))
     rs.append(R * jax.random.uniform(keys[3], (n - n_log - sum(sizes),)) ** (1 / 3))
     if n_log > 0:
         rs.append(a.log_rmin * (R / a.log_rmin) ** jax.random.uniform(keys[4], (n_log,)))
@@ -1041,6 +1051,8 @@ if a.settings == "cluster" and not ON_GPU:
     print("WARNING: --settings cluster without a GPU", flush=True)
 SET = dict(settings=a.settings, n_int=a.n_int, n_end=a.n_end, n_ic=a.n_ic, n_held=a.n_held, iters=a.iters,
            n_change=a.n_change, nonstandard=NONSTD)
+if a.inner_hi > 0:                                         # only when set, so runs made before the flag still resume
+    SET["inner_hi"] = a.inner_hi
 print(f"settings: {a.settings}" + (f" NON-STANDARD ({', '.join(NONSTD)})" if NONSTD else "")
       + f" | points per draw: interior {a.n_int}, end slice {a.n_end}, hand-off slice {a.n_ic}, outer boundary "
         f"{max(a.n_end // 2, 8)} | held {a.n_held} | {a.iters} iterations per window, new draw every {a.n_change} | "

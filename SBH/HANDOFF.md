@@ -288,6 +288,11 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Later that day (the user: try first with a single card, two take long to get): the two-card job 1189435
    cancelled while pending; `1d_T8_tplzz60_con_rinB_cluster` resubmitted on ONE A30 (`sbatch --gres=gpu:1
    --mem=31G`; --n_gpus then defaults to 1). If it runs out of GPU memory: two cards (plain sbatch).
+   Also 18 Nov (the user: the inner bump's points should go near the horizon): `--inner_hi 0.5` (inner cloud
+   uniform in r on [0.225, 0.5] instead of the Gaussian that the exact core swallowed; band 0.225-0.5 gets 19%
+   of the points instead of 9%); launched `1d_T8_tplzz60_con_rinB_cluster_ih` = the cluster run + that flag.
+   Grade the pair against each other (seams, errors near the horizon, outer bands) and both against B seed 7 / 8
+   at the mini sizes. plots/2026-11-18/radii_exact_core{,_inner_hi}.png.
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
