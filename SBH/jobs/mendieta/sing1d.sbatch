@@ -13,6 +13,9 @@
 # 8000 hand-off points per draw, split over the node's two A30) - never the mini's. A deliberate deviation goes in
 # SING_ARGS as explicit --n_int / --n_end / --n_ic / --n_gpus and is logged NON-STANDARD. One GPU only:
 # sbatch --gres=gpu:1 --mem=28G ... with --n_gpus 1 in SING_ARGS.
+# Quick checks (2026-11-19, the user): Mendieta's `short` partition (1 h limit, higher priority, the same nodes):
+#   sbatch -p short -t 0-00:40:00 --gres=gpu:1 --mem=31G -J NAME --export=ALL,OUTDIR=NAME,BASE="... --N_window 1 --iters 500",... 
+# Probe there (memory, seconds per iteration, a new flag on a real GPU) BEFORE queueing a full run in multi.
 # ---------------------------------------------------------------------------
 #SBATCH -p multi
 #SBATCH -A ifeg

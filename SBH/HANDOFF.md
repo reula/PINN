@@ -324,6 +324,9 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    Two probe jobs measure it: `1d_probe_chunks4` (chunks of 5000 / 1250 / 2000 points) and `1d_probe_chunks5`
    (4000 / 1000 / 1600), window 0 only, 500 iterations, otherwise the cluster_hw flags. Read their peak memory
    and seconds per 250 iterations against the real runs' (10 chunks). The counts allow K = 1, 2, 4, 5, 10, 20, ...
+   The probes were moved to Mendieta's `short` partition (the user: short tries can be sent there; 1 h limit,
+   higher priority; `sbatch -p short -t 0-00:40:00 ...`, jobs 1189725 / 1189726). RULE FROM NOW ON: probe a new
+   setting in `short` before queueing a full run in `multi` (the three runs of 18 Nov waited ~7 h to fail in minutes).
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
