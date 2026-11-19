@@ -129,6 +129,13 @@ ap.add_argument("--r_in_w", type=float, default=0.1, help="width of the smooth s
 ap.add_argument("--r_min", type=float, default=0.0,
                 help="(2026-11-08, the user: with a template, look only outside the inner region) every interior / end / IC "
                      "radius below r_min is redrawn log-uniform on [r_min, R], so no loss point sits inside r_min; 0 = off")
+ap.add_argument("--chunks", type=int, default=None,
+                help="(2026-11-19) evaluate the loss and its gradient of a training batch in this many equal chunks of points, "
+                     "one after the other (jax.lax.map), and average them: every term is a mean over points, so the value is "
+                     "the unchunked one up to rounding, and the GPU memory is that of one chunk. Why: 20000 / 5000 / 8000 "
+                     "points at once do not fit in one A30 (three runs died in the first gradient, 6.4 GiB for one array). "
+                     "Default: mini 1; cluster 10 on one device (chunks of 2000 / 500 / 800, the mini sizes), 1 with "
+                     "--n_gpus > 1. The point counts must be divisible by it; not with --n_gpus > 1")
 SETTINGS = {"mini": dict(n_int=2000, n_end=250, n_ic=400),          # 2026-11-01 laptop sizes
             "cluster": dict(n_int=20000, n_end=5000, n_ic=8000)}     # 2026-11-18: 10x interior, 20x on the two time slices
 ap.add_argument("--iters", type=int, default=4000)
@@ -300,6 +307,10 @@ if a.n_gpus is None:
     a.n_gpus = min(2, len(jax.devices())) if (a.settings == "cluster" and ON_GPU) else 1
 elif a.n_gpus != (min(2, len(jax.devices())) if a.settings == "cluster" else 1):
     NONSTD.append(f"n_gpus={a.n_gpus}")
+if a.chunks is None:
+    a.chunks = 10 if (a.settings == "cluster" and a.n_gpus == 1) else 1
+if a.chunks > 1 and a.n_gpus > 1:
+    raise SystemExit("--chunks > 1 and --n_gpus > 1 together are not implemented")
 GT, CHI, TH, GH, AL = ns["GT_SLICE"], ns["CHI_IDX"], ns["THETA_IDX"], ns["GHAT_SLICE"], ns["ALPHA_IDX"]
 DD = np.asarray(ns["_DD_OUTPUT_IDXS"])
 R = float(ns["R_domain"])
@@ -1067,7 +1078,7 @@ if a.inner_hw > 0:
 print(f"settings: {a.settings}" + (f" NON-STANDARD ({', '.join(NONSTD)})" if NONSTD else "")
       + f" | points per draw: interior {a.n_int}, end slice {a.n_end}, hand-off slice {a.n_ic}, outer boundary "
         f"{max(a.n_end // 2, 8)} | held {a.n_held} | {a.iters} iterations per window, new draw every {a.n_change} | "
-        f"{a.n_gpus} device(s)", flush=True)
+        f"{a.n_gpus} device(s), {a.chunks} chunk(s) per batch", flush=True)
 SET_F = os.path.join(a.out, "settings.json")
 if os.path.exists(SET_F):
     old = json.load(open(SET_F))
@@ -1101,8 +1112,29 @@ def shard(batch):
     return tuple(out)
 
 
-loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), static_argnums=1)
-vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
+def chunked(batch):
+    """--chunks K: every per-point array (n, ...) of a training batch -> (K, n / K, ...); scalars are repeated K times."""
+    if a.chunks <= 1:
+        return batch
+    out = []
+    for x in batch:
+        x = jnp.asarray(x)
+        if x.ndim and x.shape[0] % a.chunks:
+            raise SystemExit(f"--chunks {a.chunks}: a batch array of {x.shape[0]} points is not divisible by it")
+        out.append(x.reshape((a.chunks, -1) + x.shape[1:]) if x.ndim else jnp.broadcast_to(x, (a.chunks,)))
+    return tuple(out)
+
+
+if a.chunks > 1:                                           # mean over equal chunks = the mean over all the points
+    def _vg_chunks(w, unr, win, batch):
+        v, g = jax.lax.map(lambda b: jax.value_and_grad(lambda ww: total(parts(unr(ww), win, b)))(w), batch)
+        return jnp.mean(v), jnp.mean(g, axis=0)
+    loss_fn = jax.jit(lambda w, unr, win, batch: jnp.mean(jax.lax.map(lambda b: total(parts(unr(w), win, b)), batch)),
+                      static_argnums=1)
+    vg_fn = jax.jit(_vg_chunks, static_argnums=1)
+else:
+    loss_fn = jax.jit(lambda w, unr, win, batch: total(parts(unr(w), win, batch)), static_argnums=1)
+    vg_fn = jax.jit(jax.value_and_grad(lambda w, unr, win, batch: total(parts(unr(w), win, batch))), static_argnums=1)
 parts_jit = jax.jit(parts)
 causal_jit = jax.jit(causal_weights)
 hist = os.path.join(a.out, "history.csv")
@@ -1162,6 +1194,7 @@ for k in range(k0, a.N_window):
             batch = shard(batch + (cw_i, cw_e))
             print("  causal: bin loss " + " ".join(f"{float(v):.1e}" for v in cw_L) + " | weight "
                   + " ".join(f"{float(v):.2f}" for v in cw_b) + f" | end {float(cw_e):.2f}", flush=True)
+        batch = chunked(batch)                                  # --chunks: after the causal weights, which use the whole batch
         w = mb.minimize(lambda v: loss_fn(v, unr, win, batch), lambda v: vg_fn(v, unr, win, batch), w, opts).x
         it += a.n_change
         hp = {n: float(v) for n, v in parts_jit(unr(w), win, held).items()}

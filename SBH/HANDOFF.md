@@ -314,6 +314,11 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    when the Mendieta job 1189439 leaves PENDING or after 12 tries, and never cancels anything. IF BOTH END UP
    RUNNING, cancel one copy by hand. The hub tree was fast-forwarded from serafin over HTTPS and
    reference_1d/sing_bl_m0.5_dense_r3_t8.npz copied there from the mini.
+   2026-11-19: ALL THREE ATTEMPTS DIED OF GPU MEMORY in the first gradient (hub copy 19:59 - 20:04 UTC on the
+   18th; Mendieta 1189439 and 1189443 03:36 - 03:40 UTC): 20000 / 5000 / 8000 points at once do not fit in one
+   A30. Fix: `--chunks K` (loss and gradient in K chunks of points, averaged; default 10 in the cluster settings
+   on one device; same numbers as unchunked in the smoke test). Both runs relaunched under the same names. First
+   thing to read from them: peak memory and seconds per window.
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps

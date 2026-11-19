@@ -3133,3 +3133,20 @@ launch in `jobs/hub/cmd_cluster_hw.txt` (`NPAR=1 jobs/hub/sing1d_batch.sh`, the 
 hub for a server and, if one comes up, types that command and becomes the batch's keepalive; it stops when the
 Mendieta copy of the run (job 1189439) is no longer pending or after 12 tries (~6 h), and cancels nothing. Log:
 `~/hub_retry_sbh.log` on the mini.
+
+**One A30 does not hold the cluster point counts; `--chunks` (2026-11-19).** All three attempts died in the first
+gradient of window 0, 4 - 5 minutes after starting, with `RESOURCE_EXHAUSTED: Out of memory while trying to allocate
+6.43GiB` (one array; the 2000-point runs peak at 9.4 GB in total): the hub copy of `..._cluster_hw` (the retry
+loop got a server at its second try, launched 19:59 UTC on 18 Nov, dead 20:04) and the two Mendieta jobs 1189439
+(`..._cluster_hw`) and 1189443 (`..._cluster_hw_noend`), both started 03:36 UTC on 19 Nov on ivb10, dead 03:40.
+The user had warned of this on 18 Nov ("the A30 do not have that much memory"). No window was produced.
+Fix: `--chunks K` evaluates the loss and its gradient of a training batch in K equal chunks of points, one after
+the other (`jax.lax.map` of value-and-grad per chunk, then the mean). Every loss term is a mean over points, so
+the mean over equal chunks is the same number, and the memory is that of one chunk. Default in the cluster
+settings on one device: 10, i.e. chunks of 2000 interior / 500 end-slice / 800 hand-off points, the mini sizes
+whose memory is known; 1 in the mini settings and with `--n_gpus` > 1 (the two are not combined yet). The causal
+weights, the held loss and the report still use whole arrays. Checked on the mini (2x8 network, 64 / 16 / 16
+points, 2 windows of 40 iterations): `--chunks 4` reproduces the unchunked train and held losses of both windows
+to every printed digit (2.710e-04 / 2.210e-04 and 1.029e-03 / 5.309e-04); with `--causal_eps` it runs. Not known
+until the relaunched jobs report: the time per window (the residual work is 10x the mini's) and the peak memory.
+Both runs relaunched with the same names and flags.
