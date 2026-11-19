@@ -319,6 +319,11 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    A30. Fix: `--chunks K` (loss and gradient in K chunks of points, averaged; default 10 in the cluster settings
    on one device; same numbers as unchunked in the smoke test). Both runs relaunched under the same names. First
    thing to read from them: peak memory and seconds per window.
+   Chunk size (the user, 19 Nov: if 2000 points used 9.4 GB, chunks of about 6000 points should fit): of the 9.4 GB
+   an unknown part is fixed (the dense inverse Hessian, 2.9 GB per copy), so the points' share is not known.
+   Two probe jobs measure it: `1d_probe_chunks4` (chunks of 5000 / 1250 / 2000 points) and `1d_probe_chunks5`
+   (4000 / 1000 / 1600), window 0 only, 500 iterations, otherwise the cluster_hw flags. Read their peak memory
+   and seconds per 250 iterations against the real runs' (10 chunks). The counts allow K = 1, 2, 4, 5, 10, 20, ...
    The mini moved networks on 2026-11-16 (Mini.md).
 
 ## 4. Next steps
