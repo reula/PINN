@@ -134,7 +134,7 @@ ap.add_argument("--chunks", type=int, default=None,
                      "one after the other (jax.lax.map), and average them: every term is a mean over points, so the value is "
                      "the unchunked one up to rounding, and the GPU memory is that of one chunk. Why: 20000 / 5000 / 8000 "
                      "points at once do not fit in one A30 (three runs died in the first gradient, 6.4 GiB for one array). "
-                     "Default: mini 1; cluster 10 on one device (chunks of 2000 / 500 / 800, the mini sizes), 1 with "
+                     "Default: mini 1; cluster 4 on one device (chunks of 5000 / 1250 / 2000: the fastest that fits, probes of 19 Nov), 1 with "
                      "--n_gpus > 1. The point counts must be divisible by it; not with --n_gpus > 1")
 SETTINGS = {"mini": dict(n_int=2000, n_end=250, n_ic=400),          # 2026-11-01 laptop sizes
             "cluster": dict(n_int=20000, n_end=5000, n_ic=8000)}     # 2026-11-18: 10x interior, 20x on the two time slices
@@ -308,7 +308,7 @@ if a.n_gpus is None:
 elif a.n_gpus != (min(2, len(jax.devices())) if a.settings == "cluster" else 1):
     NONSTD.append(f"n_gpus={a.n_gpus}")
 if a.chunks is None:
-    a.chunks = 10 if (a.settings == "cluster" and a.n_gpus == 1) else 1
+    a.chunks = 4 if (a.settings == "cluster" and a.n_gpus == 1) else 1
 if a.chunks > 1 and a.n_gpus > 1:
     raise SystemExit("--chunks > 1 and --n_gpus > 1 together are not implemented")
 GT, CHI, TH, GH, AL = ns["GT_SLICE"], ns["CHI_IDX"], ns["THETA_IDX"], ns["GHAT_SLICE"], ns["ALPHA_IDX"]

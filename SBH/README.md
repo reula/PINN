@@ -3150,3 +3150,12 @@ points, 2 windows of 40 iterations): `--chunks 4` reproduces the unchunked train
 to every printed digit (2.710e-04 / 2.210e-04 and 1.029e-03 / 5.309e-04); with `--causal_eps` it runs. Not known
 until the relaunched jobs report: the time per window (the residual work is 10x the mini's) and the peak memory.
 Both runs relaunched with the same names and flags.
+
+**Chunk size (2026-11-19, the user: chunks of ~6000 points should fit; probes in Mendieta's `short` partition, window 0,
+500 iterations, the cluster_hw flags).** Seconds for the second 250 iterations (no compilation) | peak memory:
+10 chunks (2000 interior points each, the main runs) 77 s | 9.42 GB; 5 chunks (4000) 73 s | 9.42 GB; 4 chunks (5000)
+59 s | 9.42 GB; 2 chunks (10000) 59 s | 9.42 GB; no chunking (20000) out of memory (6.43 GiB for one array, as on
+18-19 Nov). The reported peak is the same for every size that fits, so it is set by the fixed part (optimizer), not
+by the points. Default of the cluster settings on one device changed from 10 to 4 chunks (the fastest; 2 is no
+faster and has less margin): a window ~15 min instead of ~20. The two running runs keep 10 (the count does not
+change the result beyond rounding; restarting them would cost queue time).
