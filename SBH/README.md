@@ -3159,3 +3159,21 @@ Both runs relaunched with the same names and flags.
 by the points. Default of the cluster settings on one device changed from 10 to 4 chunks (the fastest; 2 is no
 faster and has less margin): a window ~15 min instead of ~20. The two running runs keep 10 (the count does not
 change the result beyond rounding; restarting them would cost queue time).
+
+**Results of the two cluster runs (2026-11-20; jobs 1189721, 1189722, 11 h each on one A30 with 10 chunks;
+plots/2026-11-20/{loss_cluster, seams_cluster, invariants_cluster}.png).** `..._cluster_hw` = B seed 7 flags,
+cluster settings (20000 / 5000 / 8000 points), `--inner_hw 0.15`; `..._cluster_hw_noend` = the same + `-- --lam_tapa 0`.
+Against B seeds 7, 8 (mini sizes, old placement):
+- More points + half-Gaussian (`cluster_hw`): no gain overall. Band errors at t = 2, 4, 6, 8 within the seed pair
+  (alpha r = 0.2-1 at t = 8: 4e-4 against 2e-4, 2e-4; Khat r = 0.2-1: 1e-3 against 9e-4); worst mass 5.1e-3
+  (5.6e-3, 3.0e-3); horizon mass error -2.5e-4 at t = 8 (-3.5e-5, -1.8e-4). The mass error in r = 0.225-0.5 was
+  2-3x lower up to t = 2 only. Seam jumps: the same growth from t ~ 4, larger at the end (alpha r = 0.225-0.5 at
+  t = 7.75: 2.3e-4 against 1.4e-4, 1.4e-4; shift there 5.9e-4 against 1.0e-4, 1.0e-4). Held loss of the last window
+  1.8e-7 (3.9e-8, 2.2e-8).
+- Without the end term (`cluster_hw_noend`, against `cluster_hw`): the fields near and inside r = 3 are better
+  and the far mass worse. Seam jumps 2-6x smaller (alpha r = 0.5-1 at t = 7.75: 3.9e-5 against 6.3e-5, B 1.2e-4,
+  7.9e-5; shift r = 0.225-0.5: 5.9e-5 against 5.9e-4, B 1.0e-4); alpha r = 0.2-1 at t = 8 3e-4 (4e-4), Khat
+  7e-4 (1e-3), chi 8e-5 (1e-4); mass in r = 0.2-1 2.4e-4 (3.5e-4), horizon -1.3e-4 (-2.5e-4). But mass in r = 5-12
+  3.3e-3 (1.8e-3) and r = 12-20 8.2e-3 (5.1e-3): the worst mass, at the outer edge, is the worst of the four runs.
+  Its held loss lacks the end part by construction (lower by ~2x).
+One seed each; the point count and the placement are not separated (the run that would separate them was cancelled).

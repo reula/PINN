@@ -364,3 +364,6 @@ Single Brill-Lindquist puncture, m = 0.5, vacuum CCZ4 (1+log, Gamma driver, eta 
    `tools/plot_error_by_radius.py`, `tools/plot_T8_compare.py`.
 4. Python: `../Stationary/.venv/bin/python` with `JAX_ENABLE_X64=1` (CPU on the mini; fine for evaluation and
    1D smoke tests, ~2 min per 250 iterations at 500 points).
+35. 2026-11-20: both cluster runs graded (README "Results of the two cluster runs"): more points + half-Gaussian
+   give no overall gain; dropping the end term (`--lam_tapa 0`) gives 2-6x smaller seam jumps and better inner
+   fields but a worse outer-edge mass (8.2e-3). Nothing running. Next runs: 4 chunks (default now).
